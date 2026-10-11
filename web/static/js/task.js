@@ -1,4 +1,4 @@
-// Detalhe de uma tarefa pontual: checklist, tempo apontado e anotações.
+// Detalhe de uma tarefa: checklist, tempo apontado e anotações.
 // Abre por cima do quadro/Hoje; ao fechar, quem abriu recarrega (onChange).
 import { api } from "./api.js";
 import { h, icon, clear, addDays, shortDate, dateTime } from "./dom.js";
@@ -48,7 +48,7 @@ export async function openTask(taskId, onChange) {
       dlg.close();
       return;
     }
-    const today = (await api.get("/board")).today;
+    const today = t.today;
     clear(body);
 
     // ---- cabeçalho

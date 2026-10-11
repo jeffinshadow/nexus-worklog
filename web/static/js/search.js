@@ -1,5 +1,5 @@
 // Busca: tarefas (título, descrição, anotações, checklist, apontamentos),
-// recorrentes e projetos. Rota #/busca?q=… ; o termo aparece destacado.
+// rotinas e projetos. Rota #/busca?q=… ; o termo aparece destacado.
 import { api } from "./api.js";
 import { h, icon, clear, shortDate } from "./dom.js";
 import { taskChips } from "./board.js";
@@ -80,7 +80,7 @@ export async function mount(root, ctx) {
   if (r.recurring.length || r.projects.length) {
     const side = h("section", { class: "panel" });
     if (r.recurring.length) {
-      side.append(h("div", { class: "panel-head" }, h("h2", { text: "Recorrentes" })));
+      side.append(h("div", { class: "panel-head" }, h("h2", { text: "Rotinas" })));
       for (const x of r.recurring)
         side.append(h("div", { class: "list-row" }, h("div", { class: "t" }, ...highlight(x.label, q),
           x.active ? null : h("small", { text: "removida" }))));

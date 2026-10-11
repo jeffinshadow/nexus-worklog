@@ -24,27 +24,28 @@ a { color: var(--primary-hi); text-decoration: none; }
 :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 8px; }
 
 /* ------------------------------------------------------------- ícones -- */
-.ico, .icon svg, .inline-icon { width: 20px; height: 20px; flex: none; fill: none; }
+.ico, .icon svg { width: 20px; height: 20px; flex: none; fill: none; }
 
 /* ------------------------------------------------------------- botões -- */
-button { font-family: inherit; font-size: 0.92rem; cursor: pointer; }
+button { font-family: inherit; font-size: 0.92rem; cursor: pointer; color: inherit; }
 button:disabled { opacity: .45; cursor: not-allowed; }
-.btn, button:not(.icon):not(.icon-btn):not(.chip-btn):not(.nav-btn):not(.card-open):not(.swatch) {
+/* Botão de ação: sempre com .btn (+ .btn-primary/-ghost/-text/-danger, .btn-sm).
+   Ícones, abas e links-botão têm classes próprias. */
+.btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   height: 40px; padding: 0 18px; border-radius: var(--radius-l);
   border: 1px solid transparent; font-weight: 500; letter-spacing: -.005em;
   background: var(--primary); color: var(--on-primary);
   transition: background-color .2s, border-color .2s, color .2s, transform .2s var(--ease);
 }
-.btn:hover:not(:disabled), button:not(.icon):not(.icon-btn):not(.chip-btn):not(.nav-btn):not(.card-open):not(.swatch):hover:not(:disabled) { filter: brightness(1.08); }
-.btn-primary { background: var(--primary); color: var(--on-primary); }
-.btn-ghost, button.tonal { background: rgba(255,255,255,.03) !important; color: var(--on-surface) !important; border-color: var(--line-2) !important; }
-.btn-ghost:hover, button.tonal:hover { border-color: rgba(255,255,255,.3) !important; filter: none !important; }
-.btn-text, button.text { background: transparent !important; color: var(--on-surface-variant) !important; padding: 0 12px !important; }
-.btn-text:hover, button.text:hover { color: var(--on-surface) !important; filter: none !important; }
-.btn-danger, button.danger { background: transparent !important; color: var(--error) !important; border-color: rgba(242,139,130,.35) !important; }
-.btn-danger:hover, button.danger:hover { background: rgba(242,139,130,.08) !important; filter: none !important; }
-.btn-sm { height: 32px !important; padding: 0 12px !important; font-size: .84rem !important; }
+.btn:hover:not(:disabled) { filter: brightness(1.08); }
+.btn-ghost { background: rgba(255,255,255,.03); color: var(--on-surface); border-color: var(--line-2); }
+.btn-ghost:hover:not(:disabled) { border-color: rgba(255,255,255,.3); filter: none; }
+.btn-text { background: transparent; color: var(--on-surface-variant); padding: 0 12px; }
+.btn-text:hover:not(:disabled) { color: var(--on-surface); filter: none; }
+.btn-danger { background: transparent; color: var(--error); border-color: rgba(242,139,130,.35); }
+.btn-danger:hover:not(:disabled) { background: rgba(242,139,130,.08); filter: none; }
+.btn-sm { height: 32px; padding: 0 12px; font-size: .84rem; }
 .full { width: 100%; }
 
 .icon-btn, button.icon {
@@ -154,10 +155,10 @@ button.column-toggle { display: none; }
 .column-body { scrollbar-width: thin; scrollbar-color: var(--surface-container-highest) transparent; }
 @media (max-width: 860px) {
   button.column-toggle { display: inline-grid; }
-  .column-toggle .ico, .column-toggle .inline-icon { transition: transform .2s; }
+  .column-toggle .ico { transition: transform .2s; }
   .column-done .column-body { display: none; }
   .column-done.expanded .column-body { display: block; }
-  .column-done.expanded .column-toggle .ico, .column-done.expanded .column-toggle .inline-icon { transform: rotate(180deg); }
+  .column-done.expanded .column-toggle .ico { transform: rotate(180deg); }
 }
 
 .day-nav { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin: 0 0 10px; padding: 3px; border-radius: 999px; border: 1px solid var(--outline-variant); background: var(--surface); }
@@ -283,7 +284,6 @@ button.column-toggle { display: none; }
 .dash-section { margin-bottom: 28px; }
 .dash-section-title { font-size: .76rem; font-family: var(--font-mono); font-weight: 400; color: var(--primary); margin: 0 0 12px; letter-spacing: .02em; }
 .chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--gap); }
-.chart-grid .span-all { grid-column: 1 / -1; }
 .fluxo-grid > .chart-card { display: flex; flex-direction: column; }
 .fluxo-grid .fluxo-body { flex: 1 1 auto; display: flex; flex-direction: column; }
 .fluxo-grid .fluxo-body > .chart-svg { margin-top: auto; }
@@ -358,9 +358,6 @@ button.column-toggle { display: none; }
 .admin-bar { display: flex; gap: 10px; align-items: end; margin-bottom: var(--gap); flex-wrap: wrap; }
 .admin-bar .field { margin-bottom: 0; min-width: 260px; }
 .readonly-note { font-family: var(--font-mono); font-size: .74rem; color: var(--warning); margin: 0 0 var(--gap); }
-.auth-tabs { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; border: 1px solid var(--outline-variant); background: var(--surface); margin-bottom: var(--gap); }
-.auth-tabs button { border: 0 !important; height: 34px !important; background: transparent !important; color: var(--on-surface-variant) !important; }
-.auth-tabs button[aria-selected="true"] { background: var(--primary-container) !important; color: var(--on-surface) !important; }
 
 /* -------------------------------------------------------------- diálogo -- */
 dialog {
@@ -380,7 +377,7 @@ dialog p { color: var(--on-surface-variant); font-size: .92rem; }
 @media (max-width: 860px) { .toasts { bottom: calc(86px + env(safe-area-inset-bottom)); } }
 .toast { pointer-events: auto; display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 16px; border-radius: 999px; background: #232326; border: 1px solid var(--line-2); box-shadow: 0 20px 40px -20px rgba(0,0,0,.8); font-size: .9rem; animation: toast-in .3s var(--ease); }
 .toast.error { border-color: rgba(242,139,130,.45); }
-.toast button { height: 30px !important; padding: 0 12px !important; font-size: .82rem !important; }
+.toast .btn { height: 30px; padding: 0 12px; font-size: .82rem; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
 
 /* --------------------------------------------------------------- login -- */

@@ -7,9 +7,10 @@ from .. import audit, db
 from ..deps import require_admin, require_admin_csrf
 from ..schemas import InviteIn
 from ..security import generate_temp_password, hash_password
-from ..services import get_board, get_dashboard
+from ..services import app_today, get_board, get_dashboard
 from .board import check_board_day
 from .reports import build_pdf_response
+from .search import time_csv
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -73,6 +74,12 @@ def user_report_export(
 ):
     target = _ensure_user(user_id)
     return build_pdf_response(target["email"], user_id, start, end, project)
+
+
+@router.get("/export/apontamentos.csv")
+def team_time_csv(admin=Depends(require_admin)):
+    """Apontamentos de todos os usuários (some por cliente/projeto na planilha)."""
+    return time_csv(None, f"nexus-apontamentos-equipe-{app_today().isoformat()}.csv")
 
 
 @router.post("/users/{user_id}/reset-password")

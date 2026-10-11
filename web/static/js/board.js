@@ -1,10 +1,10 @@
-// Quadro de tarefas: recorrentes (com seletor de dia), pontuais abertas e
+// Quadro de tarefas: rotinas (com seletor de dia), tarefas abertas e
 // concluídas. Também exporta os diálogos de criar/editar, usados pela tela Hoje.
 import { api } from "./api.js";
 import { h, icon, clear, addDays, shortDate } from "./dom.js";
 import { confirmDialog, errorToast, toast, undoLatest } from "./ui.js";
 import { fillProjectSelect, listProjects, projectChip } from "./projects.js";
-import { openTask, duration } from "./task.js";
+import { openTask, duration, parseDuration } from "./task.js";
 
 const WEEKDAYS_SHORT = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 const DONE_PAGE = 10;
@@ -24,7 +24,7 @@ function dayLabel(iso, today) {
   return `${WEEKDAYS_SHORT[wd]}, ${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}`;
 }
 
-// Chips de uma tarefa pontual (compartilhado com a tela Hoje): status,
+// Chips de uma tarefa (compartilhado com a tela Hoje): status,
 // prioridade, prazo, projeto e os contadores de checklist/tempo/anotações.
 export function taskChips(t, today) {
   const chips = [h("span", { class: "chip " + t.status, text: STATUS_LABELS[t.status] })];
@@ -44,7 +44,7 @@ export function taskChips(t, today) {
   return chips;
 }
 
-// Resumo da agenda de uma recorrente ("seg, qua", "todo dia 5", "a cada 15 dias").
+// Resumo da agenda de uma rotina ("seg, qua", "todo dia 5", "a cada 15 dias").
 const WD_ORDER = [1, 2, 3, 4, 5, 6, 0];
 export function scheduleLabel(r) {
   if (r.freq === "weekly") {
@@ -70,6 +70,10 @@ export function openWorklog(item, onDone, opts = {}) {
   document.getElementById("wl-status").value = item ? item.status : "todo";
   document.getElementById("wl-due").value = item && item.due_date ? item.due_date : "";
   document.getElementById("wl-prio").value = String(item ? item.priority || 2 : 2);
+  // Tempo já na criação (técnico em campo: "Loja X, 2h"); depois, pelo detalhe.
+  const timeInput = document.getElementById("wl-time");
+  timeInput.value = "";
+  document.getElementById("wl-time-wrap").classList.toggle("hidden", !!item);
   const projSel = document.getElementById("wl-project");
   fillProjectSelect(projSel, item ? item.project_id : opts.projectId || null).catch(() => {});
 
@@ -101,9 +105,14 @@ export function openWorklog(item, onDone, opts = {}) {
       project_id: projSel.value && projSel.value !== "__new" ? Number(projSel.value) : null,
     };
     if (!payload.title) return;
+    const minutes = !item && timeInput.value.trim() ? parseDuration(timeInput.value) : null;
+    if (minutes === null && !item && timeInput.value.trim()) { toast("Tempo inválido. Ex.: 45, 1h30, 2:15.", { error: true }); timeInput.focus(); return; }
     try {
       if (item) await api.patch(`/worklog/${item.id}`, payload);
-      else await api.post("/worklog", payload);
+      else {
+        const created = await api.post("/worklog", payload);
+        if (minutes) await api.post(`/worklog/${created.id}/time`, { minutes });
+      }
       dlg.close();
       onDone && onDone();
     } catch (e) {
@@ -116,7 +125,7 @@ export function openWorklog(item, onDone, opts = {}) {
 
 export function openRecurring(item, onDone) {
   const dlg = document.getElementById("dialog-recurring");
-  document.getElementById("dlg-rec-title").textContent = item ? "Editar recorrente" : "Nova recorrente";
+  document.getElementById("dlg-rec-title").textContent = item ? "Editar rotina" : "Nova rotina";
   const input = document.getElementById("rec-label");
   input.value = item ? item.label : "";
   const sched = scheduleForm(item);
@@ -126,11 +135,11 @@ export function openRecurring(item, onDone) {
   del.onclick = item
     ? async () => {
         dlg.close();
-        if (!(await confirmDialog({ title: "Remover recorrente?", text: "Ela sai do quadro a partir de hoje. O histórico de dias feitos é preservado.", confirm: "Remover", danger: true }))) return;
+        if (!(await confirmDialog({ title: "Remover rotina?", text: "Ela sai do quadro a partir de hoje. O histórico de dias feitos é preservado.", confirm: "Remover", danger: true }))) return;
         try {
           await api.del(`/recurring/${item.id}`);
           onDone && onDone();
-          toast("Recorrente removida.", { action: "Desfazer", onAction: () => undoLatest("recurring", item.id, onDone) });
+          toast("Rotina removida.", { action: "Desfazer", onAction: () => undoLatest("recurring", item.id, onDone) });
         } catch (e) {
           errorToast(e, "Erro ao remover.");
         }
@@ -157,7 +166,7 @@ export function openRecurring(item, onDone) {
   input.focus();
 }
 
-// Campos de agenda do diálogo de recorrente. value() devolve o corpo da API
+// Campos de agenda do diálogo de rotina. value() devolve o corpo da API
 // ({freq, weekdays|month_day|interval_days}) ou null se inválido.
 function scheduleForm(item) {
   const freq = document.getElementById("rec-freq");
@@ -226,8 +235,8 @@ export async function mount(root, opts = {}) {
   let project = readOnly ? "" : sessionStorage.getItem("nexus.board.project") || "";
 
   clear(root);
-  const daily = column("Recorrentes", readOnly ? null : () => openRecurring(null, refresh), "Nova recorrente");
-  const wip = column("Pontuais", readOnly ? null : () => openWorklog(null, refresh), "Nova tarefa");
+  const daily = column("Rotinas", readOnly ? null : () => openRecurring(null, refresh), "Nova rotina");
+  const wip = column("Em aberto", readOnly ? null : () => openWorklog(null, refresh), "Nova tarefa");
   const done = column("Concluídas", null, null, { collapsible: true, className: "column-done" });
   root.append(h("div", { class: "columns" }, daily.section, wip.section, done.section));
 
@@ -251,7 +260,7 @@ export async function mount(root, opts = {}) {
   if (opts.setActions && !readOnly) {
     opts.setActions(
       filter.options.length > 2 ? filter : null,
-      h("button", { type: "button", class: "btn btn-ghost", onClick: () => openRecurring(null, refresh) }, icon("add"), "Recorrente"),
+      h("button", { type: "button", class: "btn btn-ghost", onClick: () => openRecurring(null, refresh) }, icon("add"), "Rotina"),
       h("button", { type: "button", class: "btn btn-primary", onClick: () => openWorklog(null, refresh) }, icon("add"), "Tarefa")
     );
   }
@@ -274,8 +283,9 @@ export async function mount(root, opts = {}) {
     dayText.textContent = dayLabel(data.day, data.today);
     prevBtn.disabled = data.day <= data.min_day;
     nextBtn.disabled = data.day >= data.today;
-    dayNote.classList.toggle("hidden", data.work_day);
-    dayNote.textContent = data.work_day ? "" : "Dia não útil: o que for marcado conta como extra.";
+    const off = data.recurring.some((r) => r.due === false);
+    dayNote.classList.toggle("hidden", !off);
+    dayNote.textContent = off ? "Esmaecidas: fora da agenda deste dia (se marcar, conta como extra)." : "";
     renderDaily(data.recurring);
     renderCards(wip, data.in_progress, false, data.today);
     renderCards(done, data.done, true, data.today);
@@ -286,7 +296,7 @@ export async function mount(root, opts = {}) {
     const due = items.filter((i) => i.due !== false);
     daily.count.textContent = `${due.filter((i) => i.done_today).length}/${due.length}`;
     if (!items.length) {
-      daily.body.append(h("p", { class: "empty", text: "Sem recorrentes neste dia." }));
+      daily.body.append(h("p", { class: "empty", text: "Sem rotinas neste dia." }));
       return;
     }
     for (const it of items) {

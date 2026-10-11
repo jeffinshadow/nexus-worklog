@@ -179,3 +179,15 @@ def test_mcp_hoje_respeita_agenda_e_resumo(usuario):
     assert "Fora da agenda" not in t and "Rotinas de hoje (0/0" in t
     assert "(fora da agenda)" in texto(b.tool("list_recurring"))
     assert "Semana até hoje" in texto(b.tool("get_summary"))
+
+
+def test_admin_exporta_horas_da_equipe(admin, usuario, novo_usuario):
+    outro = novo_usuario("outro@example.com")
+    for u, m in ((usuario, 30), (outro, 45)):
+        pid = u.post("/projects", {"name": "Loja X"}).json()["id"]
+        tid = u.post("/worklog", {"title": "Cabear", "project_id": pid}).json()["id"]
+        u.post(f"/worklog/{tid}/time", {"minutes": m})
+    csv = admin.get("/admin/export/apontamentos.csv").content.decode("utf-8-sig").splitlines()
+    assert csv[0].endswith(";usuario") and len(csv) == 3
+    assert {l.split(";")[-1] for l in csv[1:]} == {usuario.me["email"], "outro@example.com"}
+    assert usuario.get("/admin/export/apontamentos.csv").status_code == 403

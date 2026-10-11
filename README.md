@@ -1,170 +1,115 @@
 # Shadow Nexus Worklog
 
-Worklog pessoal **multiusuário**, self-hosted, sem frameworks JS e sem
-dependências externas em runtime. Deploy por `git push` + `docker compose`.
+Registro do dia de trabalho para profissionais de TI — suporte, infraestrutura,
+redes, segurança, desenvolvimento — e para quem precisa do relatório deles.
+Multiusuário, auto-hospedado, sem frameworks JS nem passo de build.
 Prioridades: **simples > seguro > funcional > elegante**.
 
-Cada usuário cria a própria conta e vê **apenas** os próprios dados. Um único
-**admin master** pode consultar (somente leitura) o board, o dashboard e os
-relatórios de qualquer usuário.
+Cada pessoa vê **apenas** os próprios dados. As contas são criadas pelo
+**admin** (convite com senha temporária); o admin consulta, só para leitura, o
+quadro, o dashboard e os relatórios de qualquer usuário.
 
-## Arquitetura (3 containers + túnel no host)
+## O que faz
+
+- **Hoje** — o dia em um olhar: rotinas da agenda, tarefas abertas por urgência
+  (atrasadas, bloqueadas), registro rápido e resumos (último dia útil e a semana,
+  comparada com a anterior). É a primeira tela.
+- **Rotinas** — verificações que se repetem (backups, alertas, fila…), com agenda:
+  dias úteis, dias da semana, mensal (inclui "último dia") ou a cada N dias.
+  Marcação até 7 dias para trás; feito fora da agenda conta como *extra*.
+- **Tarefas** — status, prioridade, prazo, projeto/cliente, checklist,
+  anotações e apontamento de tempo.
+- **Relatórios** — PDF por período, por projeto ou do projeto inteiro;
+  exportação em CSV (planilha) e JSON (backup).
+- **Dashboard**, **histórico com desfazer**, **busca** sem acento, **feed de
+  calendário (ICS)**, **avisos por e-mail** (opt-in) e **identidade visual**
+  configurável pelo admin.
+- **IA** — chaves de API e servidor **MCP** (`/mcp`): a IA registra o que você
+  contar, com tudo marcado no histórico pelo nome da chave.
+
+## Arquitetura
 
 ```
 Internet ──► cloudflared (host) ──► web (nginx) ──► backend (FastAPI) ──► db (Postgres)
-             systemd, sem portas    127.0.0.1:80        │                  │
-             abertas na VM          estático + /api   auth/CRUD/agreg.   rede interna,
-                                    + headers                            porta não exposta
+             systemd, sem portas    127.0.0.1:PORT      │                 rede interna,
+             abertas na VM          estático + /api    regras, PDF,       porta não exposta
+                                    + /mcp + headers   e-mail
 ```
 
-- **db** — PostgreSQL, volume nomeado, porta **não** exposta ao host.
-- **backend** — FastAPI, **não** exposto à internet; só o nginx o acessa.
-- **web** — nginx: serve o frontend, faz proxy de `/api/*` e aplica os headers
-  de segurança (CSP rígida, HSTS, etc.).
-- **cloudflared** — instalado no host (pacote oficial + serviço systemd), fora do
-  compose: **única** exposição à internet. O nginx só escuta no loopback.
+- **db** — PostgreSQL 16, volume nomeado, sem porta no host.
+- **backend** — FastAPI + psycopg3, um processo; aplica `backend/sql/*.sql`
+  (idempotentes, só aditivos) a cada início e roda o agendador de avisos.
+- **web** — nginx: frontend estático, proxy de `/api/` e `/mcp`, CSP estrita.
+- **cloudflared** — no host (systemd), fora do compose: a única exposição.
 
-## Stack
+Frontend: HTML/CSS/JS puro (módulos ES), tema escuro, fontes Google Sans
+Flex/Code self-hosted (OFL). PDF com fpdf2 e as mesmas fontes.
 
-Frontend: HTML/CSS/JS vanilla, **zero frameworks**, sem build step. Material
-Design 3 via design tokens (CSS custom properties), tema claro/escuro.
-Backend: FastAPI + psycopg3, senhas com **Argon2id**, sessão server-side em
-cookie `HttpOnly; Secure; SameSite=Strict`, CSRF por header, rate limit no
-login. Banco: PostgreSQL (schema SQL idempotente aplicado no startup).
-
----
-
-## Setup local
+## Setup
 
 Pré-requisitos: Docker + Docker Compose.
 
-1. **Crie o `.env`** a partir do exemplo (este arquivo **não** vai para o git):
+1. `cp .env.example .env` (o `.env` **nunca** vai para o git) e preencha:
+   - `SECRET_KEY`: `python -c "import secrets; print(secrets.token_urlsafe(64))"`
+   - `POSTGRES_PASSWORD` (o mesmo valor dentro de `DATABASE_URL`)
+   - `ADMIN_EMAIL` / `ADMIN_INITIAL_PASSWORD`
+   - sem HTTPS (teste local): `COOKIE_SECURE=false`
+   - opcional, avisos por e-mail: `SMTP_HOST`, `SMTP_PORT` (465 = TLS, 587 =
+     STARTTLS), `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM`, `APP_URL`
+2. `docker compose up -d --build` — o nginx fica em `127.0.0.1:${WEB_PORT}`.
+3. Entre com o admin: a troca de senha é obrigatória no primeiro acesso.
+   Depois, **Admin › Novo usuário** cria as contas.
 
-   ```bash
-   cp .env.example .env
-   ```
+Desenvolvimento com e-mail falso: `docker-compose.mailpit.yml` (instruções no
+próprio arquivo).
 
-2. **Gere uma SECRET_KEY forte** e cole em `SECRET_KEY` no `.env`:
+### Testes
 
-   ```bash
-   python -c "import secrets; print(secrets.token_urlsafe(64))"
-   # ou:  openssl rand -base64 48
-   ```
+```bash
+docker compose -f docker-compose.test.yml run --rm --build tests
+```
 
-3. **Defina** `POSTGRES_PASSWORD`, mantenha o mesmo valor no `DATABASE_URL`, e
-   escolha `ADMIN_EMAIL` / `ADMIN_INITIAL_PASSWORD`.
+Postgres descartável (tmpfs), projeto compose separado — nunca encosta nos dados reais.
 
-4. **Teste local sem HTTPS?** Deixe `COOKIE_SECURE=false` no `.env` (o cookie
-   `Secure` não trafega em HTTP). Em produção (via túnel) use `true`.
+## Deploy
 
-5. Suba tudo:
+`./deploy.sh` na VM: confere o `.env`, faz `pg_dump` verificado do banco, `git
+pull --ff-only`, rebuild e smoke test (`--install` prepara uma VM Debian/Ubuntu
+limpa). O túnel: `cloudflared` como serviço systemd com o token em
+`/etc/cloudflared/<nome>.env` (root, 600), *public hostname* →
+`http://localhost:${WEB_PORT}`. Cloudflare Access na frente é opcional (defesa
+em profundidade).
 
-   ```bash
-   docker compose up -d --build
-   ```
-
-   O backend aplica o schema (`backend/sql/*.sql`) e faz o **seed do admin** no
-   primeiro start.
-
-6. Para testar sem o túnel, exponha o nginx temporariamente adicionando ao
-   serviço `web` no `docker-compose.yml`:
-
-   ```yaml
-       ports: ["8080:80"]
-   ```
-
-   e acesse `http://localhost:8080`. **Remova** antes de produção.
-
-### Primeiro acesso do admin
-
-1. Vá em **Entrar** e use `ADMIN_EMAIL` + `ADMIN_INITIAL_PASSWORD`.
-2. O sistema **obriga a troca de senha** no primeiro login.
-3. Depois de trocar, a aba **Admin** fica disponível (seletor de usuário).
-
-Usuários comuns usam **Criar conta** na tela de acesso.
-
----
-
-## Arquivos que o operador cria localmente e que **NÃO** vão para o git
-
-Já cobertos pelo `.gitignore`:
-
-| Arquivo/dir            | Conteúdo sensível                                          |
-| ---------------------- | ---------------------------------------------------------- |
-| `.env`                 | `POSTGRES_PASSWORD`, `SECRET_KEY`, `ADMIN_*`               |
-| `/etc/cloudflared/*.env` (no host) | token do Cloudflare Tunnel, fora do repositório |
-| volume `pgdata`        | dados do Postgres (gerenciado pelo Docker)                 |
-
-O repositório versiona apenas o `.env.example` com
-**placeholders**. Nenhum segredo é hardcoded no código.
-
----
-
-## Deploy (OCI + Cloudflare Tunnel)
-
-1. Numa VM (ex.: Oracle Cloud Always Free), instale Docker + Compose e clone o
-   repositório público.
-2. Crie o `.env` na VM (nunca versionado) com `COOKIE_SECURE=true`.
-3. `docker compose up -d --build`. O nginx fica em `127.0.0.1:${WEB_PORT}`
-   (padrão 80), sem nenhuma porta pública.
-4. **Túnel no host**: instale o `cloudflared` pelo repositório oficial
-   (pkg.cloudflare.com) e rode-o como serviço systemd com o token do túnel em
-   `/etc/cloudflared/<nome>.env` (`TUNNEL_TOKEN=...`, dono root, modo 600).
-   No Zero Trust (Networks → Tunnels), aponte o *public hostname* para
-   `http://localhost:80`.
-5. Atualizações: `./deploy.sh` (verifica dependências, `git pull --ff-only`,
-   rebuild e mostra o estado dos serviços). Na primeira vez, numa VM limpa
-   Debian/Ubuntu, use `./deploy.sh --install` para instalar Docker/Git via
-   repositório oficial. O script recusa subir se o `.env` ainda tiver
-   placeholders `CHANGEME`.
-
-### Cloudflare Access (opcional, camada extra)
-
-Você pode proteger o hostname com uma policy do **Cloudflare Access** (e-mail
-OTP, SSO, etc.) além do login da aplicação. É **defesa em profundidade** — a
-autenticação principal continua sendo a da aplicação (contas + sessão).
-
----
+**O banco de produção é preservado**: migrações só adicionam; nunca
+`docker compose down -v`.
 
 ## Segurança (resumo)
 
-- **Senhas**: Argon2id (`argon2-cffi`). Política mínima de 10 caracteres.
-- **Sessão**: server-side (`sessions`); o cookie carrega um token aleatório e o
-  banco guarda apenas `HMAC-SHA256(SECRET_KEY, token)`. Cookie
-  `HttpOnly; Secure; SameSite=Strict`, expiração deslizante (`SESSION_TTL_DAYS`).
-- **CSRF**: token por sessão exigido no header `X-CSRF-Token` em toda mutação
-  (além de `SameSite=Strict`).
-- **Autorização**: toda query filtra por `user_id`. Rotas `/api/admin/*` exigem
-  `role='admin'` verificado **no backend**; usuário comum recebe **403**. A
-  decisão de permissão é centralizada em `backend/app/deps.py`.
-- **Rate limit** no login (por IP e por e-mail).
-- **nginx**: CSP sem `unsafe-inline`/`unsafe-eval`, HSTS, `X-Content-Type-Options`,
-  `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`.
-- **Sem tracking**: apenas o cookie de sessão; nenhuma dependência de terceiros
-  em runtime (Roboto Flex e ícones são self-hosted).
-- Postgres sem porta no host; backend sem exposição pública; docs da API
-  desabilitadas.
-
-## Modelo de dados
-
-`users`, `sessions`, `recurring_tasks`, `recurring_completions`, `worklog_tasks`
-— ver `backend/sql/001_schema.sql`. Tudo em `TIMESTAMPTZ`, índices em `user_id`.
-A semana começa no **domingo** (agregações ajustadas no `services.py`).
+- **Senhas** Argon2id, mínimo 10 caracteres; login com limite por IP e por
+  e-mail (só falhas contam).
+- **Sessão** server-side: o banco guarda só o HMAC do token; cookie
+  `HttpOnly; Secure; SameSite=Strict`; renova na metade do prazo e expira em
+  30 dias de qualquer jeito. **CSRF** por header em toda mutação.
+- **Chaves de API** (`nxs_…`) e **link do calendário** (`nxc_…`): só o HMAC no
+  banco, revogáveis; o reset de senha pelo admin revoga ambos. Chave nunca
+  acessa rotas de admin, chaves, calendário ou avisos.
+- **Isolamento**: toda consulta filtra por `user_id`; permissões em
+  `backend/app/deps.py`.
+- **nginx**: CSP sem inline, HSTS, `nosniff`, `DENY` em frames; o link do
+  calendário não vai para o log. Logo enviado validado pelo conteúdo e servido
+  em sandbox.
+- **Sem rastreamento**: só o cookie de sessão; e-mails sem pixel nem links
+  redirecionados; CSV exportado neutraliza fórmulas.
 
 ## Estrutura
 
 ```
-backend/  FastAPI (app/ + sql/)   — auth, CRUD, agregações, rotas admin
-web/      nginx + static/         — login, board, relatórios, dashboard, admin
-docs/     referência da API
-docker-compose.yml, .env.example, .gitignore
+backend/app/       rotas (routers/), regras (services.py), PDF, e-mail, MCP
+backend/sql/       migrações numeradas (o modelo de dados está aqui)
+backend/tests/     suíte (pytest + Postgres real)
+web/static/        index.html, login.html, js/ (um módulo por tela), css/
+docs/API.md        referência da API e do MCP (o Swagger fica desligado)
 ```
 
-A referência completa da API REST (`/api/*`) está em **[`docs/API.md`](docs/API.md)**
-— útil já que o Swagger/OpenAPI interativo é desabilitado de propósito.
-
-## Notas
-
-- Fonte: coloque `web/static/fonts/RobotoFlex.woff2` (ver README na pasta). Sem
-  o arquivo, usa a fonte do sistema — nada quebra.
-- Fuso horário da aplicação em `APP_TZ` (define "hoje", semana e mês).
+Fuso da aplicação em `APP_TZ` (define "hoje", semana — que começa no
+domingo — e mês, no backend e na interface).

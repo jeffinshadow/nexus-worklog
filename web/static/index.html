@@ -13,8 +13,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Nexus">
   <link rel="preload" as="font" type="font/woff2" href="/fonts/GoogleSansFlex.woff2" crossorigin>
-  <link rel="stylesheet" href="/css/tokens.css?v=9">
-  <link rel="stylesheet" href="/css/app.css?v=9">
+  <link rel="stylesheet" href="/css/tokens.css?v=10">
+  <link rel="stylesheet" href="/css/app.css?v=10">
 </head>
 <body>
   <!-- Ícones (traço 1.75, 24px), sem script/style inline (CSP). -->
@@ -126,7 +126,7 @@
     <nav class="tabbar" id="tabbar" aria-label="Menu">
       <a href="#/hoje" data-view="hoje"><svg class="ico"><use href="#icon-today"></use></svg><span>Hoje</span></a>
       <a href="#/tarefas" data-view="tarefas"><svg class="ico"><use href="#icon-tasks"></use></svg><span>Tarefas</span></a>
-      <a href="#/dashboard" data-view="dashboard"><svg class="ico"><use href="#icon-dashboard"></use></svg><span>Dashboard</span></a>
+      <a href="#/busca" data-view="busca"><svg class="ico"><use href="#icon-search"></use></svg><span>Busca</span></a>
       <a href="#/relatorios" data-view="relatorios"><svg class="ico"><use href="#icon-reports"></use></svg><span>Relatórios</span></a>
       <a href="#/mais" data-view="mais"><svg class="ico"><use href="#icon-more"></use></svg><span>Mais</span></a>
     </nav>
@@ -134,10 +134,10 @@
 
   <!-- Diálogos de edição (só na visão própria; a do admin é somente leitura) -->
   <dialog id="dialog-recurring">
-    <h2 id="dlg-rec-title">Recorrente</h2>
+    <h2 id="dlg-rec-title">Rotina</h2>
     <form id="form-recurring">
       <div class="field">
-        <label for="rec-label">Rótulo</label>
+        <label for="rec-label">Nome</label>
         <input id="rec-label" type="text" required maxlength="200">
       </div>
       <div class="field">
@@ -148,6 +148,7 @@
           <option value="monthly">Uma vez por mês</option>
           <option value="interval">A cada N dias</option>
         </select>
+        <p class="dialog-note">Mudar a agenda recalcula também os dias anteriores nos indicadores.</p>
       </div>
       <fieldset class="weekday-picker field hidden" id="rec-weekdays" aria-label="Dias da semana"></fieldset>
       <div class="field hidden" id="rec-monthday-wrap">
@@ -189,7 +190,7 @@
           </select>
         </div>
         <div class="field">
-          <label for="wl-due">Previsão</label>
+          <label for="wl-due">Prazo</label>
           <input id="wl-due" type="date">
         </div>
       </div>
@@ -207,6 +208,10 @@
           </select>
         </div>
       </div>
+      <div class="field" id="wl-time-wrap">
+        <label for="wl-time">Tempo gasto (opcional)</label>
+        <input id="wl-time" type="text" inputmode="text" maxlength="10" placeholder="ex.: 45, 1h30, 2:15">
+      </div>
       <div class="dialog-actions">
         <button type="button" class="btn btn-danger hidden" id="wl-delete">Excluir</button>
         <div class="spacer"></div>
@@ -218,7 +223,7 @@
 
   <div class="toasts" id="toasts" aria-live="polite"></div>
 
-  <script type="module" src="/js/app.js?v=9"></script>
-  <script type="module" src="/js/pwa.js?v=9"></script>
+  <script type="module" src="/js/app.js?v=10"></script>
+  <script type="module" src="/js/pwa.js?v=10"></script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 import { api } from "./api.js";
-import { h, icon, clear } from "./dom.js";
-import { errorToast, modal, toast } from "./ui.js";
+import { h, icon, clear, field } from "./dom.js";
+import { codeBox, confirmDialog, errorToast, modal, toast } from "./ui.js";
 import { applyBranding } from "./branding.js";
 import * as board from "./board.js";
 import * as dashboard from "./dashboard.js";
@@ -52,9 +52,10 @@ async function mountUsers(root) {
   let active = "board";
   const subtabs = h(
     "div",
-    { class: "auth-tabs" },
+    { class: "seg seg-sm", role: "tablist" },
     ...SUBVIEWS.map((s) =>
       h("button", {
+        type: "button", class: "chip-btn", role: "tab",
         text: s.label,
         "aria-selected": s.key === active ? "true" : "false",
         onClick: () => {
@@ -72,9 +73,14 @@ async function mountUsers(root) {
     h(
       "div",
       { class: "admin-bar" },
-      h("div", { class: "field" }, h("label", { text: "Usuário" }), select),
+      field("Usuário", select),
       resetBtn,
-      inviteBtn
+      inviteBtn,
+      h("button", { type: "button", class: "btn btn-ghost", title: "Horas de todos, com usuário e projeto (some por cliente na planilha)", onClick: async (ev) => {
+        const b = ev.currentTarget;
+        b.disabled = true;
+        try { await api.download("/admin/export/apontamentos.csv"); } catch (e) { errorToast(e, "Falha ao exportar."); } finally { b.disabled = false; }
+      } }, icon("download"), "Horas da equipe (CSV)")
     ),
     subtabs,
     h("p", { class: "readonly-note", text: "visão somente leitura do usuário selecionado" }),
@@ -91,57 +97,32 @@ async function mountUsers(root) {
   }
 
   // ---- Redefinir senha (senha temporária, troca forçada no próximo login) ----
-  function onReset() {
+  async function onReset() {
     const uid = select.value;
     const email = emailById.get(uid) || "";
-
-    const dlg = modal(
-      h("h2", { text: "Redefinir senha" }),
-      h("p", {}, "Gerar uma senha temporária para ", h("strong", { text: email }), "?"),
-      h("p", {
-        class: "dialog-note",
-        text: "As sessões ativas do usuário serão encerradas e ele precisará definir uma nova senha no próximo login.",
-      }),
-      h(
-        "div",
-        { class: "dialog-actions" },
-        h("button", { class: "text", text: "Cancelar", onClick: () => dlg.close() }),
-        h("button", {
-          class: "danger",
-          text: "Redefinir",
-          onClick: async (ev) => {
-            const b = ev.currentTarget;
-            b.disabled = true;
-            b.textContent = "Gerando...";
-            try {
-              const res = await api.post(`/admin/users/${uid}/reset-password`);
-              dlg.close();
-              showPassword(res.email, res.temp_password);
-            } catch (e) {
-              dlg.close();
-              modal(
-                h("h2", { text: "Erro" }),
-                h("p", { text: e.message || "Falha ao redefinir a senha." }),
-                h("div", { class: "dialog-actions" },
-                  h("button", { text: "Fechar", onClick: (x) => x.currentTarget.closest("dialog").close() })
-                )
-              );
-            }
-          },
-        })
-      )
-    );
+    const ok = await confirmDialog({
+      title: "Redefinir senha?",
+      text: `Gera uma senha temporária para ${email}. As sessões, as chaves de API e o link do calendário dele são revogados; no próximo login ele define uma senha nova.`,
+      confirm: "Redefinir", danger: true,
+    });
+    if (!ok) return;
+    try {
+      const res = await api.post(`/admin/users/${uid}/reset-password`);
+      showPassword(res.email, res.temp_password);
+    } catch (e) {
+      errorToast(e, "Falha ao redefinir a senha.");
+    }
   }
 
   // ---- Novo usuário (convite): conta com senha temporária, troca no 1º login ----
   function onInvite() {
     const input = h("input", { type: "email", required: "required", autocomplete: "off" });
     const err = h("p", { class: "error-text" });
-    const submit = h("button", { type: "submit", text: "Criar conta" });
+    const submit = h("button", { type: "submit", class: "btn btn-primary", text: "Criar conta" });
     const form = h(
       "form",
       {},
-      h("div", { class: "field" }, h("label", { text: "E-mail do convidado" }), input),
+      h("label", { class: "field" }, "E-mail do convidado", input),
       h("p", {
         class: "dialog-note",
         text: "A conta nasce com uma senha temporária, que o convidado troca no primeiro acesso.",
@@ -150,7 +131,7 @@ async function mountUsers(root) {
       h(
         "div",
         { class: "dialog-actions" },
-        h("button", { type: "button", class: "text", text: "Cancelar", onClick: () => dlg.close() }),
+        h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
         submit
       )
     );
@@ -176,41 +157,14 @@ async function mountUsers(root) {
   }
 
   function showPassword(email, pw) {
-    const box = h("div", { class: "token-box", text: pw });
-    const copyBtn = h("button", {
-      class: "tonal",
-      text: "Copiar",
-      onClick: async () => {
-        try {
-          await navigator.clipboard.writeText(pw);
-          copyBtn.textContent = "Copiado!";
-        } catch {
-          const range = document.createRange();
-          range.selectNodeContents(box);
-          const sel = window.getSelection();
-          sel.removeAllRanges();
-          sel.addRange(range);
-          copyBtn.textContent = "Selecione e copie";
-        }
-      },
-    });
-
     const dlg = modal(
       h("h2", { text: "Senha temporária" }),
       h("p", {}, "Usuário: ", h("strong", { text: email })),
-      box,
-      h("p", {
-        class: "dialog-note",
-        text: "Repasse agora — não será exibida novamente. O usuário deverá trocá-la no próximo login.",
-      }),
-      h(
-        "div",
-        { class: "dialog-actions" },
-        copyBtn,
-        h("button", { text: "Fechar", onClick: () => dlg.close() })
-      )
-    );
+      codeBox(pw),
+      h("p", { class: "dialog-note", text: "Repasse agora — não será exibida novamente. O usuário deverá trocá-la no próximo login." }),
+      h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Pronto", onClick: () => dlg.close() })));
   }
+
 
   select.addEventListener("change", renderCurrent);
   renderCurrent();
@@ -277,8 +231,8 @@ async function mountBranding(root) {
       h("section", { class: "panel" },
         h("div", { class: "panel-head" }, h("h2", { text: "Textos" })),
         h("div", { class: "field-row" },
-          h("div", { class: "field" }, h("label", { text: "Linha 1 (destaque)" }), l1),
-          h("div", { class: "field" }, h("label", { text: "Linha 2 (opcional)" }), l2)),
+          field("Linha 1 (destaque)", l1),
+          field("Linha 2 (opcional)", l2)),
         saveText),
       h("section", { class: "panel" },
         h("div", { class: "panel-head" }, h("h2", { text: "Logo" })),

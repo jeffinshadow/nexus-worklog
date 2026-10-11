@@ -1,18 +1,17 @@
-// Configurações: dias úteis, chaves de API, integração com IA e conta.
+// Configurações: projetos, avisos, calendário, IA e API (chaves), conta (dias úteis e senha).
 import { api } from "./api.js";
-import { h, icon, clear, dateTime } from "./dom.js";
+import { h, icon, clear, dateTime, field } from "./dom.js";
 import { codeBox, confirmDialog, errorToast, modal, toast, warnBox } from "./ui.js";
 import { projectsPanel } from "./projects.js";
 
 const TABS = [
-  ["dias", "Dias úteis"],
   ["projetos", "Projetos"],
   ["avisos", "Avisos"],
   ["calendario", "Calendário"],
-  ["chaves", "Chaves de API"],
-  ["ia", "Integração com IA"],
+  ["ia", "IA e API"],
   ["conta", "Conta"],
 ];
+const OLD_TABS = { dias: "conta", chaves: "ia" }; // links antigos
 
 // Dias úteis como máscara de bits, domingo = bit 0 (igual ao backend).
 const DAYS = [
@@ -20,8 +19,9 @@ const DAYS = [
 ];
 
 export async function mount(root, ctx) {
-  let active = (location.hash.split("?")[1] || "").replace("aba=", "") || "dias";
-  if (!TABS.some(([k]) => k === active)) active = "dias";
+  let active = (location.hash.split("?")[1] || "").replace("aba=", "") || "projetos";
+  active = OLD_TABS[active] || active;
+  if (!TABS.some(([k]) => k === active)) active = "projetos";
 
   clear(root);
   const seg = h("div", { class: "seg", role: "tablist" });
@@ -40,13 +40,11 @@ export async function mount(root, ctx) {
 
   async function render() {
     clear(body);
-    if (active === "dias") body.append(workDays(ctx.me));
-    else if (active === "projetos") body.append(await projectsPanel(() => render()));
+    if (active === "projetos") body.append(await projectsPanel(() => render()));
     else if (active === "avisos") body.append(await notices());
     else if (active === "calendario") body.append(await calendarFeed(() => render()));
-    else if (active === "chaves") body.append(await tokens(() => render()));
-    else if (active === "ia") body.append(...aiHelp());
-    else body.append(account(ctx.me));
+    else if (active === "ia") body.append(...aiHelp(), await tokens(() => render()));
+    else body.append(workDays(ctx.me), account(ctx.me));
   }
   await render();
 }
@@ -75,7 +73,7 @@ function workDays(me) {
   });
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Meus dias úteis" })),
-    h("p", { class: "help", text: "Recorrentes só contam como devidas nesses dias. O que você marcar fora deles fica salvo como extra e não entra no percentual." }),
+    h("p", { class: "help", text: "As rotinas que repetem “nos dias úteis” seguem estes dias. O que você marcar fora da agenda de uma rotina fica salvo como extra e não entra no percentual." }),
     h("fieldset", { class: "weekday-picker" },
       ...boxes.map(({ label, cb }) => h("label", { class: "weekday-option" }, cb, h("span", { text: label })))),
     err, save);
@@ -86,7 +84,7 @@ function workDays(me) {
 const KINDS = [
   ["morning", "Seu dia", "De manhã: atrasadas, o que vence hoje, rotinas do dia e prioridades altas. Só nos dias úteis."],
   ["evening", "Antes de encerrar", "No fim do dia, se ainda faltar alguma rotina de hoje. Não sai se você já fez tudo."],
-  ["weekly", "Resumo da semana", "Às segundas: rotinas, entregas, tempo por projeto e o que ficou para trás na semana anterior."],
+  ["weekly", "Resumo da semana", "Às segundas: rotinas, tarefas concluídas, tempo por projeto e o que ficou para trás na semana anterior."],
 ];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
@@ -149,7 +147,7 @@ async function calendarFeed(rerender) {
   const panel = h("section", { class: "panel" },
     h("div", { class: "panel-head" }, icon("calendar"), h("h2", { text: "Calendário" })),
     h("p", { class: "help", text: "Assine o Nexus no Google Agenda, Outlook ou no celular: os prazos das tarefas abertas aparecem como eventos de dia inteiro e as rotinas como eventos repetidos. A agenda atualiza sozinha (o Google pode levar algumas horas)." }),
-    h("label", { class: "weekday-option" }, rec, h("span", { text: "Incluir as rotinas (recorrentes)" })));
+    h("label", { class: "weekday-option" }, rec, h("span", { text: "Incluir as rotinas" })));
 
   if (!st.active) {
     panel.append(h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn btn-primary", onClick: async () => {
@@ -207,10 +205,10 @@ async function tokens(rerender) {
   const err = h("p", { class: "error-text" });
   const create = h("button", { type: "submit", class: "btn btn-primary" }, icon("key"), "Criar chave");
   const form = h("form", {},
-    h("div", { class: "field" }, h("label", { text: "Nome (para reconhecer no histórico)" }), name),
+    field("Nome (para reconhecer no histórico)", name),
     h("div", { class: "field-row" },
-      h("div", { class: "field" }, h("label", { text: "Permissão" }), scope),
-      h("div", { class: "field" }, h("label", { text: "Validade" }), expires)),
+      field("Permissão", scope),
+      field("Validade", expires)),
     err, create);
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
@@ -288,14 +286,14 @@ function aiHelp() {
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, icon("spark"), h("h2", { text: "Use o Nexus pela sua IA" })),
       h("p", { class: "help", text: "Em vez de registrar à mão, conte para a IA o que você fez (“terminei a migração do Exchange, e fiz os backups”) e ela registra no Nexus. O Nexus fala MCP, o protocolo que Claude, Cursor e outros usam para chamar ferramentas." }),
-      h("p", { class: "help", text: "1. Crie uma chave em “Chaves de API” (permissão ler e registrar). 2. Conecte a IA:" }),
+      h("p", { class: "help", text: "1. Crie uma chave logo abaixo (permissão ler e registrar). 2. Conecte a IA:" }),
       h("p", { class: "dialog-note", text: "Claude Code (terminal):" }),
       codeBox(`claude mcp add --transport http nexus ${url} --header "Authorization: Bearer nxs_SUA_CHAVE"`),
       h("p", { class: "dialog-note", text: "Cursor e outros clientes MCP (arquivo de configuração):" }),
       codeBox(JSON.stringify({ mcpServers: { nexus: { url, headers: { Authorization: "Bearer nxs_SUA_CHAVE" } } } }, null, 2))),
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "O que a IA pode fazer" })),
-      h("p", { class: "help", text: "Ver o dia, buscar, listar e criar tarefas (com projeto e prioridade), editar, concluir, marcar recorrentes (até 7 dias atrás), anotar progresso, montar e marcar checklist, apontar tempo, consultar o histórico e desfazer um engano dela. Ela não exclui tarefas. Com uma chave “só leitura”, ela apenas consulta." }),
+      h("p", { class: "help", text: "Ver o dia, buscar, listar e criar tarefas (com projeto e prioridade), editar, concluir, marcar rotinas (até 7 dias atrás), anotar progresso, montar e marcar checklist, apontar tempo, consultar o histórico e desfazer um engano dela. Ela não exclui tarefas. Com uma chave “só leitura”, ela apenas consulta." }),
       h("p", { class: "dialog-note", text: "API REST direta (scripts, automações):" }),
       codeBox(`curl -H "Authorization: Bearer nxs_SUA_CHAVE" ${location.origin}/api/board`)),
   ];
@@ -308,8 +306,8 @@ function account(me) {
   const nova = h("input", { type: "password", autocomplete: "new-password", minlength: "10", required: "required" });
   const err = h("p", { class: "error-text" });
   const form = h("form", {},
-    h("div", { class: "field" }, h("label", { text: "Senha atual" }), cur),
-    h("div", { class: "field" }, h("label", { text: "Nova senha (mínimo 10 caracteres)" }), nova),
+    field("Senha atual", cur),
+    field("Nova senha (mínimo 10 caracteres)", nova),
     err, h("button", { type: "submit", class: "btn btn-primary", text: "Trocar senha" }));
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();

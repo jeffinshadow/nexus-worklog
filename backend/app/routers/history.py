@@ -29,10 +29,10 @@ ACTION_LABELS = {
     "worklog.update": "editou a tarefa",
     "worklog.finish": "concluiu a tarefa",
     "worklog.delete": "excluiu a tarefa",
-    "recurring.create": "criou a recorrente",
-    "recurring.update": "editou a recorrente",
-    "recurring.deactivate": "removeu a recorrente",
-    "recurring.toggle": "marcou a recorrente",
+    "recurring.create": "criou a rotina",
+    "recurring.update": "editou a rotina",
+    "recurring.deactivate": "removeu a rotina",
+    "recurring.toggle": "marcou a rotina",
     "settings.update": "alterou os dias úteis",
     "notifications.update": "alterou os avisos por e-mail",
     "calendar.create": "criou o link do calendário",
@@ -74,7 +74,7 @@ def _label(row) -> str:
         return f"{ACTION_LABELS[row['action']]} “{snap.get('title', '')}” ({dur(snap.get('minutes'))})"
     text = ACTION_LABELS.get(row["action"], row["action"])
     if row["action"] == "recurring.toggle" and row["after"]:
-        text = ("marcou" if row["after"]["done"] else "desmarcou") + " a recorrente"
+        text = ("marcou" if row["after"]["done"] else "desmarcou") + " a rotina"
         name = f"{name} em {row['after']['day']}" if name else row["after"]["day"]
     return f"{text} “{name}”" if name else text
 

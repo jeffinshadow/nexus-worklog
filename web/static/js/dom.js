@@ -32,14 +32,16 @@ export function icon(name) {
   return svg;
 }
 
-export function clear(el) {
-  while (el.firstChild) el.removeChild(el.firstChild);
+// Campo com rótulo associado (for/id): leitor de tela anuncia o nome e o
+// clique no rótulo foca o campo.
+let fieldSeq = 0;
+export function field(label, control, extraClass = "") {
+  if (!control.id) control.id = "f" + ++fieldSeq;
+  return h("div", { class: "field" + (extraClass ? " " + extraClass : "") }, h("label", { for: control.id, text: label }), control);
 }
 
-export function formatDate(value) {
-  if (!value) return "";
-  const d = new Date(value.length <= 10 ? value + "T00:00:00" : value);
-  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+export function clear(el) {
+  while (el.firstChild) el.removeChild(el.firstChild);
 }
 
 // Datas ISO (YYYY-MM-DD) em UTC puro: o "hoje" vem do servidor (fuso do app),
@@ -64,9 +66,20 @@ export function shortDate(iso) {
   return `${d}/${m}`;
 }
 
-// Data/hora de um timestamp ISO no fuso de Brasília.
+// Fuso da app (APP_TZ do servidor, vem em /auth/me): horas e "que dia foi"
+// de um timestamp seguem o servidor, não o relógio do navegador.
+let TZ = "America/Sao_Paulo";
+export function setTimeZone(tz) {
+  if (tz) TZ = tz;
+}
+
 export function dateTime(ts) {
   return new Date(ts).toLocaleString("pt-BR", {
-    timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+    timeZone: TZ, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
   });
+}
+
+// Dia (YYYY-MM-DD) de um timestamp no fuso da app.
+export function localDay(ts) {
+  return new Date(ts).toLocaleDateString("sv-SE", { timeZone: TZ });
 }

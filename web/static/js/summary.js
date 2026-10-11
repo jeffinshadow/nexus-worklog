@@ -22,14 +22,14 @@ function figures(s, prev) {
   return h("div", { class: "figs" },
     fig(s.recurring_total ? `${p}%` : "—", s.recurring_total ? `rotinas · ${s.recurring_done}/${s.recurring_total}` : "sem rotinas devidas",
       prev && prev.recurring_total && s.recurring_total ? delta(p, pct(prev.recurring_done, prev.recurring_total), (x) => x + "pp") : null),
-    fig(String(s.pontual_done), s.pontual_done === 1 ? "entrega" : "entregas", prev ? delta(s.pontual_done, prev.pontual_done) : null),
+    fig(String(s.pontual_done), s.pontual_done === 1 ? "tarefa concluída" : "tarefas concluídas", prev ? delta(s.pontual_done, prev.pontual_done) : null),
     fig(s.minutes ? duration(s.minutes) : "—", "tempo apontado", prev && (s.minutes || prev.minutes) ? delta(s.minutes, prev.minutes, duration) : null));
 }
 
 function card(title, sub, s, prev, onChange) {
   const body = [figures(s, prev)];
   if (s.deliveries.length) {
-    body.push(h("p", { class: "sum-h", text: "Entregue" }));
+    body.push(h("p", { class: "sum-h", text: "Concluído" }));
     for (const d of s.deliveries.slice(0, 5))
       body.push(h("div", { class: "sum-row" },
         h("button", { type: "button", class: "card-open", text: d.title, onClick: () => openTask(d.id, onChange) }),

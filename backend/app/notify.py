@@ -138,10 +138,10 @@ def build_weekly(uid: int, today: date, show: bool) -> Mail:
     s = r["summary"]
     pct = f"{round(100 * s['recurring_done'] / s['recurring_total'])}%" if s["recurring_total"] else "—"
     intro = (f"Rotinas {s['recurring_done']}/{s['recurring_total']} ({pct}) · "
-             f"{s['pontual_done']} entrega{'s' if s['pontual_done'] != 1 else ''} · "
+             f"{s['pontual_done']} tarefa{'s' if s['pontual_done'] != 1 else ''} concluída{'s' if s['pontual_done'] != 1 else ''} · "
              f"{_dur(s['minutes']) if s['minutes'] else 'nada'} apontado · {s['active_days']} dia{'s' if s['active_days'] != 1 else ''} com atividade.")
     m = Mail(f"Sua semana · {start:%d/%m} a {end:%d/%m}", f"Semana de {start:%d/%m} a {end:%d/%m}", intro)
-    m.block("Entregas", [w["title"] + (f" [{w['project']}]" if w["project"] else "") for w in r["deliveries"]], show)
+    m.block("Tarefas concluídas", [w["title"] + (f" [{w['project']}]" if w["project"] else "") for w in r["deliveries"]], show)
     m.block("Tempo por projeto", [f"{p['name'] or 'Sem projeto'}: {_dur(p['minutes'])}" for p in r["projects"] if p["minutes"]], show)
     m.block("Rotinas que ficaram para trás",
             [f"{x['label']} ({x['done']}/{x['due']})" for x in r["recurring_stats"] if x["due"] > x["done"]], show)
@@ -151,7 +151,7 @@ def build_weekly(uid: int, today: date, show: bool) -> Mail:
     if m.empty and not s["active_days"]:
         return m  # semana vazia e nada atrasado: não manda
     if m.empty:
-        m.blocks.append(("Sem entregas nem atrasos na semana.", []))
+        m.blocks.append(("Nenhuma tarefa concluída nem atrasada na semana.", []))
     return m
 
 

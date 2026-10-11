@@ -74,6 +74,7 @@ def detail(task_id: int, user=Depends(active_user)):
         (task_id,),
     )
     task["minutes"] = sum(t["minutes"] for t in task["time"])
+    task["today"] = app_today()  # o detalhe não precisa buscar o quadro só para saber o dia
     return task
 
 

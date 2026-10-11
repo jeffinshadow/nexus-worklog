@@ -210,7 +210,7 @@ def t_search(ctx, args):
         lines.append(_task_line(t | {"description": None, "project_name": t["project_name"]}, today))
         lines += [f"    {h['kind']}: {h['text']}" for h in t["hits"] if h["kind"] != "título"][:3]
     if r["recurring"]:
-        lines += ["", "Recorrentes:"] + [f"  #{x['id']} {x['label']}" + ("" if x["active"] else " (removida)") for x in r["recurring"]]
+        lines += ["", "Rotinas:"] + [f"  #{x['id']} {x['label']}" + ("" if x["active"] else " (removida)") for x in r["recurring"]]
     if r["projects"]:
         lines += ["", "Projetos:"] + [f"  #{x['id']} {x['name']}" for x in r["projects"]]
     return "\n".join(lines) or "Nada encontrado."
@@ -248,7 +248,7 @@ def t_list_projects(ctx, args):
 def t_list_recurring(ctx, args):
     day = _call(check_board_day, date.fromisoformat(args["day"])) if args.get("day") else None
     b = services.get_board(ctx["user_id"], day)
-    head = f"Recorrentes de {b['day'].isoformat()} ({'dia útil' if b['work_day'] else 'dia não útil: marcações contam como extra'}):"
+    head = f"Rotinas de {b['day'].isoformat()} ({'dia útil' if b['work_day'] else 'dia não útil'}; marcar fora da agenda conta como extra):"
     rows = _recurring_rows(b["recurring"])
     return "\n".join([head, *(rows or ["  (nenhuma)"])])
 
@@ -282,7 +282,7 @@ def t_get_summary(ctx, args):
 def t_set_recurring(ctx, args):
     data = _call(ToggleIn, done=args.get("done", True), day=args.get("day"))
     res = _call(recurring_routes.toggle, int(args["task_id"]), data, user=ctx)
-    return f"Recorrente #{args['task_id']} {'marcada' if res['done'] else 'desmarcada'} em {res['day'].isoformat()}."
+    return f"Rotina #{args['task_id']} {'marcada' if res['done'] else 'desmarcada'} em {res['day'].isoformat()}."
 
 
 def t_get_history(ctx, args):
@@ -304,13 +304,13 @@ def t_undo(ctx, args):
 # nome -> (função, escreve?, descrição, inputSchema)
 TOOLS = {
     "get_today": (t_get_today, False,
-                  "Resumo de hoje: recorrentes (feitas ou não), tarefas abertas com prazos/atrasos e o que foi concluído hoje.",
+                  "Resumo de hoje: rotinas (feitas ou não), tarefas abertas com prazos/atrasos e o que foi concluído hoje.",
                   {"type": "object", "properties": {}}),
     "list_tasks": (t_list_tasks, False, "Lista tarefas pontuais do usuário.",
                    {"type": "object", "properties": {
                        "status": {"type": "string", "enum": ["open", "done", "all"], "default": "open"},
                        "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}}}),
-    "create_task": (t_create_task, True, "Cria uma tarefa pontual.",
+    "create_task": (t_create_task, True, "Cria uma tarefa.",
                     {"type": "object", "required": ["title"], "properties": {
                         "title": {"type": "string", "maxLength": 200},
                         "description": {"type": ["string", "null"], "maxLength": 300},
@@ -332,7 +332,7 @@ TOOLS = {
                     {"type": "object", "properties": {}}),
     "get_task": (t_get_task, False, "Tarefa completa: checklist, anotações e tempo apontado.",
                  {"type": "object", "required": ["task_id"], "properties": {"task_id": {"type": "integer"}}}),
-    "search": (t_search, False, "Busca em tarefas (título, descrição, anotações, checklist, apontamentos), recorrentes e projetos. Ignora acentos.",
+    "search": (t_search, False, "Busca em tarefas (título, descrição, anotações, checklist, apontamentos), rotinas e projetos. Ignora acentos.",
                {"type": "object", "required": ["query"], "properties": {"query": {"type": "string", "minLength": 2, "maxLength": 100}}}),
     "add_note": (t_add_note, True, "Anota um progresso na tarefa (o que foi feito, decisão, pendência).",
                  {"type": "object", "required": ["task_id", "text"], "properties": {
@@ -352,9 +352,9 @@ TOOLS = {
                       {"type": "object", "properties": {}}),
     "complete_task": (t_complete_task, True, "Marca uma tarefa como concluída agora.",
                       {"type": "object", "required": ["task_id"], "properties": {"task_id": {"type": "integer"}}}),
-    "list_recurring": (t_list_recurring, False, "Recorrentes de um dia (padrão: hoje; até 7 dias atrás) e se foram feitas.",
+    "list_recurring": (t_list_recurring, False, "Rotinas de um dia (padrão: hoje; até 7 dias atrás) e se foram feitas.",
                        {"type": "object", "properties": {"day": DATE}}),
-    "set_recurring": (t_set_recurring, True, "Marca (done=true) ou desmarca uma recorrente num dia (padrão hoje; até 7 dias atrás).",
+    "set_recurring": (t_set_recurring, True, "Marca (done=true) ou desmarca uma rotina num dia (padrão hoje; até 7 dias atrás).",
                       {"type": "object", "required": ["task_id"], "properties": {
                           "task_id": {"type": "integer"},
                           "done": {"type": "boolean", "default": True},

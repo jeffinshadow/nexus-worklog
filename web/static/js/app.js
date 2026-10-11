@@ -1,6 +1,6 @@
 // Casca do app: sessão, rotas por hash (#/hoje, #/tarefas...), menu e títulos.
 import { api } from "./api.js";
-import { h, icon, clear, longDate } from "./dom.js";
+import { h, icon, clear, setTimeZone } from "./dom.js";
 import * as today from "./today.js";
 import * as board from "./board.js";
 import * as dashboard from "./dashboard.js";
@@ -15,11 +15,11 @@ let me = null;
 
 const VIEWS = {
   hoje: { title: "Hoje", mount: (el, ctx) => today.mount(el, ctx) },
-  tarefas: { title: "Tarefas", eyebrow: "recorrentes · pontuais · concluídas", mount: (el, ctx) => board.mount(el, ctx) },
+  tarefas: { title: "Tarefas", eyebrow: "rotinas · tarefas · concluídas", mount: (el, ctx) => board.mount(el, ctx) },
   dashboard: { title: "Dashboard", eyebrow: "consistência e fluxo", mount: (el) => dashboard.mount(el) },
   relatorios: { title: "Relatórios", eyebrow: "PDF · exportar dados", mount: (el) => reports.mount(el) },
   historico: { title: "Histórico", eyebrow: "o que mudou, por quem", mount: (el) => history.mount(el) },
-  config: { title: "Configurações", eyebrow: "dias úteis · projetos · avisos · calendário · chaves · IA · conta", mount: (el, ctx) => settings.mount(el, ctx) },
+  config: { title: "Configurações", eyebrow: "projetos · avisos · calendário · IA e API · conta", mount: (el, ctx) => settings.mount(el, ctx) },
   admin: { title: "Admin", eyebrow: "usuários · identidade visual", mount: (el) => admin.mount(el), adminOnly: true },
   mais: { title: "Mais", mount: (el) => mountMore(el) },
   busca: { title: "Busca", eyebrow: "tarefas · anotações · checklist · projetos", mount: (el, ctx) => search.mount(el, ctx) },
@@ -75,19 +75,13 @@ async function logout() {
 // Celular: "Mais" reúne o que não cabe na barra inferior.
 function mountMore(el) {
   clear(el);
-  const q = h("input", { type: "search", placeholder: "Buscar", "aria-label": "Buscar", maxlength: "100" });
-  const searchForm = h("form", { class: "search-big", role: "search" }, icon("search"), q);
-  searchForm.addEventListener("submit", (ev) => {
-    ev.preventDefault();
-    if (q.value.trim()) location.hash = "#/busca?q=" + encodeURIComponent(q.value.trim());
-  });
   const items = [
+    ["dashboard", "dashboard", "Dashboard"],
     ["historico", "history", "Histórico"],
     ["config", "settings", "Configurações"],
   ];
   if (me.role === "admin") items.push(["admin", "admin", "Admin"]);
   el.append(
-    searchForm,
     h("p", { class: "muted mono", text: me.email }),
     h("div", { class: "menu-list" },
       ...items.map(([v, ic, label]) => h("a", { href: "#/" + v }, icon(ic), h("span", { text: label }))),
@@ -123,6 +117,7 @@ async function boot() {
     return;
   }
   api.setCsrf(me.csrf_token);
+  setTimeZone(me.tz);
   if (me.must_change_password) {
     showChangePassword();
     return;

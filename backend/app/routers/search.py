@@ -120,6 +120,23 @@ def _tasks(uid: int) -> list[dict]:
             WHERE w.user_id = %s ORDER BY w.created_at""", (uid,))
 
 
+def time_csv(uid: int | None, filename: str) -> Response:
+    """Apontamentos em CSV. uid=None = de todos (admin: horas da equipe por
+    cliente; o projeto vai por nome, pois cada pessoa tem os seus)."""
+    rows = db.query_all(
+        """SELECT e.day, e.minutes, w.id AS task_id, w.title, p.name AS project, e.note, e.actor, e.token_name,
+                  u.email
+             FROM time_entries e JOIN worklog_tasks w ON w.id = e.task_id
+             JOIN users u ON u.id = e.user_id
+             LEFT JOIN projects p ON p.id = w.project_id
+            WHERE (%(uid)s::bigint IS NULL OR e.user_id = %(uid)s) ORDER BY e.day, u.email, e.id""", {"uid": uid})
+    header = ["data", "minutos", "horas", "tarefa_id", "tarefa", "projeto", "observacao", "origem"]
+    data = [[r["day"], r["minutes"], str(round(r["minutes"] / 60, 2)).replace(".", ","), r["task_id"], r["title"],
+             r["project"] or "", r["note"] or "", r["token_name"] or r["actor"]] + ([r["email"]] if uid is None else [])
+            for r in rows]
+    return _download(_csv(data, header + (["usuario"] if uid is None else [])), "text/csv; charset=utf-8", filename)
+
+
 @router.get("/export/{kind}")
 def export(kind: str, user=Depends(active_user)):
     uid = user["user_id"]
@@ -133,15 +150,7 @@ def export(kind: str, user=Depends(active_user)):
                                      "concluida_em", "checklist", "minutos", "horas", "anotacoes"]),
                          "text/csv; charset=utf-8", f"nexus-tarefas-{stamp}.csv")
     if kind == "apontamentos.csv":
-        rows = db.query_all(
-            """SELECT e.day, e.minutes, w.id AS task_id, w.title, p.name AS project, e.note, e.actor, e.token_name
-                 FROM time_entries e JOIN worklog_tasks w ON w.id = e.task_id
-                 LEFT JOIN projects p ON p.id = w.project_id
-                WHERE e.user_id = %s ORDER BY e.day, e.id""", (uid,))
-        data = [[r["day"], r["minutes"], str(round(r["minutes"] / 60, 2)).replace(".", ","), r["task_id"], r["title"],
-                 r["project"] or "", r["note"] or "", r["token_name"] or r["actor"]] for r in rows]
-        return _download(_csv(data, ["data", "minutos", "horas", "tarefa_id", "tarefa", "projeto", "observacao", "origem"]),
-                         "text/csv; charset=utf-8", f"nexus-apontamentos-{stamp}.csv")
+        return time_csv(uid, f"nexus-apontamentos-{stamp}.csv")
     if kind == "tudo.json":
         tasks = _tasks(uid)
         by_id = {t["id"]: t for t in tasks}

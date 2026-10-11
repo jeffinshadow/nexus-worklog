@@ -1,23 +1,20 @@
 // Extração de relatório em PDF por período. O admin passa opts.exportBase
 // apontando para o usuário alvo.
 import { api } from "./api.js";
-import { h, icon, clear } from "./dom.js";
+import { h, icon, clear, field, addDays, localDay } from "./dom.js";
 import { errorToast } from "./ui.js";
 
-const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-
-function ranges() {
-  const t = new Date();
-  const dow = t.getDay(); // domingo = 0 (a semana do app começa no domingo)
-  const ws = new Date(t); ws.setDate(t.getDate() - dow);
-  const pws = new Date(ws); pws.setDate(ws.getDate() - 7);
-  const pwe = new Date(ws); pwe.setDate(ws.getDate() - 1);
-  const ms = new Date(t.getFullYear(), t.getMonth(), 1);
-  const pms = new Date(t.getFullYear(), t.getMonth() - 1, 1);
-  const pme = new Date(t.getFullYear(), t.getMonth(), 0);
+// Períodos a partir do "hoje" no fuso da app (não do relógio do navegador).
+// A semana começa no domingo, como no resto do app.
+function ranges(today) {
+  const [y, m] = today.split("-").map(Number);
+  const dow = new Date(today + "T00:00:00Z").getUTCDay();
+  const ws = addDays(today, -dow);
+  const ms = `${y}-${String(m).padStart(2, "0")}-01`;
+  const pms = new Date(Date.UTC(y, m - 2, 1)).toISOString().slice(0, 10);
   return [
-    ["Esta semana", ws, t], ["Semana passada", pws, pwe],
-    ["Este mês", ms, t], ["Mês passado", pms, pme],
+    ["Esta semana", ws, today], ["Semana passada", addDays(ws, -7), addDays(ws, -1)],
+    ["Este mês", ms, today], ["Mês passado", pms, addDays(ms, -1)],
   ];
 }
 
@@ -25,10 +22,9 @@ export async function mount(root, opts = {}) {
   const base = opts.exportBase || "/reports/export";
   clear(root);
 
-  const t = new Date();
-  const weekAgo = new Date(); weekAgo.setDate(t.getDate() - 6);
-  const startInput = h("input", { type: "date", value: iso(weekAgo) });
-  const endInput = h("input", { type: "date", value: iso(t) });
+  const today = localDay(Date.now());
+  const startInput = h("input", { type: "date", value: addDays(today, -6), max: today });
+  const endInput = h("input", { type: "date", value: today, max: today });
   const err = h("p", { class: "error-text" });
   // Projeto: só no relatório do próprio usuário (o admin vê o geral).
   const projSel = h("select", {}, h("option", { value: "", text: "Todos (relatório completo)" }));
@@ -40,8 +36,8 @@ export async function mount(root, opts = {}) {
   }
   const btn = h("button", { type: "button", class: "btn btn-primary", onClick: run }, icon("reports"), "Exportar PDF");
 
-  const quick = h("div", { class: "quick" }, ...ranges().map(([label, a, b]) =>
-    h("button", { type: "button", class: "btn btn-ghost btn-sm", text: label, onClick: () => { startInput.value = iso(a); endInput.value = iso(b); } })));
+  const quick = h("div", { class: "quick" }, ...ranges(today).map(([label, a, b]) =>
+    h("button", { type: "button", class: "btn btn-ghost btn-sm", text: label, onClick: () => { startInput.value = a; endInput.value = b; } })));
 
   // Com projeto escolhido: "projeto completo" (padrão, sem datas) ou um período.
   let whole = true;
@@ -53,8 +49,8 @@ export async function mount(root, opts = {}) {
     }));
   }
   const dates = h("div", { class: "report-dates" },
-    h("div", { class: "field" }, h("label", { text: "Início" }), startInput),
-    h("div", { class: "field" }, h("label", { text: "Fim" }), endInput));
+    field("Início", startInput),
+    field("Fim", endInput));
   const wholeNote = h("p", { class: "help hidden", text: "Do primeiro registro do projeto até hoje: tudo o que foi entregue, o tempo gasto e o que ainda está aberto." });
   function sync() {
     const proj = !!projSel.value;
@@ -70,8 +66,8 @@ export async function mount(root, opts = {}) {
 
   root.append(h("div", { class: "report-section" },
     h("h3", { text: "Relatório em PDF" }),
-    h("p", { class: "sub", text: "Indicadores, ritmo, rotinas, entregas, o que está em aberto e o diário com o tempo apontado. Escolhendo um projeto, sai só o que é dele — do período que você quiser ou do projeto inteiro." }),
-    projSel.options.length > 1 ? h("div", { class: "field report-project" }, h("label", { text: "Projeto" }), projSel) : null,
+    h("p", { class: "sub", text: "Indicadores, ritmo, rotinas, tarefas concluídas, o que está em aberto e o diário com o tempo apontado. Escolhendo um projeto, sai só o que é dele — do período que você quiser ou do projeto inteiro." }),
+    projSel.options.length > 1 ? field("Projeto", projSel, "report-project") : null,
     scope, wholeNote, quick,
     h("div", { class: "report-controls" }, dates, btn),
     err));
@@ -91,7 +87,7 @@ export async function mount(root, opts = {}) {
       h("p", { class: "sub", text: "Seus dados em formato aberto, para planilha, faturamento ou backup." }),
       dl("/export/apontamentos.csv", "Apontamentos (CSV)", "um registro por apontamento de tempo: dia, horas, tarefa, projeto e observação"),
       dl("/export/tarefas.csv", "Tarefas (CSV)", "todas as tarefas com status, prioridade, projeto, prazo, checklist e horas"),
-      dl("/export/tudo.json", "Tudo (JSON)", "tarefas com anotações, checklist e tempo, recorrentes com os dias feitos e projetos")));
+      dl("/export/tudo.json", "Tudo (JSON)", "tarefas com anotações, checklist e tempo, rotinas com os dias feitos e projetos")));
   }
 
   async function run() {

@@ -1,5 +1,5 @@
 import { api } from "./api.js";
-import { h, clear, formatDate } from "./dom.js";
+import { h, clear, shortDate } from "./dom.js";
 
 const NS = "http://www.w3.org/2000/svg";
 const KPI_LABELS = ["Dia", "Semana", "Mês"];
@@ -19,22 +19,21 @@ export async function mount(root, opts = {}) {
   root.append(
     section("Visão geral", [
       h("div", { class: "overview-grid" },
-        kpiGroup("Tarefas recorrentes", data.recurring, true),
-        kpiGroup("Pontuais concluídas", data.pontual, false),
+        kpiGroup("Rotinas", data.recurring, true),
+        kpiGroup("Tarefas concluídas", data.pontual, false),
       ),
     ]),
-    section("Recorrentes · consistência", [
+    section("Rotinas · consistência", [
       h("div", { class: "consist-grid" },
-        chartCard("Aderência diária", "Últimas 4 semanas — % concluído por dia útil.", heatmap(a.heatmap), "compact heat"),
+        chartCard("Aderência diária", "Últimas 4 semanas — % das rotinas feitas nos dias da agenda.", heatmap(a.heatmap), "compact heat"),
         chartCard("Tendência semanal", "Últimas 8 semanas — % de aderência.", weeklyTrend(a.heatmap), "compact trend"),
-        chartCard("Aderência por tarefa", "Últimos 30 dias — dias úteis concluídos ÷ dias úteis vigentes.", taskRanking(a.task_adherence), "grow"),
+        chartCard("Aderência por rotina", "Últimos 30 dias — dias feitos ÷ dias da agenda de cada rotina.", taskRanking(a.task_adherence), "grow"),
       ),
     ]),
-    section("Pontuais · fluxo", [
+    section("Tarefas · fluxo", [
       h("div", { class: "chart-grid fluxo-grid" },
         chartCard("Concluídas por semana", "Vazão das últimas 4 semanas.", throughput(a.throughput)),
         chartCard("Tempo de conclusão", "Da criação até concluída (últimos 90 dias).", cycleTime(a.cycle_time)),
-        chartCard("Por dia da semana", "Conclusões (recorrentes + pontuais) nas últimas 8 semanas.", weekdayChart(a.weekday)),
       ),
     ]),
     section("Backlog · saúde", [
@@ -49,10 +48,6 @@ function section(title, children) {
   return h("section", { class: "dash-section" },
     h("h2", { class: "dash-section-title", text: title }),
     ...children);
-}
-
-function grid(cards) {
-  return h("div", { class: "chart-grid" }, ...cards);
 }
 
 function chartCard(title, sub, body, extra) {
@@ -118,8 +113,8 @@ function parseISO(s) {
 // ------------------------------------------------- visão geral (KPIs) --------
 
 // Cabeçalho de indicadores: 3 horizontes (dia/semana/mês) por grupo.
-// Recorrentes = razão concluídas/slots (barra + %), um parte-de-todo honesto.
-// Pontuais = contagem de concluídas no período (o "em aberto" é da seção de
+// Rotinas = razão concluídas/slots (barra + %), um parte-de-todo honesto.
+// Tarefas = contagem de concluídas no período (o "em aberto" é da seção de
 // backlog, não daqui — evita o denominador-snapshot enganoso das pizzas).
 function kpiGroup(title, g, isRatio) {
   const tiles = KPI_LABELS.map((label, i) => {
@@ -175,7 +170,7 @@ function heatColor(d) {
 
 function heatmap(hm) {
   if (!hm || !hm.days || !hm.days.length || hm.days.every((d) => d.slots === 0))
-    return emptyBox("sem recorrentes ainda");
+    return emptyBox("sem rotinas ainda");
   // A série vem com 8 semanas (para a tendência); o calendário mostra só as 4
   // últimas. Recorta em múltiplos de 7 (heat_start é domingo) p/ manter colunas.
   const HEAT_WEEKS = 4;
@@ -194,7 +189,7 @@ function heatmap(hm) {
   s.setAttribute("width", w);
   s.setAttribute("height", height);
   s.setAttribute("role", "img");
-  s.setAttribute("aria-label", "Calendário de aderência das tarefas recorrentes");
+  s.setAttribute("aria-label", "Calendário de aderência das rotinas");
 
   // Rótulos de mês (quando a coluna inicia um mês diferente da anterior).
   let prevMonth = -1;
@@ -216,7 +211,7 @@ function heatmap(hm) {
     const r = rect(padL + col * step, padT + row * step, cell, cell, fill, { rx: 2 });
     if (op !== 1) r.style.opacity = op;
     if (empty) { r.style.stroke = "var(--outline-variant)"; r.style.strokeWidth = "1"; }
-    const label = formatDate(d.date);
+    const label = shortDate(d.date);
     withTitle(r, d.slots === 0 ? `${label}: sem tarefas` : `${label}: ${d.done}/${d.slots} concluídas`);
     s.appendChild(r);
   });
@@ -285,12 +280,12 @@ function weeklyTrend(hm) {
     const c = document.createElementNS(NS, "circle");
     c.setAttribute("cx", x(i)); c.setAttribute("cy", y(w.pct)); c.setAttribute("r", 2.5);
     c.setAttribute("class", "trend-dot");
-    withTitle(c, `semana de ${formatDate(w.date)}: ${Math.round(w.pct)}%`);
+    withTitle(c, `semana de ${shortDate(w.date)}: ${Math.round(w.pct)}%`);
     s.appendChild(c);
   });
   // Rótulos do eixo x (primeira, meio, última semana).
   for (const i of [0, Math.floor((n - 1) / 2), n - 1]) {
-    s.appendChild(textEl(x(i), H - 6, formatDate(weeks[i].date), "chart-axis", "middle"));
+    s.appendChild(textEl(x(i), H - 6, shortDate(weeks[i].date), "chart-axis", "middle"));
   }
   return h("div", { class: "trend-wrap" }, s);
 }
@@ -299,7 +294,7 @@ function weeklyTrend(hm) {
 
 function taskRanking(ta) {
   const tasks = (ta && ta.tasks) || [];
-  if (!tasks.length) return emptyBox("nenhuma recorrente vigente nos últimos 30 dias");
+  if (!tasks.length) return emptyBox("nenhuma rotina vigente nos últimos 30 dias");
   const rows = tasks.map((t) => {
     const pct = Math.round((t.done / t.slots) * 100);
     const fill = h("span", { class: "rank-fill" });
@@ -365,11 +360,11 @@ function throughput(tp) {
   const total = weeks.reduce((a, w) => a + w.done, 0);
   const items = weeks.map((w) => ({
     value: w.done,
-    label: formatDate(w.week_start),
-    title: `semana de ${formatDate(w.week_start)}: ${w.done} concluída(s)`,
+    label: shortDate(w.week_start),
+    title: `semana de ${shortDate(w.week_start)}: ${w.done} concluída(s)`,
   }));
   const chart = verticalBars(items, { color: "var(--primary)" });
-  if (total === 0) return h("div", { class: "fluxo-body" }, chart, h("p", { class: "chart-note", text: "nenhuma pontual concluída nas últimas 4 semanas" }));
+  if (total === 0) return h("div", { class: "fluxo-body" }, chart, h("p", { class: "chart-note", text: "nenhuma tarefa concluída nas últimas 4 semanas" }));
   return h("div", { class: "fluxo-body" }, chart);
 }
 
@@ -388,47 +383,14 @@ function fmtDuration(hours) {
   return d < 10 ? `${d.toFixed(1).replace(".", ",")} d` : `${Math.round(d)} d`;
 }
 
-const CYCLE_BUCKETS = [
-  { label: "<1d", max: 24 },
-  { label: "1–3d", max: 72 },
-  { label: "3–7d", max: 168 },
-  { label: "1–2sem", max: 336 },
-  { label: ">2sem", max: Infinity },
-];
 
 function cycleTime(ct) {
   const durs = (ct && ct.durations_h) || [];
-  if (!durs.length) return emptyBox("nenhuma pontual concluída em 90 dias");
-  const med = median(durs);
-  const counts = CYCLE_BUCKETS.map((b) => 0);
-  for (const hVal of durs) {
-    const idx = CYCLE_BUCKETS.findIndex((b) => hVal < b.max);
-    counts[idx === -1 ? CYCLE_BUCKETS.length - 1 : idx]++;
-  }
-  const items = CYCLE_BUCKETS.map((b, i) => ({
-    value: counts[i], label: b.label, title: `${b.label}: ${counts[i]} tarefa(s)`,
-  }));
+  if (!durs.length) return emptyBox("nenhuma tarefa concluída em 90 dias");
   return h("div", { class: "fluxo-body" },
     h("div", { class: "stat-inline" },
-      h("span", { class: "stat-big", text: fmtDuration(med) }),
-      h("span", { class: "stat-cap", text: `mediana · ${durs.length} concluída(s)` })),
-    verticalBars(items, { color: "var(--chart-muted)" }));
-}
-
-// ------------------------------------------------------------------- weekday --
-
-function weekdayChart(wd) {
-  const counts = (wd && wd.counts) || [];
-  if (!counts.length || counts.every((c) => c === 0)) return emptyBox("sem conclusões nas últimas 8 semanas");
-  const max = Math.max(...counts);
-  // counts vem indexado por domingo=0..sábado=6; exibimos Seg→Dom (fim de
-  // semana no fim) para leitura de dia útil.
-  const ORDER = [1, 2, 3, 4, 5, 6, 0];
-  const items = ORDER.map((i) => ({
-    value: counts[i], label: WEEKDAYS[i], highlight: counts[i] === max && counts[i] > 0,
-    title: `${WEEKDAYS[i]}: ${counts[i]} conclusão(ões)`,
-  }));
-  return h("div", { class: "fluxo-body" }, verticalBars(items));
+      h("span", { class: "stat-big", text: fmtDuration(median(durs)) }),
+      h("span", { class: "stat-cap", text: `mediana da criação à conclusão · ${durs.length} concluída(s)` })));
 }
 
 // -------------------------------------------------------------- backlog saúde --

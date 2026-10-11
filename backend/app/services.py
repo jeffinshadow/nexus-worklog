@@ -31,8 +31,8 @@ def _week_start(d: date) -> date:
     return d - timedelta(days=_sun_index(d))
 
 
-# Dias úteis do usuário: máscara com domingo = bit 0 (seg–sex = 62). Recorrentes
-# só geram "dia devido" em dia útil; conclusão em dia não útil é "extra".
+# Dias úteis do usuário: máscara com domingo = bit 0 (seg–sex = 62). Usados pelas
+# rotinas "nos dias úteis" (freq daily); as outras seguem a própria agenda (is_due).
 DEFAULT_WORK_DAYS = 62
 # Marcação retroativa de recorrentes: até RETRO_DAYS dias antes de hoje.
 RETRO_DAYS = 7
@@ -241,8 +241,8 @@ def _recurring_tasks_and_completions(user_id: int, since: date, until: date):
 
 
 def _recurring_kpis(tasks, completions, mask: int, today: date) -> dict:
-    """Dia/semana/mês: done = conclusões em dia útil dentro da vigência;
-    open = slots úteis ainda não concluídos; extra = conclusões em dia não útil."""
+    """Dia/semana/mês: done = conclusões em dia da agenda (is_due) dentro da
+    vigência; open = dias da agenda não feitos; extra = feitas fora da agenda."""
     by_id = {t["id"]: t for t in tasks}
     periods = {"day": today, "week": _week_start(today), "month": today.replace(day=1)}
     out = {}
@@ -290,16 +290,15 @@ _HEAT_WEEKS = 8          # série diária: calendário mostra 4 sem., tendência
 _ADHERENCE_DAYS = 30     # ranking de aderência por tarefa
 _THROUGHPUT_WEEKS = 4    # vazão semanal de pontuais
 _CYCLE_DAYS = 90         # tempo de ciclo das pontuais
-_WEEKDAY_WEEKS = 8       # produtividade por dia da semana
 _STREAK_LOOKBACK = 120   # histórico p/ calcular a sequência (streak) atual
 
 
 def _current_streak(dates: set, today: date, mask: int, t: dict) -> int:
-    """Dias ÚTEIS consecutivos concluídos terminando no último dia útil.
+    """Dias da agenda (is_due) consecutivos feitos, terminando no último devido.
 
-    Dias não úteis são pulados (não quebram nem somam). Se hoje é útil e ainda
-    não foi concluído, começa do dia útil anterior: o dia em aberto não quebra
-    a sequência. Para antes da criação da tarefa ou do limite de histórico."""
+    Dias fora da agenda são pulados (não quebram nem somam). Se hoje é devido e
+    ainda não foi feito, começa do devido anterior: o dia em aberto não quebra
+    a sequência. Para antes da criação da rotina ou do limite de histórico."""
     floor = max(t["start_d"], today - timedelta(days=_STREAK_LOOKBACK))
     d = today
     if is_due(t, d, mask) and d not in dates:
@@ -319,8 +318,8 @@ def get_dashboard_analytics(user_id: int, tasks, completions, mask: int, today: 
 
     Recebe as recorrentes e as conclusões já lidas por get_dashboard e deriva
     TODOS os gráficos em Python. "Devido" segue a mesma regra dos indicadores:
-    só dia útil do dono gera slot; conclusão em dia não útil é "extra" (aparece
-    no gráfico por dia da semana, mas não na aderência). Toda data já vem no
+    só dia da agenda (is_due) gera slot; feito fora da agenda é "extra" (não
+    entra na aderência). Toda data já vem no
     fuso do app; `today` é a referência única.
     """
     tz = config.APP_TZ
@@ -355,12 +354,9 @@ def get_dashboard_analytics(user_id: int, tasks, completions, mask: int, today: 
     )
 
     # Índices das completions de recorrentes.
-    done_by_date: dict[date, int] = {}   # todas as conclusões (gráfico por dia da semana)
     dates_by_task: dict[int, set] = {}
     for c in completions:
-        d = c["completed_date"]
-        done_by_date[d] = done_by_date.get(d, 0) + 1
-        dates_by_task.setdefault(c["task_id"], set()).add(d)
+        dates_by_task.setdefault(c["task_id"], set()).add(c["completed_date"])
 
     # 1) Heatmap: série diária (done, slots) das últimas _HEAT_WEEKS semanas.
     #    _week_start(today) é um domingo, então heat_start também é domingo:
@@ -422,23 +418,11 @@ def get_dashboard_analytics(user_id: int, tasks, completions, mask: int, today: 
         if p["hours"] is not None and p["hours"] >= 0
     ]
 
-    # 5) Produtividade por dia da semana (últimas _WEEKDAY_WEEKS): recorrentes +
-    #    pontuais concluídas, somadas por dia da semana (índice domingo=0).
-    wd_start = today - timedelta(days=_WEEKDAY_WEEKS * 7 - 1)
-    weekday = [0] * 7
-    for dd, n in done_by_date.items():
-        if wd_start <= dd <= today:
-            weekday[_sun_index(dd)] += n
-    for p in pont:
-        if wd_start <= p["done_d"] <= today:
-            weekday[_sun_index(p["done_d"])] += 1
-
     return {
         "heatmap": {"start": heat_start, "today": today, "days": heat_days},
         "task_adherence": {"window_days": _ADHERENCE_DAYS, "tasks": task_rows},
         "throughput": {"weeks": throughput},
         "cycle_time": {"durations_h": durations},
-        "weekday": {"counts": weekday},
         "backlog": {
             "todo": backlog["todo"],
             "in_progress": backlog["in_progress"],

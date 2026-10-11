@@ -18,7 +18,7 @@ export async function mount(root) {
     const rows = await api.get(`/history?limit=${limit}`);
     clear(root);
     const panel = h("section", { class: "panel" },
-      h("p", { class: "help muted", text: "Toda alteração fica registrada com a origem. Dá para desfazer a mais recente de cada tarefa, recorrente ou configuração." }));
+      h("p", { class: "help muted", text: "Toda alteração fica registrada com a origem. Dá para desfazer a mais recente de cada tarefa, rotina ou configuração." }));
     if (!rows.length) panel.append(h("p", { class: "empty", text: "Nada registrado ainda." }));
     const list = h("div", { class: "hist" });
     for (const r of rows) {

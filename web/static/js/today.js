@@ -1,6 +1,6 @@
 // Tela inicial "Hoje": o dia em um olhar e as ações mais comuns sem trocar de tela.
 import { api } from "./api.js";
-import { h, icon, clear, longDate } from "./dom.js";
+import { h, icon, clear, longDate, localDay } from "./dom.js";
 import { errorToast, toast } from "./ui.js";
 import { openRecurring, openWorklog, finishTask, taskChips, isOverdue, scheduleLabel } from "./board.js";
 import { openTask } from "./task.js";
@@ -15,22 +15,32 @@ function urgency(t, today) {
   return ({ blocked: 3, in_progress: 4, todo: 5 }[t.status] ?? 6) + (t.priority === 3 ? 3 : 0);
 }
 
-export async function mount(root, ctx) {
+// opts.focusQuick: volta o cursor ao registro rápido (lote de itens seguidos);
+// opts.summary: reaproveita o resumo (registrar uma tarefa aberta não o muda).
+export async function mount(root, ctx, opts = {}) {
   const refresh = () => mount(root, ctx);
-  const [b, sum] = await Promise.all([api.get("/board"), api.get("/summary").catch(() => null)]);
+  const [b, sum] = await Promise.all([
+    api.get("/board"),
+    opts.summary ? Promise.resolve(opts.summary) : api.get("/summary").catch(() => null),
+  ]);
   const today = b.today;
   ctx.setEyebrow(longDate(today) + (b.work_day ? "" : " · dia não útil"));
   ctx.setActions(
     h("button", { type: "button", class: "btn btn-primary", onClick: () => openWorklog(null, refresh) }, icon("add"), "Tarefa")
   );
 
-  // Só as devidas hoje pela agenda de cada uma (+ as já marcadas como extra).
-  const rec = b.recurring.filter((r) => r.due !== false || r.done_today);
-  const recDone = rec.filter((r) => r.done_today).length;
+  // Devidas hoje pela agenda de cada uma; feitas fora da agenda = extra (à parte,
+  // como no quadro, no dashboard e no PDF).
+  const due = b.recurring.filter((r) => r.due !== false);
+  const extras = b.recurring.filter((r) => r.due === false && r.done_today);
+  const rec = [...due, ...extras];
+  const recDone = due.filter((r) => r.done_today).length;
+  const extraTxt = extras.length ? ` +${extras.length} extra` : "";
   const open = [...b.in_progress].sort((x, y) => urgency(x, today) - urgency(y, today));
   const late = open.filter((t) => isOverdue(t, today));
+  const blocked = open.filter((t) => t.status === "blocked");
   const doneToday = b.done.filter((t) =>
-    t.completed_at && new Date(t.completed_at).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }) === today);
+    t.completed_at && localDay(t.completed_at) === today);
 
   clear(root);
 
@@ -38,22 +48,24 @@ export async function mount(root, ctx) {
   const stat = (n, label, cls = "", small = "") =>
     h("div", { class: "stat " + cls }, h("p", { class: "stat-n" }, String(n), small ? h("small", { text: small }) : null), h("p", { class: "stat-l", text: label }));
   const stats = h("div", { class: "stats" },
-    stat(rec.length ? recDone : "—", rec.length ? "recorrentes feitas" : "sem recorrentes hoje", rec.length && recDone === rec.length ? "ok" : "", rec.length ? `/${rec.length}` : ""),
+    stat(due.length ? recDone : "—", (due.length ? "rotinas feitas" : "sem rotinas hoje") + extraTxt,
+      due.length && recDone === due.length ? "ok" : "", due.length ? `/${due.length}` : ""),
     stat(open.length, "tarefas abertas"),
-    stat(late.length, late.length === 1 ? "atrasada" : "atrasadas", late.length ? "warn" : ""),
+    stat(late.length, (late.length === 1 ? "atrasada" : "atrasadas") + (blocked.length ? ` · ${blocked.length} bloqueada${blocked.length > 1 ? "s" : ""}` : ""),
+      late.length || blocked.length ? "warn" : ""),
     stat(doneToday.length, "concluídas hoje", doneToday.length ? "ok" : ""));
 
-  // ---- recorrentes do dia
+  // ---- rotinas do dia
   const recPanel = h("section", { class: "panel t-rec" },
-    h("div", { class: "panel-head" }, h("h2", { text: "Recorrentes de hoje" }), h("span", { class: "count", text: `${recDone}/${rec.length}` }),
-      h("button", { type: "button", class: "icon accent", title: "Nova recorrente", "aria-label": "Nova recorrente", onClick: () => openRecurring(null, refresh) }, icon("add"))));
-  if (rec.length) {
+    h("div", { class: "panel-head" }, h("h2", { text: "Rotinas de hoje" }), h("span", { class: "count", text: `${recDone}/${due.length}${extraTxt}` }),
+      h("button", { type: "button", class: "icon accent", title: "Nova rotina", "aria-label": "Nova rotina", onClick: () => openRecurring(null, refresh) }, icon("add"))));
+  if (due.length) {
     const bar = h("span");
-    bar.style.width = `${Math.round((recDone / rec.length) * 100)}%`;
-    recPanel.append(h("div", { class: "progress", role: "img", "aria-label": `${recDone} de ${rec.length} feitas` }, bar));
+    bar.style.width = `${Math.round((recDone / due.length) * 100)}%`;
+    recPanel.append(h("div", { class: "progress", role: "img", "aria-label": `${recDone} de ${due.length} feitas` }, bar));
   }
-  if (!b.work_day) recPanel.append(h("p", { class: "day-note", text: "Hoje não é dia útil: o que marcar conta como extra." }));
-  if (!rec.length) recPanel.append(h("p", { class: "empty", text: "Nenhuma recorrente. Crie as rotinas que você faz todo dia." }));
+  if (!rec.length)
+    recPanel.append(h("p", { class: "empty", text: b.recurring.length ? "Nenhuma rotina na agenda de hoje." : "Nenhuma rotina ainda. Crie as verificações que você repete (backups, alertas, fila…)." }));
   for (const r of rec) {
     const cb = h("input", { type: "checkbox", "aria-label": r.label });
     cb.checked = r.done_today;
@@ -81,7 +93,7 @@ export async function mount(root, ctx) {
     try {
       await api.post("/worklog", { title, status: "in_progress" });
       toast("Tarefa registrada.");
-      refresh();
+      mount(root, ctx, { focusQuick: true, summary: sum });
     } catch (e) {
       quick.disabled = false;
       errorToast(e, "Erro ao registrar.");
@@ -109,5 +121,6 @@ export async function mount(root, ctx) {
       h("div", { class: "t" }, h("button", { type: "button", class: "card-open", text: t.title, onClick: () => openTask(t.id, refresh) }))));
   }
 
+  if (opts.focusQuick) setTimeout(() => quick.focus(), 0);
   root.append(h("div", { class: "today-grid" }, stats, recPanel, openPanel, sum ? summaryPanel(sum, refresh) : null, donePanel));
 }

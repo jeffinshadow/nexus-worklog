@@ -35,6 +35,7 @@ def _public(row: dict, csrf: str) -> dict:
         "role": row["role"],
         "must_change_password": row["must_change_password"],
         "work_days": row["work_days"],
+        "tz": config.APP_TZ,  # o front formata datas/horas no fuso da app
         "csrf_token": csrf,
     }
 

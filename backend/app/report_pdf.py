@@ -254,8 +254,8 @@ def _kpis(pdf: _Report, data: dict) -> None:
         sub = f"{s['recurring_done']} de {s['recurring_total']} devidas"
         if s["recurring_extra"]:
             sub += f" · +{s['recurring_extra']} extra"
-        tiles.append(("recorrentes", f"{pct}%" if pct is not None else "—", sub if s["recurring_total"] else "nenhuma devida", pct))
-    tiles.append(("entregas", str(s["pontual_done"]), "pontuais concluídas", None))
+        tiles.append(("rotinas", f"{pct}%" if pct is not None else "—", sub if s["recurring_total"] else "nenhuma devida", pct))
+    tiles.append(("concluídas", str(s["pontual_done"]), "tarefas concluídas", None))
     tiles.append(("tempo apontado", _dur(s["minutes"]) if s["minutes"] else "—",
                   f"média {_dur(s['minutes'] // max(1, s['active_days']))} por dia ativo" if s["minutes"] else "nada apontado", None))
     if by_project:
@@ -374,9 +374,9 @@ def _chart(pdf: _Report, data: dict) -> None:
     if use_time:
         items = [("horas apontadas", ACCENT)]
     elif by_project:
-        items = [("pontuais concluídas", ACCENT)]
+        items = [("tarefas concluídas", ACCENT)]
     else:
-        items = [("recorrentes feitas", ACCENT_MID), ("pontuais concluídas", ACCENT)]
+        items = [("rotinas feitas", ACCENT_MID), ("tarefas concluídas", ACCENT)]
     if not weekly and not use_time and not by_project:
         items.append(("dia não útil", (238, 238, 242)))
     lx = x0
@@ -426,7 +426,7 @@ def _projects_block(pdf: _Report, projects: list, x: float, w: float, y: float, 
     pdf.font("sanss", 10, INK)
     pdf.text_at(x, y, w, 5, "Projetos")
     pdf.font("mono", 6.6, DIM)
-    pdf.text_at(x, y + 0.4, w, 5, "tempo · entregas", "R")
+    pdf.text_at(x, y + 0.4, w, 5, "tempo · concluídas", "R")
     y += 8
     top = max([p["minutes"] for p in projects] + [1])
     for p in projects:
@@ -496,8 +496,8 @@ def _deliveries(pdf: _Report, data: dict) -> None:
     rows = data["deliveries"]
     if not rows:
         return
-    note = f"{len(rows)} pontua{'is' if len(rows) != 1 else 'l'} concluída{'s' if len(rows) != 1 else ''}"
-    _section(pdf, "Entregas", note, prio_legend=any(r["priority"] == 1 for r in rows))
+    note = f"{len(rows)} concluída{'s' if len(rows) != 1 else ''}"
+    _section(pdf, "Tarefas concluídas", note, prio_legend=any(r["priority"] == 1 for r in rows))
     show_proj = not data.get("project")
     wp = 36 if show_proj else 0
     cols = [("data", 15, "L"), ("tarefa", pdf.cw - 15 - wp - 16 - 15, "L")]
@@ -669,7 +669,7 @@ def _diary(pdf: _Report, data: dict) -> None:
         if day["recurring_extra"]:
             bits.append(f"+{day['recurring_extra']} extra")
         if day["pontual"]:
-            bits.append(f"{len(day['pontual'])} entrega{'s' if len(day['pontual']) != 1 else ''}")
+            bits.append(f"{len(day['pontual'])} concluída{'s' if len(day['pontual']) != 1 else ''}")
         if day["minutes"]:
             bits.append(_dur(day["minutes"]))
         pdf.font("mono", 6.8, DIM)

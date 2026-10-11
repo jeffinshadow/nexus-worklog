@@ -1,7 +1,7 @@
 // Projetos/clientes: lista em cache, seletor, etiqueta colorida e a aba de
 // gestão em Configurações. A cor vem da API e entra via CSSOM (CSP ok).
 import { api } from "./api.js";
-import { h, icon, clear } from "./dom.js";
+import { h, icon, clear, field } from "./dom.js";
 import { confirmDialog, errorToast, toast, undoLatest } from "./ui.js";
 
 export const PALETA = ["#5294E2", "#81C995", "#FDD663", "#C58AF9", "#F28B82", "#78D9EC", "#F6AE6B", "#A1A1A8"];
@@ -61,7 +61,7 @@ function askName() {
     let value = null;
     const input = h("input", { type: "text", maxlength: "60", required: "required", placeholder: "Ex.: Loja Vila Velha" });
     const form = h("form", {},
-      h("div", { class: "field" }, h("label", { text: "Nome do projeto ou cliente" }), input),
+      field("Nome do projeto ou cliente", input),
       h("div", { class: "dialog-actions" },
         h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
         h("button", { type: "submit", class: "btn btn-primary", text: "Criar" })));
@@ -81,7 +81,7 @@ export async function projectsPanel(rerender) {
   const name = h("input", { type: "text", maxlength: "60", required: "required", placeholder: "Ex.: Loja Vila Velha" });
   const err = h("p", { class: "error-text" });
   const form = h("form", { class: "inline-form" },
-    h("div", { class: "field" }, h("label", { text: "Novo projeto ou cliente" }), name),
+    field("Novo projeto ou cliente", name),
     h("button", { type: "submit", class: "btn btn-primary" }, icon("add"), "Criar"));
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
@@ -130,14 +130,6 @@ export async function projectsPanel(rerender) {
       h("span", { class: "token-meta", text: `${p.open_tasks} abertas · ${p.total_tasks} no total${p.archived ? " · arquivado" : ""}` }),
       swatches,
       h("div", { class: "actions" },
-        h("button", { type: "button", class: "icon", title: "Relatório do projeto completo (PDF)", "aria-label": "Relatório de " + p.name,
-          onClick: async (ev) => {
-            const b = ev.currentTarget;
-            b.disabled = true;
-            try { await api.download(`/reports/export?project=${p.id}`); }
-            catch (e) { errorToast(e, "Falha ao gerar o relatório."); }
-            finally { b.disabled = false; }
-          } }, icon("reports")),
         h("button", { type: "button", class: "btn btn-ghost btn-sm", text: p.archived ? "Reativar" : "Arquivar",
           onClick: () => save(p, { archived: !p.archived }, p.archived ? "Projeto reativado." : "Arquivado: some dos seletores, as tarefas continuam.") }),
         h("button", { type: "button", class: "icon", title: "Excluir", "aria-label": "Excluir " + p.name, onClick: async () => {
