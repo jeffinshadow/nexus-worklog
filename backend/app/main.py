@@ -7,7 +7,7 @@ from pydantic import EmailStr, TypeAdapter, ValidationError
 
 from . import db
 from .config import config
-from .routers import admin, auth, board, branding, dashboard, history, mcp, recurring, reports, tokens, worklog
+from .routers import admin, auth, board, branding, dashboard, history, mcp, projects, recurring, reports, tokens, worklog
 from .security import hash_password
 
 SQL_DIR = pathlib.Path(__file__).resolve().parent.parent / "sql"
@@ -56,5 +56,6 @@ app = FastAPI(
     openapi_url=None,
 )
 
-for module in (auth, recurring, worklog, board, dashboard, reports, admin, history, tokens, mcp, branding):
+for module in (auth, recurring, worklog, board, dashboard, reports, admin, history, tokens, mcp, branding, projects):
     app.include_router(module.router)
+app.include_router(worklog.items)  # /api/notes, /api/checklist, /api/time

@@ -12,13 +12,15 @@ router = APIRouter(prefix="/api/recurring", tags=["recurring"])
 def create(data: RecurringIn, user=Depends(active_user_csrf)):
     row = db.query_one(
         """
-        INSERT INTO recurring_tasks (user_id, label, position)
-        VALUES (%s, %s,
+        INSERT INTO recurring_tasks (user_id, label, position, freq, weekdays, month_day, interval_days)
+        VALUES (%(uid)s, %(label)s,
                 (SELECT COALESCE(MAX(position), 0) + 1
-                   FROM recurring_tasks WHERE user_id = %s))
-        RETURNING id, label, position, active
+                   FROM recurring_tasks WHERE user_id = %(uid)s),
+                %(freq)s, %(weekdays)s, %(month_day)s, %(interval_days)s)
+        RETURNING id, label, position, active, freq, weekdays, month_day, interval_days
         """,
-        (user["user_id"], data.label, user["user_id"]),
+        {"uid": user["user_id"], "label": data.label,
+         **(data.agenda() if data.freq else {"freq": "daily", "weekdays": None, "month_day": None, "interval_days": None})},
     )
     audit.record(user, "recurring.create", "recurring", row["id"],
                  after=audit.recurring_snapshot(row["id"], user["user_id"]))
@@ -48,6 +50,10 @@ def update(task_id: int, data: RecurringUpdate, user=Depends(active_user_csrf)):
     if data.position is not None:
         fields.append("position = %s")
         values.append(data.position)
+    if data.freq is not None:
+        for col, val in data.agenda().items():
+            fields.append(f"{col} = %s")
+            values.append(val)
     if not fields:
         raise HTTPException(status_code=400, detail="nada para atualizar")
 

@@ -18,9 +18,10 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, Response
 from pydantic import ValidationError
 
-from .. import deps, services
-from ..schemas import ToggleIn, WorklogIn, WorklogUpdate
+from .. import db, deps, services
+from ..schemas import ChecklistIn, ChecklistUpdate, NoteIn, TimeIn, ToggleIn, WorklogIn, WorklogUpdate
 from . import history as history_routes
+from . import projects as project_routes
 from . import recurring as recurring_routes
 from . import worklog as worklog_routes
 from .board import check_board_day
@@ -39,6 +40,8 @@ INSTRUCTIONS = (
 
 STATUS = ["todo", "in_progress", "blocked", "done"]
 STATUS_PT = {"todo": "a fazer", "in_progress": "em andamento", "blocked": "bloqueada", "done": "concluída"}
+PRIO = {"alta": 1, "normal": 2, "baixa": 3}
+PRIO_PT = {1: "alta", 2: "normal", 3: "baixa"}
 DATE = {"type": "string", "format": "date", "description": "Data AAAA-MM-DD"}
 
 
@@ -58,16 +61,63 @@ def _call(fn, *args, **kwargs):
         raise ToolError(f"parâmetros inválidos: {msgs}") from None
 
 
+def _dur(m: int) -> str:
+    return f"{m // 60}h{m % 60:02d}" if m >= 60 else f"{m} min"
+
+
 def _task_line(t: dict, today: date) -> str:
     parts = [f"#{t['id']} {t['title']}", f"[{STATUS_PT.get(t['status'], t['status'])}]"]
+    if t.get("priority") == 1:
+        parts.append("(prioridade alta)")
+    if t.get("project_name"):
+        parts.append(f"{{{t['project_name']}}}")
     if t.get("due_date") and t["status"] != "done":
         due = t["due_date"]
         parts.append(f"prazo {due.isoformat()}" + (" (ATRASADA)" if due < today else ""))
     if t.get("completed_at"):
         parts.append(f"concluída em {t['completed_at'].date().isoformat()}")
+    if t.get("check_total"):
+        parts.append(f"checklist {t['check_done']}/{t['check_total']}")
+    if t.get("minutes"):
+        parts.append(f"tempo {_dur(t['minutes'])}")
     if t.get("description"):
         parts.append(f"— {t['description']}")
     return " ".join(parts)
+
+
+def _resolve_project(uid: int, value):
+    """Projeto por id ou nome (sem diferenciar maiúsculas). None = sem projeto."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, int) or (isinstance(value, str) and value.isdigit()):
+        row = db.query_one("SELECT id FROM projects WHERE id = %s AND user_id = %s", (int(value), uid))
+    else:
+        row = db.query_one("SELECT id FROM projects WHERE user_id = %s AND lower(name) = lower(%s)", (uid, str(value).strip()))
+    if not row:
+        nomes = [p["name"] for p in db.query_all("SELECT name FROM projects WHERE user_id = %s AND NOT archived ORDER BY name", (uid,))]
+        raise ToolError(f"projeto “{value}” não existe. Projetos: {', '.join(nomes) or '(nenhum)'}")
+    return row["id"]
+
+
+def _prio(value):
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    p = PRIO.get(str(value).lower())
+    if not p:
+        raise ToolError("prioridade deve ser alta, normal ou baixa")
+    return p
+
+
+def _task_args(uid: int, args: dict) -> dict:
+    """Converte project (nome/id) e priority (alta/normal/baixa) dos argumentos."""
+    args = dict(args)
+    if "project" in args:
+        args["project_id"] = _resolve_project(uid, args.pop("project"))
+    if "priority" in args:
+        args["priority"] = _prio(args["priority"])
+    return args
 
 
 def _find_task(uid: int, task_id: int) -> dict:
@@ -111,7 +161,7 @@ def t_list_tasks(ctx, args):
 
 
 def t_create_task(ctx, args):
-    data = _call(WorklogIn, **args)
+    data = _call(WorklogIn, **_task_args(ctx["user_id"], args))
     res = _call(worklog_routes.create, data, user=ctx)
     return "Criada: " + _task_line(_find_task(ctx["user_id"], res["id"]), services.app_today())
 
@@ -121,7 +171,7 @@ def t_update_task(ctx, args):
     task_id = args.pop("task_id", None)
     if task_id is None:
         raise ToolError("informe task_id")
-    data = _call(WorklogUpdate, **args)
+    data = _call(WorklogUpdate, **_task_args(ctx["user_id"], args))
     _call(worklog_routes.update, int(task_id), data, user=ctx)
     return "Atualizada: " + _task_line(_find_task(ctx["user_id"], int(task_id)), services.app_today())
 
@@ -130,6 +180,51 @@ def t_complete_task(ctx, args):
     task_id = int(args["task_id"])
     _call(worklog_routes.finish, task_id, user=ctx)
     return "Concluída: " + _task_line(_find_task(ctx["user_id"], task_id), services.app_today())
+
+
+def t_get_task(ctx, args):
+    t = _call(worklog_routes.detail, int(args["task_id"]), user=ctx)
+    t["check_total"] = len(t["checklist"])
+    t["check_done"] = sum(1 for c in t["checklist"] if c["done"])
+    lines = [_task_line(t, services.app_today())]
+    if t["checklist"]:
+        lines += ["", "Checklist:"] + [f"  [{'x' if c['done'] else ' '}] item #{c['id']} {c['label']}" for c in t["checklist"]]
+    if t["notes"]:
+        lines += ["", "Anotações (mais recentes primeiro):"]
+        lines += [f"  {n['created_at'].astimezone(services.app_tz()):%d/%m %H:%M} — {n['body']}" for n in t["notes"][:10]]
+    if t["time"]:
+        lines += ["", f"Tempo apontado: {_dur(t['minutes'])}"]
+        lines += [f"  {e['day']:%d/%m} {_dur(e['minutes'])}" + (f" — {e['note']}" if e["note"] else "") for e in t["time"][:10]]
+    return "\n".join(lines)
+
+
+def t_add_note(ctx, args):
+    data = _call(NoteIn, body=args.get("text", ""))
+    _call(worklog_routes.add_note, int(args["task_id"]), data, user=ctx)
+    return f"Anotado na tarefa #{args['task_id']}."
+
+
+def t_add_checklist_item(ctx, args):
+    data = _call(ChecklistIn, label=args.get("label", ""))
+    row = _call(worklog_routes.add_item, int(args["task_id"]), data, user=ctx)
+    return f"Item #{row['id']} adicionado: {row['label']}"
+
+
+def t_set_checklist_item(ctx, args):
+    data = _call(ChecklistUpdate, done=args.get("done", True))
+    row = _call(worklog_routes.update_item, int(args["item_id"]), data, user=ctx)
+    return f"Item #{row['id']} {'concluído' if row['done'] else 'reaberto'}: {row['label']}"
+
+
+def t_log_time(ctx, args):
+    data = _call(TimeIn, minutes=args.get("minutes"), day=args.get("day"), note=args.get("note"))
+    row = _call(worklog_routes.log_time, int(args["task_id"]), data, user=ctx)
+    return f"Apontado {_dur(row['minutes'])} em {row['day'].isoformat()} na tarefa #{args['task_id']}."
+
+
+def t_list_projects(ctx, args):
+    rows = project_routes.list_projects(include_archived=False, user=ctx)
+    return "\n".join(f"#{p['id']} {p['name']} ({p['open_tasks']} abertas)" for p in rows) or "(nenhum projeto)"
 
 
 def t_list_recurring(ctx, args):
@@ -176,15 +271,37 @@ TOOLS = {
                         "title": {"type": "string", "maxLength": 200},
                         "description": {"type": ["string", "null"], "maxLength": 300},
                         "status": {"type": "string", "enum": STATUS, "default": "todo"},
-                        "due_date": {**DATE, "type": ["string", "null"], "description": "Previsão de conclusão (AAAA-MM-DD)"}}}),
+                        "due_date": {**DATE, "type": ["string", "null"], "description": "Previsão de conclusão (AAAA-MM-DD)"},
+                        "project": {"type": ["string", "null"], "description": "Nome do projeto/cliente (veja list_projects)"},
+                        "priority": {"type": "string", "enum": ["alta", "normal", "baixa"], "default": "normal"}}}),
     "update_task": (t_update_task, True,
-                    "Edita uma tarefa. Envie só os campos a mudar; description ou due_date = null apagam o campo.",
+                    "Edita uma tarefa. Envie só os campos a mudar; description, due_date ou project = null apagam o campo.",
                     {"type": "object", "required": ["task_id"], "properties": {
                         "task_id": {"type": "integer"},
                         "title": {"type": "string", "maxLength": 200},
                         "description": {"type": ["string", "null"], "maxLength": 300},
                         "status": {"type": "string", "enum": STATUS},
-                        "due_date": {**DATE, "type": ["string", "null"]}}}),
+                        "due_date": {**DATE, "type": ["string", "null"]},
+                        "project": {"type": ["string", "null"]},
+                        "priority": {"type": "string", "enum": ["alta", "normal", "baixa"]}}}),
+    "get_task": (t_get_task, False, "Tarefa completa: checklist, anotações e tempo apontado.",
+                 {"type": "object", "required": ["task_id"], "properties": {"task_id": {"type": "integer"}}}),
+    "add_note": (t_add_note, True, "Anota um progresso na tarefa (o que foi feito, decisão, pendência).",
+                 {"type": "object", "required": ["task_id", "text"], "properties": {
+                     "task_id": {"type": "integer"}, "text": {"type": "string", "maxLength": 2000}}}),
+    "add_checklist_item": (t_add_checklist_item, True, "Adiciona um item (subtarefa) ao checklist da tarefa.",
+                           {"type": "object", "required": ["task_id", "label"], "properties": {
+                               "task_id": {"type": "integer"}, "label": {"type": "string", "maxLength": 200}}}),
+    "set_checklist_item": (t_set_checklist_item, True, "Marca (done=true) ou reabre um item do checklist (ids em get_task).",
+                           {"type": "object", "required": ["item_id"], "properties": {
+                               "item_id": {"type": "integer"}, "done": {"type": "boolean", "default": True}}}),
+    "log_time": (t_log_time, True, "Aponta tempo gasto numa tarefa (minutos; dia padrão hoje, nunca no futuro).",
+                 {"type": "object", "required": ["task_id", "minutes"], "properties": {
+                     "task_id": {"type": "integer"},
+                     "minutes": {"type": "integer", "minimum": 1, "maximum": 1440},
+                     "day": DATE, "note": {"type": "string", "maxLength": 200}}}),
+    "list_projects": (t_list_projects, False, "Lista os projetos/clientes do usuário.",
+                      {"type": "object", "properties": {}}),
     "complete_task": (t_complete_task, True, "Marca uma tarefa como concluída agora.",
                       {"type": "object", "required": ["task_id"], "properties": {"task_id": {"type": "integer"}}}),
     "list_recurring": (t_list_recurring, False, "Recorrentes de um dia (padrão: hoje; até 7 dias atrás) e se foram feitas.",

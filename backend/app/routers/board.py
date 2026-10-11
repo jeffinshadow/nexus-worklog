@@ -20,5 +20,9 @@ def check_board_day(day: Optional[date]) -> Optional[date]:
 
 
 @router.get("")
-def board(day: Optional[date] = Query(default=None), user=Depends(active_user)):
-    return get_board(user["user_id"], check_board_day(day))
+def board(
+    day: Optional[date] = Query(default=None),
+    project: Optional[int] = Query(default=None, ge=0, description="0 = sem projeto"),
+    user=Depends(active_user),
+):
+    return get_board(user["user_id"], check_board_day(day), project)

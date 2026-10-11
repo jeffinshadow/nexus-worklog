@@ -21,6 +21,11 @@ def _weekday(d: date) -> str:
     return _WEEKDAYS[d.weekday()]
 
 
+def _dur(minutes: int) -> str:
+    h, m = divmod(int(minutes), 60)
+    return f"{h}h{m:02d}" if h else f"{m} min"
+
+
 def _s(text: str) -> str:
     """Sanitiza para latin-1 (fonte core do fpdf2)."""
     return (text or "").encode("latin-1", "replace").decode("latin-1")
@@ -32,6 +37,38 @@ class _Report(FPDF):
         self.set_font("Helvetica", "I", 8)
         self.set_text_color(130, 130, 130)
         self.cell(0, 8, text=_s(f"Página {self.page_no()}/{{nb}}"), align="C")
+
+
+def _recorrentes(pdf, day: dict, lm: float) -> None:
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.set_text_color(40, 40, 40)
+    n_extra = day.get("recurring_extra", 0)
+    if day["recurring_total"]:
+        rec_title = f"Recorrentes ({day['recurring_done']}/{day['recurring_total']})"
+        if n_extra:
+            rec_title += f" + {n_extra} extra"
+    else:
+        rec_title = f"Recorrentes extras ({n_extra})"
+    pdf.cell(0, 5, text=_s(rec_title), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 10)
+    if day["recurring"]:
+        for r in day["recurring"]:
+            if r.get("extra"):
+                pdf.set_text_color(45, 95, 160)
+                mark = "[+]"
+            elif r["done"]:
+                pdf.set_text_color(30, 120, 45)
+                mark = "[x]"
+            else:
+                pdf.set_text_color(155, 55, 55)
+                mark = "[ ]"
+            pdf.set_x(lm + 3)
+            pdf.multi_cell(0, 5, text=_s(f"{mark} {r['label']}"), new_x="LMARGIN", new_y="NEXT")
+    else:
+        pdf.set_text_color(120, 120, 120)
+        pdf.set_x(lm + 3)
+        pdf.cell(0, 5, text=_s("(nenhuma)"), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(1)
 
 
 def build_report_pdf(user_email: str, start: date, end: date, data: dict) -> bytes:
@@ -55,6 +92,9 @@ def build_report_pdf(user_email: str, start: date, end: date, data: dict) -> byt
         text=_s(f"Período: {_br_date(start)} a {_br_date(end)}"),
         new_x="LMARGIN", new_y="NEXT",
     )
+    by_project = bool(data.get("project"))
+    if by_project:
+        pdf.cell(0, 6, text=_s(f"Projeto: {data['project']}"), new_x="LMARGIN", new_y="NEXT")
     pdf.ln(3)
 
     # --- Resumo ---
@@ -65,13 +105,13 @@ def build_report_pdf(user_email: str, start: date, end: date, data: dict) -> byt
     pdf.cell(0, 7, text=_s("Resumo do período"), new_x="LMARGIN", new_y="NEXT", fill=True)
     pdf.set_font("Helvetica", "", 10)
     pdf.set_text_color(50, 50, 50)
-    lines = [f"Recorrentes concluídas (dias úteis): {s['recurring_done']}/{s['recurring_total']}"]
+    lines = [] if by_project else [f"Recorrentes concluídas (dias úteis): {s['recurring_done']}/{s['recurring_total']}"]
     if s.get("recurring_extra"):
         lines.append(f"Recorrentes extras (dias não úteis): {s['recurring_extra']}")
-    lines += [
-        f"Pontuais concluídas: {s['pontual_done']}",
-        f"Dias com atividade: {s['active_days']}",
-    ]
+    lines += [f"Pontuais concluídas: {s['pontual_done']}"]
+    if s.get("minutes"):
+        lines.append(f"Tempo apontado: {_dur(s['minutes'])}")
+    lines.append(f"Dias com atividade: {s['active_days']}")
     for line in lines:
         pdf.cell(0, 6, text=_s(line), new_x="LMARGIN", new_y="NEXT")
     pdf.ln(4)
@@ -98,35 +138,15 @@ def build_report_pdf(user_email: str, start: date, end: date, data: dict) -> byt
         pdf.cell(
             0, 7,
             text=_s(f"{_weekday(d)}, {_br_date(d)}"
-                    + ("" if day.get("work_day", True) else "  ·  dia não útil")),
+                    + ("" if day.get("work_day", True) else "  ·  dia não útil")
+                    + (f"  ·  {_dur(day['minutes'])} apontados" if day.get("minutes") else "")),
             new_x="LMARGIN", new_y="NEXT", fill=True,
         )
         pdf.ln(1)
 
-        # Recorrentes (concluidas e nao concluidas)
-        pdf.set_font("Helvetica", "B", 10)
-        pdf.set_text_color(40, 40, 40)
-        if day.get("work_day", True):
-            rec_title = f"Recorrentes ({day['recurring_done']}/{day['recurring_total']})"
-        else:
-            rec_title = f"Recorrentes extras ({day.get('recurring_extra', 0)})"
-        pdf.cell(0, 5, text=_s(rec_title), new_x="LMARGIN", new_y="NEXT")
-        pdf.set_font("Helvetica", "", 10)
-        if day["recurring"]:
-            for r in day["recurring"]:
-                if r["done"]:
-                    pdf.set_text_color(30, 120, 45)
-                    mark = "[x]"
-                else:
-                    pdf.set_text_color(155, 55, 55)
-                    mark = "[ ]"
-                pdf.set_x(lm + 3)
-                pdf.multi_cell(0, 5, text=_s(f"{mark} {r['label']}"), new_x="LMARGIN", new_y="NEXT")
-        else:
-            pdf.set_text_color(120, 120, 120)
-            pdf.set_x(lm + 3)
-            pdf.cell(0, 5, text=_s("(nenhuma)"), new_x="LMARGIN", new_y="NEXT")
-        pdf.ln(1)
+        # Recorrentes (concluidas e nao concluidas) — fora do relatório por projeto
+        if not by_project:
+            _recorrentes(pdf, day, lm)
 
         # Pontuais concluidas no dia
         pont = day["pontual"]
@@ -138,7 +158,8 @@ def build_report_pdf(user_email: str, start: date, end: date, data: dict) -> byt
             for w in pont:
                 pdf.set_text_color(40, 40, 40)
                 pdf.set_x(lm + 3)
-                pdf.multi_cell(0, 5, text=_s(f"- {w['title']}"), new_x="LMARGIN", new_y="NEXT")
+                proj = f"  [{w['project']}]" if w.get("project") else ""
+                pdf.multi_cell(0, 5, text=_s(f"- {w['title']}{proj}"), new_x="LMARGIN", new_y="NEXT")
                 if w.get("description"):
                     pdf.set_font("Helvetica", "", 9)
                     pdf.set_text_color(110, 110, 110)

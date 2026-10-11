@@ -68,10 +68,11 @@ def user_report_export(
     user_id: int,
     start: date = Query(...),
     end: date = Query(...),
+    project: int | None = Query(None),
     admin=Depends(require_admin),
 ):
     target = _ensure_user(user_id)
-    return build_pdf_response(target["email"], user_id, start, end)
+    return build_pdf_response(target["email"], user_id, start, end, project)
 
 
 @router.post("/users/{user_id}/reset-password")
