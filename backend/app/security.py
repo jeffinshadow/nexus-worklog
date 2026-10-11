@@ -51,6 +51,17 @@ def new_token() -> str:
     return secrets.token_urlsafe(32)
 
 
+# Chave de API pessoal: "nxs_" + 43 caracteres. O prefixo deixa a chave
+# reconhecível (e fácil de achar se vazar num repositório).
+API_TOKEN_PREFIX = "nxs_"
+
+
+def new_api_token() -> tuple[str, str]:
+    """Devolve (chave completa, trecho de exibição). Só o HMAC vai ao banco."""
+    raw = API_TOKEN_PREFIX + secrets.token_urlsafe(32)
+    return raw, raw[: len(API_TOKEN_PREFIX) + 6]
+
+
 # Alfabeto sem caracteres ambiguos (0/O/1/I/l) para uma senha temporaria que o
 # admin repassa e o usuario digita. 12 chars * ~31 simbolos = ~59 bits: forte o
 # suficiente para uma senha de uso unico (o usuario troca no proximo login).
@@ -96,3 +107,5 @@ class RateLimiter:
 login_limiter = RateLimiter(max_hits=10, window_seconds=300)
 # Cadastro publico (quando aberto): ate 5 contas por IP por hora.
 register_limiter = RateLimiter(max_hits=5, window_seconds=3600)
+# Chaves de API: ate 240 requisicoes por chave por minuto (IA em laço).
+token_limiter = RateLimiter(max_hits=240, window_seconds=60)

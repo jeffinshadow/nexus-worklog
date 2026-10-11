@@ -12,8 +12,12 @@ from . import db
 from .config import config
 
 
+def app_tz() -> ZoneInfo:
+    return ZoneInfo(config.APP_TZ)
+
+
 def app_today() -> date:
-    return datetime.now(ZoneInfo(config.APP_TZ)).date()
+    return datetime.now(app_tz()).date()
 
 
 # Semana começa no DOMINGO (padrão do app). date.weekday(): seg=0..dom=6;

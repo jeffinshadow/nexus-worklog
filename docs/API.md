@@ -10,6 +10,26 @@ são servidas pelo backend (FastAPI) atrás do nginx. As docs interativas
 
 ## Autenticação
 
+Há dois jeitos de se autenticar:
+
+### 1. Chave de API (para IA, scripts e automações) — recomendado fora do navegador
+
+Crie em **Configurações → Chaves de API** no app. A chave (`nxs_...`) aparece
+**uma única vez**; o servidor guarda só um hash. Mande em toda requisição:
+
+```
+Authorization: Bearer nxs_...
+```
+
+- **Sem CSRF e sem cookie.** Não use mais e-mail/senha em ferramentas de IA.
+- **Escopo:** `write` (lê e altera) ou `read` (só lê; escrita → **403**).
+- **Validade** de 1 a 365 dias (padrão 90) ou sem validade; revogue no app.
+- Limite: 240 requisições por minuto por chave (**429** ao passar).
+- Uma chave **nunca** acessa `/api/admin/*`, `/api/tokens` nem troca a senha.
+- Tudo que a chave alterar fica no **histórico** com o nome dela.
+
+### 2. Sessão do app (o que o frontend usa)
+
 A sessão é **server-side**, transportada por um cookie:
 
 - **Cookie `session`** — `HttpOnly; Secure; SameSite=Strict`, expiração
@@ -18,8 +38,8 @@ A sessão é **server-side**, transportada por um cookie:
   `fetch(..., { credentials: "same-origin" })`).
 - **CSRF** — o login (e `GET /api/auth/me`) devolvem um `csrf_token`. **Toda
   mutação** (`POST`, `PATCH`, `DELETE`) exige esse valor no header
-  **`X-CSRF-Token`**. Sem ele → **403**. (`POST /register` e `POST /login` são a
-  exceção: ainda não existe sessão.)
+  **`X-CSRF-Token`**. Sem ele → **403**. (`POST /login` é a exceção: ainda não
+  existe sessão.)
 
 **Fluxo típico do front:**
 
@@ -29,7 +49,7 @@ A sessão é **server-side**, transportada por um cookie:
 
 **Papéis:** `user` (comum) e `admin`. Todo dado é filtrado por `user_id` no
 backend — um usuário só enxerga/altera o que é dele. As rotas `/api/admin/*`
-exigem `role = "admin"` (senão **403**).
+exigem `role = "admin"` e sessão do app (senão **403**).
 
 ### Códigos de status comuns
 
@@ -188,3 +208,50 @@ PDF de um usuário.
 ### `POST /api/admin/users/{user_id}/reset-password`  · *admin + CSRF*
 Gera uma senha temporária (usuário fica com `must_change_password`).
 Resposta: `{ "email": "...", "temp_password": "..." }`.
+
+
+---
+
+## Chaves de API — `/api/tokens` (só pelo app)
+
+### `GET /api/tokens`
+Lista as chaves do usuário: `id, name, prefix, scope, created_at, expires_at,
+last_used_at, revoked_at, active`. Nunca devolve a chave completa.
+
+### `POST /api/tokens` → `201`
+```json
+{ "name": "Claude do Kaique", "scope": "write", "expires_in_days": 90 }
+```
+`expires_in_days` de 1 a 365, ou `null` para sem validade. Resposta inclui
+`"token": "nxs_..."` — **única vez** em que a chave aparece. Máximo de 20 ativas.
+
+### `DELETE /api/tokens/{id}`
+Revoga a chave na hora.
+
+## Histórico — `/api/history`
+
+### `GET /api/history?limit=50&entity=worklog&entity_id=12`
+Ações na conta, da mais recente para a mais antiga: `id, created_at, actor`
+(`web` app, `api` chave, `mcp` IA, `admin`), `token_name`, `action`, `entity`,
+`entity_id`, `summary` (texto pronto), `undone`, `can_undo`.
+
+### `POST /api/history/{id}/undo`
+Desfaz a ação. Só vale para a **mais recente de cada item** (senão **409**) e
+para criar/editar/concluir/excluir tarefa, criar/editar/remover/marcar
+recorrente e alterar dias úteis. O próprio desfazer entra no histórico.
+
+## MCP — `POST /mcp`
+
+Servidor [Model Context Protocol](https://modelcontextprotocol.io) para IAs
+(Claude Code, Cursor, etc.). Transporte *Streamable HTTP* com resposta JSON,
+autenticado **só por chave de API**. Exemplo no Claude Code:
+
+```bash
+claude mcp add --transport http nexus https://nexus.shadow.tec.br/mcp \
+  --header "Authorization: Bearer nxs_..."
+```
+
+Ferramentas: `get_today`, `list_tasks`, `list_recurring`, `get_history`
+(leitura) e `create_task`, `update_task`, `complete_task`, `set_recurring`,
+`undo` (escrita; chaves `read` não as veem). A IA **não exclui** tarefas.
+Tudo que ela fizer aparece no histórico como `mcp` com o nome da chave.

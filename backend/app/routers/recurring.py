@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 
-from .. import db
+from .. import audit, db
 from ..deps import active_user_csrf
 from ..schemas import RecurringIn, RecurringUpdate, ToggleIn
 from ..services import app_today, board_day_range, recurring_vigente
@@ -20,11 +20,14 @@ def create(data: RecurringIn, user=Depends(active_user_csrf)):
         """,
         (user["user_id"], data.label, user["user_id"]),
     )
+    audit.record(user, "recurring.create", "recurring", row["id"],
+                 after=audit.recurring_snapshot(row["id"], user["user_id"]))
     return row
 
 
 @router.patch("/{task_id}")
 def update(task_id: int, data: RecurringUpdate, user=Depends(active_user_csrf)):
+    before = audit.recurring_snapshot(task_id, user["user_id"])
     fields, values = [], []
     if data.label is not None:
         fields.append("label = %s")
@@ -55,6 +58,8 @@ def update(task_id: int, data: RecurringUpdate, user=Depends(active_user_csrf)):
     )
     if not updated:
         raise HTTPException(status_code=404, detail="nao encontrado")
+    audit.record(user, "recurring.update", "recurring", task_id, before=before,
+                 after=audit.recurring_snapshot(task_id, user["user_id"]))
     return {"ok": True}
 
 
@@ -62,6 +67,7 @@ def update(task_id: int, data: RecurringUpdate, user=Depends(active_user_csrf)):
 def deactivate(task_id: int, user=Depends(active_user_csrf)):
     # Soft-delete = desativar: preserva o historico em recurring_completions e
     # marca deactivated_at (so na transicao ativa->inativa).
+    before = audit.recurring_snapshot(task_id, user["user_id"])
     updated = db.execute(
         """UPDATE recurring_tasks
               SET active = false,
@@ -71,6 +77,8 @@ def deactivate(task_id: int, user=Depends(active_user_csrf)):
     )
     if not updated:
         raise HTTPException(status_code=404, detail="nao encontrado")
+    audit.record(user, "recurring.deactivate", "recurring", task_id, before=before,
+                 after=audit.recurring_snapshot(task_id, user["user_id"]))
     return {"ok": True}
 
 
@@ -91,6 +99,10 @@ def toggle(task_id: int, data: ToggleIn, user=Depends(active_user_csrf)):
         raise HTTPException(status_code=400, detail="dia fora da janela de edição")
     if not recurring_vigente(task_id, user["user_id"], today):
         raise HTTPException(status_code=400, detail="a recorrente não existia nesse dia")
+    was = db.query_one(
+        "SELECT 1 FROM recurring_completions WHERE task_id = %s AND completed_date = %s",
+        (task_id, today),
+    ) is not None
     if data.done:
         db.execute(
             """INSERT INTO recurring_completions (task_id, user_id, completed_date)
@@ -103,4 +115,7 @@ def toggle(task_id: int, data: ToggleIn, user=Depends(active_user_csrf)):
             "DELETE FROM recurring_completions WHERE task_id = %s AND completed_date = %s",
             (task_id, today),
         )
+    if was != data.done:
+        audit.record(user, "recurring.toggle", "recurring", task_id,
+                     before={"day": today, "done": was}, after={"day": today, "done": data.done})
     return {"ok": True, "done": data.done, "day": today}

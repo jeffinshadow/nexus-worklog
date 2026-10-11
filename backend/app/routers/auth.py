@@ -2,14 +2,14 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
-from .. import db
+from .. import audit, db
 from ..config import config
 from ..deps import (
     active_user_csrf,
     clear_session_cookie,
     client_ip,
     current_user,
-    current_user_csrf,
+    web_user_csrf,
     set_session_cookie,
 )
 from ..schemas import ChangePasswordIn, LoginIn, RegisterIn, SettingsIn
@@ -97,7 +97,7 @@ def login(data: LoginIn, request: Request, response: Response):
 
 
 @router.post("/logout")
-def logout(request: Request, response: Response, session=Depends(current_user_csrf)):
+def logout(request: Request, response: Response, session=Depends(web_user_csrf)):
     token = request.cookies.get(config.SESSION_COOKIE)
     if token:
         db.execute("DELETE FROM sessions WHERE token_hash = %s", (token_hash(token),))
@@ -111,7 +111,7 @@ def me(session=Depends(current_user)):
 
 
 @router.post("/change-password")
-def change_password(data: ChangePasswordIn, session=Depends(current_user_csrf)):
+def change_password(data: ChangePasswordIn, session=Depends(web_user_csrf)):
     if not password_ok(data.new_password):
         raise HTTPException(status_code=400, detail="senha nova fraca")
     row = db.query_one("SELECT password_hash FROM users WHERE id = %s", (session["user_id"],))
@@ -133,5 +133,9 @@ def change_password(data: ChangePasswordIn, session=Depends(current_user_csrf)):
 @router.post("/settings")
 def save_settings(data: SettingsIn, session=Depends(active_user_csrf)):
     """Preferências do próprio usuário (hoje: dias úteis)."""
+    before = session["work_days"]
     db.execute("UPDATE users SET work_days = %s WHERE id = %s", (data.work_days, session["user_id"]))
+    if before != data.work_days:
+        audit.record(session, "settings.update", "user", session["user_id"],
+                     before={"work_days": before}, after={"work_days": data.work_days})
     return {"ok": True, "work_days": data.work_days}

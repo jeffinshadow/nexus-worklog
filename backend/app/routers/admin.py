@@ -3,7 +3,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from .. import db
+from .. import audit, db
 from ..deps import require_admin, require_admin_csrf
 from ..schemas import InviteIn
 from ..security import generate_temp_password, hash_password
@@ -41,6 +41,9 @@ def invite_user(data: InviteIn, admin=Depends(require_admin_csrf)):
            VALUES (%s, %s, 'user', true)""",
         (email, hash_password(temp)),
     )
+    novo = db.query_one("SELECT id FROM users WHERE email = %s", (email,))
+    audit.record({**admin, "actor": "admin"}, "user.invite", "user", novo["id"],
+                 after={"email": email, "by": admin["email"]}, user_id=novo["id"])
     return {"email": email, "temp_password": temp}
 
 
@@ -87,4 +90,6 @@ def reset_password(user_id: int, admin=Depends(require_admin_csrf)):
     )
     # Encerra TODAS as sessoes do alvo: ele so volta com a senha temporaria.
     db.execute("DELETE FROM sessions WHERE user_id = %s", (user_id,))
+    audit.record({**admin, "actor": "admin"}, "user.reset_password", "user", user_id,
+                 after={"by": admin["email"]}, user_id=user_id)
     return {"email": target["email"], "temp_password": temp}

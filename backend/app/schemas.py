@@ -45,6 +45,13 @@ class ToggleIn(BaseModel):
     day: Optional[date] = None
 
 
+class TokenIn(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+    scope: Literal["read", "write"] = "write"
+    # Validade em dias; None = sem validade (revogue quando não usar mais).
+    expires_in_days: Optional[int] = Field(default=90, ge=1, le=365)
+
+
 class SettingsIn(BaseModel):
     # Máscara de dias úteis (domingo = bit 0). Ver sql/003_user_work_days.sql.
     work_days: int = Field(ge=1, le=127)

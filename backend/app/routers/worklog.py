@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from .. import db
+from .. import audit, db
 from ..deps import active_user_csrf
 from ..schemas import WorklogIn, WorklogUpdate
 
@@ -20,16 +20,15 @@ def create(data: WorklogIn, user=Depends(active_user_csrf)):
         """,
         (user["user_id"], data.title, data.description, data.status, data.due_date, completed_at),
     )
+    audit.record(user, "worklog.create", "worklog", row["id"],
+                 after=audit.worklog_snapshot(row["id"], user["user_id"]))
     return {"id": row["id"]}
 
 
 @router.patch("/{task_id}")
 def update(task_id: int, data: WorklogUpdate, user=Depends(active_user_csrf)):
-    current = db.query_one(
-        "SELECT completed_at FROM worklog_tasks WHERE id = %s AND user_id = %s",
-        (task_id, user["user_id"]),
-    )
-    if not current:
+    before = audit.worklog_snapshot(task_id, user["user_id"])
+    if not before:
         raise HTTPException(status_code=404, detail="nao encontrado")
 
     fields, values = [], []
@@ -49,7 +48,7 @@ def update(task_id: int, data: WorklogUpdate, user=Depends(active_user_csrf)):
     if data.status is not None:
         fields.append("status = %s")
         values.append(data.status)
-        if data.status == "done" and current["completed_at"] is None:
+        if data.status == "done" and before["completed_at"] is None:
             fields.append("completed_at = %s")
             values.append(datetime.now(timezone.utc))
         elif data.status != "done":
@@ -63,28 +62,32 @@ def update(task_id: int, data: WorklogUpdate, user=Depends(active_user_csrf)):
         f"UPDATE worklog_tasks SET {', '.join(fields)} WHERE id = %s AND user_id = %s",
         tuple(values),
     )
+    audit.record(user, "worklog.update", "worklog", task_id, before=before,
+                 after=audit.worklog_snapshot(task_id, user["user_id"]))
     return {"ok": True}
 
 
 @router.post("/{task_id}/finish")
 def finish(task_id: int, user=Depends(active_user_csrf)):
-    updated = db.execute(
+    before = audit.worklog_snapshot(task_id, user["user_id"])
+    if not before:
+        raise HTTPException(status_code=404, detail="nao encontrado")
+    db.execute(
         """UPDATE worklog_tasks
               SET status = 'done', completed_at = COALESCE(completed_at, now())
             WHERE id = %s AND user_id = %s""",
         (task_id, user["user_id"]),
     )
-    if not updated:
-        raise HTTPException(status_code=404, detail="nao encontrado")
+    audit.record(user, "worklog.finish", "worklog", task_id, before=before,
+                 after=audit.worklog_snapshot(task_id, user["user_id"]))
     return {"ok": True}
 
 
 @router.delete("/{task_id}")
 def delete(task_id: int, user=Depends(active_user_csrf)):
-    deleted = db.execute(
-        "DELETE FROM worklog_tasks WHERE id = %s AND user_id = %s",
-        (task_id, user["user_id"]),
-    )
-    if not deleted:
+    before = audit.worklog_snapshot(task_id, user["user_id"])
+    if not before:
         raise HTTPException(status_code=404, detail="nao encontrado")
+    db.execute("DELETE FROM worklog_tasks WHERE id = %s AND user_id = %s", (task_id, user["user_id"]))
+    audit.record(user, "worklog.delete", "worklog", task_id, before=before)
     return {"ok": True}

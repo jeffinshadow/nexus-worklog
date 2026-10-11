@@ -105,3 +105,42 @@ def recuar_criacao(task_id, dias):
         "UPDATE recurring_tasks SET created_at = now() - make_interval(days => %s) WHERE id = %s",
         (dias, task_id),
     )
+
+
+class Bearer:
+    """Cliente autenticado por chave de API (como uma IA ou automação)."""
+
+    def __init__(self, token):
+        self.c = TestClient(app, base_url="http://testserver")
+        self.h = {"Authorization": f"Bearer {token}"}
+
+    def get(self, path, **kw):
+        return self.c.get("/api" + path, headers=self.h, **kw)
+
+    def post(self, path, json=None):
+        return self.c.post("/api" + path, json=json, headers=self.h)
+
+    def patch(self, path, json=None):
+        return self.c.patch("/api" + path, json=json, headers=self.h)
+
+    def delete(self, path):
+        return self.c.delete("/api" + path, headers=self.h)
+
+    def rpc(self, method, params=None, rid=1, headers=None):
+        body = {"jsonrpc": "2.0", "method": method}
+        if rid is not None:
+            body["id"] = rid
+        if params is not None:
+            body["params"] = params
+        return self.c.post("/mcp", json=body, headers={**self.h, **(headers or {})})
+
+    def tool(self, name, **args):
+        r = self.rpc("tools/call", {"name": name, "arguments": args})
+        assert r.status_code == 200, r.text
+        return r.json()["result"]
+
+
+def criar_chave(api, nome="IA de teste", scope="write", dias=90):
+    r = api.post("/tokens", {"name": nome, "scope": scope, "expires_in_days": dias})
+    assert r.status_code == 201, r.text
+    return r.json()
