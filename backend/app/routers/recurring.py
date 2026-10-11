@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from .. import db
 from ..deps import active_user_csrf
 from ..schemas import RecurringIn, RecurringUpdate, ToggleIn
-from ..services import app_today
+from ..services import app_today, board_day_range, recurring_vigente
 
 router = APIRouter(prefix="/api/recurring", tags=["recurring"])
 
@@ -83,7 +83,14 @@ def toggle(task_id: int, data: ToggleIn, user=Depends(active_user_csrf)):
     if not owns:
         raise HTTPException(status_code=404, detail="nao encontrado")
 
-    today = app_today()
+    # Marcação retroativa: hoje ou até RETRO_DAYS dias atrás, e só em dia em
+    # que a recorrente existia (criada e ainda não desativada).
+    min_day, today_ = board_day_range(app_today())
+    today = data.day or today_
+    if not (min_day <= today <= today_):
+        raise HTTPException(status_code=400, detail="dia fora da janela de edição")
+    if not recurring_vigente(task_id, user["user_id"], today):
+        raise HTTPException(status_code=400, detail="a recorrente não existia nesse dia")
     if data.done:
         db.execute(
             """INSERT INTO recurring_completions (task_id, user_id, completed_date)
@@ -96,4 +103,4 @@ def toggle(task_id: int, data: ToggleIn, user=Depends(active_user_csrf)):
             "DELETE FROM recurring_completions WHERE task_id = %s AND completed_date = %s",
             (task_id, today),
         )
-    return {"ok": True, "done": data.done}
+    return {"ok": True, "done": data.done, "day": today}

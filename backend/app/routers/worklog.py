@@ -36,10 +36,14 @@ def update(task_id: int, data: WorklogUpdate, user=Depends(active_user_csrf)):
     if data.title is not None:
         fields.append("title = %s")
         values.append(data.title)
-    if data.description is not None:
+    # description e due_date podem ser apagados: enviados como null (ou vazio)
+    # = limpar o campo; ausentes no corpo = não mexer. Antes, null era
+    # ignorado e o formulário não conseguia remover previsão nem descrição.
+    sent = data.model_fields_set
+    if "description" in sent:
         fields.append("description = %s")
-        values.append(data.description)
-    if data.due_date is not None:
+        values.append(data.description or None)
+    if "due_date" in sent:
         fields.append("due_date = %s")
         values.append(data.due_date)
     if data.status is not None:

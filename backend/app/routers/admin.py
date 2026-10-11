@@ -1,4 +1,5 @@
 from datetime import date
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -7,6 +8,7 @@ from ..deps import require_admin, require_admin_csrf
 from ..schemas import InviteIn
 from ..security import generate_temp_password, hash_password
 from ..services import get_board, get_dashboard
+from .board import check_board_day
 from .reports import build_pdf_response
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -43,9 +45,13 @@ def invite_user(data: InviteIn, admin=Depends(require_admin_csrf)):
 
 
 @router.get("/users/{user_id}/board")
-def user_board(user_id: int, admin=Depends(require_admin)):
+def user_board(
+    user_id: int,
+    day: Optional[date] = Query(default=None),
+    admin=Depends(require_admin),
+):
     _ensure_user(user_id)
-    return get_board(user_id)
+    return get_board(user_id, check_board_day(day))
 
 
 @router.get("/users/{user_id}/dashboard")

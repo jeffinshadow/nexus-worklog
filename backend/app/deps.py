@@ -48,7 +48,8 @@ def _load_session(request: Request) -> dict:
     row = db.query_one(
         """
         SELECT s.id AS sid, s.csrf_token, s.expires_at,
-               u.id AS user_id, u.email, u.role, u.must_change_password
+               u.id AS user_id, u.email, u.role, u.must_change_password,
+               u.work_days
           FROM sessions s
           JOIN users u ON u.id = s.user_id
          WHERE s.token_hash = %s

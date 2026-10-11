@@ -65,11 +65,14 @@ def build_report_pdf(user_email: str, start: date, end: date, data: dict) -> byt
     pdf.cell(0, 7, text=_s("Resumo do período"), new_x="LMARGIN", new_y="NEXT", fill=True)
     pdf.set_font("Helvetica", "", 10)
     pdf.set_text_color(50, 50, 50)
-    for line in (
-        f"Recorrentes concluídas: {s['recurring_done']}/{s['recurring_total']}",
+    lines = [f"Recorrentes concluídas (dias úteis): {s['recurring_done']}/{s['recurring_total']}"]
+    if s.get("recurring_extra"):
+        lines.append(f"Recorrentes extras (dias não úteis): {s['recurring_extra']}")
+    lines += [
         f"Pontuais concluídas: {s['pontual_done']}",
         f"Dias com atividade: {s['active_days']}",
-    ):
+    ]
+    for line in lines:
         pdf.cell(0, 6, text=_s(line), new_x="LMARGIN", new_y="NEXT")
     pdf.ln(4)
 
@@ -83,13 +86,19 @@ def build_report_pdf(user_email: str, start: date, end: date, data: dict) -> byt
     for day in data["days"]:
         d = day["date"]
 
+        # Evita titulo de dia "orfao" no pe da pagina: se nao cabe o cabecalho
+        # e as primeiras linhas (~35 mm), o dia comeca na pagina seguinte.
+        if pdf.get_y() > pdf.h - pdf.b_margin - 35:
+            pdf.add_page()
+
         # Cabecalho do dia
         pdf.set_font("Helvetica", "B", 12)
         pdf.set_fill_color(224, 227, 245)
         pdf.set_text_color(20, 20, 45)
         pdf.cell(
             0, 7,
-            text=_s(f"{_weekday(d)}, {_br_date(d)}"),
+            text=_s(f"{_weekday(d)}, {_br_date(d)}"
+                    + ("" if day.get("work_day", True) else "  ·  dia não útil")),
             new_x="LMARGIN", new_y="NEXT", fill=True,
         )
         pdf.ln(1)
@@ -97,11 +106,11 @@ def build_report_pdf(user_email: str, start: date, end: date, data: dict) -> byt
         # Recorrentes (concluidas e nao concluidas)
         pdf.set_font("Helvetica", "B", 10)
         pdf.set_text_color(40, 40, 40)
-        pdf.cell(
-            0, 5,
-            text=_s(f"Recorrentes ({day['recurring_done']}/{day['recurring_total']})"),
-            new_x="LMARGIN", new_y="NEXT",
-        )
+        if day.get("work_day", True):
+            rec_title = f"Recorrentes ({day['recurring_done']}/{day['recurring_total']})"
+        else:
+            rec_title = f"Recorrentes extras ({day.get('recurring_extra', 0)})"
+        pdf.cell(0, 5, text=_s(rec_title), new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Helvetica", "", 10)
         if day["recurring"]:
             for r in day["recurring"]:

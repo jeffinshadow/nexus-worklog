@@ -41,6 +41,13 @@ class RecurringUpdate(BaseModel):
 
 class ToggleIn(BaseModel):
     done: bool
+    # Dia da marcação; ausente = hoje. Vale até RETRO_DAYS dias para trás.
+    day: Optional[date] = None
+
+
+class SettingsIn(BaseModel):
+    # Máscara de dias úteis (domingo = bit 0). Ver sql/003_user_work_days.sql.
+    work_days: int = Field(ge=1, le=127)
 
 
 class WorklogIn(BaseModel):

@@ -1,6 +1,23 @@
 import { api } from "./api.js";
 import { h, icon, clear, formatDate } from "./dom.js";
 
+const WEEKDAYS_SHORT = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+
+// Datas ISO (YYYY-MM-DD) tratadas em UTC: o "hoje" vem do servidor (fuso do
+// app), então o navegador só soma/subtrai dias, sem depender do fuso local.
+function addDays(iso, n) {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + n));
+  return dt.toISOString().slice(0, 10);
+}
+function dayLabel(iso, today) {
+  if (iso === today) return "Hoje";
+  if (iso === addDays(today, -1)) return "Ontem";
+  const [y, m, d] = iso.split("-").map(Number);
+  const wd = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return `${WEEKDAYS_SHORT[wd]}, ${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}`;
+}
+
 const STATUS_LABELS = {
   todo: "A fazer",
   in_progress: "Em andamento",
@@ -16,7 +33,21 @@ export async function mount(root, opts = {}) {
   const boardUrl = opts.boardUrl || "/board";
 
   clear(root);
+  let day = null; // dia das recorrentes (null = hoje, decidido pelo servidor)
   const daily = column("Tarefas Recorrentes Diárias", readOnly ? null : () => openRecurring(null));
+  // Seletor de dia: volta até a janela que o servidor informa (min_day).
+  const prevBtn = h("button", { class: "icon", title: "Dia anterior", "aria-label": "Dia anterior", text: "‹" });
+  const nextBtn = h("button", { class: "icon", title: "Próximo dia", "aria-label": "Próximo dia", text: "›" });
+  const dayText = h("span", { class: "day-nav-label", "aria-live": "polite" });
+  const dayNote = h("p", { class: "day-note hidden" });
+  daily.section.insertBefore(
+    h("div", { class: "day-nav" }, prevBtn, dayText, nextBtn),
+    daily.body
+  );
+  daily.section.insertBefore(dayNote, daily.body);
+  let current = null;
+  prevBtn.addEventListener("click", () => { day = addDays(current.day, -1); refresh(); });
+  nextBtn.addEventListener("click", () => { day = addDays(current.day, 1); refresh(); });
   const wip = column("Tarefas Pontuais", readOnly ? null : () => openWorklog(null));
   // "Finalizadas" é colapsável: no mobile fica oculta num dropdown por padrão
   // (só o cabeçalho/contador aparece). No desktop o toggle some e a coluna rola.
@@ -24,7 +55,15 @@ export async function mount(root, opts = {}) {
   root.append(h("div", { class: "columns" }, daily.section, wip.section, done.section));
 
   async function refresh() {
-    const data = await api.get(boardUrl);
+    const sep = boardUrl.includes("?") ? "&" : "?";
+    const data = await api.get(day ? `${boardUrl}${sep}day=${day}` : boardUrl);
+    current = data;
+    day = data.day === data.today ? null : data.day;
+    dayText.textContent = dayLabel(data.day, data.today);
+    prevBtn.disabled = data.day <= data.min_day;
+    nextBtn.disabled = data.day >= data.today;
+    dayNote.classList.toggle("hidden", data.work_day);
+    dayNote.textContent = data.work_day ? "" : "Dia não útil: o que for marcado conta como extra.";
     renderDaily(data.recurring);
     renderCards(wip, data.in_progress, false);
     renderCards(done, data.done, true);
@@ -35,7 +74,7 @@ export async function mount(root, opts = {}) {
     daily.count.textContent =
       items.filter((i) => i.done_today).length + "/" + items.length;
     if (!items.length) {
-      daily.body.append(h("p", { class: "empty", text: "Sem recorrentes." }));
+      daily.body.append(h("p", { class: "empty", text: "Sem recorrentes neste dia." }));
       return;
     }
     for (const it of items) {
@@ -45,7 +84,7 @@ export async function mount(root, opts = {}) {
       else
         cb.addEventListener("change", async () => {
           try {
-            await api.post(`/recurring/${it.id}/toggle`, { done: cb.checked });
+            await api.post(`/recurring/${it.id}/toggle`, { done: cb.checked, day: current.day });
             refresh();
           } catch (e) {
             cb.checked = !cb.checked;

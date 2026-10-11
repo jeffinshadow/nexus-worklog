@@ -26,19 +26,79 @@ def _week_start(d: date) -> date:
     return d - timedelta(days=_sun_index(d))
 
 
-def get_board(user_id: int) -> dict:
+# Dias úteis do usuário: máscara com domingo = bit 0 (seg–sex = 62). Recorrentes
+# só geram "dia devido" em dia útil; conclusão em dia não útil é "extra".
+DEFAULT_WORK_DAYS = 62
+# Marcação retroativa de recorrentes: até RETRO_DAYS dias antes de hoje.
+RETRO_DAYS = 7
+
+
+def work_mask(user_id: int) -> int:
+    row = db.query_one("SELECT work_days FROM users WHERE id = %s", (user_id,))
+    return row["work_days"] if row else DEFAULT_WORK_DAYS
+
+
+def is_work_day(d: date, mask: int) -> bool:
+    return bool((mask >> _sun_index(d)) & 1)
+
+
+def _work_days_between(start: date, end: date, mask: int) -> int:
+    """Quantos dias úteis em [start, end] (inclusive). 0 se o intervalo é vazio."""
+    n = 0
+    d = start
+    while d <= end:
+        if is_work_day(d, mask):
+            n += 1
+        d += timedelta(days=1)
+    return n
+
+
+def board_day_range(today: date) -> tuple[date, date]:
+    return today - timedelta(days=RETRO_DAYS), today
+
+
+# Recorrente vigente no dia %(day)s: criada até o dia e, se desativada, só até o
+# dia da desativação (inclusive). Inativa sem data (legado anterior à 002) fica
+# de fora, como antes.
+_VIGENTE_NO_DIA = """
+    (r.created_at AT TIME ZONE %(tz)s)::date <= %(day)s
+    AND (r.active OR (r.deactivated_at IS NOT NULL
+                      AND (r.deactivated_at AT TIME ZONE %(tz)s)::date >= %(day)s))
+"""
+
+
+def recurring_vigente(task_id: int, user_id: int, day: date) -> bool:
+    row = db.query_one(
+        "SELECT 1 FROM recurring_tasks r WHERE r.id = %(id)s AND r.user_id = %(uid)s AND"
+        + _VIGENTE_NO_DIA,
+        {"id": task_id, "uid": user_id, "day": day, "tz": config.APP_TZ},
+    )
+    return row is not None
+
+
+def get_board(user_id: int, day: date | None = None) -> dict:
+    """Quadro do usuário. `day` escolhe o dia das recorrentes (padrão: hoje;
+    a rota garante a janela de RETRO_DAYS). As pontuais não dependem do dia."""
     today = app_today()
+    day = day or today
+    mask = work_mask(user_id)
+    # `done_today` = concluída no dia selecionado (nome mantido por compatibilidade).
+    # Hoje: só as ativas (removeu, some na hora). Dias passados: as que eram
+    # vigentes naquele dia, inclusive as desativadas depois.
+    filtro = " r.active" if day == today else _VIGENTE_NO_DIA
     recurring = db.query_all(
         """
         SELECT r.id, r.label, r.position,
                (c.id IS NOT NULL) AS done_today
           FROM recurring_tasks r
           LEFT JOIN recurring_completions c
-                 ON c.task_id = r.id AND c.completed_date = %s
-         WHERE r.user_id = %s AND r.active = true
+                 ON c.task_id = r.id AND c.completed_date = %(day)s
+         WHERE r.user_id = %(uid)s AND"""
+        + filtro
+        + """
          ORDER BY r.position, r.id
         """,
-        (today, user_id),
+        {"uid": user_id, "day": day, "tz": config.APP_TZ},
     )
     in_progress = db.query_all(
         """
@@ -58,7 +118,16 @@ def get_board(user_id: int) -> dict:
         """,
         (user_id,),
     )
-    return {"recurring": recurring, "in_progress": in_progress, "done": done}
+    min_day, _ = board_day_range(today)
+    return {
+        "recurring": recurring,
+        "in_progress": in_progress,
+        "done": done,
+        "day": day,
+        "today": today,
+        "min_day": min_day,
+        "work_day": is_work_day(day, mask),
+    }
 
 
 # Datas de referência (hoje / início da semana=DOMINGO / início do mês) no fuso
@@ -74,61 +143,9 @@ _REF_DATES = """
     )
 """
 
-# Grupo A — recorrentes. Um "slot" = (uma recorrente vigente em um dia D do
-# período). Vigência de cada tarefa = [start_d, end_d]:
-#   start_d = created_at::date  (no fuso da app)
-#   end_d   = COALESCE(deactivated_at::date, hoje)   (inclusive)
-# Assim: tarefa ativa conta até hoje; tarefa desativada conta só até o dia da
-# desativação (dias posteriores NÃO geram slots); tarefa criada no meio do
-# período não infla dias anteriores à criação.
-#
-# Denominador (slots) = soma, por tarefa, dos dias do período ∩ [start_d, end_d].
-# Numerador (done) = completions cujo dia caiu DENTRO da vigência da tarefa —
-# NÃO filtramos por `active` de hoje, senão o histórico de tarefas desativadas
-# sumiria. (Toda completion foi criada num dia em que a tarefa estava vigente.)
-#
-# Reativação: o endpoint zera deactivated_at e AVANÇA created_at para agora, ou
-# seja a vigência recomeça — os dias mortos não voltam ao denominador nem as
-# completions antigas ao numerador (ver recurring.py).
-#
-# LEAST(week_start, month_start): no início do mês a semana atual pode começar
-# no mês anterior; a janela de busca precisa cobrir semana E mês.
-_DASH_RECURRING_SQL = _REF_DATES + """
-    , tw AS (
-        SELECT
-            r.id,
-            (r.created_at AT TIME ZONE %(tz)s)::date AS start_d,
-            COALESCE((r.deactivated_at AT TIME ZONE %(tz)s)::date, p.today) AS end_d
-          FROM p, recurring_tasks r
-         WHERE r.user_id = %(uid)s
-    ),
-    slots AS (
-        SELECT
-            COALESCE(SUM(GREATEST(LEAST(p.today, tw.end_d) - GREATEST(p.today,       tw.start_d) + 1, 0)), 0)::int AS day_slots,
-            COALESCE(SUM(GREATEST(LEAST(p.today, tw.end_d) - GREATEST(p.week_start,  tw.start_d) + 1, 0)), 0)::int AS week_slots,
-            COALESCE(SUM(GREATEST(LEAST(p.today, tw.end_d) - GREATEST(p.month_start, tw.start_d) + 1, 0)), 0)::int AS month_slots
-          FROM p, tw
-    ),
-    done AS (
-        SELECT
-            count(*) FILTER (WHERE c.completed_date =  p.today)::int       AS day_done,
-            count(*) FILTER (WHERE c.completed_date >= p.week_start)::int  AS week_done,
-            count(*) FILTER (WHERE c.completed_date >= p.month_start)::int AS month_done
-          FROM p
-          LEFT JOIN (recurring_completions c JOIN tw ON tw.id = c.task_id)
-                 ON c.user_id = %(uid)s
-                AND c.completed_date BETWEEN LEAST(p.week_start, p.month_start) AND p.today
-                AND c.completed_date BETWEEN tw.start_d AND tw.end_d
-    )
-    SELECT
-        done.day_done,
-        GREATEST(slots.day_slots   - done.day_done,   0) AS day_open,
-        done.week_done,
-        GREATEST(slots.week_slots  - done.week_done,  0) AS week_open,
-        done.month_done,
-        GREATEST(slots.month_slots - done.month_done, 0) AS month_open
-      FROM p, slots, done
-"""
+# Grupo A — recorrentes: calculado em Python (_recurring_kpis), junto com os
+# gráficos, para que "devido" siga uma regra só: um slot = (recorrente vigente,
+# dia ÚTIL do dono). Conclusão em dia não útil conta como "extra".
 
 # Grupo B — pontuais. Concluído = worklog 'done' com completed_at no período
 # (no fuso da app). "Em aberto" = backlog atual (status <> 'done'), igual para
@@ -151,58 +168,8 @@ _DASH_PONTUAL_SQL = _REF_DATES + """
 """
 
 
-def get_dashboard(user_id: int) -> dict:
-    params = {"uid": user_id, "tz": config.APP_TZ}
-    a = db.query_one(_DASH_RECURRING_SQL, params)
-    b = db.query_one(_DASH_PONTUAL_SQL, params)
-    return {
-        "recurring": {
-            "day":   {"done": a["day_done"],   "open": a["day_open"]},
-            "week":  {"done": a["week_done"],  "open": a["week_open"]},
-            "month": {"done": a["month_done"], "open": a["month_open"]},
-        },
-        "pontual": {
-            "day":   {"done": b["day_done"],   "open": b["open_now"]},
-            "week":  {"done": b["week_done"],  "open": b["open_now"]},
-            "month": {"done": b["month_done"], "open": b["open_now"]},
-        },
-        "analytics": get_dashboard_analytics(user_id),
-    }
-
-
-# Janelas dos gráficos analíticos (em dias / semanas, sempre no fuso do app).
-_HEAT_WEEKS = 8          # série diária: calendário mostra 4 sem., tendência 8 sem.
-_ADHERENCE_DAYS = 30     # ranking de aderência por tarefa
-_THROUGHPUT_WEEKS = 4    # vazão semanal de pontuais
-_CYCLE_DAYS = 90         # tempo de ciclo das pontuais
-_WEEKDAY_WEEKS = 8       # produtividade por dia da semana
-_STREAK_LOOKBACK = 120   # histórico p/ calcular a sequência (streak) atual
-
-
-def _current_streak(dates: set, today: date) -> int:
-    """Dias consecutivos concluídos terminando em hoje (ou ontem, se hoje ainda
-    não foi concluído — o dia em aberto não quebra a sequência)."""
-    anchor = today if today in dates else today - timedelta(days=1)
-    streak = 0
-    d = anchor
-    while d in dates:
-        streak += 1
-        d -= timedelta(days=1)
-    return streak
-
-
-def get_dashboard_analytics(user_id: int) -> dict:
-    """Séries e recortes analíticos do dashboard.
-
-    Estratégia: puxamos poucos conjuntos crus do banco (tarefas + vigência,
-    completions recentes, pontuais concluídas recentes, e um snapshot agregado
-    do backlog) e derivamos TODOS os gráficos em Python. Além de simples, isso
-    torna a agregação testável sem Postgres (só o SQL cru precisaria dele).
-    Toda data já vem no fuso do app; `today` é a referência única.
-    """
+def _recurring_tasks_and_completions(user_id: int, since: date, until: date):
     tz = config.APP_TZ
-    today = app_today()
-
     tasks = db.query_all(
         """
         SELECT r.id, r.label,
@@ -221,8 +188,95 @@ def get_dashboard_analytics(user_id: int) -> dict:
           FROM recurring_completions
          WHERE user_id = %s AND completed_date BETWEEN %s AND %s
         """,
-        (user_id, today - timedelta(days=_STREAK_LOOKBACK), today),
+        (user_id, since, until),
     )
+    return tasks, completions
+
+
+def _recurring_kpis(tasks, completions, mask: int, today: date) -> dict:
+    """Dia/semana/mês: done = conclusões em dia útil dentro da vigência;
+    open = slots úteis ainda não concluídos; extra = conclusões em dia não útil."""
+    by_id = {t["id"]: t for t in tasks}
+    periods = {"day": today, "week": _week_start(today), "month": today.replace(day=1)}
+    out = {}
+    for key, ps in periods.items():
+        slots = sum(
+            _work_days_between(max(ps, t["start_d"]), min(today, t["end_d"]), mask)
+            for t in tasks
+        )
+        done = extra = 0
+        for c in completions:
+            t = by_id.get(c["task_id"])
+            d = c["completed_date"]
+            if not t or not (ps <= d <= today) or not (t["start_d"] <= d <= t["end_d"]):
+                continue
+            if is_work_day(d, mask):
+                done += 1
+            else:
+                extra += 1
+        out[key] = {"done": done, "open": max(slots - done, 0), "extra": extra}
+    return out
+
+
+def get_dashboard(user_id: int) -> dict:
+    params = {"uid": user_id, "tz": config.APP_TZ}
+    today = app_today()
+    mask = work_mask(user_id)
+    tasks, completions = _recurring_tasks_and_completions(
+        user_id, today - timedelta(days=_STREAK_LOOKBACK), today
+    )
+    b = db.query_one(_DASH_PONTUAL_SQL, params)
+    return {
+        "work_days": mask,
+        "recurring": _recurring_kpis(tasks, completions, mask, today),
+        "pontual": {
+            "day":   {"done": b["day_done"],   "open": b["open_now"]},
+            "week":  {"done": b["week_done"],  "open": b["open_now"]},
+            "month": {"done": b["month_done"], "open": b["open_now"]},
+        },
+        "analytics": get_dashboard_analytics(user_id, tasks, completions, mask, today),
+    }
+
+
+# Janelas dos gráficos analíticos (em dias / semanas, sempre no fuso do app).
+_HEAT_WEEKS = 8          # série diária: calendário mostra 4 sem., tendência 8 sem.
+_ADHERENCE_DAYS = 30     # ranking de aderência por tarefa
+_THROUGHPUT_WEEKS = 4    # vazão semanal de pontuais
+_CYCLE_DAYS = 90         # tempo de ciclo das pontuais
+_WEEKDAY_WEEKS = 8       # produtividade por dia da semana
+_STREAK_LOOKBACK = 120   # histórico p/ calcular a sequência (streak) atual
+
+
+def _current_streak(dates: set, today: date, mask: int, start_d: date) -> int:
+    """Dias ÚTEIS consecutivos concluídos terminando no último dia útil.
+
+    Dias não úteis são pulados (não quebram nem somam). Se hoje é útil e ainda
+    não foi concluído, começa do dia útil anterior: o dia em aberto não quebra
+    a sequência. Para antes da criação da tarefa ou do limite de histórico."""
+    floor = max(start_d, today - timedelta(days=_STREAK_LOOKBACK))
+    d = today
+    if is_work_day(d, mask) and d not in dates:
+        d -= timedelta(days=1)
+    streak = 0
+    while d >= floor:
+        if is_work_day(d, mask):
+            if d not in dates:
+                break
+            streak += 1
+        d -= timedelta(days=1)
+    return streak
+
+
+def get_dashboard_analytics(user_id: int, tasks, completions, mask: int, today: date) -> dict:
+    """Séries e recortes analíticos do dashboard.
+
+    Recebe as recorrentes e as conclusões já lidas por get_dashboard e deriva
+    TODOS os gráficos em Python. "Devido" segue a mesma regra dos indicadores:
+    só dia útil do dono gera slot; conclusão em dia não útil é "extra" (aparece
+    no gráfico por dia da semana, mas não na aderência). Toda data já vem no
+    fuso do app; `today` é a referência única.
+    """
+    tz = config.APP_TZ
     pont = db.query_all(
         """
         SELECT (completed_at AT TIME ZONE %s)::date AS done_d,
@@ -254,7 +308,7 @@ def get_dashboard_analytics(user_id: int) -> dict:
     )
 
     # Índices das completions de recorrentes.
-    done_by_date: dict[date, int] = {}
+    done_by_date: dict[date, int] = {}   # todas as conclusões (gráfico por dia da semana)
     dates_by_task: dict[int, set] = {}
     for c in completions:
         d = c["completed_date"]
@@ -268,8 +322,17 @@ def get_dashboard_analytics(user_id: int) -> dict:
     heat_days = []
     d = heat_start
     while d <= today:
-        slots = sum(1 for t in tasks if t["start_d"] <= d <= t["end_d"])
-        heat_days.append({"date": d, "slots": slots, "done": done_by_date.get(d, 0)})
+        work = is_work_day(d, mask)
+        vig = sum(1 for t in tasks if t["start_d"] <= d <= t["end_d"])
+        n = done_by_date.get(d, 0)
+        # Dia não útil: sem slots (quadro vazio no calendário) e as conclusões
+        # vão para `extra`, para não inflar a tendência semanal (done/slots).
+        heat_days.append({
+            "date": d,
+            "slots": vig if work else 0,
+            "done": n if work else 0,
+            "extra": 0 if work else n,
+        })
         d += timedelta(days=1)
 
     # 2) Ranking de aderência por tarefa (últimos _ADHERENCE_DAYS) + streak atual.
@@ -278,14 +341,14 @@ def get_dashboard_analytics(user_id: int) -> dict:
     for t in tasks:
         s = max(win_start, t["start_d"])
         e = min(today, t["end_d"])
-        slots = (e - s).days + 1 if e >= s else 0
+        slots = _work_days_between(s, e, mask)
         if slots <= 0:
-            continue  # tarefa não vigente na janela: fora do ranking
+            continue  # sem dia útil vigente na janela: fora do ranking
         dts = dates_by_task.get(t["id"], set())
-        done = sum(1 for dd in dts if s <= dd <= e)
+        done = sum(1 for dd in dts if s <= dd <= e and is_work_day(dd, mask))
         task_rows.append({
             "label": t["label"], "slots": slots, "done": done,
-            "streak": _current_streak(dts, today),
+            "streak": _current_streak(dts, today, mask, t["start_d"]),
         })
     task_rows.sort(key=lambda r: (r["done"] / r["slots"], r["done"]), reverse=True)
 
@@ -352,27 +415,8 @@ def get_report_range(user_id: int, start: date, end: date) -> dict:
     'end' e limitado a hoje pela rota (sem dias futuros).
     """
     tz = config.APP_TZ
-
-    tasks = db.query_all(
-        """
-        SELECT r.id, r.label,
-               (r.created_at AT TIME ZONE %s)::date AS start_d,
-               COALESCE((r.deactivated_at AT TIME ZONE %s)::date,
-                        (now() AT TIME ZONE %s)::date) AS end_d
-          FROM recurring_tasks r
-         WHERE r.user_id = %s
-         ORDER BY r.position, r.id
-        """,
-        (tz, tz, tz, user_id),
-    )
-    completions = db.query_all(
-        """
-        SELECT task_id, completed_date
-          FROM recurring_completions
-         WHERE user_id = %s AND completed_date BETWEEN %s AND %s
-        """,
-        (user_id, start, end),
-    )
+    mask = work_mask(user_id)
+    tasks, completions = _recurring_tasks_and_completions(user_id, start, end)
     worklog = db.query_all(
         """
         SELECT title, description,
@@ -397,27 +441,34 @@ def get_report_range(user_id: int, start: date, end: date) -> dict:
     active_dates = sorted(set(done_by_date) | set(pont_by_date))
 
     days = []
-    total_done = total_slots = total_pont = 0
+    total_done = total_slots = total_pont = total_extra = 0
     for d in active_dates:
         done_ids = done_by_date.get(d, set())
-        rec = [
-            {"label": t["label"], "done": t["id"] in done_ids}
-            for t in tasks
-            if t["start_d"] <= d <= t["end_d"]
-        ]
-        n_done = sum(1 for r in rec if r["done"])
+        vigentes = [t for t in tasks if t["start_d"] <= d <= t["end_d"]]
+        work = is_work_day(d, mask)
+        if work:
+            # Dia útil: todas as vigentes, concluídas ou não.
+            rec = [{"label": t["label"], "done": t["id"] in done_ids} for t in vigentes]
+            n_done, n_total, n_extra = sum(1 for r in rec if r["done"]), len(rec), 0
+        else:
+            # Dia não útil: nada era devido; só as concluídas, como extra.
+            rec = [{"label": t["label"], "done": True} for t in vigentes if t["id"] in done_ids]
+            n_done, n_total, n_extra = 0, 0, len(rec)
         pont = pont_by_date.get(d, [])
         days.append(
             {
                 "date": d,
+                "work_day": work,
                 "recurring": rec,
                 "recurring_done": n_done,
-                "recurring_total": len(rec),
+                "recurring_total": n_total,
+                "recurring_extra": n_extra,
                 "pontual": pont,
             }
         )
         total_done += n_done
-        total_slots += len(rec)
+        total_slots += n_total
+        total_extra += n_extra
         total_pont += len(pont)
 
     return {
@@ -427,6 +478,7 @@ def get_report_range(user_id: int, start: date, end: date) -> dict:
         "summary": {
             "recurring_done": total_done,
             "recurring_total": total_slots,
+            "recurring_extra": total_extra,
             "pontual_done": total_pont,
             "active_days": len(days),
         },

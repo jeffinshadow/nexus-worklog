@@ -5,13 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from .. import db
 from ..config import config
 from ..deps import (
+    active_user_csrf,
     clear_session_cookie,
     client_ip,
     current_user,
     current_user_csrf,
     set_session_cookie,
 )
-from ..schemas import ChangePasswordIn, LoginIn, RegisterIn
+from ..schemas import ChangePasswordIn, LoginIn, RegisterIn, SettingsIn
 from ..security import (
     burn_password_check,
     hash_password,
@@ -33,6 +34,7 @@ def _public(row: dict, csrf: str) -> dict:
         "email": row["email"],
         "role": row["role"],
         "must_change_password": row["must_change_password"],
+        "work_days": row["work_days"],
         "csrf_token": csrf,
     }
 
@@ -126,3 +128,10 @@ def change_password(data: ChangePasswordIn, session=Depends(current_user_csrf)):
         (session["user_id"], session["sid"]),
     )
     return {"ok": True}
+
+
+@router.post("/settings")
+def save_settings(data: SettingsIn, session=Depends(active_user_csrf)):
+    """Preferências do próprio usuário (hoje: dias úteis)."""
+    db.execute("UPDATE users SET work_days = %s WHERE id = %s", (data.work_days, session["user_id"]))
+    return {"ok": True, "work_days": data.work_days}

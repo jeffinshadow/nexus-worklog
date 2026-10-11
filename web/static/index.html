@@ -12,8 +12,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Nexus Worklog">
-  <link rel="stylesheet" href="/css/tokens.css?v=3">
-  <link rel="stylesheet" href="/css/app.css?v=3">
+  <link rel="stylesheet" href="/css/tokens.css?v=4">
+  <link rel="stylesheet" href="/css/app.css?v=4">
 </head>
 <body>
   <!-- Sprite de icones (Material Symbols, apenas os usados). SVG inline e
@@ -28,6 +28,7 @@
     <symbol id="icon-reports" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-8 14H9V9h2v8zm4 0h-2V7h2v10zm-4 0H5v-4h2v4z"/></symbol>
     <symbol id="icon-dashboard" viewBox="0 0 24 24"><path d="M11 2v20c-5.07-.5-9-4.79-9-10s3.93-9.5 9-10zm2.03 0v8.99H22c-.47-4.74-4.24-8.52-8.97-8.99zm0 11.01V22c4.74-.47 8.5-4.25 8.97-8.99h-8.97z"/></symbol>
     <symbol id="icon-admin" viewBox="0 0 24 24"><path d="M12 1 3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-1.06 14L7.4 11.46l1.41-1.41 2.12 2.12 4.24-4.24 1.42 1.41L10.94 15z"/></symbol>
+    <symbol id="icon-settings" viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.31.06-.62.06-.94s-.02-.63-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7.03 7.03 0 0 0-1.62-.94l-.36-2.54A.48.48 0 0 0 13.92 2h-3.84a.48.48 0 0 0-.48.41l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.72 8.47a.48.48 0 0 0 .12.61l2.03 1.58c-.05.31-.07.63-.07.94s.02.63.06.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.49.49 0 0 0-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></symbol>
     <symbol id="icon-chevron" viewBox="0 0 24 24"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6z"/></symbol>
   </svg>
 
@@ -54,6 +55,9 @@
 
     <div class="topbar-actions">
       <span class="who" id="who"></span>
+      <button class="icon" id="btn-settings" title="Configurações" aria-label="Configurações">
+        <svg class="inline-icon" viewBox="0 0 24 24"><use href="#icon-settings"></use></svg>
+      </button>
       <button class="icon" id="btn-logout" title="Sair" aria-label="Sair">
         <svg class="inline-icon" viewBox="0 0 24 24"><use href="#icon-logout"></use></svg>
       </button>
@@ -136,7 +140,7 @@
     </form>
   </dialog>
 
-  <script type="module" src="/js/app.js?v=3"></script>
-  <script type="module" src="/js/pwa.js?v=3"></script>
+  <script type="module" src="/js/app.js?v=4"></script>
+  <script type="module" src="/js/pwa.js?v=4"></script>
 </body>
 </html>

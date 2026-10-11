@@ -25,9 +25,9 @@ export async function mount(root, opts = {}) {
     ]),
     section("Recorrentes · consistência", [
       h("div", { class: "consist-grid" },
-        chartCard("Aderência diária", "Últimas 4 semanas — % concluído por dia.", heatmap(a.heatmap), "compact heat"),
+        chartCard("Aderência diária", "Últimas 4 semanas — % concluído por dia útil.", heatmap(a.heatmap), "compact heat"),
         chartCard("Tendência semanal", "Últimas 8 semanas — % de aderência.", weeklyTrend(a.heatmap), "compact trend"),
-        chartCard("Aderência por tarefa", "Últimos 30 dias — dias concluídos ÷ dias vigentes.", taskRanking(a.task_adherence), "grow"),
+        chartCard("Aderência por tarefa", "Últimos 30 dias — dias úteis concluídos ÷ dias úteis vigentes.", taskRanking(a.task_adherence), "grow"),
       ),
     ]),
     section("Pontuais · fluxo", [
@@ -124,14 +124,14 @@ function parseISO(s) {
 function kpiGroup(title, g, isRatio) {
   const tiles = KPI_LABELS.map((label, i) => {
     const cell = g[KPI_KEYS[i]];
-    return isRatio ? ratioTile(label, cell.done, cell.open) : countTile(label, cell.done);
+    return isRatio ? ratioTile(label, cell.done, cell.open, cell.extra) : countTile(label, cell.done);
   });
   return h("div", { class: "dash-group" },
     h("h3", { class: "dash-group-title", text: title }),
     h("div", { class: "kpi-row" }, ...tiles));
 }
 
-function ratioTile(label, done, open) {
+function ratioTile(label, done, open, extra = 0) {
   const total = done + open;
   const empty = total === 0;
   const pct = empty ? 0 : Math.round((done / total) * 100);
@@ -141,7 +141,11 @@ function ratioTile(label, done, open) {
     h("span", { class: "kpi-label", text: label }),
     h("span", { class: "kpi-value" + (empty ? " muted" : ""), text: empty ? "—" : pct + "%" }),
     h("div", { class: "kpi-track", role: "img", "aria-label": `${pct}% concluídas` }, fill),
-    h("span", { class: "kpi-sub", text: empty ? "sem tarefas" : `${done} de ${total}` }));
+    h("span", {
+      class: "kpi-sub",
+      text: (empty ? "nenhuma devida" : `${done} de ${total}`) + (extra ? ` · +${extra} extra` : ""),
+      title: extra ? "Concluídas em dia não útil: ficam salvas, mas não entram no percentual." : null,
+    }));
 }
 
 function countTile(label, done) {

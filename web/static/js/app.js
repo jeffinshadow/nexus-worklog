@@ -3,6 +3,7 @@ import * as board from "./board.js";
 import * as dashboard from "./dashboard.js";
 import * as reports from "./reports.js";
 import * as admin from "./admin.js";
+import { openSettings } from "./settings.js";
 
 const VIEWS = {
   board: { el: "view-board", mount: (el) => board.mount(el) },
@@ -12,8 +13,10 @@ const VIEWS = {
 };
 
 let me = null;
+let currentView = "board";
 
 function switchView(name) {
+  currentView = name;
   for (const [key, v] of Object.entries(VIEWS)) {
     document.getElementById(v.el).classList.toggle("hidden", key !== name);
   }
@@ -32,6 +35,11 @@ function setupApp() {
   for (const tab of document.querySelectorAll("#tabs button")) {
     tab.addEventListener("click", () => switchView(tab.dataset.view));
   }
+
+  // Mudar os dias úteis muda o "devido": recarrega a tela atual.
+  document.getElementById("btn-settings").addEventListener("click", () =>
+    openSettings(me, () => switchView(currentView))
+  );
 
   document.getElementById("btn-logout").addEventListener("click", async () => {
     try {
@@ -78,7 +86,10 @@ async function boot() {
   document.getElementById("who").textContent =
     me.email + (me.role === "admin" ? " · admin" : "");
 
-  if (me.must_change_password) showChangePassword();
+  if (me.must_change_password) {
+    document.getElementById("btn-settings").classList.add("hidden");
+    showChangePassword();
+  }
   else setupApp();
 }
 
