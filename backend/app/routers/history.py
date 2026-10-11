@@ -35,6 +35,9 @@ ACTION_LABELS = {
     "token.revoke": "revogou a chave de API",
     "user.invite": "criou a conta (convite)",
     "user.reset_password": "redefiniu a senha",
+    "branding.update": "alterou os textos da identidade visual",
+    "branding.logo": "enviou um novo logo",
+    "branding.logo_reset": "restaurou o logo padrão",
     "undo": "desfez uma ação",
 }
 

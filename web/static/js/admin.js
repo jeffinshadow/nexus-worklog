@@ -1,6 +1,7 @@
 import { api } from "./api.js";
 import { h, icon, clear } from "./dom.js";
-import { modal } from "./ui.js";
+import { errorToast, modal, toast } from "./ui.js";
+import { applyBranding } from "./branding.js";
 import * as board from "./board.js";
 import * as dashboard from "./dashboard.js";
 import * as reports from "./reports.js";
@@ -11,7 +12,26 @@ const SUBVIEWS = [
   { key: "reports", label: "Relatórios" },
 ];
 
+// Admin: usuários (visão somente leitura + convite/reset) e identidade visual.
 export async function mount(root) {
+  clear(root);
+  const seg = h("div", { class: "seg", role: "tablist" });
+  const body = h("div");
+  const abas = [["usuarios", "Usuários", mountUsers], ["identidade", "Identidade visual", mountBranding]];
+  for (const [key, label, fn] of abas) {
+    seg.append(h("button", {
+      type: "button", class: "chip-btn", role: "tab", "aria-selected": key === "usuarios" ? "true" : "false", text: label,
+      onClick: () => {
+        for (const b of seg.children) b.setAttribute("aria-selected", b.textContent === label ? "true" : "false");
+        fn(body);
+      },
+    }));
+  }
+  root.append(seg, body);
+  await mountUsers(body);
+}
+
+async function mountUsers(root) {
   clear(root);
   const users = await api.get("/admin/users");
   if (!users.length) {
@@ -142,7 +162,7 @@ export async function mount(root) {
         const res = await api.post("/admin/users", { email: input.value.trim() });
         dlg.close();
         showPassword(res.email, res.temp_password);
-        mount(root); // recarrega a lista com o novo usuário
+        mountUsers(root); // recarrega a lista com o novo usuário
       } catch (e) {
         err.textContent =
           e.status === 409 ? "Esse e-mail já tem conta." :
@@ -194,4 +214,76 @@ export async function mount(root) {
 
   select.addEventListener("change", renderCurrent);
   renderCurrent();
+}
+
+
+// ---- Identidade visual: logo + duas linhas do lockup (menu e login) ----
+async function mountBranding(root) {
+  clear(root);
+  let brand = await api.get("/branding");
+
+  const preview = h("div", { class: "lockup lockup--preview" },
+    h("img", { class: "lockup-mark", alt: "", src: brand.logo || "/img/dragon-mark.svg" }),
+    h("span", { class: "lockup-type" }, h("span", { text: brand.line1 }), h("span", { text: brand.line2 })));
+  const l1 = h("input", { type: "text", maxlength: "24", value: brand.line1 });
+  const l2 = h("input", { type: "text", maxlength: "24", value: brand.line2 });
+  const sync = () => {
+    preview.querySelectorAll(".lockup-type span")[0].textContent = l1.value || "—";
+    preview.querySelectorAll(".lockup-type span")[1].textContent = l2.value;
+  };
+  l1.addEventListener("input", sync);
+  l2.addEventListener("input", sync);
+
+  const file = h("input", { type: "file", accept: "image/svg+xml,image/png,image/webp" });
+  const err = h("p", { class: "error-text" });
+
+  const apply = (b) => {
+    brand = b;
+    preview.querySelector(".lockup-mark").src = b.logo || "/img/dragon-mark.svg";
+    applyBranding(b); // atualiza o menu na hora
+  };
+
+  const saveText = h("button", { type: "button", class: "btn btn-primary", text: "Salvar textos", onClick: async () => {
+    err.textContent = "";
+    try {
+      apply(await api.put("/admin/branding", { line1: l1.value.trim(), line2: l2.value.trim() }));
+      toast("Textos salvos.");
+    } catch (e) { err.textContent = e.message || "Falha ao salvar."; }
+  } });
+
+  const upload = h("button", { type: "button", class: "btn btn-ghost", onClick: async () => {
+    err.textContent = "";
+    const f = file.files && file.files[0];
+    if (!f) { err.textContent = "Escolha um arquivo SVG, PNG ou WebP."; return; }
+    if (f.size > 256 * 1024) { err.textContent = "O arquivo passa de 256 KB."; return; }
+    try {
+      apply(await api.upload("/admin/branding/logo", f));
+      file.value = "";
+      toast("Logo atualizado.");
+    } catch (e) { err.textContent = e.message || "Falha ao enviar."; }
+  } }, icon("add"), "Enviar logo");
+
+  const reset = h("button", { type: "button", class: "btn btn-text", text: "Restaurar dragão padrão", onClick: async () => {
+    try { apply(await api.del("/admin/branding/logo")); toast("Logo padrão restaurado."); }
+    catch (e) { errorToast(e); }
+  } });
+
+  root.append(
+    h("div", { class: "settings-grid" },
+      h("section", { class: "panel" },
+        h("div", { class: "panel-head" }, h("h2", { text: "Prévia" })),
+        h("div", { class: "brand-preview" }, preview),
+        h("p", { class: "help", text: "Aparece no menu lateral, no login e na troca de senha. O logo fica com a altura das duas linhas de texto." })),
+      h("section", { class: "panel" },
+        h("div", { class: "panel-head" }, h("h2", { text: "Textos" })),
+        h("div", { class: "field-row" },
+          h("div", { class: "field" }, h("label", { text: "Linha 1 (destaque)" }), l1),
+          h("div", { class: "field" }, h("label", { text: "Linha 2 (opcional)" }), l2)),
+        saveText),
+      h("section", { class: "panel" },
+        h("div", { class: "panel-head" }, h("h2", { text: "Logo" })),
+        h("p", { class: "help", text: "SVG, PNG ou WebP, até 256 KB. Prefira SVG ou PNG com fundo transparente. SVG com script, eventos ou links externos é recusado." }),
+        h("div", { class: "field" }, file),
+        err,
+        h("div", { class: "dialog-actions" }, reset, h("div", { class: "spacer" }), upload))));
 }

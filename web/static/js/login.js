@@ -1,4 +1,7 @@
 import { api } from "./api.js";
+import { loadBranding } from "./branding.js";
+
+loadBranding();
 
 const tabLogin = document.getElementById("tab-login");
 const tabRegister = document.getElementById("tab-register");

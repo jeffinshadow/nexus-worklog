@@ -8,6 +8,7 @@ import * as reports from "./reports.js";
 import * as history from "./history.js";
 import * as settings from "./settings.js";
 import * as admin from "./admin.js";
+import { loadBranding } from "./branding.js";
 
 let me = null;
 
@@ -18,7 +19,7 @@ const VIEWS = {
   relatorios: { title: "Relatórios", eyebrow: "exportar em PDF", mount: (el) => reports.mount(el) },
   historico: { title: "Histórico", eyebrow: "o que mudou, por quem", mount: (el) => history.mount(el) },
   config: { title: "Configurações", eyebrow: "dias úteis · chaves de API · IA · conta", mount: (el, ctx) => settings.mount(el, ctx) },
-  admin: { title: "Admin", eyebrow: "somente leitura", mount: (el) => admin.mount(el), adminOnly: true },
+  admin: { title: "Admin", eyebrow: "usuários · identidade visual", mount: (el) => admin.mount(el), adminOnly: true },
   mais: { title: "Mais", mount: (el) => mountMore(el) },
 };
 
@@ -105,6 +106,7 @@ function showChangePassword() {
 }
 
 async function boot() {
+  loadBranding();
   try {
     me = await api.get("/auth/me");
   } catch {

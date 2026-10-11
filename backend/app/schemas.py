@@ -52,6 +52,11 @@ class TokenIn(BaseModel):
     expires_in_days: Optional[int] = Field(default=90, ge=1, le=365)
 
 
+class BrandingIn(BaseModel):
+    line1: str = Field(min_length=1, max_length=24)
+    line2: str = Field(default="", max_length=24)
+
+
 class SettingsIn(BaseModel):
     # Máscara de dias úteis (domingo = bit 0). Ver sql/003_user_work_days.sql.
     work_days: int = Field(ge=1, le=127)

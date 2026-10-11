@@ -69,10 +69,25 @@ async function download(path) {
   URL.revokeObjectURL(url);
 }
 
+// Envia um arquivo como corpo bruto (sem multipart), com o tipo do arquivo.
+async function upload(path, file) {
+  const res = await fetch("/api" + path, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": file.type || "application/octet-stream", ...(CSRF ? { "X-CSRF-Token": CSRF } : {}) },
+    body: file,
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw Object.assign(new Error((data && data.detail) || res.statusText), { status: res.status });
+  return data;
+}
+
 export const api = {
   get: (p) => request("GET", p),
   post: (p, b) => request("POST", p, b),
   patch: (p, b) => request("PATCH", p, b),
+  put: (p, b) => request("PUT", p, b),
+  upload,
   del: (p) => request("DELETE", p),
   download,
   setCsrf,

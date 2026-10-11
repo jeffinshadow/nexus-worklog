@@ -72,13 +72,15 @@ input::placeholder { color: var(--dim); }
 .error-text { color: var(--error); font-size: .85rem; min-height: 1.2em; margin-bottom: 8px; }
 
 /* -------------------------------------------------------------- marca -- */
-.lockup { display: inline-flex; align-items: center; gap: 10px; color: var(--on-surface); }
-.lockup-mark { width: 32px; height: 32px; }
-.lockup-type { display: flex; flex-direction: column; font-weight: 700; font-size: 1rem; line-height: .92; letter-spacing: -.02em; }
+/* Lockup único (menu, login, troca de senha): a marca tem exatamente a altura
+   do bloco de duas linhas e fica no mesmo eixo dele. Vale para o dragão padrão
+   (recortado no contorno do desenho) e para logos enviados pelo admin. */
+.lockup { --lock-fs: 1rem; display: inline-flex; align-items: center; gap: .55em; color: var(--on-surface); font-size: var(--lock-fs); }
+.lockup-mark { display: block; height: 1.84em; width: auto; max-width: 3.2em; object-fit: contain; flex: none; }
+.lockup-type { display: flex; flex-direction: column; justify-content: center; font-weight: 700; line-height: .92; letter-spacing: -.02em; }
 .lockup-type span:last-child { color: var(--on-surface-variant); }
-.lockup--center { display: flex; justify-content: center; margin-bottom: 20px; }
-.lockup--center .lockup-mark { width: 44px; height: 44px; }
-.lockup--center .lockup-type { font-size: 1.25rem; }
+.lockup-type span:last-child:empty { display: none; }
+.lockup--center { display: flex; width: fit-content; margin: 0 auto 22px; --lock-fs: 1.3rem; }
 
 /* --------------------------------------------------------------- shell -- */
 .app { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; }
@@ -87,7 +89,7 @@ input::placeholder { color: var(--dim); }
   padding: 22px 14px 16px; border-right: 1px solid var(--outline-variant);
   background: linear-gradient(180deg, #151517, var(--surface));
 }
-.sidebar > .lockup { padding: 0 10px; }
+.sidebar > .lockup { padding: 0 12px; }
 .nav { display: flex; flex-direction: column; gap: 2px; }
 .nav a, .nav-link {
   display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px;
@@ -391,3 +393,9 @@ dialog p { color: var(--on-surface-variant); font-size: .92rem; }
 .auth-card form { text-align: left; }
 .auth-foot { margin-top: 18px; text-align: center; font-family: var(--font-mono); font-size: .72rem; color: var(--dim); }
 .auth-foot a { color: var(--on-surface-variant); }
+
+/* Admin · identidade visual */
+.brand-preview { display: flex; align-items: center; justify-content: center; min-height: 120px; margin-bottom: 14px; border-radius: 12px; border: 1px dashed var(--line-2); background: radial-gradient(400px circle at 50% 120%, rgba(82,148,226,.14), transparent 60%), var(--surface); }
+.lockup--preview { --lock-fs: 1.6rem; }
+input[type="file"] { padding: 8px; font-size: .86rem; color: var(--on-surface-variant); }
+input[type="file"]::file-selector-button { font: inherit; margin-right: 12px; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line-2); background: rgba(255,255,255,.04); color: var(--on-surface); cursor: pointer; }

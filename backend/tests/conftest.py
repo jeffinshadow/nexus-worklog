@@ -13,7 +13,7 @@ ADMIN_PW_INICIAL = os.environ["ADMIN_INITIAL_PASSWORD"]
 ADMIN_PW = "Admin-Definitiva-Teste-1"
 SENHA_PADRAO = "Senha-Do-Usuario-1"
 
-TABELAS = ["audit_log", "api_tokens", "recurring_completions", "recurring_tasks",
+TABELAS = ["app_branding", "audit_log", "api_tokens", "recurring_completions", "recurring_tasks",
            "worklog_tasks", "sessions", "users"]
 
 
@@ -30,6 +30,8 @@ def _banco_limpo():
         "SELECT tablename FROM pg_tables WHERE schemaname = 'public'")}
     alvo = [t for t in TABELAS if t in existentes]
     db.execute(f"TRUNCATE {', '.join(alvo)} RESTART IDENTITY CASCADE")
+    if "app_branding" in existentes:
+        db.execute("INSERT INTO app_branding (id) VALUES (1) ON CONFLICT (id) DO NOTHING")
     main.seed_admin()
     for limiter in (security.login_limiter, security.register_limiter):
         limiter._hits.clear()
