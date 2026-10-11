@@ -17,6 +17,8 @@ class Config:
 
     SESSION_TTL_DAYS = int(os.environ.get("SESSION_TTL_DAYS", "7"))
     COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "true").lower() == "true"
+    # Cadastro publico. Padrao: fechado (contas criadas pelo admin, por convite).
+    REGISTRATION_OPEN = os.environ.get("REGISTRATION_OPEN", "false").lower() == "true"
     APP_TZ = os.environ.get("APP_TZ", "America/Sao_Paulo")
 
     SESSION_COOKIE = "session"

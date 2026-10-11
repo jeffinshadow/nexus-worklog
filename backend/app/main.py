@@ -1,7 +1,9 @@
+import logging
 import pathlib
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from pydantic import EmailStr, TypeAdapter, ValidationError
 
 from . import db
 from .config import config
@@ -20,6 +22,15 @@ def seed_admin() -> None:
     if not config.ADMIN_EMAIL or not config.ADMIN_INITIAL_PASSWORD:
         return
     email = config.ADMIN_EMAIL.lower()
+    try:
+        # O login valida o e-mail; um endereco que nao passa aqui (ex.: dominio
+        # reservado como .test ou .local) criaria um admin que nunca entra.
+        TypeAdapter(EmailStr).validate_python(email)
+    except ValidationError:
+        logging.getLogger("uvicorn.error").error(
+            "ADMIN_EMAIL invalido (%s): o login recusaria esse endereco. Admin NAO criado.", email
+        )
+        return
     if db.query_one("SELECT 1 FROM users WHERE email = %s", (email,)):
         return
     db.execute(

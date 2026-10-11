@@ -9,9 +9,16 @@ from .security import token_hash
 
 
 def client_ip(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    """IP do cliente para rate limit e logs.
+
+    O nginx SEMPRE sobrescreve X-Client-IP: com o CF-Connecting-IP (posto pela
+    borda da Cloudflare, que o cliente nao controla) ou, sem Cloudflare, com o
+    endereco da conexao. Nao usamos X-Forwarded-For: o primeiro valor dele vem
+    do proprio cliente e pode ser forjado para escapar do rate limit.
+    """
+    real = request.headers.get("x-client-ip")
+    if real:
+        return real.strip()
     return request.client.host if request.client else "unknown"
 
 

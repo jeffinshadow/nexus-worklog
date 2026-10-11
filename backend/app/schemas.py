@@ -15,6 +15,10 @@ class RegisterIn(BaseModel):
     password: str = _PW
 
 
+class InviteIn(BaseModel):
+    email: EmailStr
+
+
 class LoginIn(BaseModel):
     email: EmailStr
     password: str

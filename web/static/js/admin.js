@@ -41,6 +41,12 @@ export async function mount(root) {
     onClick: onReset,
   });
 
+  const inviteBtn = h("button", {
+    class: "tonal",
+    text: "Novo usuário",
+    onClick: onInvite,
+  });
+
   let active = "board";
   const subtabs = h(
     "div",
@@ -65,7 +71,8 @@ export async function mount(root) {
       "div",
       { class: "admin-bar" },
       h("div", { class: "field" }, h("label", { text: "Usuário" }), select),
-      resetBtn
+      resetBtn,
+      inviteBtn
     ),
     subtabs,
     h("p", { class: "readonly-note", text: "Visão somente leitura." }),
@@ -122,6 +129,48 @@ export async function mount(root) {
         })
       )
     );
+  }
+
+  // ---- Novo usuário (convite): conta com senha temporária, troca no 1º login ----
+  function onInvite() {
+    const input = h("input", { type: "email", required: "required", autocomplete: "off" });
+    const err = h("p", { class: "error-text" });
+    const submit = h("button", { type: "submit", text: "Criar conta" });
+    const form = h(
+      "form",
+      {},
+      h("div", { class: "field" }, h("label", { text: "E-mail do convidado" }), input),
+      h("p", {
+        class: "dialog-note",
+        text: "A conta nasce com uma senha temporária, que o convidado troca no primeiro acesso.",
+      }),
+      err,
+      h(
+        "div",
+        { class: "dialog-actions" },
+        h("button", { type: "button", class: "text", text: "Cancelar", onClick: () => dlg.close() }),
+        submit
+      )
+    );
+    form.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      err.textContent = "";
+      submit.disabled = true;
+      try {
+        const res = await api.post("/admin/users", { email: input.value.trim() });
+        dlg.close();
+        showPassword(res.email, res.temp_password);
+        mount(root); // recarrega a lista com o novo usuário
+      } catch (e) {
+        err.textContent =
+          e.status === 409 ? "Esse e-mail já tem conta." :
+          e.status === 422 ? "E-mail inválido." :
+          e.message || "Falha ao criar a conta.";
+        submit.disabled = false;
+      }
+    });
+    const dlg = modal(h("h2", { text: "Novo usuário" }), form);
+    input.focus();
   }
 
   function showPassword(email, pw) {

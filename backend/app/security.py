@@ -15,6 +15,16 @@ def hash_password(password: str) -> str:
     return _ph.hash(password)
 
 
+# Hash de uma senha aleatoria, usado quando o e-mail nao existe: o login gasta
+# o mesmo tempo (um Argon2 completo) com ou sem conta, e o tempo de resposta
+# deixa de revelar quais e-mails estao cadastrados.
+_DUMMY_HASH = _ph.hash(secrets.token_urlsafe(32))
+
+
+def burn_password_check(password: str) -> None:
+    verify_password(_DUMMY_HASH, password)
+
+
 def verify_password(stored_hash: str, password: str) -> bool:
     try:
         _ph.verify(stored_hash, password)
@@ -61,6 +71,8 @@ def token_hash(token: str) -> str:
 class RateLimiter:
     """Janela fixa em memoria. Backend roda em um unico worker."""
 
+    _PRUNE_AT = 10_000  # chaves guardadas antes de varrer as janelas vencidas
+
     def __init__(self, max_hits: int, window_seconds: int):
         self.max = max_hits
         self.window = window_seconds
@@ -68,6 +80,10 @@ class RateLimiter:
 
     def allow(self, key: str) -> bool:
         now = time.monotonic()
+        if len(self._hits) >= self._PRUNE_AT:
+            self._hits = {
+                k: v for k, v in self._hits.items() if now - v[0] < self.window
+            }
         start, count = self._hits.get(key, (now, 0))
         if now - start >= self.window:
             start, count = now, 0
@@ -78,3 +94,5 @@ class RateLimiter:
 
 # Ate 10 tentativas de login por chave (IP e email) a cada 5 minutos.
 login_limiter = RateLimiter(max_hits=10, window_seconds=300)
+# Cadastro publico (quando aberto): ate 5 contas por IP por hora.
+register_limiter = RateLimiter(max_hits=5, window_seconds=3600)

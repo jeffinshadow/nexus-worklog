@@ -67,14 +67,65 @@ if grep -vE '^[[:space:]]*(#|$)' .env | grep -qE 'CHANGE_?ME|your_?secret|placeh
   exit 1
 fi
 
-# --- 4. Deploy ---
+# --- 4. Backup do banco ANTES de qualquer mudança ---
+# O banco de produção é o que não pode se perder. Se o Postgres já está no ar,
+# fazemos um pg_dump (formato custom) e conferimos o índice do arquivo; se o
+# backup falhar, o deploy para aqui, antes de mexer em código ou containers.
+KEEP_BACKUPS="${KEEP_BACKUPS:-14}"
+PREV_COMMIT="$(git rev-parse HEAD)"
+BACKUP=""
+
+if [[ -n "$(docker compose ps --status running -q db 2>/dev/null)" ]]; then
+  mkdir -p -m 700 backups
+  BACKUP="backups/pre-deploy-$(date +%Y%m%d-%H%M%S)-${PREV_COMMIT:0:7}.dump"
+  log "Backup do banco em $BACKUP ..."
+  (
+    umask 077
+    docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$BACKUP"
+  ) || { err "pg_dump falhou. Deploy abortado; nada foi alterado."; rm -f "$BACKUP"; exit 1; }
+
+  tables=$(docker compose exec -T db pg_restore --list < "$BACKUP" 2>/dev/null | grep -c "TABLE DATA" || true)
+  if [[ ! -s "$BACKUP" || "$tables" -lt 1 ]]; then
+    err "Backup vazio ou ilegível ($BACKUP). Deploy abortado; nada foi alterado."
+    exit 1
+  fi
+  log "Backup ok: $(du -h "$BACKUP" | cut -f1), $tables tabelas com dados."
+
+  # Retenção: mantém só os KEEP_BACKUPS mais recentes.
+  ls -1t backups/pre-deploy-*.dump 2>/dev/null | tail -n +"$((KEEP_BACKUPS + 1))" | xargs -r rm --
+else
+  log "Banco ainda não está rodando (primeira instalação?): sem backup a fazer."
+fi
+
+# --- 5. Deploy ---
 log "Atualizando código..."
 git pull --ff-only
 
 log "Subindo containers..."
 docker compose up -d --build
 
+# --- 6. Teste de fumaça: nginx -> backend respondendo pela rede interna ---
+log "Conferindo se a aplicação respondeu..."
+ok=false
+for _ in $(seq 1 30); do
+  if docker compose exec -T web wget -q -O /dev/null http://127.0.0.1/api/auth/config 2>/dev/null; then
+    ok=true; break
+  fi
+  sleep 2
+done
+
 log "Estado dos serviços:"
 docker compose ps
 
-log "Deploy concluído."
+if [[ "$ok" != true ]]; then
+  err "A aplicação não respondeu depois do deploy."
+  err "Rollback do código:  git checkout $PREV_COMMIT && docker compose up -d --build"
+  if [[ -n "$BACKUP" ]]; then
+    err "Rollback do banco (só se uma migration estragou dados):"
+    err "  docker compose exec -T db sh -c 'pg_restore -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" --clean --if-exists' < $BACKUP"
+  fi
+  exit 1
+fi
+
+log "Deploy concluído (antes: ${PREV_COMMIT:0:7}, agora: $(git rev-parse --short HEAD))."
+[[ -n "$BACKUP" ]] && log "Backup pré-deploy: $BACKUP"

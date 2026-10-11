@@ -13,8 +13,10 @@ from ..deps import (
 )
 from ..schemas import ChangePasswordIn, LoginIn, RegisterIn
 from ..security import (
+    burn_password_check,
     hash_password,
     login_limiter,
+    register_limiter,
     needs_rehash,
     new_token,
     password_ok,
@@ -35,8 +37,18 @@ def _public(row: dict, csrf: str) -> dict:
     }
 
 
+@router.get("/config")
+def public_config():
+    """Configuracao publica que a tela de login precisa (sem autenticacao)."""
+    return {"registration_open": config.REGISTRATION_OPEN}
+
+
 @router.post("/register", status_code=201)
-def register(data: RegisterIn):
+def register(data: RegisterIn, request: Request):
+    if not config.REGISTRATION_OPEN:
+        raise HTTPException(status_code=403, detail="cadastro fechado: peça um convite ao administrador")
+    if not register_limiter.allow(f"ip:{client_ip(request)}"):
+        raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
     email = data.email.lower()
     if db.query_one("SELECT 1 FROM users WHERE email = %s", (email,)):
         raise HTTPException(status_code=409, detail="email ja cadastrado")
@@ -55,7 +67,10 @@ def login(data: LoginIn, request: Request, response: Response):
         raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
 
     user = db.query_one("SELECT * FROM users WHERE email = %s", (email,))
-    if not user or not verify_password(user["password_hash"], data.password):
+    if not user:
+        burn_password_check(data.password)  # mesmo custo de um e-mail existente
+        raise HTTPException(status_code=401, detail="credenciais invalidas")
+    if not verify_password(user["password_hash"], data.password):
         raise HTTPException(status_code=401, detail="credenciais invalidas")
 
     if needs_rehash(user["password_hash"]):
@@ -63,6 +78,9 @@ def login(data: LoginIn, request: Request, response: Response):
             "UPDATE users SET password_hash = %s WHERE id = %s",
             (hash_password(data.password), user["id"]),
         )
+
+    # Faxina barata: sessoes vencidas so eram apagadas quando reutilizadas.
+    db.execute("DELETE FROM sessions WHERE expires_at <= now()")
 
     token = new_token()
     csrf = new_token()

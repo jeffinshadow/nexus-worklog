@@ -26,6 +26,7 @@ services:
       ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD}
       SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-7}
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      REGISTRATION_OPEN: ${REGISTRATION_OPEN:-false}
       APP_TZ: ${APP_TZ:-America/Sao_Paulo}
     depends_on:
       db:

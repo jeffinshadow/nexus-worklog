@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from .. import db
 from ..deps import require_admin, require_admin_csrf
+from ..schemas import InviteIn
 from ..security import generate_temp_password, hash_password
 from ..services import get_board, get_dashboard
 from .reports import build_pdf_response
@@ -23,6 +24,22 @@ def list_users(admin=Depends(require_admin)):
     return db.query_all(
         "SELECT id, email, role, created_at FROM users ORDER BY role DESC, email"
     )
+
+
+@router.post("/users", status_code=201)
+def invite_user(data: InviteIn, admin=Depends(require_admin_csrf)):
+    """Cria a conta de um convidado com senha temporaria (mostrada uma unica vez
+    ao admin). O convidado troca a senha no primeiro login, como no reset."""
+    email = data.email.lower()
+    if db.query_one("SELECT 1 FROM users WHERE email = %s", (email,)):
+        raise HTTPException(status_code=409, detail="email ja cadastrado")
+    temp = generate_temp_password()
+    db.execute(
+        """INSERT INTO users (email, password_hash, role, must_change_password)
+           VALUES (%s, %s, 'user', true)""",
+        (email, hash_password(temp)),
+    )
+    return {"email": email, "temp_password": temp}
 
 
 @router.get("/users/{user_id}/board")
