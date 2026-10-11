@@ -1,17 +1,29 @@
 {
-  "name": "Shadow Nexus Worklog",
-  "short_name": "Nexus Worklog",
-  "description": "Registro de trabalho e tarefas da Shadow.",
+  "name": "Nexus Worklog",
+  "short_name": "Nexus",
+  "description": "O registro do seu dia de trabalho — ShadowTec.",
   "lang": "pt-BR",
   "id": "/",
-  "start_url": "/index.html",
+  "start_url": "/index.html#/hoje",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#131318",
-  "theme_color": "#1f1f25",
+  "background_color": "#121213",
+  "theme_color": "#121213",
   "icons": [
-    { "src": "/img/icon-192.png", "type": "image/png", "sizes": "192x192" },
-    { "src": "/img/icon-512.png", "type": "image/png", "sizes": "512x512" },
-    { "src": "/img/favicon.svg", "type": "image/svg+xml", "sizes": "any" }
+    {
+      "src": "/img/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/img/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    },
+    {
+      "src": "/img/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any"
+    }
   ]
 }

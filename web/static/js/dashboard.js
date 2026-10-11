@@ -249,6 +249,10 @@ function weeklyTrend(hm) {
     const slots = chunk.reduce((a, d) => a + d.slots, 0);
     weeks.push({ date: chunk[0].date, pct: slots ? (done / slots) * 100 : 0, slots });
   }
+  // Semana sem nenhum dia útil vigente (ex.: a atual, num domingo) não tem
+  // percentual: fica de fora em vez de aparecer como 0%.
+  for (let i = weeks.length - 1; i >= 0; i--) if (!weeks[i].slots) weeks.splice(i, 1);
+  if (!weeks.length) return emptyBox("sem dados");
   const W = 300, H = 176, padL = 30, padR = 12, padT = 16, padB = 28;
   const plotW = W - padL - padR, plotH = H - padT - padB;
   const n = weeks.length;
@@ -343,7 +347,7 @@ function verticalBars(items, opts = {}) {
     const cx = padL + slot * (i + 0.5);
     const bh = (it.value / max) * plotH;
     const y = baseY - bh;
-    const color = it.highlight ? "var(--primary)" : (opts.color || "var(--primary-container)");
+    const color = it.highlight ? "var(--primary)" : (opts.color || "var(--chart-muted)");
     const bar = rect(cx - barW / 2, y, barW, bh, color, { rx: 3 });
     withTitle(bar, it.title || `${it.label}: ${it.value}`);
     s.appendChild(bar);
@@ -408,7 +412,7 @@ function cycleTime(ct) {
     h("div", { class: "stat-inline" },
       h("span", { class: "stat-big", text: fmtDuration(med) }),
       h("span", { class: "stat-cap", text: `mediana · ${durs.length} concluída(s)` })),
-    verticalBars(items, { color: "var(--primary-container)" }));
+    verticalBars(items, { color: "var(--chart-muted)" }));
 }
 
 // ------------------------------------------------------------------- weekday --

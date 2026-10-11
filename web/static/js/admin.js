@@ -1,5 +1,6 @@
 import { api } from "./api.js";
-import { h, clear } from "./dom.js";
+import { h, icon, clear } from "./dom.js";
+import { modal } from "./ui.js";
 import * as board from "./board.js";
 import * as dashboard from "./dashboard.js";
 import * as reports from "./reports.js";
@@ -9,16 +10,6 @@ const SUBVIEWS = [
   { key: "dashboard", label: "Dashboard" },
   { key: "reports", label: "Relatórios" },
 ];
-
-// Dialogo modal criado dinamicamente (sem markup inline, respeitando a CSP).
-// Remove-se do DOM ao fechar.
-function modal(...children) {
-  const dlg = h("dialog", {}, ...children);
-  document.body.appendChild(dlg);
-  dlg.addEventListener("close", () => dlg.remove());
-  dlg.showModal();
-  return dlg;
-}
 
 export async function mount(root) {
   clear(root);
@@ -35,17 +26,8 @@ export async function mount(root) {
     ...users.map((u) => h("option", { value: u.id }, `${u.email}${u.role === "admin" ? " (admin)" : ""}`))
   );
 
-  const resetBtn = h("button", {
-    class: "danger",
-    text: "Redefinir senha",
-    onClick: onReset,
-  });
-
-  const inviteBtn = h("button", {
-    class: "tonal",
-    text: "Novo usuário",
-    onClick: onInvite,
-  });
+  const resetBtn = h("button", { type: "button", class: "btn btn-danger", text: "Redefinir senha", onClick: onReset });
+  const inviteBtn = h("button", { type: "button", class: "btn btn-primary", onClick: onInvite }, icon("add"), "Novo usuário");
 
   let active = "board";
   const subtabs = h(
@@ -75,7 +57,7 @@ export async function mount(root) {
       inviteBtn
     ),
     subtabs,
-    h("p", { class: "readonly-note", text: "Visão somente leitura." }),
+    h("p", { class: "readonly-note", text: "visão somente leitura do usuário selecionado" }),
     content
   );
 

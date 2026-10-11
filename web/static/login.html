@@ -2,30 +2,34 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Shadow Nexus Worklog — Acesso</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Entrar · Nexus Worklog</title>
   <link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
   <link rel="manifest" href="/manifest.webmanifest">
-  <meta name="theme-color" content="#1f1f25">
+  <meta name="theme-color" content="#121213">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="Nexus Worklog">
-  <link rel="stylesheet" href="/css/tokens.css?v=4">
-  <link rel="stylesheet" href="/css/app.css?v=4">
+  <meta name="apple-mobile-web-app-title" content="Nexus">
+  <link rel="preload" as="font" type="font/woff2" href="/fonts/GoogleSansFlex.woff2" crossorigin>
+  <link rel="stylesheet" href="/css/tokens.css?v=6">
+  <link rel="stylesheet" href="/css/app.css?v=6">
 </head>
 <body>
   <div class="auth-wrap">
     <div class="auth-card">
-      <img class="auth-logo" src="/img/shadow-wordmark.png" alt="Shadow" width="200" height="120">
-      <h1>Nexus Worklog</h1>
-      <p class="sub">Worklog pessoal</p>
+      <div class="lockup lockup--center">
+        <img class="lockup-mark" src="/img/dragon.svg" alt="" width="44" height="44">
+        <span class="lockup-type"><span>nexus</span><span>worklog</span></span>
+      </div>
+      <h1>Entrar</h1>
+      <p class="sub">O registro do seu dia de trabalho.</p>
       <p class="sub hidden" id="invite-note">Acesso por convite. Peça sua conta ao administrador.</p>
 
       <div class="auth-tabs hidden" role="tablist" id="auth-tabs">
-        <button id="tab-login" role="tab" aria-selected="true">Entrar</button>
-        <button id="tab-register" role="tab" aria-selected="false">Criar conta</button>
+        <button id="tab-login" type="button" role="tab" aria-selected="true">Entrar</button>
+        <button id="tab-register" type="button" role="tab" aria-selected="false">Criar conta</button>
       </div>
 
       <form id="form-login" autocomplete="on">
@@ -38,7 +42,7 @@
           <input id="login-password" name="password" type="password" required autocomplete="current-password">
         </div>
         <p class="error-text" id="login-error"></p>
-        <button class="full" type="submit">Entrar</button>
+        <button class="btn btn-primary full" type="submit">Entrar</button>
       </form>
 
       <form id="form-register" class="hidden" autocomplete="on">
@@ -51,12 +55,14 @@
           <input id="reg-password" name="password" type="password" required minlength="10" autocomplete="new-password">
         </div>
         <p class="error-text" id="reg-error"></p>
-        <button class="full" type="submit">Criar conta</button>
+        <button class="btn btn-primary full" type="submit">Criar conta</button>
       </form>
+
+      <p class="auth-foot">um projeto <a href="https://shadow.tec.br/nexus.html" rel="noopener">shadow.tec.br</a></p>
     </div>
   </div>
 
-  <script type="module" src="/js/login.js?v=4"></script>
-  <script type="module" src="/js/pwa.js?v=4"></script>
+  <script type="module" src="/js/login.js?v=6"></script>
+  <script type="module" src="/js/pwa.js?v=6"></script>
 </body>
 </html>

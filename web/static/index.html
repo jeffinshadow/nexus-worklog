@@ -2,95 +2,121 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Shadow Nexus Worklog</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Nexus Worklog · ShadowTec</title>
   <link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
   <link rel="manifest" href="/manifest.webmanifest">
-  <meta name="theme-color" content="#1f1f25">
+  <meta name="theme-color" content="#121213">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="Nexus Worklog">
-  <link rel="stylesheet" href="/css/tokens.css?v=4">
-  <link rel="stylesheet" href="/css/app.css?v=4">
+  <meta name="apple-mobile-web-app-title" content="Nexus">
+  <link rel="preload" as="font" type="font/woff2" href="/fonts/GoogleSansFlex.woff2" crossorigin>
+  <link rel="stylesheet" href="/css/tokens.css?v=6">
+  <link rel="stylesheet" href="/css/app.css?v=6">
 </head>
 <body>
-  <!-- Sprite de icones (Material Symbols, apenas os usados). SVG inline e
-       permitido pela CSP; nao ha script/style inline. -->
+  <!-- Ícones (traço 1.75, 24px), sem script/style inline (CSP). -->
   <svg class="hidden" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
-    <symbol id="icon-edit" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></symbol>
-    <symbol id="icon-add" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z"/></symbol>
-    <symbol id="icon-check" viewBox="0 0 24 24"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></symbol>
-    <symbol id="icon-delete" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></symbol>
-    <symbol id="icon-logout" viewBox="0 0 24 24"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></symbol>
-    <symbol id="icon-tasks" viewBox="0 0 24 24"><path d="M22 7h-9v2h9V7zm0 8h-9v2h9v-2zM5.54 11 2 7.46l1.41-1.41 2.12 2.12 4.24-4.24 1.41 1.41L5.54 11zm0 8L2 15.46l1.41-1.41 2.12 2.12 4.24-4.24 1.41 1.41L5.54 19z"/></symbol>
-    <symbol id="icon-reports" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-8 14H9V9h2v8zm4 0h-2V7h2v10zm-4 0H5v-4h2v4z"/></symbol>
-    <symbol id="icon-dashboard" viewBox="0 0 24 24"><path d="M11 2v20c-5.07-.5-9-4.79-9-10s3.93-9.5 9-10zm2.03 0v8.99H22c-.47-4.74-4.24-8.52-8.97-8.99zm0 11.01V22c4.74-.47 8.5-4.25 8.97-8.99h-8.97z"/></symbol>
-    <symbol id="icon-admin" viewBox="0 0 24 24"><path d="M12 1 3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-1.06 14L7.4 11.46l1.41-1.41 2.12 2.12 4.24-4.24 1.42 1.41L10.94 15z"/></symbol>
-    <symbol id="icon-settings" viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.31.06-.62.06-.94s-.02-.63-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7.03 7.03 0 0 0-1.62-.94l-.36-2.54A.48.48 0 0 0 13.92 2h-3.84a.48.48 0 0 0-.48.41l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.72 8.47a.48.48 0 0 0 .12.61l2.03 1.58c-.05.31-.07.63-.07.94s.02.63.06.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.49.49 0 0 0-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></symbol>
-    <symbol id="icon-chevron" viewBox="0 0 24 24"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6z"/></symbol>
+    <symbol id="icon-today" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></g></symbol>
+    <symbol id="icon-tasks" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18"/></g></symbol>
+    <symbol id="icon-dashboard" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m7 14 4-4 4 4 5-5"/></g></symbol>
+    <symbol id="icon-reports" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></g></symbol>
+    <symbol id="icon-history" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></g></symbol>
+    <symbol id="icon-settings" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></g></symbol>
+    <symbol id="icon-admin" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></g></symbol>
+    <symbol id="icon-more" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></g></symbol>
+    <symbol id="icon-logout" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></g></symbol>
+    <symbol id="icon-add" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></g></symbol>
+    <symbol id="icon-edit" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></g></symbol>
+    <symbol id="icon-check" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></g></symbol>
+    <symbol id="icon-chevron" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></g></symbol>
+    <symbol id="icon-left" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></g></symbol>
+    <symbol id="icon-right" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></g></symbol>
+    <symbol id="icon-undo" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></g></symbol>
+    <symbol id="icon-key" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"/></g></symbol>
+    <symbol id="icon-spark" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.8L20 10l-6.1 1.2L12 17l-1.9-5.8L4 10l6.1-1.2Z"/><path d="M19 17l.7 2.3L22 20l-2.3.7L19 23l-.7-2.3L16 20l2.3-.7Z"/></g></symbol>
+    <symbol id="icon-copy" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></g></symbol>
+    <symbol id="icon-alert" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/></g></symbol>
   </svg>
 
-  <header class="topbar">
-    <div class="topbar-brand">
-      <img class="brand-logo" src="/img/shadow.svg" alt="Shadow" width="36" height="42">
-      <h1>Nexus Worklog</h1>
-    </div>
-
-    <nav class="tabs" id="tabs" role="tablist">
-      <button role="tab" data-view="board" aria-selected="true" title="Tarefas" aria-label="Tarefas">
-        <svg class="inline-icon" viewBox="0 0 24 24"><use href="#icon-tasks"></use></svg>
-      </button>
-      <button role="tab" data-view="dashboard" aria-selected="false" title="Dashboard" aria-label="Dashboard">
-        <svg class="inline-icon" viewBox="0 0 24 24"><use href="#icon-dashboard"></use></svg>
-      </button>
-      <button role="tab" data-view="reports" aria-selected="false" title="Relatórios" aria-label="Relatórios">
-        <svg class="inline-icon" viewBox="0 0 24 24"><use href="#icon-reports"></use></svg>
-      </button>
-      <button role="tab" data-view="admin" aria-selected="false" id="tab-admin" class="hidden" title="Admin" aria-label="Admin">
-        <svg class="inline-icon" viewBox="0 0 24 24"><use href="#icon-admin"></use></svg>
-      </button>
-    </nav>
-
-    <div class="topbar-actions">
-      <span class="who" id="who"></span>
-      <button class="icon" id="btn-settings" title="Configurações" aria-label="Configurações">
-        <svg class="inline-icon" viewBox="0 0 24 24"><use href="#icon-settings"></use></svg>
-      </button>
-      <button class="icon" id="btn-logout" title="Sair" aria-label="Sair">
-        <svg class="inline-icon" viewBox="0 0 24 24"><use href="#icon-logout"></use></svg>
-      </button>
-    </div>
-  </header>
-
-  <main>
-    <section id="view-change-password" class="auth-wrap hidden">
-      <div class="auth-card">
-        <h2>Troque sua senha</h2>
-        <p class="sub">É obrigatório definir uma nova senha antes de continuar.</p>
-        <form id="form-change-password">
-          <div class="field">
-            <label for="cp-current">Senha atual</label>
-            <input id="cp-current" type="password" required autocomplete="current-password">
-          </div>
-          <div class="field">
-            <label for="cp-new">Nova senha (mínimo 10 caracteres)</label>
-            <input id="cp-new" type="password" required minlength="10" autocomplete="new-password">
-          </div>
-          <p class="error-text" id="cp-error"></p>
-          <button class="full" type="submit">Salvar nova senha</button>
-        </form>
+  <!-- Troca de senha obrigatória (1º acesso / reset): ocupa a tela inteira. -->
+  <section id="view-change-password" class="auth-wrap hidden">
+    <div class="auth-card">
+      <div class="lockup lockup--center">
+        <img class="lockup-mark" src="/img/dragon.svg" alt="" width="40" height="40">
+        <span class="lockup-type"><span>nexus</span><span>worklog</span></span>
       </div>
-    </section>
+      <h1>Defina sua senha</h1>
+      <p class="sub">É obrigatório trocar a senha temporária antes de continuar.</p>
+      <form id="form-change-password">
+        <div class="field">
+          <label for="cp-current">Senha atual (temporária)</label>
+          <input id="cp-current" type="password" required autocomplete="current-password">
+        </div>
+        <div class="field">
+          <label for="cp-new">Nova senha (mínimo 10 caracteres)</label>
+          <input id="cp-new" type="password" required minlength="10" autocomplete="new-password">
+        </div>
+        <p class="error-text" id="cp-error"></p>
+        <button class="btn btn-primary full" type="submit">Salvar e entrar</button>
+      </form>
+    </div>
+  </section>
 
-    <section id="view-board"></section>
-    <section id="view-reports" class="hidden"></section>
-    <section id="view-dashboard" class="hidden"></section>
-    <section id="view-admin" class="hidden"></section>
-  </main>
+  <div class="app hidden" id="app">
+    <aside class="sidebar" aria-label="Menu">
+      <a class="lockup" href="#/hoje" aria-label="Nexus Worklog — Hoje">
+        <img class="lockup-mark" src="/img/dragon.svg" alt="" width="32" height="32">
+        <span class="lockup-type"><span>nexus</span><span>worklog</span></span>
+      </a>
+      <nav class="nav" id="nav">
+        <a href="#/hoje" data-view="hoje"><svg class="ico"><use href="#icon-today"></use></svg><span>Hoje</span></a>
+        <a href="#/tarefas" data-view="tarefas"><svg class="ico"><use href="#icon-tasks"></use></svg><span>Tarefas</span></a>
+        <a href="#/dashboard" data-view="dashboard"><svg class="ico"><use href="#icon-dashboard"></use></svg><span>Dashboard</span></a>
+        <a href="#/relatorios" data-view="relatorios"><svg class="ico"><use href="#icon-reports"></use></svg><span>Relatórios</span></a>
+        <a href="#/historico" data-view="historico"><svg class="ico"><use href="#icon-history"></use></svg><span>Histórico</span></a>
+        <a href="#/admin" data-view="admin" class="hidden" id="nav-admin"><svg class="ico"><use href="#icon-admin"></use></svg><span>Admin</span></a>
+      </nav>
+      <div class="sidebar-foot">
+        <a href="#/config" data-view="config" class="nav-link"><svg class="ico"><use href="#icon-settings"></use></svg><span>Configurações</span></a>
+        <div class="who">
+          <span class="who-email mono" id="who"></span>
+          <button type="button" class="icon-btn" id="btn-logout" title="Sair" aria-label="Sair"><svg class="ico"><use href="#icon-logout"></use></svg></button>
+        </div>
+      </div>
+    </aside>
 
-  <!-- Dialogos (usados apenas na visao propria; admin e somente leitura) -->
+    <main class="main" id="main">
+      <header class="page-head">
+        <div>
+          <p class="eyebrow mono" id="page-eyebrow"></p>
+          <h1 id="page-title"></h1>
+        </div>
+        <div class="page-actions" id="page-actions"></div>
+      </header>
+      <section id="view-hoje" class="view"></section>
+      <section id="view-tarefas" class="view hidden"></section>
+      <section id="view-dashboard" class="view hidden"></section>
+      <section id="view-relatorios" class="view hidden"></section>
+      <section id="view-historico" class="view hidden"></section>
+      <section id="view-config" class="view hidden"></section>
+      <section id="view-admin" class="view hidden"></section>
+      <section id="view-mais" class="view hidden"></section>
+    </main>
+
+    <!-- Celular: barra inferior. -->
+    <nav class="tabbar" id="tabbar" aria-label="Menu">
+      <a href="#/hoje" data-view="hoje"><svg class="ico"><use href="#icon-today"></use></svg><span>Hoje</span></a>
+      <a href="#/tarefas" data-view="tarefas"><svg class="ico"><use href="#icon-tasks"></use></svg><span>Tarefas</span></a>
+      <a href="#/dashboard" data-view="dashboard"><svg class="ico"><use href="#icon-dashboard"></use></svg><span>Dashboard</span></a>
+      <a href="#/relatorios" data-view="relatorios"><svg class="ico"><use href="#icon-reports"></use></svg><span>Relatórios</span></a>
+      <a href="#/mais" data-view="mais"><svg class="ico"><use href="#icon-more"></use></svg><span>Mais</span></a>
+    </nav>
+  </div>
+
+  <!-- Diálogos de edição (só na visão própria; a do admin é somente leitura) -->
   <dialog id="dialog-recurring">
     <h2 id="dlg-rec-title">Recorrente</h2>
     <form id="form-recurring">
@@ -99,10 +125,10 @@
         <input id="rec-label" type="text" required maxlength="200">
       </div>
       <div class="dialog-actions">
-        <button type="button" class="danger hidden" id="rec-delete">Remover</button>
+        <button type="button" class="btn btn-danger hidden" id="rec-delete">Remover</button>
         <div class="spacer"></div>
-        <button type="button" class="text" id="rec-cancel">Cancelar</button>
-        <button type="submit">Salvar</button>
+        <button type="button" class="btn btn-text" id="rec-cancel">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Salvar</button>
       </div>
     </form>
   </dialog>
@@ -118,29 +144,33 @@
         <label for="wl-desc">Descrição (uma linha)</label>
         <input id="wl-desc" type="text" maxlength="300">
       </div>
-      <div class="field">
-        <label for="wl-status">Status</label>
-        <select id="wl-status">
-          <option value="todo">A fazer</option>
-          <option value="in_progress">Em andamento</option>
-          <option value="blocked">Bloqueado</option>
-          <option value="done">Concluído</option>
-        </select>
-      </div>
-      <div class="field">
-        <label for="wl-due">Previsão de conclusão</label>
-        <input id="wl-due" type="date">
+      <div class="field-row">
+        <div class="field">
+          <label for="wl-status">Status</label>
+          <select id="wl-status">
+            <option value="todo">A fazer</option>
+            <option value="in_progress">Em andamento</option>
+            <option value="blocked">Bloqueada</option>
+            <option value="done">Concluída</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="wl-due">Previsão</label>
+          <input id="wl-due" type="date">
+        </div>
       </div>
       <div class="dialog-actions">
-        <button type="button" class="danger hidden" id="wl-delete">Excluir</button>
+        <button type="button" class="btn btn-danger hidden" id="wl-delete">Excluir</button>
         <div class="spacer"></div>
-        <button type="button" class="text" id="wl-cancel">Cancelar</button>
-        <button type="submit">Salvar</button>
+        <button type="button" class="btn btn-text" id="wl-cancel">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Salvar</button>
       </div>
     </form>
   </dialog>
 
-  <script type="module" src="/js/app.js?v=4"></script>
-  <script type="module" src="/js/pwa.js?v=4"></script>
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <script type="module" src="/js/app.js?v=6"></script>
+  <script type="module" src="/js/pwa.js?v=6"></script>
 </body>
 </html>

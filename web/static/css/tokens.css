@@ -1,42 +1,62 @@
-/* Design tokens Material Design 3 (aproximacao) via custom properties.
-   Tema escuro unico (nao ha tema claro). */
+/* Design tokens do Nexus — identidade da ShadowTec (a mesma do shadow.tec.br):
+   grafite + azul #5294E2, Google Sans Flex / Google Sans Code (OFL, self-hosted).
+   Os NOMES das variáveis vêm da versão Material: o dashboard desenha SVG com
+   eles, então só os valores mudaram. Tema escuro único. */
 
 @font-face {
-  font-family: "Roboto Flex";
-  src: url("/fonts/RobotoFlex.woff2") format("woff2");
-  font-weight: 100 900;
+  font-family: "Google Sans Flex";
+  src: url("/fonts/GoogleSansFlex.woff2") format("woff2");
+  font-weight: 300 800;
+  font-display: swap;
+  font-style: normal;
+}
+@font-face {
+  font-family: "Google Sans Code";
+  src: url("/fonts/GoogleSansCode.woff2") format("woff2");
+  font-weight: 300 800;
   font-display: swap;
   font-style: normal;
 }
 
 :root {
-  --font-sans: "Roboto Flex", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  --font-sans: "Google Sans Flex", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Google Sans Code", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
 
   /* Escala */
-  --radius-s: 8px;
-  --radius-m: 12px;
-  --radius-l: 20px;
+  --radius-s: 10px;
+  --radius-m: 16px;
+  --radius-l: 999px;
   --gap: 16px;
   --gap-s: 8px;
+  --sidebar-w: 236px;
 
-  /* Paleta escura (M3) */
-  --primary: #bcc2ff;
-  --on-primary: #14239b;
-  --primary-container: #2f3fb2;
-  --on-primary-container: #dee1ff;
+  /* Destaque (azul do Sway) */
+  --primary: #5294E2;
+  --primary-hi: #8AB8F0;
+  --on-primary: #0B0D10;
+  --primary-container: rgba(82, 148, 226, 0.16);
+  --on-primary-container: #8AB8F0;
+  --chart-muted: #2E4D72;   /* barras secundárias dos gráficos (sólido, legível) */
 
-  --surface: #131318;
-  --surface-container: #1f1f25;
-  --surface-container-high: #292930;
-  --on-surface: #e4e1e9;
-  --on-surface-variant: #c7c5d0;
-  --outline: #91909a;
-  --outline-variant: #46464f;
+  /* Superfícies (grafite) */
+  --surface: #121213;
+  --surface-container: #18181A;
+  --surface-container-high: #212124;
+  --surface-container-highest: #2A2A2E;
+  --on-surface: #EDEDEF;
+  --on-surface-variant: #A1A1A8;
+  --dim: #86868E;
+  --outline: #86868E;
+  --outline-variant: rgba(255, 255, 255, 0.08);
+  --line-2: rgba(255, 255, 255, 0.14);
 
-  --success: #a1d39a;
-  --warning: #f4be48;
-  --error: #ffb4ab;
-  --on-error: #690005;
+  /* Semânticas (paleta Shadow Materia) */
+  --success: #81C995;
+  --warning: #FDD663;
+  --error: #F28B82;
+  --on-error: #2B0B08;
+
+  --ease: cubic-bezier(.2, .7, .1, 1);
 
   color-scheme: dark;
 }
