@@ -13,8 +13,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Nexus">
   <link rel="preload" as="font" type="font/woff2" href="/fonts/GoogleSansFlex.woff2" crossorigin>
-  <link rel="stylesheet" href="/css/tokens.css?v=7">
-  <link rel="stylesheet" href="/css/app.css?v=7">
+  <link rel="stylesheet" href="/css/tokens.css?v=8">
+  <link rel="stylesheet" href="/css/app.css?v=8">
 </head>
 <body>
   <!-- Ícones (traço 1.75, 24px), sem script/style inline (CSP). -->
@@ -38,6 +38,12 @@
     <symbol id="icon-key" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"/></g></symbol>
     <symbol id="icon-spark" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.8L20 10l-6.1 1.2L12 17l-1.9-5.8L4 10l6.1-1.2Z"/><path d="M19 17l.7 2.3L22 20l-2.3.7L19 23l-.7-2.3L16 20l2.3-.7Z"/></g></symbol>
     <symbol id="icon-copy" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></g></symbol>
+    <symbol id="icon-clock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></g></symbol>
+    <symbol id="icon-note" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></g></symbol>
+    <symbol id="icon-list" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m3 7 2 2 4-4M3 17l2 2 4-4M13 6h8M13 12h8M13 18h8"/></g></symbol>
+    <symbol id="icon-trash" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></g></symbol>
+    <symbol id="icon-folder" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></g></symbol>
+    <symbol id="icon-close" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></g></symbol>
     <symbol id="icon-alert" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/></g></symbol>
   </svg>
 
@@ -124,6 +130,24 @@
         <label for="rec-label">Rótulo</label>
         <input id="rec-label" type="text" required maxlength="200">
       </div>
+      <div class="field">
+        <label for="rec-freq">Repete</label>
+        <select id="rec-freq">
+          <option value="daily">Nos meus dias úteis</option>
+          <option value="weekly">Em dias da semana escolhidos</option>
+          <option value="monthly">Uma vez por mês</option>
+          <option value="interval">A cada N dias</option>
+        </select>
+      </div>
+      <fieldset class="weekday-picker field hidden" id="rec-weekdays" aria-label="Dias da semana"></fieldset>
+      <div class="field hidden" id="rec-monthday-wrap">
+        <label for="rec-monthday">Dia do mês</label>
+        <select id="rec-monthday"></select>
+      </div>
+      <div class="field hidden" id="rec-interval-wrap">
+        <label for="rec-interval">A cada quantos dias (contando de quando foi criada)</label>
+        <input id="rec-interval" type="number" min="2" max="365" value="15">
+      </div>
       <div class="dialog-actions">
         <button type="button" class="btn btn-danger hidden" id="rec-delete">Remover</button>
         <div class="spacer"></div>
@@ -159,6 +183,20 @@
           <input id="wl-due" type="date">
         </div>
       </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="wl-project">Projeto / cliente</label>
+          <select id="wl-project"></select>
+        </div>
+        <div class="field">
+          <label for="wl-prio">Prioridade</label>
+          <select id="wl-prio">
+            <option value="1">Alta</option>
+            <option value="2">Normal</option>
+            <option value="3">Baixa</option>
+          </select>
+        </div>
+      </div>
       <div class="dialog-actions">
         <button type="button" class="btn btn-danger hidden" id="wl-delete">Excluir</button>
         <div class="spacer"></div>
@@ -170,7 +208,7 @@
 
   <div class="toasts" id="toasts" aria-live="polite"></div>
 
-  <script type="module" src="/js/app.js?v=7"></script>
-  <script type="module" src="/js/pwa.js?v=7"></script>
+  <script type="module" src="/js/app.js?v=8"></script>
+  <script type="module" src="/js/pwa.js?v=8"></script>
 </body>
 </html>

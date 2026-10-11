@@ -18,7 +18,7 @@ const VIEWS = {
   dashboard: { title: "Dashboard", eyebrow: "consistência e fluxo", mount: (el) => dashboard.mount(el) },
   relatorios: { title: "Relatórios", eyebrow: "exportar em PDF", mount: (el) => reports.mount(el) },
   historico: { title: "Histórico", eyebrow: "o que mudou, por quem", mount: (el) => history.mount(el) },
-  config: { title: "Configurações", eyebrow: "dias úteis · chaves de API · IA · conta", mount: (el, ctx) => settings.mount(el, ctx) },
+  config: { title: "Configurações", eyebrow: "dias úteis · projetos · chaves de API · IA · conta", mount: (el, ctx) => settings.mount(el, ctx) },
   admin: { title: "Admin", eyebrow: "usuários · identidade visual", mount: (el) => admin.mount(el), adminOnly: true },
   mais: { title: "Mais", mount: (el) => mountMore(el) },
 };

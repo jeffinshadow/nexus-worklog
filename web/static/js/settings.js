@@ -2,9 +2,11 @@
 import { api } from "./api.js";
 import { h, icon, clear, dateTime } from "./dom.js";
 import { codeBox, confirmDialog, errorToast, modal, toast, warnBox } from "./ui.js";
+import { projectsPanel } from "./projects.js";
 
 const TABS = [
   ["dias", "Dias úteis"],
+  ["projetos", "Projetos"],
   ["chaves", "Chaves de API"],
   ["ia", "Integração com IA"],
   ["conta", "Conta"],
@@ -37,6 +39,7 @@ export async function mount(root, ctx) {
   async function render() {
     clear(body);
     if (active === "dias") body.append(workDays(ctx.me));
+    else if (active === "projetos") body.append(await projectsPanel(() => render()));
     else if (active === "chaves") body.append(await tokens(() => render()));
     else if (active === "ia") body.append(...aiHelp());
     else body.append(account(ctx.me));
@@ -177,7 +180,7 @@ function aiHelp() {
       codeBox(JSON.stringify({ mcpServers: { nexus: { url, headers: { Authorization: "Bearer nxs_SUA_CHAVE" } } } }, null, 2))),
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "O que a IA pode fazer" })),
-      h("p", { class: "help", text: "Ver o dia, listar e criar tarefas, editar, concluir, marcar recorrentes (até 7 dias atrás), consultar o histórico e desfazer um engano dela. Ela não exclui tarefas. Com uma chave “só leitura”, ela apenas consulta." }),
+      h("p", { class: "help", text: "Ver o dia, listar e criar tarefas (com projeto e prioridade), editar, concluir, marcar recorrentes (até 7 dias atrás), anotar progresso, montar e marcar checklist, apontar tempo, consultar o histórico e desfazer um engano dela. Ela não exclui tarefas. Com uma chave “só leitura”, ela apenas consulta." }),
       h("p", { class: "dialog-note", text: "API REST direta (scripts, automações):" }),
       codeBox(`curl -H "Authorization: Bearer nxs_SUA_CHAVE" ${location.origin}/api/board`)),
   ];
