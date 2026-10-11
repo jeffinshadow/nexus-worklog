@@ -55,3 +55,17 @@ def test_limite_e_permissoes(admin, usuario):
     b = Bearer(criar_chave(admin)["token"])
     assert b.c.post("/api/admin/branding/logo", content=PNG, headers={**b.h, "Content-Type": "image/png"}).status_code == 403
     assert admin.c.put("/api/admin/branding", json={"line1": ""}, headers={"X-CSRF-Token": admin.csrf}).status_code == 422
+
+
+def test_relatorio_usa_identidade_e_sobrevive_a_logo_qualquer(admin):
+    """O PDF usa o lockup configurado; logo que o gerador não entende cai no dragão."""
+    from datetime import date
+    tid = admin.post("/worklog", {"title": "Entrega com acento — çãé", "priority": 1}).json()["id"]
+    admin.post(f"/worklog/{tid}/time", {"minutes": 50, "note": "emoji 🚀 vira ?"})
+    admin.post(f"/worklog/{tid}/finish")
+    hoje = date.fromisoformat(admin.get("/board").json()["today"]).isoformat()
+    admin.c.put("/api/admin/branding", json={"line1": "engage", "line2": "ti"}, headers=admin._h())
+    for logo, ctype in ((SVG_OK, "image/svg+xml"), (PNG, "image/png"), (b"<svg xmlns='http://www.w3.org/2000/svg'><g/></svg>", "image/svg+xml")):
+        assert _upload(admin, logo, ctype).status_code == 200
+        r = admin.get(f"/reports/export?start={hoje}&end={hoje}")
+        assert r.status_code == 200 and r.content[:4] == b"%PDF", r.text[:200]

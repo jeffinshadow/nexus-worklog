@@ -37,7 +37,10 @@ def build_pdf_response(user_email: str, user_id: int, start: date, end: date,
             raise HTTPException(status_code=400, detail="projeto não encontrado")
 
     data = get_report_range(user_id, start, end, project)
-    pdf = build_report_pdf(user_email, start, end, data)
+    brand = db.query_one("SELECT line1, line2, logo FROM app_branding WHERE id = 1") or {}
+    if brand.get("logo") is not None:
+        brand["logo"] = bytes(brand["logo"])
+    pdf = build_report_pdf(user_email, start, end, data, brand)
 
     slug = re.sub(r"[^a-zA-Z0-9._-]+", "-", user_email).strip("-").lower() or "usuario"
     if project:

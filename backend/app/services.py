@@ -441,18 +441,17 @@ def get_dashboard_analytics(user_id: int, tasks, completions, mask: int, today: 
 
 
 def get_report_range(user_id: int, start: date, end: date, project: dict | None = None) -> dict:
-    """Dados do 'Relatorio Worklog' para extracao em PDF, dia a dia.
+    """Dados do relatório em PDF do período [start, end] ('end' já limitado a
+    hoje pela rota).
 
-    So entram DIAS COM ATIVIDADE = houve alguma recorrente concluida OU alguma
-    pontual concluida naquele dia. Em cada dia listamos as recorrentes VIGENTES
-    naquele dia (concluidas e nao concluidas) e as pontuais concluidas no dia.
+    Dias com atividade = alguma recorrente ou pontual concluída, ou tempo
+    apontado. Em cada um: as recorrentes devidas (feitas e não feitas) e as
+    extras, as pontuais concluídas e os apontamentos de tempo. Além disso:
+    série diária (gráfico), cumprimento por recorrente, tempo por projeto,
+    entregas detalhadas e o que está em aberto agora.
 
-    Vigencia de cada recorrente = [start_d, end_d] (no fuso da app):
-      start_d = created_at::date;  end_d = COALESCE(deactivated_at::date, hoje).
-    'end' e limitado a hoje pela rota (sem dias futuros).
-
-    Com 'project' ({id, name}) o relatório é do projeto: só pontuais e tempo
-    dele; recorrentes não têm projeto e ficam de fora.
+    Com 'project' ({id, name}) o relatório é do projeto: só pontuais, tempo e
+    abertas dele; recorrentes não têm projeto e ficam de fora.
     """
     tz = config.APP_TZ
     mask = work_mask(user_id)
@@ -461,85 +460,131 @@ def get_report_range(user_id: int, start: date, end: date, project: dict | None 
     else:
         tasks, completions = _recurring_tasks_and_completions(user_id, start, end)
     pid = project["id"] if project else None
-    worklog = db.query_all(
+    filtro = " AND (%s::bigint IS NULL OR w.project_id = %s)"
+
+    pontuais = db.query_all(
         """
-        SELECT w.title, w.description, p.name AS project,
-               (w.completed_at AT TIME ZONE %s)::date AS done_date
+        SELECT w.id, w.title, w.description, w.priority, w.created_at, w.completed_at,
+               p.name AS project, p.color AS project_color,
+               (w.completed_at AT TIME ZONE %s)::date AS done_date,
+               (SELECT count(*) FROM task_checklist c WHERE c.task_id = w.id)::int AS check_total,
+               (SELECT count(*) FROM task_checklist c WHERE c.task_id = w.id AND c.done)::int AS check_done,
+               (SELECT COALESCE(sum(t.minutes), 0) FROM time_entries t WHERE t.task_id = w.id)::int AS minutes
           FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
          WHERE w.user_id = %s AND w.status = 'done' AND w.completed_at IS NOT NULL
-           AND (w.completed_at AT TIME ZONE %s)::date BETWEEN %s AND %s
-           AND (%s::bigint IS NULL OR w.project_id = %s)
-         ORDER BY w.completed_at
-        """,
+           AND (w.completed_at AT TIME ZONE %s)::date BETWEEN %s AND %s"""
+        + filtro + " ORDER BY w.completed_at",
         (tz, user_id, tz, start, end, pid, pid),
     )
-    # Tempo apontado por dia (em qualquer tarefa, aberta ou não).
-    minutes_by_date = {
-        r["day"]: r["minutes"]
-        for r in db.query_all(
-            """SELECT e.day, sum(e.minutes)::int AS minutes
-                 FROM time_entries e JOIN worklog_tasks w ON w.id = e.task_id
-                WHERE e.user_id = %s AND e.day BETWEEN %s AND %s
-                  AND (%s::bigint IS NULL OR w.project_id = %s)
-                GROUP BY e.day""",
-            (user_id, start, end, pid, pid),
-        )
-    }
+    entries = db.query_all(
+        """
+        SELECT e.day, e.minutes, e.note, w.title, p.name AS project, p.color AS project_color
+          FROM time_entries e
+          JOIN worklog_tasks w ON w.id = e.task_id
+          LEFT JOIN projects p ON p.id = w.project_id
+         WHERE e.user_id = %s AND e.day BETWEEN %s AND %s"""
+        + filtro + " ORDER BY e.day, e.created_at",
+        (user_id, start, end, pid, pid),
+    )
+    abertas = db.query_all(
+        """
+        SELECT w.title, w.status, w.priority, w.due_date, p.name AS project, p.color AS project_color,
+               (SELECT count(*) FROM task_checklist c WHERE c.task_id = w.id)::int AS check_total,
+               (SELECT count(*) FROM task_checklist c WHERE c.task_id = w.id AND c.done)::int AS check_done,
+               (SELECT COALESCE(sum(t.minutes), 0) FROM time_entries t WHERE t.task_id = w.id)::int AS minutes
+          FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
+         WHERE w.user_id = %s AND w.status <> 'done'"""
+        + filtro + " ORDER BY w.priority, COALESCE(w.due_date, DATE '9999-12-31'), w.created_at",
+        (user_id, pid, pid),
+    )
 
     done_by_date: dict[date, set[int]] = {}
     for c in completions:
         done_by_date.setdefault(c["completed_date"], set()).add(c["task_id"])
     pont_by_date: dict[date, list] = {}
-    for w in worklog:
-        pont_by_date.setdefault(w["done_date"], []).append(
-            {"title": w["title"], "description": w["description"], "project": w["project"]}
-        )
+    for w in pontuais:
+        pont_by_date.setdefault(w["done_date"], []).append(w)
+    time_by_date: dict[date, list] = {}
+    for e in entries:
+        time_by_date.setdefault(e["day"], []).append(e)
 
-    active_dates = sorted(set(done_by_date) | set(pont_by_date) | set(minutes_by_date))
+    # Cumprimento por recorrente no período (devidas x feitas, + extras).
+    per_rec = {t["id"]: {"label": t["label"], "freq": t["freq"], "weekdays": t["weekdays"],
+                         "month_day": t["month_day"], "interval_days": t["interval_days"],
+                         "due": 0, "done": 0, "extra": 0} for t in tasks}
 
-    days = []
-    total_done = total_slots = total_pont = total_extra = 0
-    for d in active_dates:
+    series, days = [], []
+    total_done = total_slots = total_extra = 0
+    d = start
+    while d <= end:
         done_ids = done_by_date.get(d, set())
         vigentes = [t for t in tasks if t["start_d"] <= d <= t["end_d"]]
-        work = is_work_day(d, mask)
-        # Devidas no dia (concluídas ou não) + extras (feitas fora da agenda).
-        rec = [{"label": t["label"], "done": t["id"] in done_ids, "extra": False}
-               for t in vigentes if is_due(t, d, mask)]
-        n_done, n_total = sum(1 for r in rec if r["done"]), len(rec)
-        extras = [{"label": t["label"], "done": True, "extra": True}
-                  for t in vigentes if t["id"] in done_ids and not is_due(t, d, mask)]
-        rec += extras
-        n_extra = len(extras)
+        rec, extras = [], []
+        for t in vigentes:
+            st = per_rec[t["id"]]
+            feito = t["id"] in done_ids
+            if is_due(t, d, mask):
+                st["due"] += 1
+                st["done"] += feito
+                rec.append({"label": t["label"], "done": feito, "extra": False})
+            elif feito:
+                st["extra"] += 1
+                extras.append({"label": t["label"], "done": True, "extra": True})
+        n_done = sum(1 for r in rec if r["done"])
         pont = pont_by_date.get(d, [])
-        days.append(
-            {
-                "date": d,
-                "work_day": work,
-                "recurring": rec,
-                "recurring_done": n_done,
-                "recurring_total": n_total,
-                "recurring_extra": n_extra,
-                "pontual": pont,
-                "minutes": minutes_by_date.get(d, 0),
-            }
-        )
+        tempo = time_by_date.get(d, [])
+        minutes = sum(e["minutes"] for e in tempo)
+        series.append({"date": d, "work_day": is_work_day(d, mask), "recurring_done": n_done + len(extras),
+                       "recurring_total": len(rec), "pontual": len(pont), "minutes": minutes})
         total_done += n_done
-        total_slots += n_total
-        total_extra += n_extra
-        total_pont += len(pont)
+        total_slots += len(rec)
+        total_extra += len(extras)
+        if done_ids or pont or tempo:
+            days.append({
+                "date": d,
+                "work_day": is_work_day(d, mask),
+                "recurring": rec + extras,
+                "recurring_done": n_done,
+                "recurring_total": len(rec),
+                "recurring_extra": len(extras),
+                "pontual": pont,
+                "time": tempo,
+                "minutes": minutes,
+            })
+        d += timedelta(days=1)
+
+    # Tempo e entregas por projeto.
+    by_project: dict[str, dict] = {}
+    for e in entries:
+        k = e["project"] or ""
+        p = by_project.setdefault(k, {"name": e["project"], "color": e["project_color"], "minutes": 0, "done": 0})
+        p["minutes"] += e["minutes"]
+    for w in pontuais:
+        k = w["project"] or ""
+        p = by_project.setdefault(k, {"name": w["project"], "color": w["project_color"], "minutes": 0, "done": 0})
+        p["done"] += 1
 
     return {
         "start": start,
         "end": end,
+        "today": app_today(),
+        "generated_at": datetime.now(ZoneInfo(tz)),
         "project": project["name"] if project else None,
         "days": days,
+        "series": series,
+        "recurring_stats": sorted(per_rec.values(), key=lambda r: (-(r["due"] or 0), r["label"].lower())),
+        "projects": sorted(by_project.values(), key=lambda p: (-p["minutes"], -p["done"])),
+        "deliveries": pontuais,
+        "open": abertas,
         "summary": {
             "recurring_done": total_done,
             "recurring_total": total_slots,
             "recurring_extra": total_extra,
-            "minutes": sum(minutes_by_date.values()),
-            "pontual_done": total_pont,
+            "minutes": sum(e["minutes"] for e in entries),
+            "pontual_done": len(pontuais),
             "active_days": len(days),
+            "period_days": (end - start).days + 1,
+            "open": len(abertas),
+            "overdue": sum(1 for a in abertas if a["due_date"] and a["due_date"] < app_today()),
         },
     }
