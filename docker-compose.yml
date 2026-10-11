@@ -39,16 +39,9 @@ services:
     restart: unless-stopped
     depends_on: [backend]
     networks: [internal]
-    # Sem ports: quem alcanca o nginx e apenas o tunnel, pela rede interna.
-
-  tunnel:
-    image: cloudflare/cloudflared:latest
-    restart: unless-stopped
-    command: tunnel --no-autoupdate run
-    environment:
-      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
-    depends_on: [web]
-    networks: [internal]
+    # Publicado SO no loopback do host: quem alcanca o nginx e o cloudflared
+    # instalado na propria maquina (servico systemd), nunca a internet direto.
+    ports: ["127.0.0.1:${WEB_PORT:-80}:80"]
 
 networks:
   internal:

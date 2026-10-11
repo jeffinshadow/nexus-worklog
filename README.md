@@ -8,20 +8,21 @@ Cada usuário cria a própria conta e vê **apenas** os próprios dados. Um úni
 **admin master** pode consultar (somente leitura) o board, o dashboard e os
 relatórios de qualquer usuário.
 
-## Arquitetura (4 containers)
+## Arquitetura (3 containers + túnel no host)
 
 ```
-Internet ──► tunnel (cloudflared) ──► web (nginx) ──► backend (FastAPI) ──► db (Postgres)
-                                        │                     │                  │
-                              serve estático +        API REST /api/*      rede interna,
-                              proxy /api + headers     auth/CRUD/agreg.     porta não exposta
+Internet ──► cloudflared (host) ──► web (nginx) ──► backend (FastAPI) ──► db (Postgres)
+             systemd, sem portas    127.0.0.1:80        │                  │
+             abertas na VM          estático + /api   auth/CRUD/agreg.   rede interna,
+                                    + headers                            porta não exposta
 ```
 
 - **db** — PostgreSQL, volume nomeado, porta **não** exposta ao host.
 - **backend** — FastAPI, **não** exposto à internet; só o nginx o acessa.
 - **web** — nginx: serve o frontend, faz proxy de `/api/*` e aplica os headers
   de segurança (CSP rígida, HSTS, etc.).
-- **tunnel** — cloudflared: **única** exposição à internet.
+- **cloudflared** — instalado no host (pacote oficial + serviço systemd), fora do
+  compose: **única** exposição à internet. O nginx só escuta no loopback.
 
 ## Stack
 
@@ -90,12 +91,11 @@ Já cobertos pelo `.gitignore`:
 
 | Arquivo/dir            | Conteúdo sensível                                          |
 | ---------------------- | ---------------------------------------------------------- |
-| `.env`                 | `POSTGRES_PASSWORD`, `SECRET_KEY`, `ADMIN_*`, `TUNNEL_TOKEN` |
-| `tunnel/config.yml`    | (opcional) config do túnel por arquivo                     |
-| `tunnel/*.json`, `*.pem` | credenciais do Cloudflare Tunnel                        |
+| `.env`                 | `POSTGRES_PASSWORD`, `SECRET_KEY`, `ADMIN_*`               |
+| `/etc/cloudflared/*.env` (no host) | token do Cloudflare Tunnel, fora do repositório |
 | volume `pgdata`        | dados do Postgres (gerenciado pelo Docker)                 |
 
-O repositório versiona apenas `.env.example` e `tunnel/config.example.yml` com
+O repositório versiona apenas o `.env.example` com
 **placeholders**. Nenhum segredo é hardcoded no código.
 
 ---
@@ -105,11 +105,13 @@ O repositório versiona apenas `.env.example` e `tunnel/config.example.yml` com
 1. Numa VM (ex.: Oracle Cloud Always Free), instale Docker + Compose e clone o
    repositório público.
 2. Crie o `.env` na VM (nunca versionado) com `COOKIE_SECURE=true`.
-3. **Cloudflare Zero Trust → Networks → Tunnels**: crie um túnel, copie o
-   **token** e cole em `TUNNEL_TOKEN` no `.env`. Configure o *public hostname*
-   do túnel apontando o serviço para `http://web:80`.
-4. `docker compose up -d --build`. O `cloudflared` conecta pela rede interna ao
-   nginx; nenhuma porta pública é aberta na VM.
+3. `docker compose up -d --build`. O nginx fica em `127.0.0.1:${WEB_PORT}`
+   (padrão 80), sem nenhuma porta pública.
+4. **Túnel no host**: instale o `cloudflared` pelo repositório oficial
+   (pkg.cloudflare.com) e rode-o como serviço systemd com o token do túnel em
+   `/etc/cloudflared/<nome>.env` (`TUNNEL_TOKEN=...`, dono root, modo 600).
+   No Zero Trust (Networks → Tunnels), aponte o *public hostname* para
+   `http://localhost:80`.
 5. Atualizações: `./deploy.sh` (verifica dependências, `git pull --ff-only`,
    rebuild e mostra o estado dos serviços). Na primeira vez, numa VM limpa
    Debian/Ubuntu, use `./deploy.sh --install` para instalar Docker/Git via
@@ -121,11 +123,6 @@ O repositório versiona apenas `.env.example` e `tunnel/config.example.yml` com
 Você pode proteger o hostname com uma policy do **Cloudflare Access** (e-mail
 OTP, SSO, etc.) além do login da aplicação. É **defesa em profundidade** — a
 autenticação principal continua sendo a da aplicação (contas + sessão).
-
-### Túnel por arquivo de credenciais (alternativa ao token)
-
-Veja `tunnel/config.example.yml`. Copie para `tunnel/config.yml` (gitignored),
-monte `./tunnel` no container e troque o `command` do serviço `tunnel`.
 
 ---
 
@@ -159,7 +156,6 @@ A semana começa no **domingo** (agregações ajustadas no `services.py`).
 ```
 backend/  FastAPI (app/ + sql/)   — auth, CRUD, agregações, rotas admin
 web/      nginx + static/         — login, board, relatórios, dashboard, admin
-tunnel/   config de exemplo do cloudflared
 docs/     referência da API
 docker-compose.yml, .env.example, .gitignore
 ```
