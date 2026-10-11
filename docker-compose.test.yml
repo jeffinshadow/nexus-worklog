@@ -1,0 +1,35 @@
+# Suíte de testes com um Postgres descartável (dados em memória, apagados ao fim).
+# Uso:  docker compose -f docker-compose.test.yml run --rm --build tests
+#       docker compose -f docker-compose.test.yml down
+# Projeto separado ("nexus-test") para nunca encostar nos containers/volume reais.
+name: nexus-test
+
+services:
+  db-test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: nexus
+      POSTGRES_PASSWORD: nexus-test
+      POSTGRES_DB: nexus_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexus -d nexus_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  tests:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.test
+    environment:
+      DATABASE_URL: postgresql://nexus:nexus-test@db-test:5432/nexus_test
+      SECRET_KEY: chave-somente-para-testes-0123456789-abcdefghijklmnopqrstuvwxyz
+      ADMIN_EMAIL: admin@example.com
+      ADMIN_INITIAL_PASSWORD: Admin-Inicial-Teste-1
+      COOKIE_SECURE: "false"
+      APP_TZ: America/Sao_Paulo
+    depends_on:
+      db-test:
+        condition: service_healthy
