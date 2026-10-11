@@ -247,3 +247,28 @@ def test_mcp_registro_rico(usuario):
     assert (nota["actor"], nota["token_name"]) == ("mcp", "Assistente")
     assert not b.tool("update_task", task_id=tid, project=None)["isError"]
     assert usuario.get(f"/worklog/{tid}").json()["project_id"] is None
+
+
+def test_relatorio_do_projeto_inteiro(usuario):
+    pid = usuario.post("/projects", {"name": "Obra Antiga"}).json()["id"]
+    tid = usuario.post("/worklog", {"title": "Começou há tempo", "project_id": pid}).json()["id"]
+    # tarefa e projeto "nasceram" há 400 dias: passa do limite de 366 do período
+    db.execute("UPDATE worklog_tasks SET created_at = now() - interval '400 days' WHERE id = %s", (tid,))
+    db.execute("UPDATE projects SET created_at = now() - interval '400 days' WHERE id = %s", (pid,))
+    usuario.post(f"/worklog/{tid}/time", {"minutes": 30})
+    usuario.post(f"/worklog/{tid}/finish")
+
+    r = usuario.get(f"/reports/export?project={pid}")
+    assert r.status_code == 200 and r.content[:4] == b"%PDF", r.text[:200]
+    assert "obra-antiga-projeto-completo.pdf" in r.headers["content-disposition"]
+
+    from app.routers.reports import project_first_day
+    uid = db.query_one("SELECT user_id FROM projects WHERE id = %s", (pid,))["user_id"]
+    assert (_hoje(usuario) - project_first_day(uid, pid)).days in (399, 400, 401)
+
+    # sem projeto, as datas continuam obrigatórias; com período, o limite vale
+    assert usuario.get("/reports/export").status_code == 400
+    hoje = _hoje(usuario)
+    longe = (hoje - timedelta(days=400)).isoformat()
+    assert usuario.get(f"/reports/export?start={longe}&end={hoje.isoformat()}&project={pid}").status_code == 400
+    assert usuario.get(f"/reports/export?project=999").status_code == 400

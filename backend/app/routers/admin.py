@@ -66,8 +66,8 @@ def user_dashboard(user_id: int, admin=Depends(require_admin)):
 @router.get("/users/{user_id}/reports/export")
 def user_report_export(
     user_id: int,
-    start: date = Query(...),
-    end: date = Query(...),
+    start: date | None = Query(None),
+    end: date | None = Query(None),
     project: int | None = Query(None),
     admin=Depends(require_admin),
 ):

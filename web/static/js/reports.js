@@ -42,26 +42,51 @@ export async function mount(root, opts = {}) {
   const quick = h("div", { class: "quick" }, ...ranges().map(([label, a, b]) =>
     h("button", { type: "button", class: "btn btn-ghost btn-sm", text: label, onClick: () => { startInput.value = iso(a); endInput.value = iso(b); } })));
 
+  // Com projeto escolhido: "projeto completo" (padrão, sem datas) ou um período.
+  let whole = true;
+  const scope = h("div", { class: "seg seg-sm hidden", role: "tablist", "aria-label": "Abrangência" });
+  for (const [val, label] of [[true, "Projeto completo"], [false, "Escolher período"]]) {
+    scope.append(h("button", {
+      type: "button", class: "chip-btn", role: "tab", text: label, "aria-selected": String(val === whole),
+      onClick: () => { whole = val; sync(); },
+    }));
+  }
+  const dates = h("div", { class: "report-dates" },
+    h("div", { class: "field" }, h("label", { text: "Início" }), startInput),
+    h("div", { class: "field" }, h("label", { text: "Fim" }), endInput));
+  const wholeNote = h("p", { class: "help hidden", text: "Do primeiro registro do projeto até hoje: tudo o que foi entregue, o tempo gasto e o que ainda está aberto." });
+  function sync() {
+    const proj = !!projSel.value;
+    scope.classList.toggle("hidden", !proj);
+    [...scope.children].forEach((b, i) => b.setAttribute("aria-selected", String((i === 0) === whole)));
+    const useDates = !proj || !whole;
+    dates.classList.toggle("hidden", !useDates);
+    quick.classList.toggle("hidden", !useDates);
+    wholeNote.classList.toggle("hidden", useDates);
+  }
+  projSel.addEventListener("change", sync);
+  if (opts.projectId) projSel.value = String(opts.projectId);
+
   root.append(h("div", { class: "report-section" },
-    h("h3", { text: "Relatório do período" }),
-    h("p", { class: "sub", text: "Um PDF com as atividades dia a dia: recorrentes devidas (feitas e não feitas), extras fora da agenda, pontuais concluídas e o tempo apontado. Escolhendo um projeto, sai só o que é dele." }),
-    quick,
-    h("div", { class: "report-controls" },
-      h("div", { class: "field" }, h("label", { text: "Início" }), startInput),
-      h("div", { class: "field" }, h("label", { text: "Fim" }), endInput),
-      projSel.options.length > 1 ? h("div", { class: "field" }, h("label", { text: "Projeto" }), projSel) : null,
-      btn),
+    h("h3", { text: "Relatório em PDF" }),
+    h("p", { class: "sub", text: "Indicadores, ritmo, rotinas, entregas, o que está em aberto e o diário com o tempo apontado. Escolhendo um projeto, sai só o que é dele — do período que você quiser ou do projeto inteiro." }),
+    projSel.options.length > 1 ? h("div", { class: "field report-project" }, h("label", { text: "Projeto" }), projSel) : null,
+    scope, wholeNote, quick,
+    h("div", { class: "report-controls" }, dates, btn),
     err));
+  sync();
 
   async function run() {
     err.textContent = "";
+    const proj = projSel.value ? `project=${projSel.value}` : "";
+    const useDates = !proj || !whole;
     const start = startInput.value, end = endInput.value;
-    if (!start || !end) { err.textContent = "Preencha início e fim."; return; }
-    if (start > end) { err.textContent = "O início não pode ser depois do fim."; return; }
+    if (useDates && (!start || !end)) { err.textContent = "Preencha início e fim."; return; }
+    if (useDates && start > end) { err.textContent = "O início não pode ser depois do fim."; return; }
     btn.disabled = true;
     try {
-      const proj = projSel.value ? `&project=${projSel.value}` : "";
-      await api.download(`${base}?start=${start}&end=${end}${proj}`);
+      const q = [useDates ? `start=${start}&end=${end}` : "", proj].filter(Boolean).join("&");
+      await api.download(`${base}?${q}`);
     } catch (e) {
       err.textContent = e.message || "Falha ao exportar.";
     } finally {

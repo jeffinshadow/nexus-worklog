@@ -22,6 +22,8 @@ FONTS = ASSETS / "fonts"
 _WEEKDAYS = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"]
 _WD_SHORT = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"]
 _MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]
+_MESES_LONGOS = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto",
+                 "setembro", "outubro", "novembro", "dezembro"]
 _STATUS = {"todo": "a fazer", "in_progress": "em andamento", "blocked": "bloqueada"}
 
 # Paleta (impressão em fundo branco; o azul é o mesmo do app).
@@ -239,7 +241,12 @@ def _cover(pdf: _Report, user_email: str, data: dict) -> None:
     pdf.font("sanss", 17, (255, 255, 255))
     pdf.text_at(rx, 17, rw, 8, data.get("project") or _period(data["start"], data["end"]), "R")
     pdf.font("mono", 7.6, (161, 161, 168))
-    sub = user_email if not data.get("project") else f"{_period(data['start'], data['end'])} · {user_email}"
+    if data.get("whole_project"):
+        sub = f"projeto completo · desde {_dfull(data['start'])} · {user_email}"
+    elif data.get("project"):
+        sub = f"{_period(data['start'], data['end'])} · {user_email}"
+    else:
+        sub = user_email
     pdf.text_at(rx, 27, rw, 4, sub, "R")
     pdf.set_y(band_h + 9)
 
@@ -259,7 +266,8 @@ def _kpis(pdf: _Report, data: dict) -> None:
                   f"média {_dur(s['minutes'] // max(1, s['active_days']))} por dia ativo" if s["minutes"] else "nada apontado", None))
     if by_project:
         tiles.append(("em aberto", str(s["open"]), f"{s['overdue']} atrasada{'s' if s['overdue'] != 1 else ''}" if s["overdue"] else "nenhuma atrasada", None))
-    tiles.append(("dias com atividade", str(s["active_days"]), f"de {s['period_days']} no período", None))
+    tiles.append(("dias com atividade", str(s["active_days"]),
+                  f"em {s['period_days']} dias de projeto" if data.get("whole_project") else f"de {s['period_days']} no período", None))
 
     gap, h = 3.5, 27
     w = (pdf.cw - gap * (len(tiles) - 1)) / len(tiles)
@@ -305,18 +313,26 @@ def _section(pdf: _Report, title: str, note: str = "", need: float = 18, prio_le
 def _chart(pdf: _Report, data: dict) -> None:
     series = data["series"]
     by_project = bool(data.get("project"))
-    weekly = len(series) > 62
-    if weekly:  # períodos longos: uma barra por semana (domingo a sábado)
+    # Períodos longos agrupam: até 62 dias = por dia; até ~6 meses = por
+    # semana (domingo a sábado); acima disso (projeto inteiro) = por mês.
+    n_days = len(series)
+    gran = "dia" if n_days <= 62 else "semana" if n_days <= 186 else "mês"
+    weekly = gran != "dia"
+    if weekly:
         buckets: dict[date, dict] = {}
         for p in series:
-            k = p["date"] - timedelta(days=(p["date"].weekday() + 1) % 7)
+            if gran == "semana":
+                k = p["date"] - timedelta(days=(p["date"].weekday() + 1) % 7)
+            else:
+                k = p["date"].replace(day=1)
             b = buckets.setdefault(k, {"date": k, "work_day": True, "recurring_done": 0, "pontual": 0, "minutes": 0})
             for f in ("recurring_done", "pontual", "minutes"):
                 b[f] += p[f]
         series = list(buckets.values())
 
-    use_time = by_project or not any(p["recurring_done"] for p in series)
-    _section(pdf, "Ritmo do período", "por semana" if weekly else "por dia", need=48)
+    has_min = any(p["minutes"] for p in series)
+    use_time = has_min and (by_project or not any(p["recurring_done"] for p in series))
+    _section(pdf, "Ritmo do período", f"por {gran}", need=48)
     x0, y0, w, h = M, pdf.get_y() + 2, pdf.cw, 34
     n = len(series)
     slot = w / max(n, 1)
@@ -332,7 +348,7 @@ def _chart(pdf: _Report, data: dict) -> None:
     pdf.hline(y0 + h - h / 1.12, LINE, x0, x0 + w, 0.15)
     pdf.font("mono", 6.2, DIM)
     peak = top / 1.12
-    pdf.text_at(x0, y0 - 3.6, 60, 3, ("pico " + _dur(round(peak * 60))) if use_time else f"pico {round(peak)} itens/dia")
+    pdf.text_at(x0, y0 - 3.6, 60, 3, ("pico " + _dur(round(peak * 60))) if use_time else f"pico {round(peak)} itens/{gran}")
 
     label_every = max(1, round(n / 16))
     for i, p in enumerate(series):
@@ -352,14 +368,22 @@ def _chart(pdf: _Report, data: dict) -> None:
                 pdf.box(cx - bw / 2, y0 + h - r_h - p_h, bw, p_h, ACCENT, r=0)
         if i % label_every == 0:
             pdf.font("mono", 5.8, DIM)
-            lab = _d(p["date"]) if weekly else str(p["date"].day)
+            if gran == "mês":
+                lab = _MESES[p["date"].month - 1] + (f" {p['date'].year % 100:02d}" if p["date"].month == 1 or i == 0 else "")
+            else:
+                lab = _d(p["date"]) if weekly else str(p["date"].day)
             pdf.text_at(cx - 6, y0 + h + 1.2, 12, 3, lab, "C")
     pdf.hline(y0 + h, (200, 200, 208), x0, x0 + w, 0.25)
 
     # legenda
     ly = y0 + h + 6
-    items = [("horas apontadas", ACCENT)] if use_time else [("recorrentes feitas", ACCENT_MID), ("pontuais concluídas", ACCENT)]
-    if not weekly and not use_time:
+    if use_time:
+        items = [("horas apontadas", ACCENT)]
+    elif by_project:
+        items = [("pontuais concluídas", ACCENT)]
+    else:
+        items = [("recorrentes feitas", ACCENT_MID), ("pontuais concluídas", ACCENT)]
+    if not weekly and not use_time and not by_project:
         items.append(("dia não útil", (238, 238, 242)))
     lx = x0
     for label, col in items:
@@ -604,9 +628,19 @@ def _diary(pdf: _Report, data: dict) -> None:
     show_proj = not data.get("project")
     gx = M + 24  # coluna de conteúdo
     gw = pdf.cw - 24
+    # Período com mais de um mês: o diário ganha um separador por mês (com ano).
+    by_month = (days[0]["date"].year, days[0]["date"].month) != (days[-1]["date"].year, days[-1]["date"].month)
+    month = None
     for day in days:
         d = day["date"]
         est = 9 + (6 if day["recurring"] else 0) + 5 * len(day["pontual"]) + 5 * len(day["time"])
+        if by_month and (d.year, d.month) != month:
+            month = (d.year, d.month)
+            pdf.room(min(est, 40) + 10)
+            ym = pdf.get_y()
+            pdf.font("monom", 7.4, ACCENT)
+            pdf.text_at(M, ym, 80, 4, f"{_MESES_LONGOS[d.month - 1]} {d.year}".upper())
+            pdf.set_y(ym + 7)
         pdf.room(min(est, 40))
         y = pdf.get_y()
         # coluna da data
@@ -676,7 +710,9 @@ def build_report_pdf(user_email: str, start: date, end: date, data: dict, brandi
     generated = data.get("generated_at") or datetime.now()
     period = _period(start, end)
 
-    pdf = _Report(brand, period + (f" · {data['project']}" if data.get("project") else ""), generated.strftime("%d/%m/%Y %H:%M"))
+    if data.get("whole_project"):
+        period = f"desde {_dfull(start)}"
+    pdf = _Report(brand, (f"{data['project']} · " if data.get("project") else "") + period, generated.strftime("%d/%m/%Y %H:%M"))
     title = f"Relatório {brand['line1']} {brand['line2']} · {period}"
     pdf.set_title(_s(title))
     pdf.set_author(_s(user_email))

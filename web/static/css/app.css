@@ -479,3 +479,9 @@ dialog.task-dialog { max-width: 640px; padding: 0; max-height: min(88vh, 900px);
 .time-form .dur::placeholder { font-family: var(--font-sans); font-size: .84rem; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .auth-card .lockup--center { margin-bottom: 28px; }
+.report-project { max-width: 340px; }
+.report-dates { display: flex; gap: 12px; flex-wrap: wrap; }
+.report-dates.hidden { display: none; }
+.seg-sm { margin-bottom: 14px; }
+.seg-sm button.chip-btn { padding: 6px 12px; font-size: .84rem; }
+.report-section .help { margin: -4px 0 16px; font-size: .86rem; color: var(--on-surface-variant); max-width: 60ch; }

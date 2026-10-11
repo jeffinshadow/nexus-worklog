@@ -130,6 +130,14 @@ export async function projectsPanel(rerender) {
       h("span", { class: "token-meta", text: `${p.open_tasks} abertas · ${p.total_tasks} no total${p.archived ? " · arquivado" : ""}` }),
       swatches,
       h("div", { class: "actions" },
+        h("button", { type: "button", class: "icon", title: "Relatório do projeto completo (PDF)", "aria-label": "Relatório de " + p.name,
+          onClick: async (ev) => {
+            const b = ev.currentTarget;
+            b.disabled = true;
+            try { await api.download(`/reports/export?project=${p.id}`); }
+            catch (e) { errorToast(e, "Falha ao gerar o relatório."); }
+            finally { b.disabled = false; }
+          } }, icon("reports")),
         h("button", { type: "button", class: "btn btn-ghost btn-sm", text: p.archived ? "Reativar" : "Arquivar",
           onClick: () => save(p, { archived: !p.archived }, p.archived ? "Projeto reativado." : "Arquivado: some dos seletores, as tarefas continuam.") }),
         h("button", { type: "button", class: "icon", title: "Excluir", "aria-label": "Excluir " + p.name, onClick: async () => {

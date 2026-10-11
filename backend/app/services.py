@@ -570,6 +570,7 @@ def get_report_range(user_id: int, start: date, end: date, project: dict | None 
         "today": app_today(),
         "generated_at": datetime.now(ZoneInfo(tz)),
         "project": project["name"] if project else None,
+        "whole_project": bool(project and project.get("whole")),
         "days": days,
         "series": series,
         "recurring_stats": sorted(per_rec.values(), key=lambda r: (-(r["due"] or 0), r["label"].lower())),
