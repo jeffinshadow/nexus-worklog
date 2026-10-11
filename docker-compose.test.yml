@@ -30,6 +30,7 @@ services:
       ADMIN_INITIAL_PASSWORD: Admin-Inicial-Teste-1
       COOKIE_SECURE: "false"
       APP_TZ: America/Sao_Paulo
+      MAIL_SCHEDULER: "false"   # os testes chamam o agendador na mão, com e-mail falso
     depends_on:
       db-test:
         condition: service_healthy

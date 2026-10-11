@@ -21,6 +21,17 @@ class Config:
     REGISTRATION_OPEN = os.environ.get("REGISTRATION_OPEN", "false").lower() == "true"
     APP_TZ = os.environ.get("APP_TZ", "America/Sao_Paulo")
 
+    # E-mail (avisos). Sem SMTP_HOST, os avisos ficam desligados no servidor.
+    SMTP_HOST = os.environ.get("SMTP_HOST", "")
+    SMTP_PORT = int(os.environ.get("SMTP_PORT", "465"))
+    SMTP_USER = os.environ.get("SMTP_USER", "")
+    SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
+    # 465 = TLS direto; 587 = STARTTLS; outra porta (ex.: 1025 do Mailpit) = sem TLS.
+    MAIL_FROM = os.environ.get("MAIL_FROM", "Nexus Worklog <nexus@localhost>")
+    APP_URL = os.environ.get("APP_URL", "https://nexus.shadow.tec.br").rstrip("/")
+    # O agendador roda só se houver SMTP e não estiver desligado (testes).
+    MAIL_SCHEDULER = os.environ.get("MAIL_SCHEDULER", "true").lower() == "true"
+
     SESSION_COOKIE = "session"
     MIN_PASSWORD_LEN = 10
     MAX_PASSWORD_LEN = 128

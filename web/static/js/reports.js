@@ -2,6 +2,7 @@
 // apontando para o usuário alvo.
 import { api } from "./api.js";
 import { h, icon, clear } from "./dom.js";
+import { errorToast } from "./ui.js";
 
 const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
@@ -75,6 +76,23 @@ export async function mount(root, opts = {}) {
     h("div", { class: "report-controls" }, dates, btn),
     err));
   sync();
+
+  // Exportação dos dados (só no próprio usuário; o admin exporta PDF).
+  if (!opts.exportBase) {
+    const dl = (path, label, help) => {
+      const b = h("button", { type: "button", class: "btn btn-ghost", onClick: async () => {
+        b.disabled = true;
+        try { await api.download(path); } catch (e) { errorToast(e, "Falha ao exportar."); } finally { b.disabled = false; }
+      } }, icon("download"), label);
+      return h("div", { class: "export-row" }, b, h("span", { class: "help", text: help }));
+    };
+    root.append(h("div", { class: "report-section" },
+      h("h3", { text: "Exportar dados" }),
+      h("p", { class: "sub", text: "Seus dados em formato aberto, para planilha, faturamento ou backup." }),
+      dl("/export/apontamentos.csv", "Apontamentos (CSV)", "um registro por apontamento de tempo: dia, horas, tarefa, projeto e observação"),
+      dl("/export/tarefas.csv", "Tarefas (CSV)", "todas as tarefas com status, prioridade, projeto, prazo, checklist e horas"),
+      dl("/export/tudo.json", "Tudo (JSON)", "tarefas com anotações, checklist e tempo, recorrentes com os dias feitos e projetos")));
+  }
 
   async function run() {
     err.textContent = "";

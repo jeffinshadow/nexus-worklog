@@ -1,0 +1,12 @@
+# SÓ PARA DESENVOLVIMENTO (Giratina): caixa de e-mail falsa para testar os
+# avisos sem mandar nada de verdade. Ativar no .env local:
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.mailpit.yml
+#   SMTP_HOST=mailpit
+#   SMTP_PORT=1025
+# Caixa em http://127.0.0.1:8025 (túnel SSH). Nunca usar em produção.
+services:
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    networks: [internal]
+    ports: ["127.0.0.1:8025:8025"]

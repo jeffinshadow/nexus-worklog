@@ -589,3 +589,47 @@ def get_report_range(user_id: int, start: date, end: date, project: dict | None 
             "overdue": sum(1 for a in abertas if a["due_date"] and a["due_date"] < app_today()),
         },
     }
+
+
+# ------------------------------------------------------------------ resumos --
+
+def last_work_day(today: date, mask: int) -> date:
+    """Último dia útil antes de hoje (até uma semana para trás; senão, ontem)."""
+    for i in range(1, 8):
+        d = today - timedelta(days=i)
+        if is_work_day(d, mask):
+            return d
+    return today - timedelta(days=1)
+
+
+def _compact(r: dict) -> dict:
+    s = r["summary"]
+    return {
+        "start": r["start"],
+        "end": r["end"],
+        "recurring_done": s["recurring_done"],
+        "recurring_total": s["recurring_total"],
+        "recurring_extra": s["recurring_extra"],
+        "pontual_done": s["pontual_done"],
+        "minutes": s["minutes"],
+        "active_days": s["active_days"],
+        "deliveries": [{"id": w["id"], "title": w["title"], "project": w["project"],
+                        "project_color": w["project_color"], "minutes": w["minutes"]} for w in r["deliveries"]],
+        "projects": [p for p in r["projects"] if p["minutes"] or p["done"]],
+        "missed": [x["label"] for x in r["recurring_stats"] if x["due"] > x["done"]],
+    }
+
+
+def get_summary(user_id: int) -> dict:
+    """Resumos da tela Hoje: o último dia útil e a semana até agora, com a
+    mesma parte da semana anterior para comparar (mesmo número de dias)."""
+    today = app_today()
+    mask = work_mask(user_id)
+    last = last_work_day(today, mask)
+    ws = _week_start(today)
+    prev_s = ws - timedelta(days=7)
+    prev_e = prev_s + (today - ws)
+    week = _compact(get_report_range(user_id, ws, today))
+    prev = _compact(get_report_range(user_id, prev_s, prev_e))
+    week["previous"] = {k: prev[k] for k in ("recurring_done", "recurring_total", "pontual_done", "minutes", "start", "end")}
+    return {"today": today, "last_day": _compact(get_report_range(user_id, last, last)), "week": week}

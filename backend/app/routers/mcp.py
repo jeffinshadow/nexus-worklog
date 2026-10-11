@@ -22,6 +22,7 @@ from .. import db, deps, services
 from ..schemas import ChecklistIn, ChecklistUpdate, NoteIn, TimeIn, ToggleIn, WorklogIn, WorklogUpdate
 from . import history as history_routes
 from . import projects as project_routes
+from . import search as search_routes
 from . import recurring as recurring_routes
 from . import worklog as worklog_routes
 from .board import check_board_day
@@ -198,6 +199,21 @@ def t_get_task(ctx, args):
     return "\n".join(lines)
 
 
+def t_search(ctx, args):
+    r = _call(search_routes.search, str(args.get("query", "")), user=ctx)
+    today = services.app_today()
+    lines = []
+    for t in r["tasks"]:
+        t.setdefault("check_total", 0)
+        lines.append(_task_line(t | {"description": None, "project_name": t["project_name"]}, today))
+        lines += [f"    {h['kind']}: {h['text']}" for h in t["hits"] if h["kind"] != "título"][:3]
+    if r["recurring"]:
+        lines += ["", "Recorrentes:"] + [f"  #{x['id']} {x['label']}" + ("" if x["active"] else " (removida)") for x in r["recurring"]]
+    if r["projects"]:
+        lines += ["", "Projetos:"] + [f"  #{x['id']} {x['name']}" for x in r["projects"]]
+    return "\n".join(lines) or "Nada encontrado."
+
+
 def t_add_note(ctx, args):
     data = _call(NoteIn, body=args.get("text", ""))
     _call(worklog_routes.add_note, int(args["task_id"]), data, user=ctx)
@@ -286,6 +302,8 @@ TOOLS = {
                         "priority": {"type": "string", "enum": ["alta", "normal", "baixa"]}}}),
     "get_task": (t_get_task, False, "Tarefa completa: checklist, anotações e tempo apontado.",
                  {"type": "object", "required": ["task_id"], "properties": {"task_id": {"type": "integer"}}}),
+    "search": (t_search, False, "Busca em tarefas (título, descrição, anotações, checklist, apontamentos), recorrentes e projetos. Ignora acentos.",
+               {"type": "object", "required": ["query"], "properties": {"query": {"type": "string", "minLength": 2, "maxLength": 100}}}),
     "add_note": (t_add_note, True, "Anota um progresso na tarefa (o que foi feito, decisão, pendência).",
                  {"type": "object", "required": ["task_id", "text"], "properties": {
                      "task_id": {"type": "integer"}, "text": {"type": "string", "maxLength": 2000}}}),

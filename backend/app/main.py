@@ -7,7 +7,11 @@ from pydantic import EmailStr, TypeAdapter, ValidationError
 
 from . import db
 from .config import config
-from .routers import admin, auth, board, branding, dashboard, history, mcp, projects, recurring, reports, tokens, worklog
+import asyncio
+
+from . import notify
+from .routers import (admin, auth, board, branding, calendar, dashboard, history, mcp, notifications, projects,
+                      recurring, reports, search, summary, tokens, worklog)
 from .security import hash_password
 
 SQL_DIR = pathlib.Path(__file__).resolve().parent.parent / "sql"
@@ -45,7 +49,12 @@ async def lifespan(app: FastAPI):
     db.init_pool()
     run_migrations()
     seed_admin()
+    task = None
+    if config.SMTP_HOST and config.MAIL_SCHEDULER:
+        task = asyncio.create_task(notify.scheduler())
     yield
+    if task:
+        task.cancel()
 
 
 app = FastAPI(
@@ -56,6 +65,7 @@ app = FastAPI(
     openapi_url=None,
 )
 
-for module in (auth, recurring, worklog, board, dashboard, reports, admin, history, tokens, mcp, branding, projects):
+for module in (auth, recurring, worklog, board, dashboard, reports, admin, history, tokens, mcp, branding, projects,
+               summary, search, calendar, notifications):
     app.include_router(module.router)
 app.include_router(worklog.items)  # /api/notes, /api/checklist, /api/time

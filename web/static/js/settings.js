@@ -7,6 +7,8 @@ import { projectsPanel } from "./projects.js";
 const TABS = [
   ["dias", "Dias úteis"],
   ["projetos", "Projetos"],
+  ["avisos", "Avisos"],
+  ["calendario", "Calendário"],
   ["chaves", "Chaves de API"],
   ["ia", "Integração com IA"],
   ["conta", "Conta"],
@@ -40,6 +42,8 @@ export async function mount(root, ctx) {
     clear(body);
     if (active === "dias") body.append(workDays(ctx.me));
     else if (active === "projetos") body.append(await projectsPanel(() => render()));
+    else if (active === "avisos") body.append(await notices());
+    else if (active === "calendario") body.append(await calendarFeed(() => render()));
     else if (active === "chaves") body.append(await tokens(() => render()));
     else if (active === "ia") body.append(...aiHelp());
     else body.append(account(ctx.me));
@@ -75,6 +79,117 @@ function workDays(me) {
     h("fieldset", { class: "weekday-picker" },
       ...boxes.map(({ label, cb }) => h("label", { class: "weekday-option" }, cb, h("span", { text: label })))),
     err, save);
+}
+
+// ------------------------------------------------------------------ avisos --
+
+const KINDS = [
+  ["morning", "Seu dia", "De manhã: atrasadas, o que vence hoje, rotinas do dia e prioridades altas. Só nos dias úteis."],
+  ["evening", "Antes de encerrar", "No fim do dia, se ainda faltar alguma rotina de hoje. Não sai se você já fez tudo."],
+  ["weekly", "Resumo da semana", "Às segundas: rotinas, entregas, tempo por projeto e o que ficou para trás na semana anterior."],
+];
+const HOURS = Array.from({ length: 24 }, (_, i) => i);
+
+async function notices() {
+  const p = await api.get("/notifications");
+  const rows = KINDS.map(([key, title, help]) => {
+    const on = h("input", { type: "checkbox", "aria-label": title });
+    on.checked = p[key];
+    const hour = h("select", { class: "select-sm", "aria-label": `Horário de ${title}` },
+      ...HOURS.map((x) => h("option", { value: String(x), text: `${String(x).padStart(2, "0")}:00` })));
+    hour.value = String(p[`${key}_hour`]);
+    const sync = () => { hour.disabled = !on.checked; };
+    on.addEventListener("change", sync);
+    sync();
+    return { key, on, hour, el: h("div", { class: "notice-row" },
+      h("label", { class: "notice-main" }, on, h("span", {}, h("strong", { text: title }), h("small", { text: help }))), hour) };
+  });
+  const titles = h("input", { type: "checkbox" });
+  titles.checked = p.show_titles;
+  const save = h("button", { type: "button", class: "btn btn-primary", text: "Salvar avisos" });
+  save.addEventListener("click", async () => {
+    const body = { show_titles: titles.checked };
+    for (const r of rows) { body[r.key] = r.on.checked; body[`${r.key}_hour`] = Number(r.hour.value); }
+    try { await api.put("/notifications", body); toast("Avisos salvos."); }
+    catch (e) { errorToast(e, "Falha ao salvar."); }
+  });
+  const test = h("button", { type: "button", class: "btn btn-ghost" }, icon("mail"), "Mandar um teste");
+  test.disabled = !p.mail_configured;
+  test.addEventListener("click", async () => {
+    test.disabled = true;
+    try { const r = await api.post("/notifications/test"); toast(`Teste enviado para ${r.to}.`); }
+    catch (e) { errorToast(e, "Falha no envio."); }
+    finally { setTimeout(() => { test.disabled = false; }, 4000); }
+  });
+  const KIND_PT = { morning: "seu dia", evening: "fim do dia", weekly: "semana", test: "teste" };
+  const recent = p.recent.filter((r) => r.ok !== null || r.error !== "nada a avisar");
+  return h("div", { class: "settings-grid" },
+    h("section", { class: "panel" },
+      h("div", { class: "panel-head" }, icon("mail"), h("h2", { text: "Avisos por e-mail" })),
+      h("p", { class: "help" }, "Enviados para ", h("strong", { class: "mono", text: p.email }),
+        ". Sem rastreamento de abertura ou de cliques; só sai e-mail quando há algo a avisar."),
+      p.mail_configured ? null : warnBox("O envio de e-mail ainda não está configurado neste servidor. Você pode deixar tudo escolhido; os avisos começam quando ele for ligado."),
+      ...rows.map((r) => r.el),
+      h("label", { class: "weekday-option notice-titles" }, titles, h("span", { text: "Mostrar os títulos das tarefas no e-mail (desligado: só os números)" })),
+      h("div", { class: "row-actions" }, save, test)),
+    recent.length ? h("section", { class: "panel" },
+      h("div", { class: "panel-head" }, h("h2", { text: "Últimos envios" })),
+      ...recent.map((r) => h("div", { class: "token-row" },
+        h("span", { class: "token-name", text: `${KIND_PT[r.kind] || r.kind} · ${r.ref_date.split("-").reverse().slice(0, 2).join("/")}` }),
+        h("span", { class: "chip " + (r.ok ? "done" : "late"), text: r.ok ? "enviado" : "falhou" }),
+        h("span", { class: "token-meta", text: r.ok ? dateTime(r.sent_at) : (r.error || "") })))) : null);
+}
+
+// -------------------------------------------------------------- calendário --
+
+async function calendarFeed(rerender) {
+  const st = await api.get("/calendar");
+  const rec = h("input", { type: "checkbox" });
+  rec.checked = st.active ? st.include_recurring : true;
+  const panel = h("section", { class: "panel" },
+    h("div", { class: "panel-head" }, icon("calendar"), h("h2", { text: "Calendário" })),
+    h("p", { class: "help", text: "Assine o Nexus no Google Agenda, Outlook ou no celular: os prazos das tarefas abertas aparecem como eventos de dia inteiro e as rotinas como eventos repetidos. A agenda atualiza sozinha (o Google pode levar algumas horas)." }),
+    h("label", { class: "weekday-option" }, rec, h("span", { text: "Incluir as rotinas (recorrentes)" })));
+
+  if (!st.active) {
+    panel.append(h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn btn-primary", onClick: async () => {
+      try { showFeed(await api.post("/calendar", { include_recurring: rec.checked })); rerender(); }
+      catch (e) { errorToast(e); }
+    } }, icon("calendar"), "Criar link do calendário")));
+    return h("div", { class: "settings-grid" }, panel);
+  }
+  rec.addEventListener("change", async () => {
+    try { await api.patch("/calendar", { include_recurring: rec.checked }); toast("Calendário atualizado."); }
+    catch (e) { rec.checked = !rec.checked; errorToast(e); }
+  });
+  panel.append(
+    h("div", { class: "token-row" },
+      h("span", { class: "token-name", text: "Link ativo" }),
+      h("div", { class: "actions" },
+        h("button", { type: "button", class: "btn btn-ghost btn-sm", text: "Gerar novo link", onClick: async () => {
+          if (!(await confirmDialog({ title: "Gerar um novo link?", text: "O link atual para de funcionar: as agendas que o assinam precisam do novo.", confirm: "Gerar novo" }))) return;
+          try { showFeed(await api.post("/calendar", { include_recurring: rec.checked })); rerender(); } catch (e) { errorToast(e); }
+        } }),
+        h("button", { type: "button", class: "btn btn-danger btn-sm", text: "Revogar", onClick: async () => {
+          if (!(await confirmDialog({ title: "Revogar o link do calendário?", text: "As agendas que o assinam deixam de receber atualizações.", confirm: "Revogar", danger: true }))) return;
+          try { await api.del("/calendar"); toast("Link revogado."); rerender(); } catch (e) { errorToast(e); }
+        } })),
+      h("span", { class: "token-meta", text: `${st.prefix}… · criado ${dateTime(st.created_at)} · ${st.last_used_at ? "última leitura " + dateTime(st.last_used_at) : "ainda não lido por nenhuma agenda"}` })),
+    h("p", { class: "dialog-note", text: "O link completo só aparece quando é criado. Perdeu? Gere um novo." }));
+  return h("div", { class: "settings-grid" }, panel);
+}
+
+function showFeed(res) {
+  const url = location.origin + res.path;
+  const webcal = url.replace(/^https?:/, "webcal:");
+  const dlg = modal(
+    h("h2", { text: "Link do calendário" }),
+    h("p", { text: "Copie agora: ele não aparece de novo. Quem tiver o link vê seus prazos e rotinas." }),
+    codeBox(url),
+    h("p", { class: "dialog-note", text: "Google Agenda: Outras agendas › + › Do URL › cole o link." }),
+    h("p", { class: "dialog-note", text: "Outlook: Adicionar calendário › Assinar da Web." }),
+    h("p", { class: "dialog-note" }, "iPhone/Mac: ", h("a", { href: webcal, text: "abrir no Calendário" }), "."),
+    h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Pronto", onClick: () => dlg.close() })));
 }
 
 // ----------------------------------------------------------- chaves de API --
@@ -180,7 +295,7 @@ function aiHelp() {
       codeBox(JSON.stringify({ mcpServers: { nexus: { url, headers: { Authorization: "Bearer nxs_SUA_CHAVE" } } } }, null, 2))),
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "O que a IA pode fazer" })),
-      h("p", { class: "help", text: "Ver o dia, listar e criar tarefas (com projeto e prioridade), editar, concluir, marcar recorrentes (até 7 dias atrás), anotar progresso, montar e marcar checklist, apontar tempo, consultar o histórico e desfazer um engano dela. Ela não exclui tarefas. Com uma chave “só leitura”, ela apenas consulta." }),
+      h("p", { class: "help", text: "Ver o dia, buscar, listar e criar tarefas (com projeto e prioridade), editar, concluir, marcar recorrentes (até 7 dias atrás), anotar progresso, montar e marcar checklist, apontar tempo, consultar o histórico e desfazer um engano dela. Ela não exclui tarefas. Com uma chave “só leitura”, ela apenas consulta." }),
       h("p", { class: "dialog-note", text: "API REST direta (scripts, automações):" }),
       codeBox(`curl -H "Authorization: Bearer nxs_SUA_CHAVE" ${location.origin}/api/board`)),
   ];

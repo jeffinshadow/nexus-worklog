@@ -4,6 +4,7 @@ import { h, icon, clear, longDate } from "./dom.js";
 import { errorToast, toast } from "./ui.js";
 import { openRecurring, openWorklog, finishTask, taskChips, isOverdue, scheduleLabel } from "./board.js";
 import { openTask } from "./task.js";
+import { summaryPanel } from "./summary.js";
 
 // Ordem de urgência das abertas: atrasadas, vencem hoje, prioridade alta,
 // bloqueadas, em andamento, a fazer; a prioridade desempata o resto.
@@ -16,7 +17,7 @@ function urgency(t, today) {
 
 export async function mount(root, ctx) {
   const refresh = () => mount(root, ctx);
-  const b = await api.get("/board");
+  const [b, sum] = await Promise.all([api.get("/board"), api.get("/summary").catch(() => null)]);
   const today = b.today;
   ctx.setEyebrow(longDate(today) + (b.work_day ? "" : " · dia não útil"));
   ctx.setActions(
@@ -108,5 +109,5 @@ export async function mount(root, ctx) {
       h("div", { class: "t" }, h("button", { type: "button", class: "card-open", text: t.title, onClick: () => openTask(t.id, refresh) }))));
   }
 
-  root.append(h("div", { class: "today-grid" }, stats, recPanel, openPanel, donePanel));
+  root.append(h("div", { class: "today-grid" }, stats, recPanel, openPanel, sum ? summaryPanel(sum, refresh) : null, donePanel));
 }

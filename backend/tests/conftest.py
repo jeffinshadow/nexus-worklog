@@ -13,7 +13,8 @@ ADMIN_PW_INICIAL = os.environ["ADMIN_INITIAL_PASSWORD"]
 ADMIN_PW = "Admin-Definitiva-Teste-1"
 SENHA_PADRAO = "Senha-Do-Usuario-1"
 
-TABELAS = ["app_branding", "audit_log", "api_tokens", "time_entries", "task_checklist", "task_notes",
+TABELAS = ["app_branding", "audit_log", "api_tokens", "notification_log", "notification_prefs", "calendar_feeds",
+           "time_entries", "task_checklist", "task_notes",
            "recurring_completions", "recurring_tasks", "projects",
            "worklog_tasks", "sessions", "users"]
 
