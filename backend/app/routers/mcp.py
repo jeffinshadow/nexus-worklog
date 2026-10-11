@@ -19,6 +19,9 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import ValidationError
 
 from .. import db, deps, services
+from ..config import config
+from ..labels import PRIO_PT, STATUS_PT
+from ..labels import dur as _dur
 from ..schemas import ChecklistIn, ChecklistUpdate, NoteIn, TimeIn, ToggleIn, WorklogIn, WorklogUpdate
 from . import history as history_routes
 from . import projects as project_routes
@@ -33,16 +36,16 @@ SUPPORTED_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26"]
 SERVER_INFO = {"name": "nexus-worklog", "title": "Nexus Worklog", "version": "2.0.0"}
 INSTRUCTIONS = (
     "Nexus Worklog: o registro do dia de trabalho do usuário. Use get_today para "
-    "ver o dia (recorrentes e tarefas abertas). Registre o que o usuário contar com "
-    "create_task/update_task/complete_task e marque rotinas com set_recurring. "
-    "Datas no formato AAAA-MM-DD, no fuso de Brasília. Recorrentes aceitam até 7 dias "
-    "para trás. Tudo fica no histórico do usuário; use undo para corrigir um engano seu."
+    "ver o dia (rotinas e tarefas abertas) e get_summary para a daily/retro (ontem e a "
+    "semana, com tempo por projeto). Registre o que o usuário contar com "
+    "create_task/update_task/complete_task, log_time e add_note; marque rotinas com "
+    "set_recurring. Datas no formato AAAA-MM-DD, no fuso " + config.APP_TZ + ". Rotinas "
+    "aceitam até 7 dias para trás; marcar uma rotina fora da agenda dela conta como extra. "
+    "Tudo fica no histórico do usuário; use undo para corrigir um engano seu."
 )
 
 STATUS = ["todo", "in_progress", "blocked", "done"]
-STATUS_PT = {"todo": "a fazer", "in_progress": "em andamento", "blocked": "bloqueada", "done": "concluída"}
 PRIO = {"alta": 1, "normal": 2, "baixa": 3}
-PRIO_PT = {1: "alta", 2: "normal", 3: "baixa"}
 DATE = {"type": "string", "format": "date", "description": "Data AAAA-MM-DD"}
 
 
@@ -62,10 +65,6 @@ def _call(fn, *args, **kwargs):
         raise ToolError(f"parâmetros inválidos: {msgs}") from None
 
 
-def _dur(m: int) -> str:
-    return f"{m // 60}h{m % 60:02d}" if m >= 60 else f"{m} min"
-
-
 def _task_line(t: dict, today: date) -> str:
     parts = [f"#{t['id']} {t['title']}", f"[{STATUS_PT.get(t['status'], t['status'])}]"]
     if t.get("priority") == 1:
@@ -76,7 +75,7 @@ def _task_line(t: dict, today: date) -> str:
         due = t["due_date"]
         parts.append(f"prazo {due.isoformat()}" + (" (ATRASADA)" if due < today else ""))
     if t.get("completed_at"):
-        parts.append(f"concluída em {t['completed_at'].date().isoformat()}")
+        parts.append(f"concluída em {t['completed_at'].astimezone(services.app_tz()).date().isoformat()}")
     if t.get("check_total"):
         parts.append(f"checklist {t['check_done']}/{t['check_total']}")
     if t.get("minutes"):
@@ -136,9 +135,12 @@ def t_get_today(ctx, args):
     b = services.get_board(uid)
     today = b["today"]
     lines = [f"Hoje: {today.isoformat()} ({'dia útil' if b['work_day'] else 'dia NÃO útil'})", ""]
-    rec = b["recurring"]
-    lines.append(f"Recorrentes ({sum(r['done_today'] for r in rec)}/{len(rec)} feitas):")
-    lines += [f"  [{'x' if r['done_today'] else ' '}] #{r['id']} {r['label']}" for r in rec] or ["  (nenhuma)"]
+    rec = [r for r in b["recurring"] if r["due"]]
+    lines.append(f"Rotinas de hoje ({sum(r['done_today'] for r in rec)}/{len(rec)} feitas):")
+    lines += _recurring_rows(rec) or ["  (nenhuma)"]
+    extra = [r for r in b["recurring"] if not r["due"] and r["done_today"]]
+    if extra:
+        lines += [f"  [x] #{r['id']} {r['label']} (extra: fora da agenda)" for r in extra]
     lines.append("")
     open_ = b["in_progress"]
     lines.append(f"Tarefas abertas ({len(open_)}):")
@@ -247,8 +249,34 @@ def t_list_recurring(ctx, args):
     day = _call(check_board_day, date.fromisoformat(args["day"])) if args.get("day") else None
     b = services.get_board(ctx["user_id"], day)
     head = f"Recorrentes de {b['day'].isoformat()} ({'dia útil' if b['work_day'] else 'dia não útil: marcações contam como extra'}):"
-    rows = [f"  [{'x' if r['done_today'] else ' '}] #{r['id']} {r['label']}" for r in b["recurring"]]
+    rows = _recurring_rows(b["recurring"])
     return "\n".join([head, *(rows or ["  (nenhuma)"])])
+
+
+def _recurring_rows(rows: list) -> list[str]:
+    return [f"  [{'x' if r['done_today'] else ' '}] #{r['id']} {r['label']}" + ("" if r["due"] else " (fora da agenda)")
+            for r in rows]
+
+
+def t_get_summary(ctx, args):
+    s = services.get_summary(ctx["user_id"])
+
+    def block(title, x, prev=None):
+        out = [title]
+        rec = f"{x['recurring_done']}/{x['recurring_total']}" if x["recurring_total"] else "nenhuma devida"
+        out.append(f"  rotinas {rec}" + (f" (+{x['recurring_extra']} extra)" if x["recurring_extra"] else "")
+                   + f" · {x['pontual_done']} tarefa(s) concluída(s) · {_dur(x['minutes']) if x['minutes'] else 'nada'} apontado")
+        if prev:
+            out.append(f"  mesma parte da semana passada: {prev['pontual_done']} concluída(s), {_dur(prev['minutes'])} apontado")
+        out += [f"  - {d['title']}" + (f" {{{d['project']}}}" if d["project"] else "") for d in x["deliveries"][:15]]
+        out += [f"  tempo em {p['name'] or 'sem projeto'}: {_dur(p['minutes'])}" for p in x["projects"] if p["minutes"]]
+        if x["missed"]:
+            out.append("  rotinas que ficaram para trás: " + ", ".join(x["missed"]))
+        return out
+
+    last = s["last_day"]
+    return "\n".join(block(f"Último dia útil ({last['start'].isoformat()}):", last)
+                     + [""] + block(f"Semana até hoje (desde {s['week']['start'].isoformat()}):", s["week"], s["week"]["previous"]))
 
 
 def t_set_recurring(ctx, args):
@@ -300,6 +328,8 @@ TOOLS = {
                         "due_date": {**DATE, "type": ["string", "null"]},
                         "project": {"type": ["string", "null"]},
                         "priority": {"type": "string", "enum": ["alta", "normal", "baixa"]}}}),
+    "get_summary": (t_get_summary, False, "Resumo para a daily/retro: o último dia útil e a semana até hoje (rotinas, tarefas concluídas, tempo por projeto, o que ficou para trás).",
+                    {"type": "object", "properties": {}}),
     "get_task": (t_get_task, False, "Tarefa completa: checklist, anotações e tempo apontado.",
                  {"type": "object", "required": ["task_id"], "properties": {"task_id": {"type": "integer"}}}),
     "search": (t_search, False, "Busca em tarefas (título, descrição, anotações, checklist, apontamentos), recorrentes e projetos. Ignora acentos.",
@@ -420,9 +450,8 @@ async def mcp_post(request: Request):
     except ValueError:
         return JSONResponse(_rpc_error(None, -32700, "JSON inválido"), status_code=400)
 
-    if isinstance(body, list):  # lote (versões antigas do protocolo)
-        replies = [r for r in [await run_in_threadpool(_handle, ctx, m) for m in body] if r is not None]
-        return JSONResponse(replies) if replies else Response(status_code=202)
+    if not isinstance(body, dict):  # lote saiu do protocolo em 2025-06-18 (e burlaria o limite)
+        return JSONResponse(_rpc_error(None, -32600, "envie uma mensagem JSON-RPC por requisição"), status_code=400)
     reply = await run_in_threadpool(_handle, ctx, body)
     if reply is None:
         return Response(status_code=202)

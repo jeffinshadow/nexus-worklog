@@ -47,7 +47,7 @@ def put_prefs(data: PrefsIn, user=Depends(web_active_csrf)):
              show_titles = EXCLUDED.show_titles, updated_at = now()""",
         {"uid": uid, **data.model_dump()},
     )
-    audit.record(user, "notifications.update", "user", uid, before=before, after=data.model_dump())
+    audit.record(user, "notifications.update", "notifications", uid, before=before, after=data.model_dump())
     return _out(uid, user["email"])
 
 

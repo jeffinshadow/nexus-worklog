@@ -10,6 +10,8 @@ from ..services import app_today
 router = APIRouter(prefix="/api/worklog", tags=["worklog"])
 items = APIRouter(prefix="/api", tags=["worklog"])  # rotas por id de anotação/item/tempo
 
+TIME_MAX_PAST_DAYS = 366  # apontamento retroativo (também limita o "projeto inteiro")
+
 
 def _check_project(uid: int, project_id) -> None:
     if project_id is None:
@@ -138,6 +140,12 @@ def finish(task_id: int, user=Depends(active_user_csrf)):
 @router.delete("/{task_id}")
 def delete(task_id: int, user=Depends(active_user_csrf)):
     before = _own_task(user["user_id"], task_id)
+    # Anotações, checklist e tempo vão junto (CASCADE): ficam no histórico para o desfazer.
+    before["children"] = {
+        "notes": db.query_all("SELECT id, body, actor, token_name, created_at FROM task_notes WHERE task_id = %s", (task_id,)),
+        "checklist": db.query_all("SELECT id, label, done, position FROM task_checklist WHERE task_id = %s", (task_id,)),
+        "time": db.query_all("SELECT id, minutes, day, note, actor, token_name, created_at FROM time_entries WHERE task_id = %s", (task_id,)),
+    }
     db.execute("DELETE FROM worklog_tasks WHERE id = %s AND user_id = %s", (task_id, user["user_id"]))
     audit.record(user, "worklog.delete", "worklog", task_id, before=before)
     return {"ok": True}
@@ -225,9 +233,16 @@ def delete_item(item_id: int, user=Depends(active_user_csrf)):
 @router.post("/{task_id}/time", status_code=201)
 def log_time(task_id: int, data: TimeIn, user=Depends(active_user_csrf)):
     task = _own_task(user["user_id"], task_id)
-    day = data.day or app_today()
-    if day > app_today():
+    today = app_today()
+    day = data.day or today
+    if day > today:
         raise HTTPException(status_code=400, detail="não dá para apontar tempo no futuro")
+    if (today - day).days > TIME_MAX_PAST_DAYS:
+        raise HTTPException(status_code=400, detail=f"apontamento até {TIME_MAX_PAST_DAYS} dias atrás")
+    total = db.query_one("SELECT COALESCE(sum(minutes), 0)::int AS m FROM time_entries WHERE user_id = %s AND day = %s",
+                         (user["user_id"], day))["m"]
+    if total + data.minutes > 1440:
+        raise HTTPException(status_code=400, detail="passaria de 24h apontadas nesse dia")
     row = db.query_one(
         """INSERT INTO time_entries (task_id, user_id, minutes, day, note, actor, token_name)
            VALUES (%s, %s, %s, %s, %s, %s, %s)

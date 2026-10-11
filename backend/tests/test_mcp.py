@@ -1,9 +1,5 @@
 from app import db
-from conftest import Bearer, criar_chave
-
-
-def _texto(res):
-    return res["content"][0]["text"]
+from conftest import Bearer, criar_chave, texto
 
 
 def test_handshake_e_versao(usuario):
@@ -29,22 +25,22 @@ def test_ferramentas_por_escopo(usuario):
 def test_fluxo_completo_pela_ia(usuario):
     b = Bearer(criar_chave(usuario, nome="Assistente")["token"])
     res = b.tool("create_task", title="Revisar firewall", due_date="2030-01-01")
-    assert not res["isError"] and "Revisar firewall" in _texto(res)
-    tid = int(_texto(res).split("#")[1].split()[0])
+    assert not res["isError"] and "Revisar firewall" in texto(res)
+    tid = int(texto(res).split("#")[1].split()[0])
     assert not b.tool("update_task", task_id=tid, due_date=None)["isError"]
-    assert "prazo" not in _texto(b.tool("list_tasks"))
+    assert "prazo" not in texto(b.tool("list_tasks"))
     assert not b.tool("complete_task", task_id=tid)["isError"]
     rid = usuario.post("/recurring", {"label": "Conferir backups"}).json()["id"]
     assert not b.tool("set_recurring", task_id=rid, done=True)["isError"]
-    hoje = _texto(b.tool("get_today"))
+    hoje = texto(b.tool("get_today"))
     assert "[x]" in hoje and "Conferir backups" in hoje and "Revisar firewall" in hoje
-    hist = _texto(b.tool("get_history"))
+    hist = texto(b.tool("get_history"))
     assert "IA (Assistente)" in hist
 
 
 def test_ia_desfaz_o_proprio_engano(usuario):
     b = Bearer(criar_chave(usuario)["token"])
-    tid = int(_texto(b.tool("create_task", title="Errada")).split("#")[1].split()[0])
+    tid = int(texto(b.tool("create_task", title="Errada")).split("#")[1].split()[0])
     hid = usuario.get("/history").json()[0]["id"]
     assert not b.tool("undo", history_id=hid)["isError"]
     assert all(t["id"] != tid for t in usuario.get("/board").json()["in_progress"])

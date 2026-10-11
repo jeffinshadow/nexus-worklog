@@ -1,6 +1,7 @@
 fastapi==0.115.6
-uvicorn[standard]==0.34.0
+uvicorn==0.34.0
 psycopg[binary,pool]==3.2.3
 argon2-cffi==23.1.0
 pydantic[email]==2.10.4
 fpdf2==2.8.7
+fonttools>=4.50,<5

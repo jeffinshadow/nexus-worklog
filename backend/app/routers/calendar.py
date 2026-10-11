@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from .. import audit, db
 from ..config import config
 from ..deps import web_active, web_active_csrf
+from ..labels import PRIO_PT, STATUS_PT
 from ..security import token_hash, token_limiter
 from ..services import app_today, is_due, work_mask
 
@@ -17,8 +18,6 @@ router = APIRouter(prefix="/api/calendar", tags=["calendar"])
 
 PREFIX = "nxc_"
 _DAYS = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"]  # bit 0 = domingo
-_STATUS = {"todo": "a fazer", "in_progress": "em andamento", "blocked": "bloqueada"}
-_PRIO = {1: "alta", 2: "normal", 3: "baixa"}
 
 
 class FeedIn(BaseModel):
@@ -132,7 +131,7 @@ def build_ics(uid: int, include_recurring: bool, cal_name: str) -> str:
              FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
             WHERE w.user_id = %s AND w.status <> 'done' AND w.due_date IS NOT NULL""", (uid,)):
         summary = f"Prazo: {t['title']}" + (f" [{t['project']}]" if t["project"] else "")
-        desc = f"Status: {_STATUS.get(t['status'], t['status'])} · prioridade {_PRIO.get(t['priority'], 'normal')}"
+        desc = f"Status: {STATUS_PT.get(t['status'], t['status'])} · prioridade {PRIO_PT.get(t['priority'], 'normal')}"
         if t["description"]:
             desc += f"\n{t['description']}"
         extra = [f"CATEGORIES:{_esc(t['project'])}"] if t["project"] else []

@@ -16,4 +16,5 @@ RUN useradd --create-home --uid 10001 appuser
 USER appuser
 
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Sem access log no uvicorn: o nginx ja registra (e omite o link secreto do calendario).
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]

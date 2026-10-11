@@ -78,17 +78,30 @@ def _due_between(t: dict, start: date, end: date, mask: int) -> int:
     return n
 
 
+# Contadores de uma tarefa `w` (checklist, anotações, tempo): um lugar só para
+# o quadro, o relatório e a exportação.
+TASK_COUNTS = """
+    (SELECT count(*) FROM task_checklist c WHERE c.task_id = w.id)::int AS check_total,
+    (SELECT count(*) FROM task_checklist c WHERE c.task_id = w.id AND c.done)::int AS check_done,
+    (SELECT count(*) FROM task_notes n WHERE n.task_id = w.id)::int AS notes_count,
+    (SELECT COALESCE(sum(t.minutes), 0) FROM time_entries t WHERE t.task_id = w.id)::int AS minutes"""
+
+
 def board_day_range(today: date) -> tuple[date, date]:
     return today - timedelta(days=RETRO_DAYS), today
 
 
-# Recorrente vigente no dia %(day)s: criada até o dia e, se desativada, só até o
-# dia da desativação (inclusive). Inativa sem data (legado anterior à 002) fica
-# de fora, como antes.
+# Rotina vigente no dia %(day)s: criada até o dia e, se removida, só até a
+# véspera da remoção — o próprio dia da remoção só conta se ela foi feita nele
+# (removeu sem fazer = não era mais para fazer). Inativa sem data (legado
+# anterior à 002) fica de fora. A mesma regra vale nos relatórios (_recurring_tasks...).
 _VIGENTE_NO_DIA = """
     (r.created_at AT TIME ZONE %(tz)s)::date <= %(day)s
-    AND (r.active OR (r.deactivated_at IS NOT NULL
-                      AND (r.deactivated_at AT TIME ZONE %(tz)s)::date >= %(day)s))
+    AND (r.active OR (r.deactivated_at IS NOT NULL AND (
+         (r.deactivated_at AT TIME ZONE %(tz)s)::date > %(day)s
+         OR ((r.deactivated_at AT TIME ZONE %(tz)s)::date = %(day)s
+             AND EXISTS (SELECT 1 FROM recurring_completions x
+                          WHERE x.task_id = r.id AND x.completed_date = %(day)s)))))
 """
 
 
@@ -135,10 +148,7 @@ def get_board(user_id: int, day: date | None = None, project: int | None = None)
     cols = """
         SELECT w.id, w.title, w.description, w.status, w.due_date, w.created_at, w.completed_at,
                w.priority, w.project_id, p.name AS project_name, p.color AS project_color,
-               (SELECT count(*) FROM task_checklist c WHERE c.task_id = w.id)::int AS check_total,
-               (SELECT count(*) FROM task_checklist c WHERE c.task_id = w.id AND c.done)::int AS check_done,
-               (SELECT count(*) FROM task_notes n WHERE n.task_id = w.id)::int AS notes_count,
-               (SELECT COALESCE(sum(t.minutes), 0) FROM time_entries t WHERE t.task_id = w.id)::int AS minutes
+               """ + TASK_COUNTS + """
           FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
          WHERE w.user_id = %s"""
     in_progress = db.query_all(
@@ -207,14 +217,17 @@ def _recurring_tasks_and_completions(user_id: int, since: date, until: date):
     tasks = db.query_all(
         """
         SELECT r.id, r.label, r.freq, r.weekdays, r.month_day, r.interval_days,
-               (r.created_at AT TIME ZONE %s)::date AS start_d,
-               COALESCE((r.deactivated_at AT TIME ZONE %s)::date,
-                        (now() AT TIME ZONE %s)::date) AS end_d
+               (r.created_at AT TIME ZONE %(tz)s)::date AS start_d,
+               CASE WHEN r.deactivated_at IS NULL THEN (now() AT TIME ZONE %(tz)s)::date
+                    WHEN EXISTS (SELECT 1 FROM recurring_completions x WHERE x.task_id = r.id
+                                    AND x.completed_date = (r.deactivated_at AT TIME ZONE %(tz)s)::date)
+                         THEN (r.deactivated_at AT TIME ZONE %(tz)s)::date
+                    ELSE (r.deactivated_at AT TIME ZONE %(tz)s)::date - 1 END AS end_d
           FROM recurring_tasks r
-         WHERE r.user_id = %s
+         WHERE r.user_id = %(uid)s AND (r.active OR r.deactivated_at IS NOT NULL)
          ORDER BY r.position, r.id
         """,
-        (tz, tz, tz, user_id),
+        {"tz": tz, "uid": user_id},
     )
     completions = db.query_all(
         """
@@ -467,9 +480,7 @@ def get_report_range(user_id: int, start: date, end: date, project: dict | None 
         SELECT w.id, w.title, w.description, w.priority, w.created_at, w.completed_at,
                p.name AS project, p.color AS project_color,
                (w.completed_at AT TIME ZONE %s)::date AS done_date,
-               (SELECT count(*) FROM task_checklist c WHERE c.task_id = w.id)::int AS check_total,
-               (SELECT count(*) FROM task_checklist c WHERE c.task_id = w.id AND c.done)::int AS check_done,
-               (SELECT COALESCE(sum(t.minutes), 0) FROM time_entries t WHERE t.task_id = w.id)::int AS minutes
+               """ + TASK_COUNTS + """
           FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
          WHERE w.user_id = %s AND w.status = 'done' AND w.completed_at IS NOT NULL
            AND (w.completed_at AT TIME ZONE %s)::date BETWEEN %s AND %s"""
@@ -489,9 +500,7 @@ def get_report_range(user_id: int, start: date, end: date, project: dict | None 
     abertas = db.query_all(
         """
         SELECT w.title, w.status, w.priority, w.due_date, p.name AS project, p.color AS project_color,
-               (SELECT count(*) FROM task_checklist c WHERE c.task_id = w.id)::int AS check_total,
-               (SELECT count(*) FROM task_checklist c WHERE c.task_id = w.id AND c.done)::int AS check_done,
-               (SELECT COALESCE(sum(t.minutes), 0) FROM time_entries t WHERE t.task_id = w.id)::int AS minutes
+               """ + TASK_COUNTS + """
           FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
          WHERE w.user_id = %s AND w.status <> 'done'"""
         + filtro + " ORDER BY w.priority, COALESCE(w.due_date, DATE '9999-12-31'), w.created_at",

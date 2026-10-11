@@ -16,15 +16,16 @@ from pathlib import Path
 from fontTools.ttLib import TTFont
 from fpdf import FPDF
 
+from .labels import STATUS_PT as _STATUS
+from .labels import dur as _dur
+
 ASSETS = Path(__file__).parent / "assets"
 FONTS = ASSETS / "fonts"
 
-_WEEKDAYS = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"]
 _WD_SHORT = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"]
 _MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]
 _MESES_LONGOS = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto",
                  "setembro", "outubro", "novembro", "dezembro"]
-_STATUS = {"todo": "a fazer", "in_progress": "em andamento", "blocked": "bloqueada"}
 
 # Paleta (impressão em fundo branco; o azul é o mesmo do app).
 INK = (24, 24, 27)
@@ -51,13 +52,6 @@ def _hex(color: str | None, default=DIM) -> tuple:
         return tuple(int(c[i:i + 2], 16) for i in (0, 2, 4))
     except ValueError:
         return default
-
-
-def _dur(minutes: int) -> str:
-    h, m = divmod(int(minutes or 0), 60)
-    if not h:
-        return f"{m} min"
-    return f"{h}h{m:02d}" if m else f"{h}h"
 
 
 def _d(d: date) -> str:
@@ -394,7 +388,15 @@ def _chart(pdf: _Report, data: dict) -> None:
     pdf.set_y(ly + 10)
 
 
-def _recurring_block(pdf: _Report, stats: list, x: float, w: float, y: float) -> float:
+def _row_y(pdf: _Report, y: float, h: float, flow: bool) -> float:
+    """Em coluna única (flow), quebra a página antes de uma linha que não cabe."""
+    if flow and y + h > pdf.h - pdf.b_margin:
+        pdf.add_page()
+        return pdf.get_y()
+    return y
+
+
+def _recurring_block(pdf: _Report, stats: list, x: float, w: float, y: float, flow: bool = False) -> float:
     pdf.font("sanss", 10, INK)
     pdf.text_at(x, y, w, 5, "Rotinas")
     pdf.font("mono", 6.6, DIM)
@@ -403,6 +405,7 @@ def _recurring_block(pdf: _Report, stats: list, x: float, w: float, y: float) ->
     for r in stats:
         if not r["due"] and not r["extra"]:
             continue
+        y = _row_y(pdf, y, 12.5, flow)
         pct = round(100 * r["done"] / r["due"]) if r["due"] else None
         pdf.font("sans", 8.4, INK)
         pdf.text_at(x, y, w - 30, 4.2, pdf.fit(r["label"], w - 30))
@@ -419,7 +422,7 @@ def _recurring_block(pdf: _Report, stats: list, x: float, w: float, y: float) ->
     return y
 
 
-def _projects_block(pdf: _Report, projects: list, x: float, w: float, y: float) -> float:
+def _projects_block(pdf: _Report, projects: list, x: float, w: float, y: float, flow: bool = False) -> float:
     pdf.font("sanss", 10, INK)
     pdf.text_at(x, y, w, 5, "Projetos")
     pdf.font("mono", 6.6, DIM)
@@ -427,6 +430,7 @@ def _projects_block(pdf: _Report, projects: list, x: float, w: float, y: float) 
     y += 8
     top = max([p["minutes"] for p in projects] + [1])
     for p in projects:
+        y = _row_y(pdf, y, 10, flow)
         col = _hex(p["color"]) if p["name"] else DIM
         pdf.dot(x, y + 1.1, 2.2, col)
         pdf.font("sans", 8.4, INK if p["name"] else INK2)
@@ -449,17 +453,22 @@ def _overview(pdf: _Report, data: dict) -> None:
     if not stats and not projects:
         return
     need = 8 + max(len(stats) * 12.5, len(projects) * 10)
-    pdf.room(min(need, 120) + 6)
+    pdf.room(min(need, 60))
     y = pdf.get_y()
-    if stats and projects:
+    if stats and projects and y + need <= pdf.h - pdf.b_margin:
+        # cabe na página: rotinas e projetos lado a lado
         col = (pdf.cw - 10) / 2
         y1 = _recurring_block(pdf, stats, M, col, y)
         y2 = _projects_block(pdf, projects, M + col + 10, col, y)
         pdf.set_y(max(y1, y2) + 6)
-    elif stats:
-        pdf.set_y(_recurring_block(pdf, stats, M, pdf.cw, y) + 6)
-    else:
-        pdf.set_y(_projects_block(pdf, projects, M, pdf.cw, y) + 6)
+        return
+    # não cabe (muitas rotinas): um bloco embaixo do outro, quebrando por linha
+    if stats:
+        y = _recurring_block(pdf, stats, M, pdf.cw, y, flow=True) + 6
+    if projects:
+        y = _row_y(pdf, y, 18, True)
+        y = _projects_block(pdf, projects, M, pdf.cw, y, flow=True) + 6
+    pdf.set_y(y)
 
 
 def _table_head(pdf: _Report, cols: list) -> None:

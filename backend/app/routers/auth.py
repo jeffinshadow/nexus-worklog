@@ -65,14 +65,16 @@ def register(data: RegisterIn, request: Request):
 def login(data: LoginIn, request: Request, response: Response):
     ip = client_ip(request)
     email = data.email.lower()
-    if not login_limiter.allow(f"ip:{ip}") or not login_limiter.allow(f"em:{email}"):
+    if not login_limiter.allow(f"ip:{ip}") or login_limiter.blocked(f"em:{email}"):
         raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
 
     user = db.query_one("SELECT * FROM users WHERE email = %s", (email,))
     if not user:
         burn_password_check(data.password)  # mesmo custo de um e-mail existente
+        login_limiter.allow(f"em:{email}")
         raise HTTPException(status_code=401, detail="credenciais invalidas")
     if not verify_password(user["password_hash"], data.password):
+        login_limiter.allow(f"em:{email}")
         raise HTTPException(status_code=401, detail="credenciais invalidas")
 
     if needs_rehash(user["password_hash"]):

@@ -69,11 +69,17 @@ def update_project(project_id: int, data: ProjectUpdate, user=Depends(active_use
 
 @router.delete("/{project_id}")
 def delete_project(project_id: int, user=Depends(active_user_csrf)):
+    tasks = [r["id"] for r in db.query_all(
+        "SELECT id FROM worklog_tasks WHERE user_id = %s AND project_id = %s", (user["user_id"], project_id))]
     row = db.query_one(
         "DELETE FROM projects WHERE id = %s AND user_id = %s RETURNING id, name, color, archived",
         (project_id, user["user_id"]),
     )
     if not row:
         raise HTTPException(status_code=404, detail="nao encontrado")
+    # As tarefas ficam sem projeto (FK SET NULL); guardamos quais eram para o desfazer.
+    row["task_ids"] = [r["id"] for r in db.query_all(
+        "SELECT id FROM worklog_tasks WHERE user_id = %s AND project_id IS NULL AND id = ANY(%s)",
+        (user["user_id"], tasks))]
     audit.record(user, "project.delete", "project", project_id, before=row)
     return {"ok": True}

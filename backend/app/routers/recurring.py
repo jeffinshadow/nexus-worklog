@@ -34,22 +34,6 @@ def update(task_id: int, data: RecurringUpdate, user=Depends(active_user_csrf)):
     if data.label is not None:
         fields.append("label = %s")
         values.append(data.label)
-    if data.active is not None:
-        if data.active:
-            # Reativar: a vigência RECOMEÇA agora. created_at avança para now()
-            # (só na transição inativa->ativa) para que os dias em que ficou
-            # desativada não voltem a gerar slots retroativos no dashboard.
-            fields.append("active = true")
-            fields.append("deactivated_at = NULL")
-            fields.append("created_at = CASE WHEN active THEN created_at ELSE now() END")
-        else:
-            # Desativar: grava a data só na transição ativa->inativa (preserva a
-            # data original se já estava inativa).
-            fields.append("active = false")
-            fields.append("deactivated_at = CASE WHEN active THEN now() ELSE deactivated_at END")
-    if data.position is not None:
-        fields.append("position = %s")
-        values.append(data.position)
     if data.freq is not None:
         for col, val in data.agenda().items():
             fields.append(f"{col} = %s")
@@ -106,8 +90,8 @@ def toggle(task_id: int, data: ToggleIn, user=Depends(active_user_csrf)):
     if not recurring_vigente(task_id, user["user_id"], today):
         raise HTTPException(status_code=400, detail="a recorrente não existia nesse dia")
     was = db.query_one(
-        "SELECT 1 FROM recurring_completions WHERE task_id = %s AND completed_date = %s",
-        (task_id, today),
+        "SELECT 1 FROM recurring_completions WHERE task_id = %s AND user_id = %s AND completed_date = %s",
+        (task_id, user["user_id"], today),
     ) is not None
     if data.done:
         db.execute(
@@ -118,8 +102,8 @@ def toggle(task_id: int, data: ToggleIn, user=Depends(active_user_csrf)):
         )
     else:
         db.execute(
-            "DELETE FROM recurring_completions WHERE task_id = %s AND completed_date = %s",
-            (task_id, today),
+            "DELETE FROM recurring_completions WHERE task_id = %s AND user_id = %s AND completed_date = %s",
+            (task_id, user["user_id"], today),
         )
     if was != data.done:
         audit.record(user, "recurring.toggle", "recurring", task_id,

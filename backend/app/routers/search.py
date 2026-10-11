@@ -3,24 +3,19 @@ e exportação dos dados do usuário em CSV/JSON."""
 import csv
 import io
 import json
-from datetime import date, datetime
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from .. import db
-from ..config import config
 from ..deps import active_user
+from ..labels import PRIO_PT, STATUS_PT
+from ..services import TASK_COUNTS, app_today, app_tz
+from ..labels import fold as _fold
 
 router = APIRouter(prefix="/api", tags=["search"])
 
 MAX_HITS = 40
-_FOLD = str.maketrans("áàâãäåéèêëíìîïóòôõöúùûüçñ", "aaaaaaeeeeiiiiooooouuuucn")
-
-
-def _fold(text: str) -> str:
-    return (text or "").lower().translate(_FOLD)
-
-
 def _snippet(text: str, q: str, width: int = 70) -> str:
     """Trecho de `text` em volta da primeira ocorrência de `q` (sem acento)."""
     i = _fold(text).find(q)
@@ -89,15 +84,17 @@ def search(q: str = Query(..., min_length=2, max_length=100), user=Depends(activ
 
 # --------------------------------------------------------------- exportação --
 
-_STATUS = {"todo": "a fazer", "in_progress": "em andamento", "blocked": "bloqueada", "done": "concluída"}
-_PRIO = {1: "alta", 2: "normal", 3: "baixa"}
 
 
 def _local(ts):
     if ts is None:
         return ""
-    from zoneinfo import ZoneInfo
-    return ts.astimezone(ZoneInfo(config.APP_TZ)).strftime("%Y-%m-%d %H:%M")
+    return ts.astimezone(app_tz()).strftime("%Y-%m-%d %H:%M")
+
+
+def _cell(v):
+    """Texto que começa como fórmula vira texto no Excel (injeção de CSV)."""
+    return "'" + v if isinstance(v, str) and v[:1] in ("=", "+", "-", "@", "\t", "\r") else v
 
 
 def _csv(rows: list[list], header: list[str]) -> bytes:
@@ -105,7 +102,7 @@ def _csv(rows: list[list], header: list[str]) -> bytes:
     buf = io.StringIO()
     w = csv.writer(buf, delimiter=";", lineterminator="\r\n")
     w.writerow(header)
-    w.writerows(rows)
+    w.writerows([_cell(v) for v in r] for r in rows)
     return ("﻿" + buf.getvalue()).encode("utf-8")
 
 
@@ -118,10 +115,7 @@ def _tasks(uid: int) -> list[dict]:
     return db.query_all(
         """SELECT w.id, w.title, w.description, w.status, w.priority, w.due_date, w.created_at, w.completed_at,
                   p.name AS project,
-                  (SELECT count(*) FROM task_checklist c WHERE c.task_id = w.id)::int AS check_total,
-                  (SELECT count(*) FROM task_checklist c WHERE c.task_id = w.id AND c.done)::int AS check_done,
-                  (SELECT count(*) FROM task_notes n WHERE n.task_id = w.id)::int AS notes,
-                  (SELECT COALESCE(sum(t.minutes), 0) FROM time_entries t WHERE t.task_id = w.id)::int AS minutes
+                  """ + TASK_COUNTS + """
              FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
             WHERE w.user_id = %s ORDER BY w.created_at""", (uid,))
 
@@ -129,12 +123,12 @@ def _tasks(uid: int) -> list[dict]:
 @router.get("/export/{kind}")
 def export(kind: str, user=Depends(active_user)):
     uid = user["user_id"]
-    stamp = date.today().isoformat()
+    stamp = app_today().isoformat()
     if kind == "tarefas.csv":
-        rows = [[t["id"], t["title"], t["description"] or "", _STATUS.get(t["status"], t["status"]), _PRIO.get(t["priority"], ""),
+        rows = [[t["id"], t["title"], t["description"] or "", STATUS_PT.get(t["status"], t["status"]), PRIO_PT.get(t["priority"], ""),
                  t["project"] or "", _local(t["created_at"]), t["due_date"] or "", _local(t["completed_at"]),
                  f"{t['check_done']}/{t['check_total']}" if t["check_total"] else "", t["minutes"],
-                 str(round(t["minutes"] / 60, 2)).replace(".", ","), t["notes"]] for t in _tasks(uid)]
+                 str(round(t["minutes"] / 60, 2)).replace(".", ","), t["notes_count"]] for t in _tasks(uid)]
         return _download(_csv(rows, ["id", "titulo", "descricao", "status", "prioridade", "projeto", "criada_em", "prazo",
                                      "concluida_em", "checklist", "minutos", "horas", "anotacoes"]),
                          "text/csv; charset=utf-8", f"nexus-tarefas-{stamp}.csv")
@@ -170,7 +164,7 @@ def export(kind: str, user=Depends(active_user)):
         for r in recurring:
             r["completed_dates"] = done.get(r["id"], [])
         payload = {
-            "exported_at": datetime.now().astimezone(),
+            "exported_at": datetime.now(app_tz()),
             "user": db.query_one("SELECT email, work_days, created_at FROM users WHERE id = %s", (uid,)),
             "projects": db.query_all("SELECT id, name, color, archived, created_at FROM projects WHERE user_id = %s ORDER BY id", (uid,)),
             "tasks": tasks,

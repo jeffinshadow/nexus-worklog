@@ -89,8 +89,12 @@ def reset_password(user_id: int, admin=Depends(require_admin_csrf)):
         "UPDATE users SET password_hash = %s, must_change_password = true WHERE id = %s",
         (hash_password(temp), user_id),
     )
-    # Encerra TODAS as sessoes do alvo: ele so volta com a senha temporaria.
+    # Encerra TODAS as sessoes do alvo e corta os acessos que nao dependem da
+    # senha (conta comprometida ou pessoa que saiu): chaves de API e o link
+    # do calendario. Ele so volta com a senha temporaria.
     db.execute("DELETE FROM sessions WHERE user_id = %s", (user_id,))
-    audit.record({**admin, "actor": "admin"}, "user.reset_password", "user", user_id,
+    db.execute("UPDATE api_tokens SET revoked_at = now() WHERE user_id = %s AND revoked_at IS NULL", (user_id,))
+    db.execute("DELETE FROM calendar_feeds WHERE user_id = %s", (user_id,))
+    audit.record({**admin, "actor": "admin"}, "user.reset_password", "password", user_id,
                  after={"by": admin["email"]}, user_id=user_id)
     return {"email": target["email"], "temp_password": temp}

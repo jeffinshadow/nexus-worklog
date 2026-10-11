@@ -64,9 +64,9 @@ class RecurringIn(_Agenda):
 
 
 class RecurringUpdate(_Agenda):
+    """Nome e agenda. Remover = DELETE; voltar atrás = desfazer pelo histórico
+    (reativar por aqui reescreveria a vigência e apagaria o passado)."""
     label: Optional[str] = Field(default=None, min_length=1, max_length=200)
-    active: Optional[bool] = None
-    position: Optional[int] = None
 
 
 class ToggleIn(BaseModel):

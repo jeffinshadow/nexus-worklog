@@ -8,6 +8,9 @@ from .config import config
 from .security import token_hash, token_limiter
 
 
+SESSION_MAX_DAYS = 30  # mesmo em uso diario, o login e pedido de novo depois disso
+
+
 def client_ip(request: Request) -> str:
     """IP do cliente para rate limit e logs.
 
@@ -47,7 +50,7 @@ def _load_session(request: Request) -> dict:
 
     row = db.query_one(
         """
-        SELECT s.id AS sid, s.csrf_token, s.expires_at,
+        SELECT s.id AS sid, s.csrf_token, s.expires_at, s.created_at AS session_created,
                u.id AS user_id, u.email, u.role, u.must_change_password,
                u.work_days
           FROM sessions s
@@ -60,13 +63,15 @@ def _load_session(request: Request) -> dict:
         raise HTTPException(status_code=401, detail="sessao invalida")
 
     now = datetime.now(timezone.utc)
-    if row["expires_at"] <= now:
+    if row["expires_at"] <= now or now - row["session_created"] > timedelta(days=SESSION_MAX_DAYS):
         db.execute("DELETE FROM sessions WHERE id = %s", (row["sid"],))
         raise HTTPException(status_code=401, detail="sessao expirada")
 
-    # Renovacao deslizante.
-    new_exp = now + timedelta(days=config.SESSION_TTL_DAYS)
-    db.execute("UPDATE sessions SET expires_at = %s WHERE id = %s", (new_exp, row["sid"]))
+    # Renovacao deslizante, mas so quando ja passou da metade do prazo (evita
+    # uma escrita por requisicao). Idade maxima absoluta: SESSION_MAX_DAYS.
+    ttl = timedelta(days=config.SESSION_TTL_DAYS)
+    if row["expires_at"] - now < ttl / 2:
+        db.execute("UPDATE sessions SET expires_at = %s WHERE id = %s", (now + ttl, row["sid"]))
     return row
 
 
@@ -200,12 +205,3 @@ def require_admin_csrf(request: Request) -> dict:
     _check_csrf(request, session)
     return session
 
-
-def effective_user_id(session: dict, as_user: int | None) -> int:
-    """Resolve o user_id alvo de uma consulta. Unico caminho para acessar
-    dados de outro usuario, e so para admin."""
-    if as_user is None or as_user == session["user_id"]:
-        return session["user_id"]
-    if session["role"] == "admin":
-        return as_user
-    raise HTTPException(status_code=403, detail="acesso negado")

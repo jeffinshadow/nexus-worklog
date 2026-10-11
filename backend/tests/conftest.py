@@ -148,3 +148,24 @@ def criar_chave(api, nome="IA de teste", scope="write", dias=90):
     r = api.post("/tokens", {"name": nome, "scope": scope, "expires_in_days": dias})
     assert r.status_code == 201, r.text
     return r.json()
+
+
+# ---- ajudantes comuns dos testes
+def dia_hoje(u):
+    """O "hoje" do servidor (fuso da app), não o da máquina de teste."""
+    from datetime import date
+    return date.fromisoformat(u.get("/board").json()["today"])
+
+
+def hist(u, **kw):
+    q = "&".join(f"{k}={v}" for k, v in kw.items())
+    return u.get(f"/history?{q}").json()
+
+
+def texto(res):
+    """Texto da resposta de uma ferramenta MCP."""
+    return res["content"][0]["text"]
+
+
+def uid_de(u):
+    return db.query_one("SELECT id FROM users WHERE email = %s", (u.me["email"],))["id"]

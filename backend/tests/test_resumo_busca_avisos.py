@@ -1,17 +1,9 @@
-"""Entrega 4: resumos, busca, exportação, calendário (ICS) e avisos por e-mail."""
+"""Resumos, busca, exportação, calendário (ICS) e avisos por e-mail."""
 import json
 from datetime import date, datetime, timedelta
 
 from app import db, notify
-from conftest import Bearer, criar_chave, recuar_criacao
-
-
-def _hoje(u):
-    return date.fromisoformat(u.get("/board").json()["today"])
-
-
-def _uid(u):
-    return db.query_one("SELECT id FROM users WHERE email = %s", (u.me["email"],))["id"]
+from conftest import Bearer, criar_chave, dia_hoje, recuar_criacao, uid_de
 
 
 # ------------------------------------------------------------------ resumos --
@@ -26,7 +18,7 @@ def test_resumo_semana_e_ultimo_dia(usuario):
     assert s["week"]["deliveries"][0]["title"] == "Entregue hoje"
     assert s["week"]["projects"][0]["name"] == "Cliente X"
     assert "previous" in s["week"] and s["week"]["previous"]["pontual_done"] == 0
-    assert date.fromisoformat(s["last_day"]["start"]) < _hoje(usuario)
+    assert date.fromisoformat(s["last_day"]["start"]) < dia_hoje(usuario)
 
 
 # -------------------------------------------------------------------- busca --
@@ -80,7 +72,7 @@ def test_exportacoes(usuario):
 # --------------------------------------------------------------- calendário --
 
 def test_calendario_ics(usuario, novo_usuario):
-    hoje = _hoje(usuario)
+    hoje = dia_hoje(usuario)
     usuario.post("/worklog", {"title": "Renovar certificado, urgente", "due_date": (hoje + timedelta(days=3)).isoformat(), "priority": 1})
     usuario.post("/worklog", {"title": "Sem prazo"})
     usuario.post("/recurring", {"label": "Backup off-site", "freq": "weekly", "weekdays": 0b0100010})
@@ -131,8 +123,8 @@ class Caixa:
         self.enviados.append({"to": to, "subject": subject, "text": text, "html": html})
 
 
-def _proxima(hoje: date, weekday: int) -> date:
-    return hoje + timedelta(days=(weekday - hoje.weekday()) % 7 or 7)
+def _proxima(d: date, weekday: int) -> date:
+    return d + timedelta(days=(weekday - d.weekday()) % 7 or 7)
 
 
 def test_preferencias_e_teste_sem_smtp(usuario):
@@ -147,10 +139,10 @@ def test_preferencias_e_teste_sem_smtp(usuario):
 
 
 def test_aviso_da_manha_sai_uma_vez(usuario):
-    uid = _uid(usuario)
-    segunda = _proxima(_hoje(usuario), 0)
+    uid = uid_de(usuario)
+    segunda = _proxima(dia_hoje(usuario), 0)
     usuario.post("/worklog", {"title": "Prazo de segunda", "due_date": segunda.isoformat()})
-    usuario.post("/worklog", {"title": "Já atrasada", "due_date": (_hoje(usuario) - timedelta(days=2)).isoformat()})
+    usuario.post("/worklog", {"title": "Já atrasada", "due_date": (dia_hoje(usuario) - timedelta(days=2)).isoformat()})
     usuario.post("/recurring", {"label": "Conferir backups"})
     usuario.c.put("/api/notifications", json={"morning": True, "morning_hour": 8}, headers=usuario._h())
 
@@ -171,8 +163,8 @@ def test_aviso_da_manha_sai_uma_vez(usuario):
 
 
 def test_aviso_sem_titulos_e_falha_registrada(usuario):
-    uid = _uid(usuario)
-    segunda = _proxima(_hoje(usuario), 0)
+    uid = uid_de(usuario)
+    segunda = _proxima(dia_hoje(usuario), 0)
     usuario.post("/worklog", {"title": "Segredo do cliente", "due_date": segunda.isoformat()})
     usuario.c.put("/api/notifications", json={"morning": True, "morning_hour": 8, "show_titles": False}, headers=usuario._h())
     caixa = Caixa()
@@ -187,8 +179,8 @@ def test_aviso_sem_titulos_e_falha_registrada(usuario):
 
 
 def test_aviso_da_tarde_e_semanal(usuario):
-    uid = _uid(usuario)
-    hoje = _hoje(usuario)
+    uid = uid_de(usuario)
+    hoje = dia_hoje(usuario)
     rid = usuario.post("/recurring", {"label": "Revisar fila"}).json()["id"]
     recuar_criacao(rid, 10)
     usuario.c.put("/api/notifications", json={"evening": True, "evening_hour": 17, "weekly": True, "weekly_hour": 8},

@@ -1,24 +1,15 @@
-"""Entrega 3: agendas flexíveis, projetos, prioridade, checklist, anotações e tempo."""
+"""Registro rico: agendas das rotinas, projetos, prioridade, checklist, anotações, tempo e relatório por projeto."""
 from datetime import date, timedelta
 
 from app import db
 from app.services import get_report_range, is_due
-from conftest import Bearer, criar_chave, recuar_criacao
+from conftest import Bearer, criar_chave, hist, dia_hoje, recuar_criacao, texto
 
 SEG_A_SEX = 0b0111110  # domingo = bit 0
 
 
-def _hoje(u):
-    return date.fromisoformat(u.get("/board").json()["today"])
-
-
-def _hist(u, **kw):
-    q = "&".join(f"{k}={v}" for k, v in kw.items())
-    return u.get(f"/history?{q}").json()
-
-
 def _desfazer_ultimo(u, entity, entity_id):
-    h = _hist(u, entity=entity, entity_id=entity_id)[0]
+    h = hist(u, entity=entity, entity_id=entity_id)[0]
     assert h["can_undo"], h
     r = u.post(f"/history/{h['id']}/undo")
     assert r.status_code == 200, r.text
@@ -51,7 +42,7 @@ def test_agenda_validacao(usuario):
 
 
 def test_quadro_marca_devida_e_extra(usuario):
-    hoje = _hoje(usuario)
+    hoje = dia_hoje(usuario)
     bit_hoje = 1 << ((hoje.weekday() + 1) % 7)
     sim = usuario.post("/recurring", {"label": "Hoje sim", "freq": "weekly", "weekdays": bit_hoje}).json()["id"]
     nao = usuario.post("/recurring", {"label": "Hoje não", "freq": "weekly", "weekdays": 127 ^ bit_hoje}).json()["id"]
@@ -75,7 +66,7 @@ def test_mudar_agenda_e_desfazer(usuario):
 def test_intervalo_conta_da_criacao(usuario):
     tid = usuario.post("/recurring", {"label": "A cada 2", "freq": "interval", "interval_days": 2}).json()["id"]
     recuar_criacao(tid, 3)
-    hoje = _hoje(usuario)
+    hoje = dia_hoje(usuario)
     devida = {}
     for i in range(4):
         d = hoje - timedelta(days=i)
@@ -140,7 +131,7 @@ def test_checklist_anotacoes_tempo(usuario):
     usuario.post(f"/worklog/{tid}/checklist", {"label": "Restaurar"})
     assert usuario.patch(f"/checklist/{i1}", {"done": True}).json()["done"] is True
     usuario.post(f"/worklog/{tid}/notes", {"body": "Backup ok, 40 GB"})
-    hoje = _hoje(usuario)
+    hoje = dia_hoje(usuario)
     usuario.post(f"/worklog/{tid}/time", {"minutes": 90})
     usuario.post(f"/worklog/{tid}/time", {"minutes": 30, "day": (hoje - timedelta(days=1)).isoformat(), "note": "ontem"})
     assert usuario.post(f"/worklog/{tid}/time", {"minutes": 10, "day": (hoje + timedelta(days=1)).isoformat()}).status_code == 400
@@ -200,7 +191,7 @@ def test_relatorio_por_projeto(usuario):
     tid = usuario.post("/worklog", {"title": "Do cliente", "project_id": pid}).json()["id"]
     usuario.post(f"/worklog/{tid}/time", {"minutes": 60})
     usuario.post(f"/worklog/{tid}/finish")
-    hoje = _hoje(usuario).isoformat()
+    hoje = dia_hoje(usuario).isoformat()
     r = usuario.get(f"/reports/export?start={hoje}&end={hoje}&project={pid}")
     assert r.status_code == 200 and r.content[:4] == b"%PDF"
     assert "cliente-a" in r.headers["content-disposition"]
@@ -210,37 +201,34 @@ def test_relatorio_por_projeto(usuario):
     uid = db.query_one("SELECT user_id FROM projects WHERE id = %s", (pid,))["user_id"]
     outra = usuario.post("/worklog", {"title": "Sem projeto"}).json()["id"]
     usuario.post(f"/worklog/{outra}/time", {"minutes": 15})
-    d = get_report_range(uid, _hoje(usuario), _hoje(usuario), {"id": pid, "name": "Cliente A"})
+    d = get_report_range(uid, dia_hoje(usuario), dia_hoje(usuario), {"id": pid, "name": "Cliente A"})
     assert d["summary"]["minutes"] == 60 and d["summary"]["pontual_done"] == 1
     assert d["summary"]["recurring_total"] == 0 and d["project"] == "Cliente A"
-    assert get_report_range(uid, _hoje(usuario), _hoje(usuario))["summary"]["minutes"] == 75
+    assert get_report_range(uid, dia_hoje(usuario), dia_hoje(usuario))["summary"]["minutes"] == 75
 
 
 # ---------------------------------------------------------------------- MCP --
-
-def _texto(res):
-    return res["content"][0]["text"]
 
 
 def test_mcp_registro_rico(usuario):
     usuario.post("/projects", {"name": "Loja"})
     b = Bearer(criar_chave(usuario, nome="Assistente")["token"])
     res = b.tool("create_task", title="Instalar NVR", project="loja", priority="alta")
-    assert not res["isError"], _texto(res)
-    tid = int(_texto(res).split("#")[1].split()[0])
+    assert not res["isError"], texto(res)
+    tid = int(texto(res).split("#")[1].split()[0])
     assert b.tool("create_task", title="x", project="Inexistente")["isError"]
 
-    lista = _texto(b.tool("list_tasks"))
+    lista = texto(b.tool("list_tasks"))
     assert "{Loja}" in lista and "prioridade alta" in lista
-    assert "Loja (1 abertas)" in _texto(b.tool("list_projects"))
+    assert "Loja (1 abertas)" in texto(b.tool("list_projects"))
 
-    item = _texto(b.tool("add_checklist_item", task_id=tid, label="Cabear"))
+    item = texto(b.tool("add_checklist_item", task_id=tid, label="Cabear"))
     iid = int(item.split("#")[1].split()[0])
     assert not b.tool("set_checklist_item", item_id=iid)["isError"]
     assert not b.tool("add_note", task_id=tid, text="Rack instalado")["isError"]
     assert not b.tool("log_time", task_id=tid, minutes=75, note="cabeamento")["isError"]
 
-    det = _texto(b.tool("get_task", task_id=tid))
+    det = texto(b.tool("get_task", task_id=tid))
     assert "[x] item" in det and "Rack instalado" in det and "1h15" in det
 
     nota = usuario.get(f"/worklog/{tid}").json()["notes"][0]
@@ -264,11 +252,11 @@ def test_relatorio_do_projeto_inteiro(usuario):
 
     from app.routers.reports import project_first_day
     uid = db.query_one("SELECT user_id FROM projects WHERE id = %s", (pid,))["user_id"]
-    assert (_hoje(usuario) - project_first_day(uid, pid)).days in (399, 400, 401)
+    assert (dia_hoje(usuario) - project_first_day(uid, pid)).days in (399, 400, 401)
 
     # sem projeto, as datas continuam obrigatórias; com período, o limite vale
     assert usuario.get("/reports/export").status_code == 400
-    hoje = _hoje(usuario)
+    hoje = dia_hoje(usuario)
     longe = (hoje - timedelta(days=400)).isoformat()
     assert usuario.get(f"/reports/export?start={longe}&end={hoje.isoformat()}&project={pid}").status_code == 400
     assert usuario.get(f"/reports/export?project=999").status_code == 400

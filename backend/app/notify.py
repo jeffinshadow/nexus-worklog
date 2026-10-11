@@ -17,6 +17,7 @@ from zoneinfo import ZoneInfo
 
 from . import db, mailer
 from .config import config
+from .labels import dur as _dur
 from .services import _week_start, get_board, get_report_range, is_work_day, work_mask
 
 log = logging.getLogger("uvicorn.error")
@@ -36,11 +37,6 @@ def get_prefs(uid: int) -> dict:
         """SELECT morning, morning_hour, evening, evening_hour, weekly, weekly_hour, show_titles
              FROM notification_prefs WHERE user_id = %s""", (uid,))
     return dict(row) if row else dict(DEFAULT_PREFS)
-
-
-def _dur(m: int) -> str:
-    h, mm = divmod(int(m or 0), 60)
-    return (f"{h}h{mm:02d}" if mm else f"{h}h") if h else f"{mm} min"
 
 
 def _day(d: date) -> str:

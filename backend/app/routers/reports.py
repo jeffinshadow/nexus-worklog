@@ -1,5 +1,5 @@
 import re
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
@@ -11,7 +11,8 @@ from ..services import app_today, get_report_range
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
-MAX_RANGE_DAYS = 366
+MAX_RANGE_DAYS = 366       # período escolhido, em dias (inclusivo)
+MAX_PROJECT_DAYS = 3 * 366  # "projeto inteiro": no máximo os últimos ~3 anos
 
 
 def project_first_day(user_id: int, project_id: int) -> date:
@@ -50,18 +51,14 @@ def build_pdf_response(user_email: str, user_id: int, start: date | None, end: d
         raise HTTPException(status_code=400, detail="informe início e fim (ou escolha um projeto)")
 
     whole = project is not None and start is None
+    # Nao ha dias futuros: limita o fim a hoje (no fuso da app) antes de medir.
+    end = min(end or app_today(), app_today())
     if whole:
-        start = project_first_day(user_id, project["id"])
-    end = end or app_today()
+        start = max(project_first_day(user_id, project["id"]), end - timedelta(days=MAX_PROJECT_DAYS - 1))
     if start > end:
-        raise HTTPException(status_code=400, detail="o início não pode ser depois do fim")
-    if not whole and (end - start).days > MAX_RANGE_DAYS:
+        raise HTTPException(status_code=400, detail="o início não pode ser depois do fim nem no futuro")
+    if not whole and (end - start).days + 1 > MAX_RANGE_DAYS:
         raise HTTPException(status_code=400, detail=f"período máximo de {MAX_RANGE_DAYS} dias")
-
-    # Nao ha dias futuros: limita o fim a hoje (no fuso da app).
-    end = min(end, app_today())
-    if start > end:
-        raise HTTPException(status_code=400, detail="o início não pode ser no futuro")
     if project:
         project["whole"] = whole
 

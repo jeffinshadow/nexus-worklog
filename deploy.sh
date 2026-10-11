@@ -128,4 +128,4 @@ if [[ "$ok" != true ]]; then
 fi
 
 log "Deploy concluído (antes: ${PREV_COMMIT:0:7}, agora: $(git rev-parse --short HEAD))."
-[[ -n "$BACKUP" ]] && log "Backup pré-deploy: $BACKUP"
+if [[ -n "$BACKUP" ]]; then log "Backup pré-deploy: $BACKUP"; fi

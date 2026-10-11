@@ -102,8 +102,14 @@ class RateLimiter:
         self._hits[key] = (start, count)
         return count <= self.max
 
+    def blocked(self, key: str) -> bool:
+        """Já estourou a janela? (consulta sem contar)"""
+        start, count = self._hits.get(key, (0.0, 0))
+        return time.monotonic() - start < self.window and count >= self.max
 
-# Ate 10 tentativas de login por chave (IP e email) a cada 5 minutos.
+
+# Login: ate 10 tentativas por IP a cada 5 minutos; por e-mail contam so as
+# FALHAS (senao qualquer um trancaria a conta alheia so tentando entrar).
 login_limiter = RateLimiter(max_hits=10, window_seconds=300)
 # Cadastro publico (quando aberto): ate 5 contas por IP por hora.
 register_limiter = RateLimiter(max_hits=5, window_seconds=3600)

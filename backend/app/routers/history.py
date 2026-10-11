@@ -11,6 +11,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from .. import audit, db
+from ..labels import dur
 from ..deps import active_user, active_user_csrf
 
 router = APIRouter(prefix="/api/history", tags=["history"])
@@ -70,9 +71,7 @@ def _label(row) -> str:
                 return f"{verbo} “{item}” em “{snap.get('title', '')}”"
         return f"{ACTION_LABELS[row['action']]} “{item}” em “{snap.get('title', '')}”"
     if row["action"] in ("time.create", "time.delete"):
-        m = snap.get("minutes") or 0
-        dur = f"{m // 60}h{m % 60:02d}" if m >= 60 else f"{m} min"
-        return f"{ACTION_LABELS[row['action']]} “{snap.get('title', '')}” ({dur})"
+        return f"{ACTION_LABELS[row['action']]} “{snap.get('title', '')}” ({dur(snap.get('minutes'))})"
     text = ACTION_LABELS.get(row["action"], row["action"])
     if row["action"] == "recurring.toggle" and row["after"]:
         text = ("marcou" if row["after"]["done"] else "desmarcou") + " a recorrente"
@@ -208,6 +207,11 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
 
     a, before, after, eid = row["action"], row["before"], row["after"], row["entity_id"]
     if a == "worklog.create":
+        if db.query_one(
+            """SELECT 1 FROM task_notes WHERE task_id = %(t)s UNION ALL
+               SELECT 1 FROM task_checklist WHERE task_id = %(t)s UNION ALL
+               SELECT 1 FROM time_entries WHERE task_id = %(t)s LIMIT 1""", {"t": eid}):
+            raise HTTPException(status_code=409, detail="a tarefa já tem anotações, checklist ou tempo; para tirá-la, exclua pela tela")
         db.execute("DELETE FROM worklog_tasks WHERE id = %s AND user_id = %s", (eid, uid))
     elif a in ("worklog.update", "worklog.finish"):
         if not audit.worklog_snapshot(eid, uid):
@@ -225,6 +229,19 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
              before["due_date"], before["created_at"], before["completed_at"],
              _projeto_existente(uid, before.get("project_id")), before.get("priority") or 2),
         )
+        kids = before.get("children") or {}
+        for n in kids.get("notes", []):
+            db.execute("""INSERT INTO task_notes (id, task_id, user_id, body, actor, token_name, created_at)
+                          OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                       (n["id"], eid, uid, n["body"], n["actor"], n["token_name"], n["created_at"]))
+        for c in kids.get("checklist", []):
+            db.execute("""INSERT INTO task_checklist (id, task_id, user_id, label, done, position)
+                          OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s, %s)""",
+                       (c["id"], eid, uid, c["label"], c["done"], c["position"]))
+        for e in kids.get("time", []):
+            db.execute("""INSERT INTO time_entries (id, task_id, user_id, minutes, day, note, actor, token_name, created_at)
+                          OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                       (e["id"], eid, uid, e["minutes"], e["day"], e["note"], e["actor"], e["token_name"], e["created_at"]))
     elif a == "recurring.create":
         has_done = db.query_one("SELECT 1 FROM recurring_completions WHERE task_id = %s LIMIT 1", (eid,))
         if has_done:
@@ -245,8 +262,8 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
                 (eid, uid, day))
         else:
             db.execute(
-                "DELETE FROM recurring_completions WHERE task_id = %s AND completed_date = %s",
-                (eid, day))
+                "DELETE FROM recurring_completions WHERE task_id = %s AND user_id = %s AND completed_date = %s",
+                (eid, uid, day))
     elif a == "settings.update":
         db.execute("UPDATE users SET work_days = %s WHERE id = %s", (before["work_days"], uid))
     elif a == "note.create":
@@ -293,6 +310,9 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
             """INSERT INTO projects (id, user_id, name, color, archived)
                OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s)""",
             (eid, uid, before["name"], before["color"], before["archived"]))
+        # As tarefas que estavam nele voltam (se ninguém as pôs em outro projeto).
+        db.execute("UPDATE worklog_tasks SET project_id = %s WHERE user_id = %s AND project_id IS NULL AND id = ANY(%s)",
+                   (eid, uid, before.get("task_ids") or []))
 
     db.execute("UPDATE audit_log SET undone_at = now() WHERE id = %s", (history_id,))
     audit.record(user, "undo", row["entity"], eid, before=after, after={"undid": history_id, "action": a})
