@@ -8,15 +8,16 @@ import { openTask, duration, parseDuration } from "./task.js";
 
 const WEEKDAYS_SHORT = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 const DONE_PAGE = 10;
+const BOARD_DONE_LIMIT = 200; // o servidor manda só as 200 concluídas mais recentes
 
-export const STATUS_LABELS = {
+const STATUS_LABELS = {
   todo: "a fazer",
   in_progress: "em andamento",
   blocked: "bloqueada",
   done: "concluída",
 };
 
-function dayLabel(iso, today) {
+export function dayLabel(iso, today) {
   if (iso === today) return "Hoje";
   if (iso === addDays(today, -1)) return "Ontem";
   const [y, m, d] = iso.split("-").map(Number);
@@ -76,7 +77,7 @@ export function openWorklog(item, onDone, opts = {}) {
   timeInput.value = "";
   document.getElementById("wl-time-wrap").classList.toggle("hidden", !!item);
   const projSel = document.getElementById("wl-project");
-  fillProjectSelect(projSel, item ? item.project_id : opts.projectId || null).catch(() => {});
+  fillProjectSelect(projSel, item ? item.project_id : null).catch(() => {});
 
   const del = document.getElementById("wl-delete");
   del.classList.toggle("hidden", !item);
@@ -230,16 +231,14 @@ export async function finishTask(t, onDone) {
 export async function mount(root, opts = {}) {
   const readOnly = !!opts.readOnly;
   const boardUrl = opts.boardUrl || "/board";
-  let day = null;
-  let current = null;
   let doneShown = DONE_PAGE;
   let project = readOnly ? "" : sessionStorage.getItem("nexus.board.project") || "";
 
   clear(root);
-  const daily = column("Rotinas");
+  // Tarefas (as rotinas ficam na tela Hoje).
   const wip = column("Em aberto");
   const done = column("Concluídas", { collapsible: true, className: "column-done" });
-  root.append(h("div", { class: "columns" }, daily.section, wip.section, done.section));
+  root.append(h("div", { class: "columns" }, wip.section, done.section));
 
   // Filtro por projeto (só no quadro do próprio usuário).
   const filter = h("select", { class: "select-sm", "aria-label": "Filtrar por projeto" });
@@ -261,70 +260,15 @@ export async function mount(root, opts = {}) {
   if (opts.setActions && !readOnly) {
     opts.setActions(
       filter.options.length > 2 ? filter : null,
-      h("button", { type: "button", class: "btn btn-ghost", onClick: () => openRecurring(null, refresh) }, icon("add"), "Rotina"),
       h("button", { type: "button", class: "btn btn-primary", onClick: () => openWorklog(null, refresh) }, icon("add"), "Tarefa")
     );
   }
 
-  const prevBtn = h("button", { type: "button", class: "icon", title: "Dia anterior", "aria-label": "Dia anterior" }, icon("left"));
-  const nextBtn = h("button", { type: "button", class: "icon", title: "Próximo dia", "aria-label": "Próximo dia" }, icon("right"));
-  const dayText = h("span", { class: "day-nav-label", "aria-live": "polite" });
-  const dayNote = h("p", { class: "day-note hidden" });
-  daily.section.insertBefore(h("div", { class: "day-nav" }, prevBtn, dayText, nextBtn), daily.body);
-  daily.section.insertBefore(dayNote, daily.body);
-  prevBtn.addEventListener("click", () => { day = addDays(current.day, -1); refresh(); });
-  nextBtn.addEventListener("click", () => { day = addDays(current.day, 1); refresh(); });
-
   async function refresh() {
-    const q = [day ? `day=${day}` : "", project !== "" ? `project=${project}` : ""].filter(Boolean).join("&");
     const sep = boardUrl.includes("?") ? "&" : "?";
-    const data = await api.get(q ? `${boardUrl}${sep}${q}` : boardUrl);
-    current = data;
-    day = data.day === data.today ? null : data.day;
-    dayText.textContent = dayLabel(data.day, data.today);
-    prevBtn.disabled = data.day <= data.min_day;
-    nextBtn.disabled = data.day >= data.today;
-    const off = data.recurring.some((r) => r.due === false);
-    dayNote.classList.toggle("hidden", !off);
-    dayNote.textContent = off ? "Esmaecidas: fora da agenda deste dia (se marcar, conta como extra)." : "";
-    renderDaily(data.recurring);
+    const data = await api.get(project !== "" ? `${boardUrl}${sep}project=${project}` : boardUrl);
     renderCards(wip, data.in_progress, false, data.today);
     renderCards(done, data.done, true, data.today);
-  }
-
-  function renderDaily(items) {
-    clear(daily.body);
-    const due = items.filter((i) => i.due !== false);
-    daily.count.textContent = `${due.filter((i) => i.done_today).length}/${due.length}`;
-    if (!items.length) {
-      daily.body.append(h("p", { class: "empty", text: "Sem rotinas neste dia." }));
-      return;
-    }
-    for (const it of items) {
-      const cb = h("input", { type: "checkbox", "aria-label": it.label });
-      cb.checked = it.done_today;
-      if (readOnly) cb.disabled = true;
-      else
-        cb.addEventListener("change", async () => {
-          try {
-            await api.post(`/recurring/${it.id}/toggle`, { done: cb.checked, day: current.day });
-            refresh();
-          } catch (e) {
-            cb.checked = !cb.checked;
-            errorToast(e, "Erro ao salvar.");
-          }
-        });
-      const hint = scheduleLabel(it);
-      const row = h("label", { class: "check-row" + (it.done_today ? " done" : "") + (it.due === false ? " off" : ""),
-        title: it.due === false ? "Fora da agenda neste dia: se marcar, conta como extra." : null },
-        cb, h("span", { class: "label" }, it.label, hint ? h("small", { text: hint }) : null));
-      if (!readOnly)
-        row.append(h("button", {
-          type: "button", class: "icon", title: "Editar", "aria-label": "Editar " + it.label,
-          onClick: (ev) => { ev.preventDefault(); openRecurring(it, refresh); },
-        }, icon("edit")));
-      daily.body.append(row);
-    }
   }
 
   function renderCards(col, items, isDone, today) {
@@ -349,6 +293,8 @@ export async function mount(root, opts = {}) {
       }
       col.body.append(card);
     }
+    if (isDone && items.length >= BOARD_DONE_LIMIT && doneShown >= items.length)
+      col.body.append(h("p", { class: "muted small", text: `Mostrando as ${BOARD_DONE_LIMIT} mais recentes; as anteriores estão nos relatórios e na busca.` }));
     if (isDone && items.length > doneShown) {
       col.body.append(h("button", {
         type: "button", class: "btn btn-text show-more", text: `ver mais ${Math.min(DONE_PAGE, items.length - doneShown)} de ${items.length - doneShown}`,

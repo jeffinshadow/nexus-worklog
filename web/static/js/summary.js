@@ -37,17 +37,8 @@ function card(title, sub, s, prev, onChange) {
         d.minutes ? h("span", { class: "tag" }, icon("clock"), duration(d.minutes)) : null));
     if (s.deliveries.length > 5) body.push(h("p", { class: "muted small", text: `+ ${s.deliveries.length - 5} outras` }));
   }
-  if (s.projects.some((p) => p.minutes)) {
-    body.push(h("p", { class: "sum-h", text: "Tempo por projeto" }));
-    const top = Math.max(...s.projects.map((p) => p.minutes), 1);
-    for (const p of s.projects.filter((x) => x.minutes)) {
-      const bar = h("span");
-      bar.style.width = `${Math.round((100 * p.minutes) / top)}%`;
-      bar.style.background = p.color || "var(--dim)";
-      body.push(h("div", { class: "sum-bar" }, h("span", { class: "sum-bar-l", text: p.name || "Sem projeto" }),
-        h("span", { class: "sum-track" }, bar), h("span", { class: "mono sum-bar-v", text: duration(p.minutes) })));
-    }
-  }
+  if (s.projects.some((p) => p.minutes))
+    body.push(h("p", { class: "sum-h", text: "Tempo por projeto" }), ...projectBars(s.projects));
   if (s.missed.length) {
     body.push(h("p", { class: "sum-h", text: "Rotinas que ficaram para trás" }),
       h("p", { class: "missed" }, ...s.missed.map((m) => h("span", { class: "chip late", text: m }))));
@@ -55,6 +46,19 @@ function card(title, sub, s, prev, onChange) {
   if (!s.deliveries.length && !s.minutes && !s.recurring_done && !s.missed.length)
     body.push(h("p", { class: "empty", text: "Nada registrado." }));
   return h("div", { class: "sum-card" }, h("div", { class: "sum-title" }, h("h3", { text: title }), h("span", { class: "mono muted", text: sub })), ...body);
+}
+
+// Barras "tempo por projeto" (resumo do Hoje e Retrospectiva): {name, color, minutes}.
+export function projectBars(items) {
+  const comTempo = items.filter((p) => p.minutes);
+  const top = Math.max(...comTempo.map((p) => p.minutes), 1);
+  return comTempo.map((p) => {
+    const bar = h("span");
+    bar.style.width = `${Math.round((100 * p.minutes) / top)}%`;
+    bar.style.background = p.color || "var(--dim)";
+    return h("div", { class: "sum-bar" }, h("span", { class: "sum-bar-l", text: p.name || "Sem projeto" }),
+      h("span", { class: "sum-track" }, bar), h("span", { class: "mono sum-bar-v", text: duration(p.minutes) }));
+  });
 }
 
 export function summaryPanel(data, onChange) {

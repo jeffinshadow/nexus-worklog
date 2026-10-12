@@ -26,14 +26,12 @@ export async function mount(root, opts = {}) {
   const startInput = h("input", { type: "date", value: addDays(today, -6), max: today });
   const endInput = h("input", { type: "date", value: today, max: today });
   const err = h("p", { class: "error-text" });
-  // Projeto: só no relatório do próprio usuário (o admin vê o geral).
+  // Projeto: os do próprio usuário, ou (admin) os do usuário escolhido.
   const projSel = h("select", {}, h("option", { value: "", text: "Todos (relatório completo)" }));
-  if (!opts.exportBase) {
-    try {
-      for (const p of await api.get("/projects?include_archived=true"))
-        projSel.append(h("option", { value: String(p.id), text: p.name + (p.archived ? " (arquivado)" : "") }));
-    } catch { /* sem projetos */ }
-  }
+  try {
+    for (const p of await api.get(opts.projectsUrl || "/projects?include_archived=true"))
+      projSel.append(h("option", { value: String(p.id), text: p.name + (p.archived ? " (arquivado)" : "") }));
+  } catch { /* sem projetos */ }
   const btn = h("button", { type: "button", class: "btn btn-primary", onClick: run }, icon("reports"), "Exportar PDF");
 
   const quick = h("div", { class: "quick" }, ...ranges(today).map(([label, a, b]) =>
@@ -62,7 +60,6 @@ export async function mount(root, opts = {}) {
     wholeNote.classList.toggle("hidden", useDates);
   }
   projSel.addEventListener("change", sync);
-  if (opts.projectId) projSel.value = String(opts.projectId);
 
   root.append(h("div", { class: "report-section" },
     h("h3", { text: "Relatório em PDF" }),

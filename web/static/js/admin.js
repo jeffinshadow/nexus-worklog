@@ -93,7 +93,7 @@ async function mountUsers(root) {
       board.mount(content, { readOnly: true, boardUrl: `/admin/users/${uid}/board` });
     else if (active === "dashboard")
       dashboard.mount(content, { dashUrl: `/admin/users/${uid}/dashboard` });
-    else reports.mount(content, { exportBase: `/admin/users/${uid}/reports/export` });
+    else reports.mount(content, { exportBase: `/admin/users/${uid}/reports/export`, projectsUrl: `/admin/users/${uid}/projects` });
   }
 
   // ---- Redefinir senha (senha temporária, troca forçada no próximo login) ----

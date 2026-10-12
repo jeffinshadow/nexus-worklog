@@ -16,7 +16,7 @@ let me = null;
 const VIEWS = {
   hoje: { title: "Hoje", mount: (el, ctx) => today.mount(el, ctx) },
   tarefas: { title: "Tarefas", mount: (el, ctx) => board.mount(el, ctx) },
-  dashboard: { title: "Dashboard", eyebrow: "retrospectiva", mount: (el) => dashboard.mount(el) },
+  dashboard: { title: "Retrospectiva", eyebrow: "rotinas · fluxo · tempo · backlog", mount: (el) => dashboard.mount(el) },
   relatorios: { title: "Relatórios", eyebrow: "PDF · exportar dados", mount: (el) => reports.mount(el) },
   historico: { title: "Histórico", eyebrow: "o que mudou, por quem", mount: (el) => history.mount(el) },
   config: { title: "Configurações", mount: (el, ctx) => settings.mount(el, ctx) },
@@ -76,7 +76,7 @@ async function logout() {
 function mountMore(el) {
   clear(el);
   const items = [
-    ["dashboard", "dashboard", "Dashboard"],
+    ["dashboard", "dashboard", "Retrospectiva"],
     ["historico", "history", "Histórico"],
     ["config", "settings", "Configurações"],
   ];

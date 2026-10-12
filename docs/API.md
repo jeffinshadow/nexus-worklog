@@ -3,7 +3,7 @@
 API REST do Shadow Nexus Worklog, sob **`/api`**, mais o servidor MCP em
 **`/mcp`**. O Swagger/OpenAPI fica **desligado de propósito** — esta página é a
 referência. Campos e limites exatos de cada corpo: os modelos Pydantic em
-`backend/app/schemas.py` e, para avisos e calendário, no próprio router. Corpos e respostas em JSON; datas `AAAA-MM-DD` no fuso
+`backend/app/schemas.py`. Corpos e respostas em JSON; datas `AAAA-MM-DD` no fuso
 `APP_TZ`; timestamps ISO 8601 com fuso.
 
 ## Autenticação
@@ -18,11 +18,11 @@ Authorization: Bearer nxs_...
 ```
 
 - Sem cookie e sem CSRF. Escopo `write` (lê e altera) ou `read` (escrita → 403).
-- Validade de 1 a 365 dias ou sem validade; revogável. 240 req/min por chave (429).
+- Validade de 1 a 365 dias ou sem validade; revogável. 240 req/min por pessoa, somando as chaves (429).
 - Trocar a própria senha (ou o reset pelo admin) revoga todas as chaves e o link do calendário.
 - Uma chave **nunca** acessa `/api/admin/*`, `/api/tokens`, `/api/calendar`,
   `/api/notifications` nem troca senha. Tudo o que ela fizer vai para o
-  histórico com o nome dela. O reset de senha pelo admin revoga as chaves.
+  histórico com o nome dela.
 
 ### Sessão do app — o que o frontend usa
 
@@ -43,7 +43,7 @@ exige admin com sessão do app.
 | 409 | conflito (nome repetido, desfazer fora de ordem, tarefa com filhos) |
 | 422 | corpo inválido |
 | 413 / 415 | logo grande demais / tipo de arquivo não aceito |
-| 429 | limite de tentativas/requisições (login, chave, PDF) |
+| 429 | limite de tentativas/requisições (login, troca de senha, chave, PDF, teste de e-mail, feed ICS) |
 | 502 / 503 | envio de e-mail falhou / e-mail não configurado |
 
 Legenda: **S** = só sessão do app · **W** = exige escopo `write` (chave) ou CSRF (sessão).
@@ -56,7 +56,7 @@ Legenda: **S** = só sessão do app · **W** = exige escopo `write` (chave) ou C
 | `POST /logout` | S W | |
 | `GET /me` | | `{id, email, role, must_change_password, work_days, tz, csrf_token}` |
 | `POST /change-password` | S W | `{current_password, new_password}`; encerra as outras sessões e revoga chaves e calendário |
-| `POST /settings` | W | `{work_days}` — máscara, domingo = bit 0 (seg–sex = 62) |
+| `POST /settings` | W | `{work_days}` — máscara, domingo = bit 0 (seg–sex = 62). Não reescreve o passado: rotinas "dias úteis" com história são encerradas com os dias antigos e recomeçam hoje; não se desfaz pelo histórico |
 
 ## Hoje e quadro
 
@@ -64,14 +64,14 @@ Legenda: **S** = só sessão do app · **W** = exige escopo `write` (chave) ou C
 | --- | --- | --- |
 | `GET /api/board?day=&project=` | | `day` até 7 dias atrás (padrão hoje); `project` filtra as tarefas (`0` = sem projeto). Devolve `recurring` (com `due`, `done_today`, agenda), `in_progress` (tarefas abertas: a fazer, em andamento, bloqueadas), `done`, `day`, `today`, `min_day`, `work_day` |
 | `GET /api/summary` | | `last_day` (do último dia útil até ontem) e `week` (com `previous` = mesmos dias da semana passada): rotinas, tarefas concluídas, minutos, por projeto, rotinas não feitas |
-| `GET /api/dashboard` | | indicadores dia/semana/mês e séries dos gráficos |
+| `GET /api/dashboard` | | retrospectiva: `heatmap` (4 semanas), `task_adherence` (30 dias, a mais pulada primeiro), `throughput`, `projects` (tempo, 30 dias), `backlog` |
 
 ## Rotinas — `/api/recurring`
 
 | Rota | | Corpo |
 | --- | --- | --- |
 | `POST /` | W | `{label, freq?, weekdays?, month_day?, interval_days?}` |
-| `PATCH /{id}` | W | `{label?, freq?…}` — mudar a agenda exige `freq` + o parâmetro dela; se a rotina já tem passado, ela é encerrada hoje e uma nova (devolvida em `id`) começa hoje |
+| `PATCH /{id}` | W | `{label?, freq?…}` — mudar a agenda exige `freq` + o parâmetro dela; se a rotina já tem passado, ela é encerrada hoje e uma nova (devolvida em `id`) começa hoje — uma ação só no histórico |
 | `DELETE /{id}` | W | remove daqui para a frente (o passado fica) |
 | `POST /{id}/toggle` | W | `{done, day?}` — `day` até 7 dias atrás e só quando a rotina existia |
 
@@ -129,7 +129,7 @@ Agenda: `daily` (dias úteis do dono) · `weekly` + `weekdays` (máscara) ·
 | `GET /api/calendar` | S | estado do link |
 | `POST /api/calendar` | S W | `{include_recurring}` — cria/troca o link e devolve `path` uma vez |
 | `PATCH /api/calendar` · `DELETE /api/calendar` | S W | |
-| `GET /api/calendar/{nxc_…}.ics` | público (segredo no link) | prazos (dia inteiro) e rotinas (RRULE) |
+| `GET /api/calendar/{nxc_…}.ics` | público (segredo no link) | prazos (dia inteiro, sem a descrição) e rotinas (RRULE) |
 | `GET /api/notifications` · `PUT /api/notifications` | S (W) | `{morning, morning_hour, evening, evening_hour, weekly, weekly_hour, show_titles}` |
 | `POST /api/notifications/test` | S W | manda um teste para o e-mail da conta (503 sem SMTP) |
 | `GET /api/tokens` · `POST /api/tokens` · `DELETE /api/tokens/{id}` | S (W) | `{name, scope, expires_in_days}`; até 20 ativas |
@@ -149,7 +149,7 @@ Agenda: `daily` (dias úteis do dono) · `weekly` + `weekdays` (máscara) ·
 | --- | --- | --- |
 | `GET /users` | | lista |
 | `POST /users` | W | `{email}` → senha temporária (troca no 1º acesso) |
-| `GET /users/{id}/board` · `/dashboard` · `/reports/export` | | visão só leitura do usuário |
+| `GET /users/{id}/board` · `/dashboard` · `/projects` · `/reports/export` | | visão só leitura do usuário |
 | `POST /users/{id}/reset-password` | W | senha temporária; encerra sessões e revoga chaves e calendário |
 | `GET /export/apontamentos.csv` | | horas de todos, com coluna `usuario` |
 
@@ -162,7 +162,7 @@ Leitura: `get_today`, `get_summary`, `list_tasks`, `get_task`, `search`,
 `list_projects`, `list_recurring`, `get_history`.
 Escrita (chave `write`): `create_task`, `update_task`, `complete_task`,
 `add_note`, `add_checklist_item`, `set_checklist_item`, `log_time`,
-`set_recurring` (`recurring_id`), `undo`. A IA não exclui tarefas.
+`set_recurring` (`recurring_id`), `undo` (só ações da própria chave). A IA não exclui o que o usuário fez.
 
 ```bash
 claude mcp add --transport http nexus https://SEU-HOST/mcp --header "Authorization: Bearer nxs_SUA_CHAVE"

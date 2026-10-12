@@ -1,11 +1,11 @@
 // Busca: tarefas (título, descrição, anotações, checklist, apontamentos),
 // rotinas e projetos. Rota #/busca?q=… ; o termo aparece destacado.
 import { api } from "./api.js";
-import { h, icon, clear, shortDate } from "./dom.js";
+import { h, icon, clear, localDay } from "./dom.js";
 import { taskChips } from "./board.js";
 import { openTask } from "./task.js";
 
-export function queryFromHash() {
+function queryFromHash() {
   const qs = location.hash.split("?")[1] || "";
   return new URLSearchParams(qs).get("q") || "";
 }
@@ -55,7 +55,7 @@ export async function mount(root, ctx) {
     root.append(h("p", { class: "empty", text: e.message || "Erro na busca." }));
     return;
   }
-  const today = (await api.get("/board")).today;
+  const today = localDay(Date.now()); // só para os chips (prazo, atrasada)
   const refresh = () => mount(root, ctx);
 
   if (!r.tasks.length && !r.recurring.length && !r.projects.length) {

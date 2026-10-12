@@ -7,7 +7,8 @@ Prioridades: **simples > seguro > funcional > elegante**.
 
 Cada pessoa vê **apenas** os próprios dados. As contas são criadas pelo
 **admin** (convite com senha temporária); o admin consulta, só para leitura, o
-quadro, o dashboard e os relatórios de qualquer usuário.
+quadro, a retrospectiva e os relatórios de qualquer usuário. Não há cadastro
+público.
 
 ## O que faz
 
@@ -21,7 +22,7 @@ quadro, o dashboard e os relatórios de qualquer usuário.
   anotações e apontamento de tempo.
 - **Relatórios** — PDF por período, por projeto ou do projeto inteiro;
   exportação em CSV (planilha) e JSON (backup).
-- **Dashboard**, **histórico com desfazer**, **busca** sem acento, **feed de
+- **Retrospectiva** (aderência das rotinas, vazão, tempo por projeto, backlog), **histórico com desfazer**, **busca** sem acento, **feed de
   calendário (ICS)**, **avisos por e-mail** (opt-in) e **identidade visual**
   configurável pelo admin.
 - **IA** — chaves de API e servidor **MCP** (`/mcp`): a IA registra o que você
@@ -86,12 +87,14 @@ em profundidade).
 
 ## Segurança (resumo)
 
-- **Senhas** Argon2id, mínimo 10 caracteres; login com limite por IP e por
-  e-mail (só falhas contam).
+- **Senhas** Argon2id (perfil OWASP, no máximo 2 cálculos simultâneos — sob
+  carga responde 503 em vez de travar), mínimo 10 caracteres; login limitado
+  por IP (todas as tentativas; IPv6 por /64) e por e-mail (só as falhas, que
+  vão para o log); troca de senha limitada e diferente da atual.
 - **Sessão** server-side: o banco guarda só o HMAC do token; cookie
-  `HttpOnly; Secure; SameSite=Strict`, prazo fixo (`SESSION_TTL_DAYS`).
-  **CSRF** por header em toda mutação. Argon2 no perfil OWASP, no máximo 2
-  hashes simultâneos (cabe na VM pequena).
+  `__Host-session` (`HttpOnly; Secure; SameSite=Strict`), prazo fixo
+  (`SESSION_TTL_DAYS`). Histórico guardado por 180 dias.
+  **CSRF** por header em toda mutação.
 - **Chaves de API** (`nxs_…`) e **link do calendário** (`nxc_…`): só o HMAC no
   banco, revogáveis; trocar a senha (ou o reset pelo admin) revoga ambos. Chave nunca
   acessa rotas de admin, chaves, calendário ou avisos.

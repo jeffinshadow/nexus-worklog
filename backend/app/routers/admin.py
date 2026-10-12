@@ -64,6 +64,13 @@ def user_dashboard(user_id: int, admin=Depends(require_admin)):
     return get_dashboard(user_id)
 
 
+@router.get("/users/{user_id}/projects")
+def user_projects(user_id: int, admin=Depends(require_admin)):
+    """Projetos do usuário (para o admin tirar o relatório de um cliente dele)."""
+    _ensure_user(user_id)
+    return db.query_all("SELECT id, name, archived FROM projects WHERE user_id = %s ORDER BY archived, lower(name)", (user_id,))
+
+
 @router.get("/users/{user_id}/reports/export")
 def user_report_export(
     user_id: int,

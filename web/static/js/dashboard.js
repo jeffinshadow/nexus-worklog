@@ -1,18 +1,17 @@
 import { api } from "./api.js";
 import { h, clear, shortDate } from "./dom.js";
-import { duration } from "./task.js";
+import { projectBars } from "./summary.js";
 
 const NS = "http://www.w3.org/2000/svg";
 const MONTHS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
-// Todas as agregações vêm do backend (/dashboard): as pizzas (visão geral) e o
-// bloco `analytics` (séries e recortes). O frontend só desenha — SVG na mão,
+// Todas as agregações vêm do backend (/dashboard). O frontend só desenha — SVG na mão,
 // sem libs, coerente com a CSP rígida.
 export async function mount(root, opts = {}) {
   const dashUrl = opts.dashUrl || "/dashboard";
   const data = await api.get(dashUrl);
-  const a = data.analytics || {};
+  const a = data || {};
 
   clear(root);
   // Retrospectiva: o "hoje" e a semana ficam na tela Hoje.
@@ -95,12 +94,6 @@ function parseISO(s) {
   return new Date(s + "T00:00:00");
 }
 
-// ------------------------------------------------- visão geral (KPIs) --------
-
-// Cabeçalho de indicadores: 3 horizontes (dia/semana/mês) por grupo.
-// Rotinas = razão concluídas/slots (barra + %), um parte-de-todo honesto.
-// Tarefas = contagem de concluídas no período (o "em aberto" é da seção de
-// backlog, não daqui — evita o denominador-snapshot enganoso das pizzas).
 function legendItem(label, count, color) {
   const swatch = h("span", { class: "swatch" });
   swatch.style.background = color;
@@ -122,12 +115,7 @@ function heatColor(d) {
 function heatmap(hm) {
   if (!hm || !hm.days || !hm.days.length || hm.days.every((d) => d.slots === 0))
     return emptyBox("sem rotinas ainda");
-  // A série vem com 8 semanas (para a tendência); o calendário mostra só as 4
-  // últimas. Recorta em múltiplos de 7 (heat_start é domingo) p/ manter colunas.
-  const HEAT_WEEKS = 4;
-  let days = hm.days;
-  const totalCols = Math.ceil(days.length / 7);
-  if (totalCols > HEAT_WEEKS) days = days.slice((totalCols - HEAT_WEEKS) * 7);
+  const days = hm.days; // 4 semanas, começando num domingo
   const start = parseISO(days[0].date);
   const cols = Math.ceil(days.length / 7);
   const cell = 24, gap = 3, step = cell + gap;
@@ -163,7 +151,7 @@ function heatmap(hm) {
     if (op !== 1) r.style.opacity = op;
     if (empty) { r.style.stroke = "var(--outline-variant)"; r.style.strokeWidth = "1"; }
     const label = shortDate(d.date);
-    withTitle(r, d.slots === 0 ? `${label}: sem tarefas` : `${label}: ${d.done}/${d.slots} concluídas`);
+    withTitle(r, d.slots === 0 ? `${label}: sem rotina devida` : `${label}: ${d.done}/${d.slots} feitas`);
     s.appendChild(r);
   });
 
@@ -181,8 +169,6 @@ function heatLegend() {
   box.append(h("span", { text: "mais" }));
   return box;
 }
-
-// ------------------------------------------------- tendência semanal (linha) --
 
 // -------------------------------------------------- ranking por tarefa (HTML) --
 
@@ -262,8 +248,6 @@ function throughput(tp) {
   return h("div", { class: "fluxo-body" }, chart);
 }
 
-// ---------------------------------------------------------------- cycle time --
-
 // -------------------------------------------------------------- backlog saúde --
 
 function backlogHealth(b) {
@@ -276,12 +260,12 @@ function backlogHealth(b) {
         stackedBar([
           { value: b.todo, color: "var(--surface-container-high)", label: "A fazer" },
           { value: b.in_progress, color: "var(--primary)", label: "Em andamento" },
-          { value: b.blocked, color: "var(--error)", label: "Bloqueado" },
+          { value: b.blocked, color: "var(--error)", label: "Bloqueada" },
         ], open),
         h("div", { class: "bar-legend" },
           legendItem("A fazer", b.todo, "var(--surface-container-high)"),
           legendItem("Em andamento", b.in_progress, "var(--primary)"),
-          legendItem("Bloqueado", b.blocked, "var(--error)")));
+          legendItem("Bloqueada", b.blocked, "var(--error)")));
 
   const ag = b.aging || { new: 0, mid: 0, old: 0 };
   const agingBody = (ag.new + ag.mid + ag.old) === 0
@@ -323,12 +307,5 @@ function agingRow(label, count, color) {
 function projectTime(pt) {
   const items = (pt && pt.items) || [];
   if (!items.length) return emptyBox("nada apontado nos últimos 30 dias");
-  const top = Math.max(...items.map((p) => p.minutes), 1);
-  return h("div", { class: "fluxo-body" }, ...items.map((p) => {
-    const bar = h("span");
-    bar.style.width = `${Math.round((100 * p.minutes) / top)}%`;
-    bar.style.background = p.color || "var(--dim)";
-    return h("div", { class: "sum-bar" }, h("span", { class: "sum-bar-l", text: p.name || "Sem projeto" }),
-      h("span", { class: "sum-track" }, bar), h("span", { class: "mono sum-bar-v", text: duration(p.minutes) }));
-  }));
+  return h("div", { class: "fluxo-body" }, ...projectBars(items));
 }

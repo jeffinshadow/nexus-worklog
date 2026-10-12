@@ -4,7 +4,7 @@ import { api } from "./api.js";
 import { h, icon, clear, field } from "./dom.js";
 import { confirmDialog, errorToast, toast, undoLatest } from "./ui.js";
 
-export const PALETA = ["#5294E2", "#81C995", "#FDD663", "#C58AF9", "#F28B82", "#78D9EC", "#F6AE6B", "#A1A1A8"];
+const PALETA = ["#5294E2", "#81C995", "#FDD663", "#C58AF9", "#F28B82", "#78D9EC", "#F6AE6B", "#A1A1A8"];
 
 let cache = null;
 
@@ -13,7 +13,7 @@ export async function listProjects(force = false) {
   return cache;
 }
 
-export function invalidateProjects() {
+function invalidateProjects() {
   cache = null;
 }
 
