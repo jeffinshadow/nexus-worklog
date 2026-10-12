@@ -11,6 +11,8 @@ def _required(name: str) -> str:
 class Config:
     DATABASE_URL = _required("DATABASE_URL")
     SECRET_KEY = _required("SECRET_KEY")
+    if len(SECRET_KEY) < 32:  # pepper dos HMAC de sessão, chaves e calendário
+        raise RuntimeError("SECRET_KEY curta demais: use 32+ caracteres aleatórios")
 
     ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL")
     ADMIN_INITIAL_PASSWORD = os.environ.get("ADMIN_INITIAL_PASSWORD")

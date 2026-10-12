@@ -3,17 +3,12 @@ import { api } from "./api.js";
 import { h, icon, clear, longDate, localDay } from "./dom.js";
 import { errorToast, toast } from "./ui.js";
 import { openRecurring, openWorklog, finishTask, taskChips, isOverdue, scheduleLabel } from "./board.js";
-import { openTask } from "./task.js";
+import { openTask, parseDuration } from "./task.js";
 import { summaryPanel } from "./summary.js";
 
-// Ordem de urgência das abertas: atrasadas, vencem hoje, prioridade alta,
-// bloqueadas, em andamento, a fazer; a prioridade desempata o resto.
-function urgency(t, today) {
-  if (isOverdue(t, today)) return 0;
-  if (t.due_date === today) return 1;
-  if (t.priority === 1) return 2;
-  return ({ blocked: 3, in_progress: 4, todo: 5 }[t.status] ?? 6) + (t.priority === 3 ? 3 : 0);
-}
+// Duração no fim do registro rápido: "Troca de toner — 15min", "Loja X 2h",
+// "Backup 1:30". Exige unidade (h, min ou h:mm) para não confundir "Rack 2".
+const QUICK_DUR = /\s+[-–—]?\s*(\d+(?:[.,]\d+)?\s*h(?:\s*\d{1,2})?(?:\s*min)?|\d+\s*min|\d+:\d{2})$/i;
 
 // opts.focusQuick: volta o cursor ao registro rápido (lote de itens seguidos);
 // opts.summary: reaproveita o resumo (registrar uma tarefa aberta não o muda).
@@ -36,24 +31,13 @@ export async function mount(root, ctx, opts = {}) {
   const rec = [...due, ...extras];
   const recDone = due.filter((r) => r.done_today).length;
   const extraTxt = extras.length ? ` +${extras.length} extra` : "";
-  const open = [...b.in_progress].sort((x, y) => urgency(x, today) - urgency(y, today));
+  const open = b.in_progress; // já vem na ordem: atrasadas, vencem hoje, prioridade, prazo
   const late = open.filter((t) => isOverdue(t, today));
   const blocked = open.filter((t) => t.status === "blocked");
   const doneToday = b.done.filter((t) =>
     t.completed_at && localDay(t.completed_at) === today);
 
   clear(root);
-
-  // ---- números do dia
-  const stat = (n, label, cls = "", small = "") =>
-    h("div", { class: "stat " + cls }, h("p", { class: "stat-n" }, String(n), small ? h("small", { text: small }) : null), h("p", { class: "stat-l", text: label }));
-  const stats = h("div", { class: "stats" },
-    stat(due.length ? recDone : "—", (due.length ? "rotinas feitas" : "sem rotinas hoje") + extraTxt,
-      due.length && recDone === due.length ? "ok" : "", due.length ? `/${due.length}` : ""),
-    stat(open.length, "tarefas abertas"),
-    stat(late.length, (late.length === 1 ? "atrasada" : "atrasadas") + (blocked.length ? ` · ${blocked.length} bloqueada${blocked.length > 1 ? "s" : ""}` : ""),
-      late.length || blocked.length ? "warn" : ""),
-    stat(doneToday.length, "concluídas hoje", doneToday.length ? "ok" : ""));
 
   // ---- rotinas do dia
   const recPanel = h("section", { class: "panel t-rec" },
@@ -80,19 +64,26 @@ export async function mount(root, ctx, opts = {}) {
     });
     const hint = r.due === false ? "extra" : scheduleLabel(r);
     recPanel.append(h("label", { class: "check-row" + (r.done_today ? " done" : "") }, cb,
-      h("span", { class: "label" }, r.label, hint ? h("small", { text: hint }) : null)));
+      h("span", { class: "label" }, r.label, hint ? h("small", { text: hint }) : null),
+      // Achou algo na verificação? Vira tarefa (com anotações e tempo).
+      h("button", { type: "button", class: "icon", title: "Registrar um achado como tarefa", "aria-label": "Registrar achado de " + r.label,
+        onClick: (ev) => { ev.preventDefault(); openWorklog(null, refresh, { title: `Achado: ${r.label}` }); } }, icon("alert"))));
   }
 
   // ---- abertas, por urgência + registro rápido
-  const quick = h("input", { type: "text", placeholder: "Registrar tarefa rápida e apertar Enter", maxlength: "200", "aria-label": "Registrar tarefa rápida" });
+  const quick = h("input", { type: "text", placeholder: "Registrar tarefa e Enter (ex.: Troca de toner sala 3 — 15min)", maxlength: "200", "aria-label": "Registrar tarefa rápida" });
   quick.addEventListener("keydown", async (ev) => {
     if (ev.key !== "Enter" || !quick.value.trim()) return;
     ev.preventDefault();
-    const title = quick.value.trim();
+    let title = quick.value.trim();
+    const m = title.match(QUICK_DUR);
+    const minutes = m ? parseDuration(m[1].replace(/\s+/g, "")) : null;
+    if (minutes && minutes <= 1440) title = title.slice(0, m.index).trim();
     quick.disabled = true;
     try {
-      await api.post("/worklog", { title, status: "in_progress" });
-      toast("Tarefa registrada.");
+      const created = await api.post("/worklog", { title });
+      if (minutes && minutes <= 1440) await api.post(`/worklog/${created.id}/time`, { minutes });
+      toast(minutes ? `Tarefa registrada com ${m[1].trim()}.` : "Tarefa registrada.");
       mount(root, ctx, { focusQuick: true, summary: sum });
     } catch (e) {
       quick.disabled = false;
@@ -100,7 +91,10 @@ export async function mount(root, ctx, opts = {}) {
     }
   });
   const openPanel = h("section", { class: "panel t-open" },
-    h("div", { class: "panel-head" }, h("h2", { text: "Em aberto" }), h("span", { class: "count", text: String(open.length) })),
+    h("div", { class: "panel-head" }, h("h2", { text: "Em aberto" }),
+      h("span", { class: "count" + (late.length || blocked.length ? " warn" : ""), text: [String(open.length),
+        late.length ? `${late.length} atrasada${late.length > 1 ? "s" : ""}` : "",
+        blocked.length ? `${blocked.length} bloqueada${blocked.length > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ") })),
     h("div", { class: "field" }, quick));
   if (!open.length) openPanel.append(h("p", { class: "empty", text: "Nada em aberto." }));
   for (const t of open) {
@@ -117,10 +111,10 @@ export async function mount(root, ctx, opts = {}) {
     h("div", { class: "panel-head" }, h("h2", { text: "Concluídas hoje" }), h("span", { class: "count", text: String(doneToday.length) })));
   if (!doneToday.length) donePanel.append(h("p", { class: "empty", text: "Ainda nada hoje." }));
   for (const t of doneToday) {
-    donePanel.append(h("div", { class: "list-row" }, h("span", { class: "chip done", text: "feita" }),
+    donePanel.append(h("div", { class: "list-row" }, h("span", { class: "chip done", text: "concluída" }),
       h("div", { class: "t" }, h("button", { type: "button", class: "card-open", text: t.title, onClick: () => openTask(t.id, refresh) }))));
   }
 
   if (opts.focusQuick) setTimeout(() => quick.focus(), 0);
-  root.append(h("div", { class: "today-grid" }, stats, recPanel, openPanel, sum ? summaryPanel(sum, refresh) : null, donePanel));
+  root.append(h("div", { class: "today-grid" }, recPanel, openPanel, donePanel, sum ? summaryPanel(sum, refresh) : null));
 }

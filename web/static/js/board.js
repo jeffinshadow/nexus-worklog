@@ -27,7 +27,8 @@ function dayLabel(iso, today) {
 // Chips de uma tarefa (compartilhado com a tela Hoje): status,
 // prioridade, prazo, projeto e os contadores de checklist/tempo/anotações.
 export function taskChips(t, today) {
-  const chips = [h("span", { class: "chip " + t.status, text: STATUS_LABELS[t.status] })];
+  // Concluída: a coluna já diz; fica só a data de fim.
+  const chips = t.status === "done" ? [] : [h("span", { class: "chip " + t.status, text: STATUS_LABELS[t.status] })];
   if (t.priority === 1 && t.status !== "done") chips.push(h("span", { class: "chip prio-1", text: "alta" }));
   if (t.status === "done") {
     if (t.completed_at) chips.push(h("span", { class: "chip done", text: "fim " + shortDate(t.completed_at) }));
@@ -65,7 +66,7 @@ export function isOverdue(t, today) {
 export function openWorklog(item, onDone, opts = {}) {
   const dlg = document.getElementById("dialog-worklog");
   document.getElementById("dlg-wl-title").textContent = item ? "Editar tarefa" : "Nova tarefa";
-  document.getElementById("wl-title").value = item ? item.title : "";
+  document.getElementById("wl-title").value = item ? item.title : opts.title || "";
   document.getElementById("wl-desc").value = item && item.description ? item.description : "";
   document.getElementById("wl-status").value = item ? item.status : "todo";
   document.getElementById("wl-due").value = item && item.due_date ? item.due_date : "";
@@ -135,11 +136,11 @@ export function openRecurring(item, onDone) {
   del.onclick = item
     ? async () => {
         dlg.close();
-        if (!(await confirmDialog({ title: "Remover rotina?", text: "Ela sai do quadro a partir de hoje. O histórico de dias feitos é preservado.", confirm: "Remover", danger: true }))) return;
+        if (!(await confirmDialog({ title: "Excluir rotina?", text: "Ela sai do quadro a partir de hoje. O histórico de dias feitos é preservado.", confirm: "Excluir", danger: true }))) return;
         try {
           await api.del(`/recurring/${item.id}`);
           onDone && onDone();
-          toast("Rotina removida.", { action: "Desfazer", onAction: () => undoLatest("recurring", item.id, onDone) });
+          toast("Rotina excluída.", { action: "Desfazer", onAction: () => undoLatest("recurring", item.id, onDone) });
         } catch (e) {
           errorToast(e, "Erro ao remover.");
         }
@@ -235,9 +236,9 @@ export async function mount(root, opts = {}) {
   let project = readOnly ? "" : sessionStorage.getItem("nexus.board.project") || "";
 
   clear(root);
-  const daily = column("Rotinas", readOnly ? null : () => openRecurring(null, refresh), "Nova rotina");
-  const wip = column("Em aberto", readOnly ? null : () => openWorklog(null, refresh), "Nova tarefa");
-  const done = column("Concluídas", null, null, { collapsible: true, className: "column-done" });
+  const daily = column("Rotinas");
+  const wip = column("Em aberto");
+  const done = column("Concluídas", { collapsible: true, className: "column-done" });
   root.append(h("div", { class: "columns" }, daily.section, wip.section, done.section));
 
   // Filtro por projeto (só no quadro do próprio usuário).
@@ -330,7 +331,7 @@ export async function mount(root, opts = {}) {
     clear(col.body);
     col.count.textContent = String(items.length);
     if (!items.length) {
-      col.body.append(h("p", { class: "empty", text: isDone ? "Nada concluído ainda." : "Nada aberto. Bom sinal." }));
+      col.body.append(h("p", { class: "empty", text: isDone ? "Nada concluído ainda." : "Nada em aberto." }));
       return;
     }
     const list = isDone ? items.slice(0, doneShown) : items;
@@ -359,11 +360,9 @@ export async function mount(root, opts = {}) {
   await refresh();
 }
 
-function column(title, onAdd, addLabel, opts = {}) {
+function column(title, opts = {}) {
   const count = h("span", { class: "count-badge" });
   const head = h("div", { class: "column-head" }, h("h2", { text: title }), count);
-  if (onAdd)
-    head.append(h("button", { type: "button", class: "icon accent", title: addLabel, "aria-label": addLabel, onClick: onAdd }, icon("add")));
   const body = h("div", { class: "column-body" });
   const section = h("section", { class: "column" + (opts.className ? " " + opts.className : "") }, head, body);
   if (opts.collapsible) {

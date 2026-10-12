@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from .. import db
 from ..config import config
 from ..deps import active_user
+from ..security import pdf_limiter
 from ..report_pdf import build_report_pdf
 from ..services import app_today, get_report_range
 
@@ -41,6 +42,8 @@ def build_pdf_response(user_email: str, user_id: int, start: date | None, end: d
     atividade do projeto (relatório do projeto inteiro, sem limite de dias);
     sem fim, até hoje. Compartilhado com o router admin.
     """
+    if not pdf_limiter.allow(f"pdf:{user_id}"):
+        raise HTTPException(status_code=429, detail="muitos relatórios em sequência; aguarde um minuto")
     project = None
     if project_id is not None:
         project = db.query_one("SELECT id, name FROM projects WHERE id = %s AND user_id = %s",
@@ -53,14 +56,18 @@ def build_pdf_response(user_email: str, user_id: int, start: date | None, end: d
     whole = project is not None and start is None
     # Nao ha dias futuros: limita o fim a hoje (no fuso da app) antes de medir.
     end = min(end or app_today(), app_today())
+    truncated = False
     if whole:
-        start = max(project_first_day(user_id, project["id"]), end - timedelta(days=MAX_PROJECT_DAYS - 1))
+        first = project_first_day(user_id, project["id"])
+        start = max(first, end - timedelta(days=MAX_PROJECT_DAYS - 1))
+        truncated = start > first
     if start > end:
         raise HTTPException(status_code=400, detail="o início não pode ser depois do fim nem no futuro")
     if not whole and (end - start).days + 1 > MAX_RANGE_DAYS:
         raise HTTPException(status_code=400, detail=f"período máximo de {MAX_RANGE_DAYS} dias")
     if project:
         project["whole"] = whole
+        project["truncated"] = truncated
 
     data = get_report_range(user_id, start, end, project)
     brand = db.query_one("SELECT line1, line2, logo FROM app_branding WHERE id = 1") or {}

@@ -7,7 +7,7 @@ import * as dashboard from "./dashboard.js";
 import * as reports from "./reports.js";
 
 const SUBVIEWS = [
-  { key: "board", label: "Board" },
+  { key: "board", label: "Tarefas" },
   { key: "dashboard", label: "Dashboard" },
   { key: "reports", label: "Relatórios" },
 ];

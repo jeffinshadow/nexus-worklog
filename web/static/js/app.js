@@ -15,12 +15,12 @@ let me = null;
 
 const VIEWS = {
   hoje: { title: "Hoje", mount: (el, ctx) => today.mount(el, ctx) },
-  tarefas: { title: "Tarefas", eyebrow: "rotinas · tarefas · concluídas", mount: (el, ctx) => board.mount(el, ctx) },
-  dashboard: { title: "Dashboard", eyebrow: "consistência e fluxo", mount: (el) => dashboard.mount(el) },
+  tarefas: { title: "Tarefas", mount: (el, ctx) => board.mount(el, ctx) },
+  dashboard: { title: "Dashboard", eyebrow: "retrospectiva", mount: (el) => dashboard.mount(el) },
   relatorios: { title: "Relatórios", eyebrow: "PDF · exportar dados", mount: (el) => reports.mount(el) },
   historico: { title: "Histórico", eyebrow: "o que mudou, por quem", mount: (el) => history.mount(el) },
-  config: { title: "Configurações", eyebrow: "projetos · avisos · calendário · IA e API · conta", mount: (el, ctx) => settings.mount(el, ctx) },
-  admin: { title: "Admin", eyebrow: "usuários · identidade visual", mount: (el) => admin.mount(el), adminOnly: true },
+  config: { title: "Configurações", mount: (el, ctx) => settings.mount(el, ctx) },
+  admin: { title: "Admin", mount: (el) => admin.mount(el), adminOnly: true },
   mais: { title: "Mais", mount: (el) => mountMore(el) },
   busca: { title: "Busca", eyebrow: "tarefas · anotações · checklist · projetos", mount: (el, ctx) => search.mount(el, ctx) },
 };

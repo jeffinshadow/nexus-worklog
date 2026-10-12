@@ -35,7 +35,8 @@ def _banco_limpo():
     if "app_branding" in existentes:
         db.execute("INSERT INTO app_branding (id) VALUES (1) ON CONFLICT (id) DO NOTHING")
     main.seed_admin()
-    for limiter in (security.login_limiter, security.register_limiter):
+    for limiter in (security.login_limiter, security.login_email_limiter, security.register_limiter,
+                    security.pdf_limiter):
         limiter._hits.clear()
     yield
 

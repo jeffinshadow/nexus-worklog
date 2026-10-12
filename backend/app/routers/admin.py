@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from .. import audit, db
 from ..deps import require_admin, require_admin_csrf
 from ..schemas import InviteIn
-from ..security import generate_temp_password, hash_password
+from ..security import generate_temp_password, hash_password, revoke_access
 from ..services import app_today, get_board, get_dashboard
 from .board import check_board_day
 from .reports import build_pdf_response
@@ -100,8 +100,7 @@ def reset_password(user_id: int, admin=Depends(require_admin_csrf)):
     # senha (conta comprometida ou pessoa que saiu): chaves de API e o link
     # do calendario. Ele so volta com a senha temporaria.
     db.execute("DELETE FROM sessions WHERE user_id = %s", (user_id,))
-    db.execute("UPDATE api_tokens SET revoked_at = now() WHERE user_id = %s AND revoked_at IS NULL", (user_id,))
-    db.execute("DELETE FROM calendar_feeds WHERE user_id = %s", (user_id,))
+    revoke_access(user_id)
     audit.record({**admin, "actor": "admin"}, "user.reset_password", "password", user_id,
                  after={"by": admin["email"]}, user_id=user_id)
     return {"email": target["email"], "temp_password": temp}

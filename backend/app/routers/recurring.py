@@ -3,7 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from .. import audit, db
 from ..deps import active_user_csrf
 from ..schemas import RecurringIn, RecurringUpdate, ToggleIn
-from ..services import app_today, board_day_range, recurring_vigente
+from ..services import app_today, app_tz, recurring_vigente
+from .board import check_board_day
 
 router = APIRouter(prefix="/api/recurring", tags=["recurring"])
 
@@ -29,28 +30,47 @@ def create(data: RecurringIn, user=Depends(active_user_csrf)):
 
 @router.patch("/{task_id}")
 def update(task_id: int, data: RecurringUpdate, user=Depends(active_user_csrf)):
-    before = audit.recurring_snapshot(task_id, user["user_id"])
+    """Nome e agenda. Trocar a agenda de uma rotina que já tem passado NÃO
+    reescreve o passado: a atual é encerrada hoje e uma nova (mesmo nome e
+    posição) começa hoje. A marcação de hoje, se houver, passa para a nova."""
+    uid = user["user_id"]
+    before = audit.recurring_snapshot(task_id, uid)
+    if not before or not before["active"]:
+        raise HTTPException(status_code=404, detail="nao encontrado")
+    agenda = data.agenda() if data.freq is not None else {}
+    if data.label is None and not agenda:
+        raise HTTPException(status_code=400, detail="nada para atualizar")
+    today = app_today()
+    muda_agenda = any(before[k] != v for k, v in agenda.items())
+    tem_passado = before["created_at"].astimezone(app_tz()).date() < today
+
+    if muda_agenda and tem_passado:
+        db.execute("UPDATE recurring_tasks SET active = false, deactivated_at = now() WHERE id = %s AND user_id = %s",
+                   (task_id, uid))
+        audit.record(user, "recurring.deactivate", "recurring", task_id, before=before,
+                     after=audit.recurring_snapshot(task_id, uid))
+        new = db.query_one(
+            """INSERT INTO recurring_tasks (user_id, label, position, freq, weekdays, month_day, interval_days)
+               VALUES (%(uid)s, %(label)s, %(position)s, %(freq)s, %(weekdays)s, %(month_day)s, %(interval_days)s)
+               RETURNING id""",
+            {"uid": uid, "label": data.label or before["label"], "position": before["position"], **agenda})
+        db.execute("UPDATE recurring_completions SET task_id = %s WHERE task_id = %s AND user_id = %s AND completed_date = %s",
+                   (new["id"], task_id, uid, today))
+        audit.record(user, "recurring.create", "recurring", new["id"], after=audit.recurring_snapshot(new["id"], uid))
+        return {"ok": True, "id": new["id"], "replaced": task_id}
+
     fields, values = [], []
     if data.label is not None:
         fields.append("label = %s")
         values.append(data.label)
-    if data.freq is not None:
-        for col, val in data.agenda().items():
-            fields.append(f"{col} = %s")
-            values.append(val)
-    if not fields:
-        raise HTTPException(status_code=400, detail="nada para atualizar")
-
-    values += [task_id, user["user_id"]]
-    updated = db.execute(
-        f"UPDATE recurring_tasks SET {', '.join(fields)} WHERE id = %s AND user_id = %s",
-        tuple(values),
-    )
-    if not updated:
-        raise HTTPException(status_code=404, detail="nao encontrado")
+    for col, val in agenda.items():  # rotina criada hoje: ainda sem passado
+        fields.append(f"{col} = %s")
+        values.append(val)
+    db.execute(f"UPDATE recurring_tasks SET {', '.join(fields)} WHERE id = %s AND user_id = %s",
+               tuple(values) + (task_id, uid))
     audit.record(user, "recurring.update", "recurring", task_id, before=before,
-                 after=audit.recurring_snapshot(task_id, user["user_id"]))
-    return {"ok": True}
+                 after=audit.recurring_snapshot(task_id, uid))
+    return {"ok": True, "id": task_id}
 
 
 @router.delete("/{task_id}")
@@ -81,14 +101,11 @@ def toggle(task_id: int, data: ToggleIn, user=Depends(active_user_csrf)):
     if not owns:
         raise HTTPException(status_code=404, detail="nao encontrado")
 
-    # Marcação retroativa: hoje ou até RETRO_DAYS dias atrás, e só em dia em
-    # que a recorrente existia (criada e ainda não desativada).
-    min_day, today_ = board_day_range(app_today())
-    today = data.day or today_
-    if not (min_day <= today <= today_):
-        raise HTTPException(status_code=400, detail="dia fora da janela de edição")
+    # Marcação retroativa: hoje ou até RETRO_DAYS dias atrás (mesma janela do
+    # quadro), e só em dia em que a rotina estava vigente.
+    today = check_board_day(data.day) or app_today()
     if not recurring_vigente(task_id, user["user_id"], today):
-        raise HTTPException(status_code=400, detail="a recorrente não existia nesse dia")
+        raise HTTPException(status_code=400, detail="a rotina não existia nesse dia")
     was = db.query_one(
         "SELECT 1 FROM recurring_completions WHERE task_id = %s AND user_id = %s AND completed_date = %s",
         (task_id, user["user_id"], today),

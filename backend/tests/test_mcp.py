@@ -31,7 +31,7 @@ def test_fluxo_completo_pela_ia(usuario):
     assert "prazo" not in texto(b.tool("list_tasks"))
     assert not b.tool("complete_task", task_id=tid)["isError"]
     rid = usuario.post("/recurring", {"label": "Conferir backups"}).json()["id"]
-    assert not b.tool("set_recurring", task_id=rid, done=True)["isError"]
+    assert not b.tool("set_recurring", recurring_id=rid, done=True)["isError"]
     hoje = texto(b.tool("get_today"))
     assert "[x]" in hoje and "Conferir backups" in hoje and "Revisar firewall" in hoje
     hist = texto(b.tool("get_history"))

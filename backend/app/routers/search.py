@@ -28,7 +28,7 @@ def _snippet(text: str, q: str, width: int = 70) -> str:
 @router.get("/search")
 def search(q: str = Query(..., min_length=2, max_length=100), user=Depends(active_user)):
     uid = user["user_id"]
-    fq = _fold(q.strip())
+    fq = _fold(q.strip()[:100])  # também quando chamada pelo MCP (sem validação de Query)
     if len(fq) < 2:
         raise HTTPException(status_code=400, detail="busque ao menos 2 letras")
     like = "%" + fq.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
@@ -155,15 +155,13 @@ def export(kind: str, user=Depends(active_user)):
         tasks = _tasks(uid)
         by_id = {t["id"]: t for t in tasks}
         for t in tasks:
-            t["checklist"], t["notes_list"], t["time"] = [], [], []
+            t["checklist"], t["notes"], t["time"] = [], [], []
         for c in db.query_all("SELECT task_id, label, done FROM task_checklist WHERE user_id = %s ORDER BY position, id", (uid,)):
             by_id[c.pop("task_id")]["checklist"].append(c)
         for n in db.query_all("SELECT task_id, body, actor, token_name, created_at FROM task_notes WHERE user_id = %s ORDER BY created_at", (uid,)):
-            by_id[n.pop("task_id")]["notes_list"].append(n)
+            by_id[n.pop("task_id")]["notes"].append(n)
         for e in db.query_all("SELECT task_id, day, minutes, note, actor, token_name FROM time_entries WHERE user_id = %s ORDER BY day, id", (uid,)):
             by_id[e.pop("task_id")]["time"].append(e)
-        for t in tasks:
-            t["notes"] = t.pop("notes_list")
         recurring = db.query_all(
             """SELECT id, label, active, freq, weekdays, month_day, interval_days, created_at, deactivated_at
                  FROM recurring_tasks WHERE user_id = %s ORDER BY position, id""", (uid,))

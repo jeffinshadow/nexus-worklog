@@ -3,66 +3,38 @@
 
 let CSRF = null;
 
-export function setCsrf(token) {
-  CSRF = token;
-}
-
-async function request(method, path, body) {
-  const opts = { method, headers: {}, credentials: "same-origin" };
-  if (body !== undefined) {
-    opts.headers["Content-Type"] = "application/json";
-    opts.body = JSON.stringify(body);
-  }
-  if (method !== "GET" && CSRF) {
-    opts.headers["X-CSRF-Token"] = CSRF;
-  }
-
-  const res = await fetch("/api" + path, opts);
+// Uma ida ao servidor: CSRF nas mutacoes, 401 -> login, erro -> Error(detail).
+async function send(method, path, { body, type } = {}) {
+  const headers = {};
+  if (type) headers["Content-Type"] = type;
+  if (method !== "GET" && CSRF) headers["X-CSRF-Token"] = CSRF;
+  const res = await fetch("/api" + path, { method, headers, body, credentials: "same-origin" });
 
   // 401 fora das rotas de auth = sessao expirou -> volta ao login.
   if (res.status === 401 && !path.startsWith("/auth/")) {
     if (location.pathname !== "/login.html") location.href = "/login.html";
     throw new Error("nao autenticado");
   }
-
-  const data = res.status === 204 ? null : await res.json().catch(() => null);
   if (!res.ok) {
-    const detail = (data && data.detail) || res.statusText;
-    throw Object.assign(new Error(detail), { status: res.status, data });
+    const data = await res.json().catch(() => null);
+    throw Object.assign(new Error((data && data.detail) || res.statusText), { status: res.status, data });
   }
-  return data;
+  return res;
 }
 
-// Baixa um arquivo de /api (GET, sem CSRF). Em erro, le o detalhe JSON e
-// lanca; em sucesso, dispara o download do blob. O nome vem do
-// Content-Disposition (fallback generico).
+async function request(method, path, body) {
+  const res = await send(method, path, body === undefined ? {} : { body: JSON.stringify(body), type: "application/json" });
+  return res.status === 204 ? null : res.json().catch(() => null);
+}
+
+// Baixa um arquivo (o nome vem do Content-Disposition).
 async function download(path) {
-  const res = await fetch("/api" + path, { method: "GET", credentials: "same-origin" });
-
-  if (res.status === 401 && !path.startsWith("/auth/")) {
-    if (location.pathname !== "/login.html") location.href = "/login.html";
-    throw new Error("nao autenticado");
-  }
-  if (!res.ok) {
-    let detail = res.statusText;
-    try {
-      const d = await res.json();
-      detail = (d && d.detail) || detail;
-    } catch {
-      /* resposta sem JSON */
-    }
-    throw Object.assign(new Error(detail), { status: res.status });
-  }
-
-  const blob = await res.blob();
-  const cd = res.headers.get("Content-Disposition") || "";
-  const match = /filename="?([^";]+)"?/.exec(cd);
-  const filename = match ? match[1] : "download";
-
-  const url = URL.createObjectURL(blob);
+  const res = await send("GET", path);
+  const match = /filename="?([^";]+)"?/.exec(res.headers.get("Content-Disposition") || "");
+  const url = URL.createObjectURL(await res.blob());
   const a = document.createElement("a");
   a.href = url;
-  a.download = filename;
+  a.download = match ? match[1] : "download";
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -71,15 +43,8 @@ async function download(path) {
 
 // Envia um arquivo como corpo bruto (sem multipart), com o tipo do arquivo.
 async function upload(path, file) {
-  const res = await fetch("/api" + path, {
-    method: "POST",
-    credentials: "same-origin",
-    headers: { "Content-Type": file.type || "application/octet-stream", ...(CSRF ? { "X-CSRF-Token": CSRF } : {}) },
-    body: file,
-  });
-  const data = await res.json().catch(() => null);
-  if (!res.ok) throw Object.assign(new Error((data && data.detail) || res.statusText), { status: res.status });
-  return data;
+  const res = await send("POST", path, { body: file, type: file.type || "application/octet-stream" });
+  return res.json().catch(() => null);
 }
 
 export const api = {
@@ -87,8 +52,8 @@ export const api = {
   post: (p, b) => request("POST", p, b),
   patch: (p, b) => request("PATCH", p, b),
   put: (p, b) => request("PUT", p, b),
-  upload,
   del: (p) => request("DELETE", p),
+  upload,
   download,
-  setCsrf,
+  setCsrf: (token) => { CSRF = token; },
 };

@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 
-from conftest import dia_hoje, recuar_criacao
+from app.services import get_report_range
+from conftest import dia_hoje, recuar_criacao, uid_de
 
 
 def _criar(u, label="Conferir backups"):
@@ -49,9 +50,8 @@ def test_dia_nao_util_vira_extra(usuario):
     nao_segunda = next(hoje - timedelta(days=i) for i in range(0, 7) if (hoje - timedelta(days=i)).weekday() != 0)
     usuario.post("/auth/settings", {"work_days": 2})  # só segunda
     usuario.post(f"/recurring/{tid}/toggle", {"done": True, "day": nao_segunda.isoformat()})
-    mes = usuario.get("/dashboard").json()["recurring"]["month"]
-    if nao_segunda.month == hoje.month:
-        assert mes["extra"] >= 1
+    r = get_report_range(uid_de(usuario), nao_segunda, nao_segunda)["summary"]
+    assert (r["recurring_extra"], r["recurring_total"]) == (1, 0)  # fora da agenda: extra, não devida
 
 
 def test_todos_os_dias_uteis_conta_tudo(usuario):
@@ -59,5 +59,6 @@ def test_todos_os_dias_uteis_conta_tudo(usuario):
     recuar_criacao(tid, 3)
     usuario.post("/auth/settings", {"work_days": 127})
     usuario.post(f"/recurring/{tid}/toggle", {"done": True})
-    dia = usuario.get("/dashboard").json()["recurring"]["day"]
-    assert dia == {"done": 1, "open": 0, "extra": 0}
+    hoje = dia_hoje(usuario)
+    r = get_report_range(uid_de(usuario), hoje, hoje)["summary"]
+    assert (r["recurring_done"], r["recurring_total"], r["recurring_extra"]) == (1, 1, 0)

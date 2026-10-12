@@ -12,6 +12,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from .. import audit, db
 from ..labels import dur
+from ..services import app_today, board_day_range
+from .worklog import check_day_total
 from ..deps import active_user, active_user_csrf
 
 router = APIRouter(prefix="/api/history", tags=["history"])
@@ -116,6 +118,7 @@ def list_history(
     entity_id: Optional[int] = None,
     user=Depends(active_user),
 ):
+    limit = max(1, min(int(limit), 200))  # também quando chamada pelo MCP (sem validação de Query)
     cond, params = ["user_id = %s"], [user["user_id"]]
     if entity:
         cond.append("entity = %s")
@@ -190,6 +193,29 @@ def _need_task(uid: int, task_id: int) -> None:
         raise HTTPException(status_code=409, detail="a tarefa não existe mais")
 
 
+def _gone() -> HTTPException:
+    return HTTPException(status_code=409, detail="o item não existe mais")
+
+
+# Reinserção dos filhos de uma tarefa (desfazer exclusão), com o id original.
+def _put_note(uid: int, task_id: int, n: dict) -> None:
+    db.execute("""INSERT INTO task_notes (id, task_id, user_id, body, actor, token_name, created_at)
+                  OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+               (n["id"], task_id, uid, n["body"], n["actor"], n["token_name"], n["created_at"]))
+
+
+def _put_item(uid: int, task_id: int, c: dict) -> None:
+    db.execute("""INSERT INTO task_checklist (id, task_id, user_id, label, done, position)
+                  OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s, %s)""",
+               (c["id"], task_id, uid, c["label"], c["done"], c["position"]))
+
+
+def _put_time(uid: int, task_id: int, e: dict) -> None:
+    db.execute("""INSERT INTO time_entries (id, task_id, user_id, minutes, day, note, actor, token_name, created_at)
+                  OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+               (e["id"], task_id, uid, e["minutes"], e["day"], e["note"], e["actor"], e["token_name"], e["created_at"]))
+
+
 @router.post("/{history_id}/undo")
 def undo(history_id: int, user=Depends(active_user_csrf)):
     uid = user["user_id"]
@@ -214,12 +240,17 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
             raise HTTPException(status_code=409, detail="a tarefa já tem anotações, checklist ou tempo; para tirá-la, exclua pela tela")
         db.execute("DELETE FROM worklog_tasks WHERE id = %s AND user_id = %s", (eid, uid))
     elif a in ("worklog.update", "worklog.finish"):
-        if not audit.worklog_snapshot(eid, uid):
-            raise HTTPException(status_code=409, detail="a tarefa não existe mais")
+        _need_task(uid, eid)
         _restore_worklog(uid, before)
     elif a == "worklog.delete":
         if audit.worklog_snapshot(eid, uid) or db.query_one("SELECT 1 FROM worklog_tasks WHERE id = %s", (eid,)):
             raise HTTPException(status_code=409, detail="a tarefa já existe")
+        kids = before.get("children") or {}
+        por_dia: dict[str, int] = {}
+        for e in kids.get("time", []):
+            por_dia[str(e["day"])] = por_dia.get(str(e["day"]), 0) + e["minutes"]
+        for day, minutes in por_dia.items():  # tudo ou nada: confere antes de gravar
+            check_day_total(uid, day, minutes, status=409)
         db.execute(
             """INSERT INTO worklog_tasks (id, user_id, title, description, status, due_date,
                                           created_at, completed_at, project_id, priority)
@@ -229,19 +260,12 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
              before["due_date"], before["created_at"], before["completed_at"],
              _projeto_existente(uid, before.get("project_id")), before.get("priority") or 2),
         )
-        kids = before.get("children") or {}
         for n in kids.get("notes", []):
-            db.execute("""INSERT INTO task_notes (id, task_id, user_id, body, actor, token_name, created_at)
-                          OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-                       (n["id"], eid, uid, n["body"], n["actor"], n["token_name"], n["created_at"]))
+            _put_note(uid, eid, n)
         for c in kids.get("checklist", []):
-            db.execute("""INSERT INTO task_checklist (id, task_id, user_id, label, done, position)
-                          OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s, %s)""",
-                       (c["id"], eid, uid, c["label"], c["done"], c["position"]))
+            _put_item(uid, eid, c)
         for e in kids.get("time", []):
-            db.execute("""INSERT INTO time_entries (id, task_id, user_id, minutes, day, note, actor, token_name, created_at)
-                          OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-                       (e["id"], eid, uid, e["minutes"], e["day"], e["note"], e["actor"], e["token_name"], e["created_at"]))
+            _put_time(uid, eid, e)
     elif a == "recurring.create":
         has_done = db.query_one("SELECT 1 FROM recurring_completions WHERE task_id = %s LIMIT 1", (eid,))
         if has_done:
@@ -255,6 +279,9 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
         _restore_recurring(uid, before)
     elif a == "recurring.toggle":
         day = date.fromisoformat(before["day"])
+        min_day, today = board_day_range(app_today())
+        if not (min_day <= day <= today):  # mesma janela da marcação (7 dias)
+            raise HTTPException(status_code=409, detail="essa marcação já saiu da janela de edição (7 dias)")
         if before["done"]:
             db.execute(
                 """INSERT INTO recurring_completions (task_id, user_id, completed_date)
@@ -267,33 +294,28 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
     elif a == "settings.update":
         db.execute("UPDATE users SET work_days = %s WHERE id = %s", (before["work_days"], uid))
     elif a == "note.create":
-        db.execute("DELETE FROM task_notes WHERE id = %s AND user_id = %s", (eid, uid))
+        if not db.execute("DELETE FROM task_notes WHERE id = %s AND user_id = %s", (eid, uid)):
+            raise _gone()
     elif a == "note.delete":
         _need_task(uid, before["task_id"])
-        db.execute(
-            """INSERT INTO task_notes (id, task_id, user_id, body, actor, token_name, created_at)
-               OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-            (eid, before["task_id"], uid, before["body"], before["actor"], before["token_name"], before["created_at"]))
+        _put_note(uid, before["task_id"], {**before, "id": eid})
     elif a == "checklist.create":
-        db.execute("DELETE FROM task_checklist WHERE id = %s AND user_id = %s", (eid, uid))
+        if not db.execute("DELETE FROM task_checklist WHERE id = %s AND user_id = %s", (eid, uid)):
+            raise _gone()
     elif a == "checklist.update":
-        db.execute("UPDATE task_checklist SET label = %s, done = %s WHERE id = %s AND user_id = %s",
-                   (before["label"], before["done"], eid, uid))
+        if not db.execute("UPDATE task_checklist SET label = %s, done = %s WHERE id = %s AND user_id = %s",
+                          (before["label"], before["done"], eid, uid)):
+            raise _gone()
     elif a == "checklist.delete":
         _need_task(uid, before["task_id"])
-        db.execute(
-            """INSERT INTO task_checklist (id, task_id, user_id, label, done, position)
-               OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s, %s)""",
-            (eid, before["task_id"], uid, before["label"], before["done"], before["position"]))
+        _put_item(uid, before["task_id"], {**before, "id": eid})
     elif a == "time.create":
-        db.execute("DELETE FROM time_entries WHERE id = %s AND user_id = %s", (eid, uid))
+        if not db.execute("DELETE FROM time_entries WHERE id = %s AND user_id = %s", (eid, uid)):
+            raise _gone()
     elif a == "time.delete":
         _need_task(uid, before["task_id"])
-        db.execute(
-            """INSERT INTO time_entries (id, task_id, user_id, minutes, day, note, actor, token_name, created_at)
-               OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-            (eid, before["task_id"], uid, before["minutes"], before["day"], before["note"],
-             before["actor"], before["token_name"], before["created_at"]))
+        check_day_total(uid, before["day"], before["minutes"], status=409)
+        _put_time(uid, before["task_id"], {**before, "id": eid})
     elif a == "project.create":
         # Com tarefas no projeto, arquiva em vez de apagar (não tira de ninguém).
         if db.query_one("SELECT 1 FROM worklog_tasks WHERE project_id = %s LIMIT 1", (eid,)):

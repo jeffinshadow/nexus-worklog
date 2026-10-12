@@ -50,7 +50,8 @@ Flex/Code self-hosted (OFL). PDF com fpdf2 e as mesmas fontes.
 Pré-requisitos: Docker + Docker Compose.
 
 1. `cp .env.example .env` (o `.env` **nunca** vai para o git) e preencha:
-   - `SECRET_KEY`: `python -c "import secrets; print(secrets.token_urlsafe(64))"`
+   - `SECRET_KEY` (32+ caracteres; menos que isso o backend não sobe):
+     `python -c "import secrets; print(secrets.token_urlsafe(64))"`
    - `POSTGRES_PASSWORD` (o mesmo valor dentro de `DATABASE_URL`)
    - `ADMIN_EMAIL` / `ADMIN_INITIAL_PASSWORD`
    - sem HTTPS (teste local): `COOKIE_SECURE=false`
@@ -88,10 +89,11 @@ em profundidade).
 - **Senhas** Argon2id, mínimo 10 caracteres; login com limite por IP e por
   e-mail (só falhas contam).
 - **Sessão** server-side: o banco guarda só o HMAC do token; cookie
-  `HttpOnly; Secure; SameSite=Strict`; renova na metade do prazo e expira em
-  30 dias de qualquer jeito. **CSRF** por header em toda mutação.
+  `HttpOnly; Secure; SameSite=Strict`, prazo fixo (`SESSION_TTL_DAYS`).
+  **CSRF** por header em toda mutação. Argon2 no perfil OWASP, no máximo 2
+  hashes simultâneos (cabe na VM pequena).
 - **Chaves de API** (`nxs_…`) e **link do calendário** (`nxc_…`): só o HMAC no
-  banco, revogáveis; o reset de senha pelo admin revoga ambos. Chave nunca
+  banco, revogáveis; trocar a senha (ou o reset pelo admin) revoga ambos. Chave nunca
   acessa rotas de admin, chaves, calendário ou avisos.
 - **Isolamento**: toda consulta filtra por `user_id`; permissões em
   `backend/app/deps.py`.

@@ -236,7 +236,8 @@ def _cover(pdf: _Report, user_email: str, data: dict) -> None:
     pdf.text_at(rx, 17, rw, 8, data.get("project") or _period(data["start"], data["end"]), "R")
     pdf.font("mono", 7.6, (161, 161, 168))
     if data.get("whole_project"):
-        sub = f"projeto completo · desde {_dfull(data['start'])} · {user_email}"
+        escopo = "últimos 3 anos do projeto" if data.get("project_truncated") else "projeto completo"
+        sub = f"{escopo} · desde {_dfull(data['start'])} · {user_email}"
     elif data.get("project"):
         sub = f"{_period(data['start'], data['end'])} · {user_email}"
     else:
@@ -257,7 +258,7 @@ def _kpis(pdf: _Report, data: dict) -> None:
         tiles.append(("rotinas", f"{pct}%" if pct is not None else "—", sub if s["recurring_total"] else "nenhuma devida", pct))
     tiles.append(("concluídas", str(s["pontual_done"]), "tarefas concluídas", None))
     tiles.append(("tempo apontado", _dur(s["minutes"]) if s["minutes"] else "—",
-                  f"média {_dur(s['minutes'] // max(1, s['active_days']))} por dia ativo" if s["minutes"] else "nada apontado", None))
+                  f"média {_dur(s['minutes'] // max(1, s.get('time_days') or s['active_days']))} por dia com tempo" if s["minutes"] else "nada apontado", None))
     if by_project:
         tiles.append(("em aberto", str(s["open"]), f"{s['overdue']} atrasada{'s' if s['overdue'] != 1 else ''}" if s["overdue"] else "nenhuma atrasada", None))
     tiles.append(("dias com atividade", str(s["active_days"]),
@@ -652,6 +653,7 @@ def _diary(pdf: _Report, data: dict) -> None:
             pdf.set_y(ym + 7)
         pdf.room(min(est, 40))
         y = pdf.get_y()
+        page0 = pdf.page_no()
         # coluna da data
         pdf.font("sanss", 17, INK)
         pdf.text_at(M, y - 0.6, 22, 7, str(d.day))
@@ -705,7 +707,8 @@ def _diary(pdf: _Report, data: dict) -> None:
                 txt = e["title"] + (f" — {e['note']}" if e["note"] else "")
                 pdf.set_xy(gx + 14, yy)
                 pdf.multi_cell(gw - 14, 4.2, _s(txt), new_x="LMARGIN", new_y="NEXT")
-        end_y = max(pdf.get_y(), y + 13)
+        # Se o dia quebrou de página, o "y" inicial era da página anterior.
+        end_y = max(pdf.get_y(), y + 13) if pdf.page_no() == page0 else pdf.get_y()
         pdf.set_y(end_y + 1.5)
         pdf.hline(pdf.get_y(), LINE)
         pdf.set_y(pdf.get_y() + 4)

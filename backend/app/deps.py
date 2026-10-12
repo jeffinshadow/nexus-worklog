@@ -8,9 +8,6 @@ from .config import config
 from .security import token_hash, token_limiter
 
 
-SESSION_MAX_DAYS = 30  # mesmo em uso diario, o login e pedido de novo depois disso
-
-
 def client_ip(request: Request) -> str:
     """IP do cliente para rate limit e logs.
 
@@ -42,15 +39,15 @@ def clear_session_cookie(response: Response) -> None:
 
 
 def _load_session(request: Request) -> dict:
-    """Valida o cookie de sessao, renova a expiracao (sliding) e devolve
-    sessao + usuario. Levanta 401 se invalida/expirada."""
+    """Valida o cookie de sessao e devolve sessao + usuario. Levanta 401 se
+    invalida/expirada."""
     token = request.cookies.get(config.SESSION_COOKIE)
     if not token:
         raise HTTPException(status_code=401, detail="nao autenticado")
 
     row = db.query_one(
         """
-        SELECT s.id AS sid, s.csrf_token, s.expires_at, s.created_at AS session_created,
+        SELECT s.id AS sid, s.csrf_token, s.expires_at,
                u.id AS user_id, u.email, u.role, u.must_change_password,
                u.work_days
           FROM sessions s
@@ -63,15 +60,11 @@ def _load_session(request: Request) -> dict:
         raise HTTPException(status_code=401, detail="sessao invalida")
 
     now = datetime.now(timezone.utc)
-    if row["expires_at"] <= now or now - row["session_created"] > timedelta(days=SESSION_MAX_DAYS):
+    # Prazo fixo (SESSION_TTL_DAYS, o mesmo do cookie): sem renovação, o login
+    # é pedido de novo ao vencer.
+    if row["expires_at"] <= now:
         db.execute("DELETE FROM sessions WHERE id = %s", (row["sid"],))
         raise HTTPException(status_code=401, detail="sessao expirada")
-
-    # Renovacao deslizante, mas so quando ja passou da metade do prazo (evita
-    # uma escrita por requisicao). Idade maxima absoluta: SESSION_MAX_DAYS.
-    ttl = timedelta(days=config.SESSION_TTL_DAYS)
-    if row["expires_at"] - now < ttl / 2:
-        db.execute("UPDATE sessions SET expires_at = %s WHERE id = %s", (now + ttl, row["sid"]))
     return row
 
 

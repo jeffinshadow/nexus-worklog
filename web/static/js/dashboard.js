@@ -1,9 +1,8 @@
 import { api } from "./api.js";
 import { h, clear, shortDate } from "./dom.js";
+import { duration } from "./task.js";
 
 const NS = "http://www.w3.org/2000/svg";
-const KPI_LABELS = ["Dia", "Semana", "Mês"];
-const KPI_KEYS = ["day", "week", "month"];
 const MONTHS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
@@ -16,24 +15,18 @@ export async function mount(root, opts = {}) {
   const a = data.analytics || {};
 
   clear(root);
+  // Retrospectiva: o "hoje" e a semana ficam na tela Hoje.
   root.append(
-    section("Visão geral", [
-      h("div", { class: "overview-grid" },
-        kpiGroup("Rotinas", data.recurring, true),
-        kpiGroup("Tarefas concluídas", data.pontual, false),
-      ),
-    ]),
     section("Rotinas · consistência", [
       h("div", { class: "consist-grid" },
         chartCard("Aderência diária", "Últimas 4 semanas — % das rotinas feitas nos dias da agenda.", heatmap(a.heatmap), "compact heat"),
-        chartCard("Tendência semanal", "Últimas 8 semanas — % de aderência.", weeklyTrend(a.heatmap), "compact trend"),
         chartCard("Aderência por rotina", "Últimos 30 dias — dias feitos ÷ dias da agenda de cada rotina.", taskRanking(a.task_adherence), "grow"),
       ),
     ]),
     section("Tarefas · fluxo", [
       h("div", { class: "chart-grid fluxo-grid" },
         chartCard("Concluídas por semana", "Vazão das últimas 4 semanas.", throughput(a.throughput)),
-        chartCard("Tempo de conclusão", "Da criação até concluída (últimos 90 dias).", cycleTime(a.cycle_time)),
+        chartCard("Tempo por projeto", "Horas apontadas nos últimos 30 dias.", projectTime(a.projects)),
       ),
     ]),
     section("Backlog · saúde", [
@@ -82,14 +75,6 @@ function rect(x, y, w, hh, fill, extra = {}) {
   return r;
 }
 
-function lineEl(x1, y1, x2, y2, color) {
-  const l = document.createElementNS(NS, "line");
-  l.setAttribute("x1", x1); l.setAttribute("y1", y1);
-  l.setAttribute("x2", x2); l.setAttribute("y2", y2);
-  l.style.stroke = color;
-  return l;
-}
-
 function textEl(x, y, str, cls, anchor) {
   const t = document.createElementNS(NS, "text");
   t.setAttribute("x", x); t.setAttribute("y", y);
@@ -116,40 +101,6 @@ function parseISO(s) {
 // Rotinas = razão concluídas/slots (barra + %), um parte-de-todo honesto.
 // Tarefas = contagem de concluídas no período (o "em aberto" é da seção de
 // backlog, não daqui — evita o denominador-snapshot enganoso das pizzas).
-function kpiGroup(title, g, isRatio) {
-  const tiles = KPI_LABELS.map((label, i) => {
-    const cell = g[KPI_KEYS[i]];
-    return isRatio ? ratioTile(label, cell.done, cell.open, cell.extra) : countTile(label, cell.done);
-  });
-  return h("div", { class: "dash-group" },
-    h("h3", { class: "dash-group-title", text: title }),
-    h("div", { class: "kpi-row" }, ...tiles));
-}
-
-function ratioTile(label, done, open, extra = 0) {
-  const total = done + open;
-  const empty = total === 0;
-  const pct = empty ? 0 : Math.round((done / total) * 100);
-  const fill = h("span", { class: "kpi-fill" });
-  fill.style.width = pct + "%";
-  return h("div", { class: "kpi-tile" },
-    h("span", { class: "kpi-label", text: label }),
-    h("span", { class: "kpi-value" + (empty ? " muted" : ""), text: empty ? "—" : pct + "%" }),
-    h("div", { class: "kpi-track", role: "img", "aria-label": `${pct}% concluídas` }, fill),
-    h("span", {
-      class: "kpi-sub",
-      text: (empty ? "nenhuma devida" : `${done} de ${total}`) + (extra ? ` · +${extra} extra` : ""),
-      title: extra ? "Concluídas em dia não útil: ficam salvas, mas não entram no percentual." : null,
-    }));
-}
-
-function countTile(label, done) {
-  return h("div", { class: "kpi-tile" },
-    h("span", { class: "kpi-label", text: label }),
-    h("span", { class: "kpi-value", text: String(done) }),
-    h("span", { class: "kpi-sub", text: "concluída(s)" }));
-}
-
 function legendItem(label, count, color) {
   const swatch = h("span", { class: "swatch" });
   swatch.style.background = color;
@@ -233,63 +184,6 @@ function heatLegend() {
 
 // ------------------------------------------------- tendência semanal (linha) --
 
-function weeklyTrend(hm) {
-  if (!hm || !hm.days || !hm.days.length || hm.days.every((d) => d.slots === 0))
-    return emptyBox("sem dados");
-  // Agrupa a série diária por semana (7 dias contíguos a partir de um domingo).
-  const weeks = [];
-  for (let i = 0; i < hm.days.length; i += 7) {
-    const chunk = hm.days.slice(i, i + 7);
-    const done = chunk.reduce((a, d) => a + d.done, 0);
-    const slots = chunk.reduce((a, d) => a + d.slots, 0);
-    weeks.push({ date: chunk[0].date, pct: slots ? (done / slots) * 100 : 0, slots });
-  }
-  // Semana sem nenhum dia útil vigente (ex.: a atual, num domingo) não tem
-  // percentual: fica de fora em vez de aparecer como 0%.
-  for (let i = weeks.length - 1; i >= 0; i--) if (!weeks[i].slots) weeks.splice(i, 1);
-  if (!weeks.length) return emptyBox("sem dados");
-  const W = 300, H = 176, padL = 30, padR = 12, padT = 16, padB = 28;
-  const plotW = W - padL - padR, plotH = H - padT - padB;
-  const n = weeks.length;
-  const x = (i) => padL + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW);
-  const y = (pct) => padT + (1 - pct / 100) * plotH;
-
-  const s = svg(W, H, "chart-svg");
-  s.setAttribute("role", "img");
-  s.setAttribute("aria-label", "Tendência semanal de aderência");
-
-  // Grades 0/50/100%.
-  for (const pct of [0, 50, 100]) {
-    s.appendChild(lineEl(padL, y(pct), W - padR, y(pct), "var(--outline-variant)"));
-    s.appendChild(textEl(padL - 5, y(pct) + 3, pct + "%", "chart-axis", "end"));
-  }
-
-  const pts = weeks.map((w, i) => `${x(i)},${y(w.pct)}`);
-  // Área sob a curva.
-  const area = document.createElementNS(NS, "path");
-  area.setAttribute("d", `M ${x(0)},${y(0)} L ${pts.join(" L ")} L ${x(n - 1)},${y(0)} Z`);
-  area.setAttribute("class", "trend-area");
-  s.appendChild(area);
-  // Linha.
-  const poly = document.createElementNS(NS, "polyline");
-  poly.setAttribute("points", pts.join(" "));
-  poly.setAttribute("class", "trend-line");
-  s.appendChild(poly);
-  // Pontos.
-  weeks.forEach((w, i) => {
-    const c = document.createElementNS(NS, "circle");
-    c.setAttribute("cx", x(i)); c.setAttribute("cy", y(w.pct)); c.setAttribute("r", 2.5);
-    c.setAttribute("class", "trend-dot");
-    withTitle(c, `semana de ${shortDate(w.date)}: ${Math.round(w.pct)}%`);
-    s.appendChild(c);
-  });
-  // Rótulos do eixo x (primeira, meio, última semana).
-  for (const i of [0, Math.floor((n - 1) / 2), n - 1]) {
-    s.appendChild(textEl(x(i), H - 6, shortDate(weeks[i].date), "chart-axis", "middle"));
-  }
-  return h("div", { class: "trend-wrap" }, s);
-}
-
 // -------------------------------------------------- ranking por tarefa (HTML) --
 
 function taskRanking(ta) {
@@ -370,39 +264,11 @@ function throughput(tp) {
 
 // ---------------------------------------------------------------- cycle time --
 
-function median(arr) {
-  if (!arr.length) return 0;
-  const s = [...arr].sort((a, b) => a - b);
-  const m = Math.floor(s.length / 2);
-  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-}
-
-function fmtDuration(hours) {
-  if (hours < 24) return `${Math.round(hours)} h`;
-  const d = hours / 24;
-  return d < 10 ? `${d.toFixed(1).replace(".", ",")} d` : `${Math.round(d)} d`;
-}
-
-
-function cycleTime(ct) {
-  const durs = (ct && ct.durations_h) || [];
-  if (!durs.length) return emptyBox("nenhuma tarefa concluída em 90 dias");
-  return h("div", { class: "fluxo-body" },
-    h("div", { class: "stat-inline" },
-      h("span", { class: "stat-big", text: fmtDuration(median(durs)) }),
-      h("span", { class: "stat-cap", text: `mediana da criação à conclusão · ${durs.length} concluída(s)` })));
-}
-
 // -------------------------------------------------------------- backlog saúde --
 
 function backlogHealth(b) {
   if (!b) return emptyBox("sem dados");
   const open = b.todo + b.in_progress + b.blocked;
-
-  const tiles = h("div", { class: "stat-tiles" },
-    statTile("Em aberto", open, null),
-    statTile("Bloqueadas", b.blocked, b.blocked > 0 ? "error" : null),
-    statTile("Atrasadas", b.overdue, b.overdue > 0 ? "error" : null));
 
   const statusBody = open === 0
     ? emptyBox("nada em aberto")
@@ -426,16 +292,9 @@ function backlogHealth(b) {
         agingRow("mais de 4 semanas", ag.old, "var(--error)"));
 
   return h("div", {},
-    tiles,
     h("div", { class: "chart-grid backlog-grid" },
       chartCard("Backlog por status", "Tarefas em aberto agora.", statusBody),
       chartCard("Envelhecimento", "Há quanto tempo as abertas existem.", agingBody)));
-}
-
-function statTile(label, value, tone) {
-  return h("div", { class: "stat-tile" + (tone ? " " + tone : "") },
-    h("span", { class: "stat-tile-value", text: String(value) }),
-    h("span", { class: "stat-tile-label", text: label }));
 }
 
 function stackedBar(segs, total) {
@@ -457,4 +316,19 @@ function agingRow(label, count, color) {
     dot,
     h("span", { class: "aging-label", text: label }),
     h("span", { class: "aging-count", text: String(count) }));
+}
+
+// ------------------------------------------------------------ tempo/projeto --
+
+function projectTime(pt) {
+  const items = (pt && pt.items) || [];
+  if (!items.length) return emptyBox("nada apontado nos últimos 30 dias");
+  const top = Math.max(...items.map((p) => p.minutes), 1);
+  return h("div", { class: "fluxo-body" }, ...items.map((p) => {
+    const bar = h("span");
+    bar.style.width = `${Math.round((100 * p.minutes) / top)}%`;
+    bar.style.background = p.color || "var(--dim)";
+    return h("div", { class: "sum-bar" }, h("span", { class: "sum-bar-l", text: p.name || "Sem projeto" }),
+      h("span", { class: "sum-track" }, bar), h("span", { class: "mono sum-bar-v", text: duration(p.minutes) }));
+  }));
 }

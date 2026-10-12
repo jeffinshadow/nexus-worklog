@@ -2,8 +2,8 @@
 
 API REST do Shadow Nexus Worklog, sob **`/api`**, mais o servidor MCP em
 **`/mcp`**. O Swagger/OpenAPI fica **desligado de propósito** — esta página é a
-referência. Campos e limites exatos de cada corpo: `backend/app/schemas.py`
-(fonte da verdade). Corpos e respostas em JSON; datas `AAAA-MM-DD` no fuso
+referência. Campos e limites exatos de cada corpo: os modelos Pydantic em
+`backend/app/schemas.py` e, para avisos e calendário, no próprio router. Corpos e respostas em JSON; datas `AAAA-MM-DD` no fuso
 `APP_TZ`; timestamps ISO 8601 com fuso.
 
 ## Autenticação
@@ -19,14 +19,15 @@ Authorization: Bearer nxs_...
 
 - Sem cookie e sem CSRF. Escopo `write` (lê e altera) ou `read` (escrita → 403).
 - Validade de 1 a 365 dias ou sem validade; revogável. 240 req/min por chave (429).
+- Trocar a própria senha (ou o reset pelo admin) revoga todas as chaves e o link do calendário.
 - Uma chave **nunca** acessa `/api/admin/*`, `/api/tokens`, `/api/calendar`,
   `/api/notifications` nem troca senha. Tudo o que ela fizer vai para o
   histórico com o nome dela. O reset de senha pelo admin revoga as chaves.
 
 ### Sessão do app — o que o frontend usa
 
-- Cookie `session` `HttpOnly; Secure; SameSite=Strict`; renova quando passa da
-  metade de `SESSION_TTL_DAYS` (padrão 7) e expira em 30 dias de qualquer jeito.
+- Cookie `session` `HttpOnly; Secure; SameSite=Strict`, prazo fixo de
+  `SESSION_TTL_DAYS` (padrão 7); depois disso, novo login.
 - O login e `GET /api/auth/me` devolvem `csrf_token`; **toda mutação** exige o
   header `X-CSRF-Token` (senão 403).
 
@@ -41,7 +42,9 @@ exige admin com sessão do app.
 | 404 | não existe ou não é seu |
 | 409 | conflito (nome repetido, desfazer fora de ordem, tarefa com filhos) |
 | 422 | corpo inválido |
-| 429 | limite de tentativas/requisições |
+| 413 / 415 | logo grande demais / tipo de arquivo não aceito |
+| 429 | limite de tentativas/requisições (login, chave, PDF) |
+| 502 / 503 | envio de e-mail falhou / e-mail não configurado |
 
 Legenda: **S** = só sessão do app · **W** = exige escopo `write` (chave) ou CSRF (sessão).
 
@@ -54,7 +57,7 @@ Legenda: **S** = só sessão do app · **W** = exige escopo `write` (chave) ou C
 | `POST /login` | público | `{email, password}` → identidade + `csrf_token`; limite por IP e por e-mail (falhas) |
 | `POST /logout` | S W | |
 | `GET /me` | | `{id, email, role, must_change_password, work_days, tz, csrf_token}` |
-| `POST /change-password` | S W | `{current_password, new_password}`; encerra as outras sessões |
+| `POST /change-password` | S W | `{current_password, new_password}`; encerra as outras sessões e revoga chaves e calendário |
 | `POST /settings` | W | `{work_days}` — máscara, domingo = bit 0 (seg–sex = 62) |
 
 ## Hoje e quadro
@@ -62,7 +65,7 @@ Legenda: **S** = só sessão do app · **W** = exige escopo `write` (chave) ou C
 | Rota | | Observação |
 | --- | --- | --- |
 | `GET /api/board?day=&project=` | | `day` até 7 dias atrás (padrão hoje); `project` filtra as tarefas (`0` = sem projeto). Devolve `recurring` (com `due`, `done_today`, agenda), `in_progress` (tarefas abertas: a fazer, em andamento, bloqueadas), `done`, `day`, `today`, `min_day`, `work_day` |
-| `GET /api/summary` | | `last_day` e `week` (com `previous` = mesmos dias da semana passada): rotinas, tarefas concluídas, minutos, por projeto, rotinas não feitas |
+| `GET /api/summary` | | `last_day` (do último dia útil até ontem) e `week` (com `previous` = mesmos dias da semana passada): rotinas, tarefas concluídas, minutos, por projeto, rotinas não feitas |
 | `GET /api/dashboard` | | indicadores dia/semana/mês e séries dos gráficos |
 
 ## Rotinas — `/api/recurring`
@@ -70,7 +73,7 @@ Legenda: **S** = só sessão do app · **W** = exige escopo `write` (chave) ou C
 | Rota | | Corpo |
 | --- | --- | --- |
 | `POST /` | W | `{label, freq?, weekdays?, month_day?, interval_days?}` |
-| `PATCH /{id}` | W | `{label?, freq?…}` — mudar a agenda exige `freq` + o parâmetro dela |
+| `PATCH /{id}` | W | `{label?, freq?…}` — mudar a agenda exige `freq` + o parâmetro dela; se a rotina já tem passado, ela é encerrada hoje e uma nova (devolvida em `id`) começa hoje |
 | `DELETE /{id}` | W | remove daqui para a frente (o passado fica) |
 | `POST /{id}/toggle` | W | `{done, day?}` — `day` até 7 dias atrás e só quando a rotina existia |
 
@@ -108,7 +111,7 @@ Agenda: `daily` (dias úteis do dono) · `weekly` + `weekdays` (máscara) ·
 
 | Rota | | Observação |
 | --- | --- | --- |
-| `GET /api/reports/export?start=&end=&project=` | | PDF. Período até 366 dias (fim limitado a hoje). Com `project` e sem datas: o projeto inteiro (até ~3 anos) |
+| `GET /api/reports/export?start=&end=&project=` | | PDF (até 6 por minuto). Período até 366 dias (fim limitado a hoje). Com `project` e sem datas: o projeto inteiro (até ~3 anos) |
 | `GET /api/search?q=` | | 2–100 caracteres, sem acento: tarefas (com onde casou), rotinas, projetos |
 | `GET /api/export/apontamentos.csv` | | CSV `;` + BOM (Excel BR) |
 | `GET /api/export/tarefas.csv` | | idem |
@@ -161,7 +164,7 @@ Leitura: `get_today`, `get_summary`, `list_tasks`, `get_task`, `search`,
 `list_projects`, `list_recurring`, `get_history`.
 Escrita (chave `write`): `create_task`, `update_task`, `complete_task`,
 `add_note`, `add_checklist_item`, `set_checklist_item`, `log_time`,
-`set_recurring`, `undo`. A IA não exclui tarefas.
+`set_recurring` (`recurring_id`), `undo`. A IA não exclui tarefas.
 
 ```bash
 claude mcp add --transport http nexus https://SEU-HOST/mcp --header "Authorization: Bearer nxs_SUA_CHAVE"

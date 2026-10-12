@@ -44,8 +44,8 @@ INSTRUCTIONS = (
     "Tudo fica no histórico do usuário; use undo para corrigir um engano seu."
 )
 
-STATUS = ["todo", "in_progress", "blocked", "done"]
-PRIO = {"alta": 1, "normal": 2, "baixa": 3}
+STATUS = list(STATUS_PT)
+PRIO = {nome: n for n, nome in PRIO_PT.items()}  # "alta" -> 1
 DATE = {"type": "string", "format": "date", "description": "Data AAAA-MM-DD"}
 
 
@@ -121,11 +121,14 @@ def _task_args(uid: int, args: dict) -> dict:
 
 
 def _find_task(uid: int, task_id: int) -> dict:
-    b = services.get_board(uid)
-    for t in b["in_progress"] + b["done"]:
-        if t["id"] == task_id:
-            return t
-    raise ToolError(f"tarefa #{task_id} não encontrada")
+    t = db.query_one(
+        """SELECT w.id, w.title, w.description, w.status, w.due_date, w.completed_at, w.priority,
+                  p.name AS project_name, """ + services.TASK_COUNTS + """
+             FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
+            WHERE w.id = %s AND w.user_id = %s""", (task_id, uid))
+    if not t:
+        raise ToolError(f"tarefa #{task_id} não encontrada")
+    return t
 
 
 # ------------------------------------------------------------------- tools --
@@ -140,7 +143,7 @@ def t_get_today(ctx, args):
     lines += _recurring_rows(rec) or ["  (nenhuma)"]
     extra = [r for r in b["recurring"] if not r["due"] and r["done_today"]]
     if extra:
-        lines += [f"  [x] #{r['id']} {r['label']} (extra: fora da agenda)" for r in extra]
+        lines += [f"  [x] R{r['id']} {r['label']} (extra: fora da agenda)" for r in extra]
     lines.append("")
     open_ = b["in_progress"]
     lines.append(f"Tarefas abertas ({len(open_)}):")
@@ -210,7 +213,7 @@ def t_search(ctx, args):
         lines.append(_task_line(t | {"description": None, "project_name": t["project_name"]}, today))
         lines += [f"    {h['kind']}: {h['text']}" for h in t["hits"] if h["kind"] != "título"][:3]
     if r["recurring"]:
-        lines += ["", "Rotinas:"] + [f"  #{x['id']} {x['label']}" + ("" if x["active"] else " (removida)") for x in r["recurring"]]
+        lines += ["", "Rotinas:"] + [f"  R{x['id']} {x['label']}" + ("" if x["active"] else " (removida)") for x in r["recurring"]]
     if r["projects"]:
         lines += ["", "Projetos:"] + [f"  #{x['id']} {x['name']}" for x in r["projects"]]
     return "\n".join(lines) or "Nada encontrado."
@@ -254,7 +257,7 @@ def t_list_recurring(ctx, args):
 
 
 def _recurring_rows(rows: list) -> list[str]:
-    return [f"  [{'x' if r['done_today'] else ' '}] #{r['id']} {r['label']}" + ("" if r["due"] else " (fora da agenda)")
+    return [f"  [{'x' if r['done_today'] else ' '}] R{r['id']} {r['label']}" + ("" if r["due"] else " (fora da agenda)")
             for r in rows]
 
 
@@ -275,14 +278,17 @@ def t_get_summary(ctx, args):
         return out
 
     last = s["last_day"]
-    return "\n".join(block(f"Último dia útil ({last['start'].isoformat()}):", last)
+    return "\n".join(block(f"Desde o último dia útil ({last['start'].isoformat()} a {last['end'].isoformat()}):", last)
                      + [""] + block(f"Semana até hoje (desde {s['week']['start'].isoformat()}):", s["week"], s["week"]["previous"]))
 
 
 def t_set_recurring(ctx, args):
     data = _call(ToggleIn, done=args.get("done", True), day=args.get("day"))
-    res = _call(recurring_routes.toggle, int(args["task_id"]), data, user=ctx)
-    return f"Rotina #{args['task_id']} {'marcada' if res['done'] else 'desmarcada'} em {res['day'].isoformat()}."
+    rid = args.get("recurring_id", args.get("task_id"))  # task_id: nome antigo, ainda aceito
+    if rid is None:
+        raise ToolError("informe recurring_id (veja list_recurring)")
+    res = _call(recurring_routes.toggle, int(rid), data, user=ctx)
+    return f"Rotina R{rid} {'marcada' if res['done'] else 'desmarcada'} em {res['day'].isoformat()}."
 
 
 def t_get_history(ctx, args):
@@ -355,8 +361,8 @@ TOOLS = {
     "list_recurring": (t_list_recurring, False, "Rotinas de um dia (padrão: hoje; até 7 dias atrás) e se foram feitas.",
                        {"type": "object", "properties": {"day": DATE}}),
     "set_recurring": (t_set_recurring, True, "Marca (done=true) ou desmarca uma rotina num dia (padrão hoje; até 7 dias atrás).",
-                      {"type": "object", "required": ["task_id"], "properties": {
-                          "task_id": {"type": "integer"},
+                      {"type": "object", "required": ["recurring_id"], "properties": {
+                          "recurring_id": {"type": "integer", "description": "id da rotina (R<n> em get_today/list_recurring), não de tarefa"},
                           "done": {"type": "boolean", "default": True},
                           "day": DATE}}),
     "get_history": (t_get_history, False, "Últimas ações na conta (app, API ou IA), com o que pode ser desfeito.",

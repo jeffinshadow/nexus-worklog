@@ -3,10 +3,7 @@
 import { api } from "./api.js";
 import { h, icon, clear, addDays, shortDate, dateTime } from "./dom.js";
 import { errorToast, toast, undoLatest } from "./ui.js";
-import { projectChip } from "./projects.js";
-import { STATUS_LABELS, openWorklog, finishTask } from "./board.js";
-
-const PRIO = { 1: "prioridade alta", 3: "prioridade baixa" };
+import { openWorklog, finishTask, taskChips } from "./board.js";
 
 export function duration(min) {
   if (!min) return "0 min";
@@ -52,13 +49,7 @@ export async function openTask(taskId, onChange) {
     clear(body);
 
     // ---- cabeçalho
-    const chips = [h("span", { class: "chip " + t.status, text: STATUS_LABELS[t.status] })];
-    if (PRIO[t.priority]) chips.push(h("span", { class: "chip prio-" + t.priority, text: PRIO[t.priority] }));
-    const pc = projectChip(t);
-    if (pc) chips.push(pc);
-    if (t.due_date && t.status !== "done")
-      chips.push(h("span", { class: "chip" + (t.due_date < today ? " late" : ""), text: "prazo " + shortDate(t.due_date) }));
-    if (t.completed_at) chips.push(h("span", { class: "chip done", text: "fim " + shortDate(t.completed_at) }));
+    const chips = taskChips(t, today); // os mesmos do cartão
 
     const head = h("div", { class: "task-head" },
       h("div", { class: "task-title" },
@@ -97,12 +88,12 @@ export async function openTask(taskId, onChange) {
         catch (e) { cb.checked = !cb.checked; errorToast(e); }
       });
       sec.append(h("label", { class: "check-row" + (c.done ? " done" : "") }, cb, h("span", { class: "label", text: c.label }),
-        h("button", { type: "button", class: "icon", title: "Remover item", "aria-label": "Remover " + c.label, onClick: async (ev) => {
+        h("button", { type: "button", class: "icon", title: "Excluir item", "aria-label": "Excluir " + c.label, onClick: async (ev) => {
           ev.preventDefault();
           try {
             await api.del(`/checklist/${c.id}`);
             touch();
-            toast("Item removido.", { action: "Desfazer", onAction: () => undoLatest("checklist", c.id, after) });
+            toast("Item excluído.", { action: "Desfazer", onAction: () => undoLatest("checklist", c.id, after) });
           } catch (e) { errorToast(e); }
         } }, icon("trash"))));
     }
@@ -131,7 +122,7 @@ export async function openTask(taskId, onChange) {
       h("div", { class: "task-sec-head" }, icon("clock"), h("h3", { text: "Tempo" }),
         h("span", { class: "count", text: duration(t.minutes) })));
     const dur = h("input", { type: "text", placeholder: "ex.: 1h30", "aria-label": "Duração", class: "dur" });
-    const day = h("input", { type: "date", value: today, max: today, min: addDays(today, -60), "aria-label": "Dia" });
+    const day = h("input", { type: "date", value: today, max: today, min: addDays(today, -366), "aria-label": "Dia" });
     const note = h("input", { type: "text", maxlength: "200", placeholder: "o que foi feito (opcional)", "aria-label": "Observação" });
     const form = h("form", { class: "time-form" }, dur, day, note,
       h("button", { type: "submit", class: "btn btn-ghost btn-sm" }, icon("add"), "Apontar"));
@@ -151,11 +142,11 @@ export async function openTask(taskId, onChange) {
         h("span", { class: "mono when", text: shortDate(e.day) }),
         h("span", { class: "mono amount", text: duration(e.minutes) }),
         h("span", { class: "what" }, e.note || "", actorBadge(e)),
-        h("button", { type: "button", class: "icon", title: "Remover apontamento", "aria-label": "Remover apontamento", onClick: async () => {
+        h("button", { type: "button", class: "icon", title: "Excluir apontamento", "aria-label": "Excluir apontamento", onClick: async () => {
           try {
             await api.del(`/time/${e.id}`);
             touch();
-            toast("Apontamento removido.", { action: "Desfazer", onAction: () => undoLatest("time", e.id, after) });
+            toast("Apontamento excluído.", { action: "Desfazer", onAction: () => undoLatest("time", e.id, after) });
           } catch (err) { errorToast(err); }
         } }, icon("trash"))));
     }
@@ -180,11 +171,11 @@ export async function openTask(taskId, onChange) {
     for (const n of t.notes) {
       sec.append(h("div", { class: "note" },
         h("div", { class: "note-meta" }, h("span", { class: "mono", text: dateTime(n.created_at) }), actorBadge(n),
-          h("button", { type: "button", class: "icon", title: "Apagar anotação", "aria-label": "Apagar anotação", onClick: async () => {
+          h("button", { type: "button", class: "icon", title: "Excluir anotação", "aria-label": "Excluir anotação", onClick: async () => {
             try {
               await api.del(`/notes/${n.id}`);
               touch();
-              toast("Anotação apagada.", { action: "Desfazer", onAction: () => undoLatest("note", n.id, after) });
+              toast("Anotação excluída.", { action: "Desfazer", onAction: () => undoLatest("note", n.id, after) });
             } catch (e) { errorToast(e); }
           } }, icon("trash"))),
         h("p", { text: n.body })));

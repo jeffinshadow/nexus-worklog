@@ -16,11 +16,12 @@ from ..schemas import ChangePasswordIn, LoginIn, RegisterIn, SettingsIn
 from ..security import (
     burn_password_check,
     hash_password,
+    login_email_limiter,
     login_limiter,
     register_limiter,
     needs_rehash,
     new_token,
-    password_ok,
+    revoke_access,
     token_hash,
     verify_password,
 )
@@ -66,17 +67,22 @@ def register(data: RegisterIn, request: Request):
 def login(data: LoginIn, request: Request, response: Response):
     ip = client_ip(request)
     email = data.email.lower()
-    if not login_limiter.allow(f"ip:{ip}") or login_limiter.blocked(f"em:{email}"):
+    fail_keys = (f"em:{email}|{ip}", f"em:{email}")
+    if (not login_limiter.allow(f"ip:{ip}") or login_limiter.blocked(fail_keys[0])
+            or login_email_limiter.blocked(fail_keys[1])):
         raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
+
+    def falhou():
+        login_limiter.allow(fail_keys[0])
+        login_email_limiter.allow(fail_keys[1])
+        raise HTTPException(status_code=401, detail="credenciais invalidas")
 
     user = db.query_one("SELECT * FROM users WHERE email = %s", (email,))
     if not user:
         burn_password_check(data.password)  # mesmo custo de um e-mail existente
-        login_limiter.allow(f"em:{email}")
-        raise HTTPException(status_code=401, detail="credenciais invalidas")
+        falhou()
     if not verify_password(user["password_hash"], data.password):
-        login_limiter.allow(f"em:{email}")
-        raise HTTPException(status_code=401, detail="credenciais invalidas")
+        falhou()
 
     if needs_rehash(user["password_hash"]):
         db.execute(
@@ -115,8 +121,6 @@ def me(session=Depends(current_user)):
 
 @router.post("/change-password")
 def change_password(data: ChangePasswordIn, session=Depends(web_user_csrf)):
-    if not password_ok(data.new_password):
-        raise HTTPException(status_code=400, detail="senha nova fraca")
     row = db.query_one("SELECT password_hash FROM users WHERE id = %s", (session["user_id"],))
     if not row or not verify_password(row["password_hash"], data.current_password):
         raise HTTPException(status_code=400, detail="senha atual incorreta")
@@ -125,11 +129,13 @@ def change_password(data: ChangePasswordIn, session=Depends(web_user_csrf)):
         "UPDATE users SET password_hash = %s, must_change_password = false WHERE id = %s",
         (hash_password(data.new_password), session["user_id"]),
     )
-    # Encerra as demais sessoes do usuario (mantem a atual).
+    # Encerra as demais sessoes (mantem a atual) e corta chaves de API e o
+    # link do calendario: quem tinha acesso por elas precisa de um novo.
     db.execute(
         "DELETE FROM sessions WHERE user_id = %s AND id <> %s",
         (session["user_id"], session["sid"]),
     )
+    revoke_access(session["user_id"])
     return {"ok": True}
 
 

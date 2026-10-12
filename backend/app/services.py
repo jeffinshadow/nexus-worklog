@@ -91,55 +91,52 @@ def board_day_range(today: date) -> tuple[date, date]:
     return today - timedelta(days=RETRO_DAYS), today
 
 
-# Rotina vigente no dia %(day)s: criada até o dia e, se removida, só até a
-# véspera da remoção — o próprio dia da remoção só conta se ela foi feita nele
-# (removeu sem fazer = não era mais para fazer). Inativa sem data (legado
-# anterior à 002) fica de fora. A mesma regra vale nos relatórios (_recurring_tasks...).
-_VIGENTE_NO_DIA = """
-    (r.created_at AT TIME ZONE %(tz)s)::date <= %(day)s
-    AND (r.active OR (r.deactivated_at IS NOT NULL AND (
-         (r.deactivated_at AT TIME ZONE %(tz)s)::date > %(day)s
-         OR ((r.deactivated_at AT TIME ZONE %(tz)s)::date = %(day)s
-             AND EXISTS (SELECT 1 FROM recurring_completions x
-                          WHERE x.task_id = r.id AND x.completed_date = %(day)s)))))
-"""
+# Vigência de cada rotina = [start_d, end_d], no fuso da app. start_d = criação.
+# Ativa: sem fim. Removida: até a véspera da remoção — o próprio dia da
+# remoção só conta se ela foi feita nele (removeu sem fazer = não era mais para
+# fazer). Inativa sem data (legado anterior à 002) fica de fora. UMA regra para
+# quadro, marcação, indicadores, relatório e resumos: o filtro é em Python.
+_ROTINAS_SQL = """
+    SELECT r.id, r.label, r.position, r.freq, r.weekdays, r.month_day, r.interval_days,
+           (r.created_at AT TIME ZONE %(tz)s)::date AS start_d,
+           CASE WHEN r.deactivated_at IS NULL THEN DATE '9999-12-31'  -- ativa: sem fim
+                WHEN EXISTS (SELECT 1 FROM recurring_completions x WHERE x.task_id = r.id
+                                AND x.completed_date = (r.deactivated_at AT TIME ZONE %(tz)s)::date)
+                     THEN (r.deactivated_at AT TIME ZONE %(tz)s)::date
+                ELSE (r.deactivated_at AT TIME ZONE %(tz)s)::date - 1 END AS end_d
+      FROM recurring_tasks r
+     WHERE r.user_id = %(uid)s AND (r.active OR r.deactivated_at IS NOT NULL)"""
+
+
+def _rotinas(user_id: int, task_id: int | None = None) -> list[dict]:
+    extra = " AND r.id = %(id)s" if task_id is not None else ""
+    return db.query_all(_ROTINAS_SQL + extra + " ORDER BY r.position, r.id",
+                        {"tz": config.APP_TZ, "uid": user_id, "id": task_id})
 
 
 def recurring_vigente(task_id: int, user_id: int, day: date) -> bool:
-    row = db.query_one(
-        "SELECT 1 FROM recurring_tasks r WHERE r.id = %(id)s AND r.user_id = %(uid)s AND"
-        + _VIGENTE_NO_DIA,
-        {"id": task_id, "uid": user_id, "day": day, "tz": config.APP_TZ},
-    )
-    return row is not None
+    return any(r["start_d"] <= day <= r["end_d"] for r in _rotinas(user_id, task_id))
+
+
+# Concluídas no quadro: as mais recentes (o resto fica no relatório/exportação).
+BOARD_DONE_LIMIT = 200
 
 
 def get_board(user_id: int, day: date | None = None, project: int | None = None) -> dict:
-    """Quadro do usuário. `day` escolhe o dia das recorrentes (padrão: hoje;
-    a rota garante a janela de RETRO_DAYS). As pontuais não dependem do dia;
-    `project` filtra as pontuais (0 = sem projeto)."""
+    """Quadro do usuário. `day` escolhe o dia das rotinas (padrão: hoje; a rota
+    garante a janela de RETRO_DAYS): as vigentes naquele dia, com `due` (agenda)
+    e `done_today` (feita no dia escolhido; nome mantido por compatibilidade).
+    `in_progress` = tarefas abertas (a fazer, em andamento, bloqueadas), na
+    ordem: atrasadas, vencem hoje, prioridade, prazo. `project` filtra as
+    tarefas (0 = sem projeto)."""
     today = app_today()
     day = day or today
     mask = work_mask(user_id)
-    # `done_today` = concluída no dia selecionado (nome mantido por compatibilidade).
-    # Hoje: só as ativas (removeu, some na hora). Dias passados: as que eram
-    # vigentes naquele dia, inclusive as desativadas depois.
-    filtro = " r.active" if day == today else _VIGENTE_NO_DIA
-    recurring = db.query_all(
-        """
-        SELECT r.id, r.label, r.position, r.freq, r.weekdays, r.month_day, r.interval_days,
-               (r.created_at AT TIME ZONE %(tz)s)::date AS start_d,
-               (c.id IS NOT NULL) AS done_today
-          FROM recurring_tasks r
-          LEFT JOIN recurring_completions c
-                 ON c.task_id = r.id AND c.completed_date = %(day)s
-         WHERE r.user_id = %(uid)s AND"""
-        + filtro
-        + """
-         ORDER BY r.position, r.id
-        """,
-        {"uid": user_id, "day": day, "tz": config.APP_TZ},
-    )
+    feitas = {r["task_id"] for r in db.query_all(
+        "SELECT task_id FROM recurring_completions WHERE user_id = %s AND completed_date = %s", (user_id, day))}
+    recurring = [r for r in _rotinas(user_id) if r["start_d"] <= day <= r["end_d"]]
+    for r in recurring:
+        r["done_today"] = r["id"] in feitas
     filtro_proj, params = "", [user_id]
     if project is not None:
         filtro_proj = " AND w.project_id IS NULL" if project == 0 else " AND w.project_id = %s"
@@ -153,11 +150,12 @@ def get_board(user_id: int, day: date | None = None, project: int | None = None)
          WHERE w.user_id = %s"""
     in_progress = db.query_all(
         cols + " AND w.status <> 'done'" + filtro_proj
-        + " ORDER BY w.priority, COALESCE(w.due_date, DATE '9999-12-31'), w.created_at",
-        tuple(params),
+        + """ ORDER BY COALESCE(w.due_date < %s, false) DESC, COALESCE(w.due_date = %s, false) DESC,
+                       w.priority, COALESCE(w.due_date, DATE '9999-12-31'), w.created_at""",
+        tuple(params) + (today, today),
     )
     done = db.query_all(
-        cols + " AND w.status = 'done'" + filtro_proj + " ORDER BY w.completed_at DESC NULLS LAST",
+        cols + " AND w.status = 'done'" + filtro_proj + f" ORDER BY w.completed_at DESC NULLS LAST LIMIT {BOARD_DONE_LIMIT}",
         tuple(params),
     )
     for r in recurring:
@@ -174,61 +172,8 @@ def get_board(user_id: int, day: date | None = None, project: int | None = None)
     }
 
 
-# Datas de referência (hoje / início da semana=DOMINGO / início do mês) no fuso
-# da aplicação. EXTRACT(DOW) usa domingo=0, então week_start = today - DOW
-# (evita o date_trunc('week') do Postgres, que começaria na segunda).
-_REF_DATES = """
-    WITH p AS (
-        SELECT
-            d.today,
-            d.today - CAST(EXTRACT(DOW FROM d.today) AS int) AS week_start,
-            date_trunc('month', d.today)::date               AS month_start
-        FROM (SELECT (now() AT TIME ZONE %(tz)s)::date AS today) d
-    )
-"""
-
-# Grupo A — recorrentes: calculado em Python (_recurring_kpis), junto com os
-# gráficos, para que "devido" siga uma regra só (is_due): um slot = (recorrente
-# vigente, dia da agenda dela). Conclusão fora da agenda conta como "extra".
-
-# Grupo B — pontuais. Concluído = worklog 'done' com completed_at no período
-# (no fuso da app). "Em aberto" = backlog atual (status <> 'done'), igual para
-# os três períodos por definição (escolha documentada).
-_DASH_PONTUAL_SQL = _REF_DATES + """
-    SELECT
-        (SELECT count(*) FROM worklog_tasks
-          WHERE user_id = %(uid)s AND status <> 'done')::int AS open_now,
-        count(*) FILTER (WHERE (w.completed_at AT TIME ZONE %(tz)s)::date =  p.today)::int       AS day_done,
-        count(*) FILTER (WHERE (w.completed_at AT TIME ZONE %(tz)s)::date >= p.week_start)::int  AS week_done,
-        count(*) FILTER (WHERE (w.completed_at AT TIME ZONE %(tz)s)::date >= p.month_start)::int AS month_done
-      FROM p
-      LEFT JOIN worklog_tasks w
-             ON w.user_id = %(uid)s
-            AND w.status = 'done'
-            AND w.completed_at IS NOT NULL
-            -- LEAST: cobre também a semana atual quando ela começa no mês anterior.
-            AND (w.completed_at AT TIME ZONE %(tz)s)::date
-                BETWEEN LEAST(p.week_start, p.month_start) AND p.today
-"""
-
-
 def _recurring_tasks_and_completions(user_id: int, since: date, until: date):
-    tz = config.APP_TZ
-    tasks = db.query_all(
-        """
-        SELECT r.id, r.label, r.freq, r.weekdays, r.month_day, r.interval_days,
-               (r.created_at AT TIME ZONE %(tz)s)::date AS start_d,
-               CASE WHEN r.deactivated_at IS NULL THEN (now() AT TIME ZONE %(tz)s)::date
-                    WHEN EXISTS (SELECT 1 FROM recurring_completions x WHERE x.task_id = r.id
-                                    AND x.completed_date = (r.deactivated_at AT TIME ZONE %(tz)s)::date)
-                         THEN (r.deactivated_at AT TIME ZONE %(tz)s)::date
-                    ELSE (r.deactivated_at AT TIME ZONE %(tz)s)::date - 1 END AS end_d
-          FROM recurring_tasks r
-         WHERE r.user_id = %(uid)s AND (r.active OR r.deactivated_at IS NOT NULL)
-         ORDER BY r.position, r.id
-        """,
-        {"tz": tz, "uid": user_id},
-    )
+    tasks = _rotinas(user_id)
     completions = db.query_all(
         """
         SELECT task_id, completed_date
@@ -240,56 +185,21 @@ def _recurring_tasks_and_completions(user_id: int, since: date, until: date):
     return tasks, completions
 
 
-def _recurring_kpis(tasks, completions, mask: int, today: date) -> dict:
-    """Dia/semana/mês: done = conclusões em dia da agenda (is_due) dentro da
-    vigência; open = dias da agenda não feitos; extra = feitas fora da agenda."""
-    by_id = {t["id"]: t for t in tasks}
-    periods = {"day": today, "week": _week_start(today), "month": today.replace(day=1)}
-    out = {}
-    for key, ps in periods.items():
-        slots = sum(
-            _due_between(t, max(ps, t["start_d"]), min(today, t["end_d"]), mask)
-            for t in tasks
-        )
-        done = extra = 0
-        for c in completions:
-            t = by_id.get(c["task_id"])
-            d = c["completed_date"]
-            if not t or not (ps <= d <= today) or not (t["start_d"] <= d <= t["end_d"]):
-                continue
-            if is_due(t, d, mask):
-                done += 1
-            else:
-                extra += 1
-        out[key] = {"done": done, "open": max(slots - done, 0), "extra": extra}
-    return out
-
-
 def get_dashboard(user_id: int) -> dict:
-    params = {"uid": user_id, "tz": config.APP_TZ}
+    """Dashboard: a retrospectiva (o "hoje" fica na tela Hoje e no resumo)."""
     today = app_today()
     mask = work_mask(user_id)
     tasks, completions = _recurring_tasks_and_completions(
         user_id, today - timedelta(days=_STREAK_LOOKBACK), today
     )
-    b = db.query_one(_DASH_PONTUAL_SQL, params)
-    return {
-        "work_days": mask,
-        "recurring": _recurring_kpis(tasks, completions, mask, today),
-        "pontual": {
-            "day":   {"done": b["day_done"],   "open": b["open_now"]},
-            "week":  {"done": b["week_done"],  "open": b["open_now"]},
-            "month": {"done": b["month_done"], "open": b["open_now"]},
-        },
-        "analytics": get_dashboard_analytics(user_id, tasks, completions, mask, today),
-    }
+    return {"analytics": get_dashboard_analytics(user_id, tasks, completions, mask, today)}
 
 
 # Janelas dos gráficos analíticos (em dias / semanas, sempre no fuso do app).
 _HEAT_WEEKS = 8          # série diária: calendário mostra 4 sem., tendência 8 sem.
 _ADHERENCE_DAYS = 30     # ranking de aderência por tarefa
-_THROUGHPUT_WEEKS = 4    # vazão semanal de pontuais
-_CYCLE_DAYS = 90         # tempo de ciclo das pontuais
+_THROUGHPUT_WEEKS = 4    # vazão semanal de tarefas
+_PROJECT_DAYS = 30       # tempo por projeto
 _STREAK_LOOKBACK = 120   # histórico p/ calcular a sequência (streak) atual
 
 
@@ -323,15 +233,25 @@ def get_dashboard_analytics(user_id: int, tasks, completions, mask: int, today: 
     fuso do app; `today` é a referência única.
     """
     tz = config.APP_TZ
+    tp_start = _week_start(today) - timedelta(days=(_THROUGHPUT_WEEKS - 1) * 7)
     pont = db.query_all(
         """
-        SELECT (completed_at AT TIME ZONE %s)::date AS done_d,
-               EXTRACT(EPOCH FROM (completed_at - created_at)) / 3600.0 AS hours
+        SELECT (completed_at AT TIME ZONE %s)::date AS done_d
           FROM worklog_tasks
          WHERE user_id = %s AND status = 'done' AND completed_at IS NOT NULL
            AND (completed_at AT TIME ZONE %s)::date >= %s
         """,
-        (tz, user_id, tz, today - timedelta(days=_CYCLE_DAYS)),
+        (tz, user_id, tz, tp_start),
+    )
+    projects = db.query_all(
+        """
+        SELECT p.name, p.color, sum(e.minutes)::int AS minutes
+          FROM time_entries e JOIN worklog_tasks w ON w.id = e.task_id
+          LEFT JOIN projects p ON p.id = w.project_id
+         WHERE e.user_id = %s AND e.day > %s
+         GROUP BY p.name, p.color ORDER BY minutes DESC
+        """,
+        (user_id, today - timedelta(days=_PROJECT_DAYS)),
     )
     backlog = db.query_one(
         """
@@ -398,8 +318,7 @@ def get_dashboard_analytics(user_id: int, tasks, completions, mask: int, today: 
         })
     task_rows.sort(key=lambda r: (r["done"] / r["slots"], r["done"]), reverse=True)
 
-    # 3) Vazão: pontuais concluídas por semana (últimas _THROUGHPUT_WEEKS).
-    tp_start = _week_start(today) - timedelta(days=(_THROUGHPUT_WEEKS - 1) * 7)
+    # 3) Vazão: tarefas concluídas por semana (últimas _THROUGHPUT_WEEKS).
     week_counts: dict[date, int] = {}
     wk = tp_start
     while wk <= today:
@@ -411,18 +330,11 @@ def get_dashboard_analytics(user_id: int, tasks, completions, mask: int, today: 
             week_counts[ws] += 1
     throughput = [{"week_start": w, "done": week_counts[w]} for w in sorted(week_counts)]
 
-    # 4) Tempo de ciclo: durações (horas) das pontuais concluídas (_CYCLE_DAYS).
-    durations = [
-        round(float(p["hours"]), 2)
-        for p in pont
-        if p["hours"] is not None and p["hours"] >= 0
-    ]
-
     return {
         "heatmap": {"start": heat_start, "today": today, "days": heat_days},
         "task_adherence": {"window_days": _ADHERENCE_DAYS, "tasks": task_rows},
         "throughput": {"weeks": throughput},
-        "cycle_time": {"durations_h": durations},
+        "projects": {"days": _PROJECT_DAYS, "items": projects},
         "backlog": {
             "todo": backlog["todo"],
             "in_progress": backlog["in_progress"],
@@ -532,7 +444,7 @@ def get_report_range(user_id: int, start: date, end: date, project: dict | None 
         total_done += n_done
         total_slots += len(rec)
         total_extra += len(extras)
-        if done_ids or pont or tempo:
+        if done_ids & {t["id"] for t in vigentes} or pont or tempo:
             days.append({
                 "date": d,
                 "work_day": is_work_day(d, mask),
@@ -564,6 +476,7 @@ def get_report_range(user_id: int, start: date, end: date, project: dict | None 
         "generated_at": datetime.now(ZoneInfo(tz)),
         "project": project["name"] if project else None,
         "whole_project": bool(project and project.get("whole")),
+        "project_truncated": bool(project and project.get("truncated")),
         "days": days,
         "series": series,
         "recurring_stats": sorted(per_rec.values(), key=lambda r: (-(r["due"] or 0), r["label"].lower())),
@@ -577,6 +490,7 @@ def get_report_range(user_id: int, start: date, end: date, project: dict | None 
             "minutes": sum(e["minutes"] for e in entries),
             "pontual_done": len(pontuais),
             "active_days": len(days),
+            "time_days": len({e["day"] for e in entries}),  # dias com tempo apontado (base da média)
             "period_days": (end - start).days + 1,
             "open": len(abertas),
             "overdue": sum(1 for a in abertas if a["due_date"] and a["due_date"] < app_today()),
@@ -614,8 +528,9 @@ def _compact(r: dict) -> dict:
 
 
 def get_summary(user_id: int) -> dict:
-    """Resumos da tela Hoje: o último dia útil e a semana até agora, com a
-    mesma parte da semana anterior para comparar (mesmo número de dias)."""
+    """Resumos da tela Hoje: desde o último dia útil até ontem (na segunda,
+    sexta a domingo — o plantão do fim de semana entra) e a semana até agora,
+    com a mesma parte da semana anterior para comparar (mesmo número de dias)."""
     today = app_today()
     mask = work_mask(user_id)
     last = last_work_day(today, mask)
@@ -625,4 +540,4 @@ def get_summary(user_id: int) -> dict:
     week = _compact(get_report_range(user_id, ws, today))
     prev = _compact(get_report_range(user_id, prev_s, prev_e))
     week["previous"] = {k: prev[k] for k in ("recurring_done", "recurring_total", "pontual_done", "minutes", "start", "end")}
-    return {"today": today, "last_day": _compact(get_report_range(user_id, last, last)), "week": week}
+    return {"today": today, "last_day": _compact(get_report_range(user_id, last, today - timedelta(days=1))), "week": week}

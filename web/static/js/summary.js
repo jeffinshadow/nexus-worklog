@@ -1,6 +1,6 @@
 // Resumos da tela Hoje: o último dia útil e a semana até agora (comparada
 // com os mesmos dias da semana passada). Dados de /api/summary.
-import { h, icon, longDate, addDays } from "./dom.js";
+import { h, icon, longDate, shortDate, addDays } from "./dom.js";
 import { projectChip } from "./projects.js";
 import { duration, openTask } from "./task.js";
 
@@ -59,11 +59,13 @@ function card(title, sub, s, prev, onChange) {
 
 export function summaryPanel(data, onChange) {
   const last = data.last_day;
+  // Do último dia útil até ontem: na segunda, sexta a domingo (plantão incluso).
   const ontem = last.start === addDays(data.today, -1);
-  const lastTitle = ontem ? "Ontem" : "Último dia útil";
+  const lastTitle = ontem ? "Ontem" : "Desde o último dia útil";
+  const lastSub = ontem ? longDate(last.start) : `${shortDate(last.start)} a ${shortDate(last.end)}`;
   const w = data.week;
   return h("section", { class: "panel t-sum" },
     h("div", { class: "sum-grid" },
-      card(lastTitle, longDate(last.start), last, null, onChange),
+      card(lastTitle, lastSub, last, null, onChange),
       card("Esta semana", `desde ${longDate(w.start).split(",")[0]} · vs. semana passada`, w, w.previous, onChange)));
 }

@@ -18,7 +18,7 @@ from zoneinfo import ZoneInfo
 from . import db, mailer
 from .config import config
 from .labels import dur as _dur
-from .services import _week_start, get_board, get_report_range, is_work_day, work_mask
+from .services import _rotinas, _week_start, get_board, get_report_range, is_due, is_work_day, work_mask
 
 log = logging.getLogger("uvicorn.error")
 
@@ -155,6 +155,10 @@ def build_weekly(uid: int, today: date, show: bool) -> Mail:
     return m
 
 
+def _rotina_devida(uid: int, day: date, mask: int) -> bool:
+    return any(r["start_d"] <= day <= r["end_d"] and is_due(r, day, mask) for r in _rotinas(uid))
+
+
 BUILDERS = {"morning": build_morning, "evening": build_evening, "weekly": build_weekly}
 
 
@@ -213,8 +217,8 @@ def run_once(now: datetime, send=None) -> list[tuple[int, str, str]]:
             if kind == "weekly":
                 if today.weekday() != 0:  # segunda
                     continue
-            elif not is_work_day(today, mask):
-                continue
+            elif not is_work_day(today, mask) and not _rotina_devida(u["id"], today, mask):
+                continue  # dia não útil sem rotina na agenda: sem aviso
             # Backend fora do ar no horário: recupera até 2h depois; mais que
             # isso o aviso perdeu o sentido ("bom dia" às 15h) e fica para amanhã.
             if now.hour - u[f"{kind}_hour"] > CATCH_UP_HOURS:

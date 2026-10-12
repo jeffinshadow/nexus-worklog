@@ -35,7 +35,6 @@
   --primary-hi: #8AB8F0;
   --on-primary: #0B0D10;
   --primary-container: rgba(82, 148, 226, 0.16);
-  --on-primary-container: #8AB8F0;
   --chart-muted: #2E4D72;   /* barras secundárias dos gráficos (sólido, legível) */
 
   /* Superfícies (grafite) */
@@ -54,7 +53,6 @@
   --success: #81C995;
   --warning: #FDD663;
   --error: #F28B82;
-  --on-error: #2B0B08;
 
   --ease: cubic-bezier(.2, .7, .1, 1);
 

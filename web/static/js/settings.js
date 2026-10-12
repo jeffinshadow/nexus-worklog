@@ -73,7 +73,7 @@ function workDays(me) {
   });
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Meus dias úteis" })),
-    h("p", { class: "help", text: "As rotinas que repetem “nos dias úteis” seguem estes dias. O que você marcar fora da agenda de uma rotina fica salvo como extra e não entra no percentual." }),
+    h("p", { class: "help", text: "As rotinas que repetem “nos dias úteis” seguem estes dias. O que você marcar fora da agenda de uma rotina fica salvo como extra e não entra no percentual. Atenção: mudar os dias úteis recalcula também os indicadores dos dias anteriores." }),
     h("fieldset", { class: "weekday-picker" },
       ...boxes.map(({ label, cb }) => h("label", { class: "weekday-option" }, cb, h("span", { text: label })))),
     err, save);
@@ -315,7 +315,7 @@ function account(me) {
     try {
       await api.post("/auth/change-password", { current_password: cur.value, new_password: nova.value });
       cur.value = nova.value = "";
-      toast("Senha trocada. Outras sessões foram encerradas.");
+      toast("Senha trocada. Outras sessões, chaves de API e o link do calendário foram encerrados.");
     } catch (e) {
       err.textContent = e.message || "Falha ao trocar.";
     }

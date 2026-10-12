@@ -10,7 +10,15 @@ from ..services import app_today
 router = APIRouter(prefix="/api/worklog", tags=["worklog"])
 items = APIRouter(prefix="/api", tags=["worklog"])  # rotas por id de anotação/item/tempo
 
-TIME_MAX_PAST_DAYS = 366  # apontamento retroativo (também limita o "projeto inteiro")
+TIME_MAX_PAST_DAYS = 366  # apontamento retroativo
+
+
+def check_day_total(uid: int, day, minutes: int, status: int = 400) -> None:
+    """No máximo 24h apontadas por dia (também ao desfazer uma exclusão)."""
+    total = db.query_one("SELECT COALESCE(sum(minutes), 0)::int AS m FROM time_entries WHERE user_id = %s AND day = %s",
+                         (uid, day))["m"]
+    if total + minutes > 1440:
+        raise HTTPException(status_code=status, detail="passaria de 24h apontadas nesse dia")
 
 
 def _check_project(uid: int, project_id) -> None:
@@ -240,10 +248,7 @@ def log_time(task_id: int, data: TimeIn, user=Depends(active_user_csrf)):
         raise HTTPException(status_code=400, detail="não dá para apontar tempo no futuro")
     if (today - day).days > TIME_MAX_PAST_DAYS:
         raise HTTPException(status_code=400, detail=f"apontamento até {TIME_MAX_PAST_DAYS} dias atrás")
-    total = db.query_one("SELECT COALESCE(sum(minutes), 0)::int AS m FROM time_entries WHERE user_id = %s AND day = %s",
-                         (user["user_id"], day))["m"]
-    if total + data.minutes > 1440:
-        raise HTTPException(status_code=400, detail="passaria de 24h apontadas nesse dia")
+    check_day_total(user["user_id"], day, data.minutes)
     row = db.query_one(
         """INSERT INTO time_entries (task_id, user_id, minutes, day, note, actor, token_name)
            VALUES (%s, %s, %s, %s, %s, %s, %s)
