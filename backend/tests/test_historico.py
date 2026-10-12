@@ -59,10 +59,10 @@ def test_desfazer_marcacao_de_recorrente_e_dias_uteis(usuario):
     usuario.post(f"/history/{h['id']}/undo")
     assert not any(r["done_today"] for r in usuario.get(f"/board?day={dia}").json()["recurring"])
 
+    # Dias úteis não se desfazem pelo histórico (mudam o passado das rotinas): é só salvar de novo.
     usuario.post("/auth/settings", {"work_days": 127})
     h = hist(usuario, entity="user")[0]
-    usuario.post(f"/history/{h['id']}/undo")
-    assert usuario.get("/auth/me").json()["work_days"] == 62
+    assert h["action"] == "settings.update" and not h["can_undo"]
 
 
 def test_historico_isolado_e_admin_registrado(admin, usuario, novo_usuario):

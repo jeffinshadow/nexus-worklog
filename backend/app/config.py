@@ -19,8 +19,6 @@ class Config:
 
     SESSION_TTL_DAYS = int(os.environ.get("SESSION_TTL_DAYS", "7"))
     COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "true").lower() == "true"
-    # Cadastro publico. Padrao: fechado (contas criadas pelo admin, por convite).
-    REGISTRATION_OPEN = os.environ.get("REGISTRATION_OPEN", "false").lower() == "true"
     APP_TZ = os.environ.get("APP_TZ", "America/Sao_Paulo")
 
     # E-mail (avisos). Sem SMTP_HOST, os avisos ficam desligados no servidor.
@@ -34,7 +32,9 @@ class Config:
     # O agendador roda só se houver SMTP e não estiver desligado (testes).
     MAIL_SCHEDULER = os.environ.get("MAIL_SCHEDULER", "true").lower() == "true"
 
-    SESSION_COOKIE = "session"
+    # __Host-: o navegador só aceita com HTTPS, sem Domain e com Path=/ — um
+    # subdomínio irmão não consegue plantar a sessão (cookie tossing).
+    SESSION_COOKIE = "__Host-session" if COOKIE_SECURE else "session"
     MIN_PASSWORD_LEN = 10
     MAX_PASSWORD_LEN = 128
 

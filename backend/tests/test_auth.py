@@ -1,11 +1,10 @@
 from conftest import ADMIN_EMAIL, ADMIN_PW_INICIAL, Api
 
 
-def test_cadastro_publico_fechado_por_padrao():
+def test_nao_ha_cadastro_publico():
     a = Api()
-    assert a.get("/auth/config").json() == {"registration_open": False}
     r = a.post("/auth/register", {"email": "intruso@example.com", "password": "Senha-Qualquer-1"})
-    assert r.status_code == 403
+    assert r.status_code in (404, 405)
 
 
 def test_admin_precisa_trocar_senha_no_primeiro_login():

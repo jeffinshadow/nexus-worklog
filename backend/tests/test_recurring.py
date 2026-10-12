@@ -55,9 +55,9 @@ def test_dia_nao_util_vira_extra(usuario):
 
 
 def test_todos_os_dias_uteis_conta_tudo(usuario):
+    usuario.post("/auth/settings", {"work_days": 127})
     tid = _criar(usuario)
     recuar_criacao(tid, 3)
-    usuario.post("/auth/settings", {"work_days": 127})
     usuario.post(f"/recurring/{tid}/toggle", {"done": True})
     hoje = dia_hoje(usuario)
     r = get_report_range(uid_de(usuario), hoje, hoje)["summary"]

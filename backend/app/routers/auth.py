@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -12,13 +13,14 @@ from ..deps import (
     web_user_csrf,
     set_session_cookie,
 )
-from ..schemas import ChangePasswordIn, LoginIn, RegisterIn, SettingsIn
+from ..schemas import ChangePasswordIn, LoginIn, SettingsIn
+from ..services import app_today, app_tz
+from .recurring import replace_routine
 from ..security import (
     burn_password_check,
     hash_password,
     login_email_limiter,
     login_limiter,
-    register_limiter,
     needs_rehash,
     new_token,
     revoke_access,
@@ -27,6 +29,7 @@ from ..security import (
 )
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+log = logging.getLogger("uvicorn.error")
 
 
 def _public(row: dict, csrf: str) -> dict:
@@ -41,28 +44,6 @@ def _public(row: dict, csrf: str) -> dict:
     }
 
 
-@router.get("/config")
-def public_config():
-    """Configuracao publica que a tela de login precisa (sem autenticacao)."""
-    return {"registration_open": config.REGISTRATION_OPEN}
-
-
-@router.post("/register", status_code=201)
-def register(data: RegisterIn, request: Request):
-    if not config.REGISTRATION_OPEN:
-        raise HTTPException(status_code=403, detail="cadastro fechado: peça um convite ao administrador")
-    if not register_limiter.allow(f"ip:{client_ip(request)}"):
-        raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
-    email = data.email.lower()
-    if db.query_one("SELECT 1 FROM users WHERE email = %s", (email,)):
-        raise HTTPException(status_code=409, detail="email ja cadastrado")
-    db.execute(
-        "INSERT INTO users (email, password_hash, role) VALUES (%s, %s, 'user')",
-        (email, hash_password(data.password)),
-    )
-    return {"ok": True}
-
-
 @router.post("/login")
 def login(data: LoginIn, request: Request, response: Response):
     ip = client_ip(request)
@@ -73,6 +54,7 @@ def login(data: LoginIn, request: Request, response: Response):
         raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
 
     def falhou():
+        log.warning("login falhou: ip=%s conta=%s", ip, token_hash(email)[:12])  # sem o e-mail em claro
         login_limiter.allow(fail_keys[0])
         login_email_limiter.allow(fail_keys[1])
         raise HTTPException(status_code=401, detail="credenciais invalidas")
@@ -90,8 +72,10 @@ def login(data: LoginIn, request: Request, response: Response):
             (hash_password(data.password), user["id"]),
         )
 
-    # Faxina barata: sessoes vencidas so eram apagadas quando reutilizadas.
+    # Faxina barata: sessoes vencidas e historico antigo (o desfazer so vale
+    # para o recente; excluir de verdade nao pode durar para sempre no log).
     db.execute("DELETE FROM sessions WHERE expires_at <= now()")
+    db.execute("DELETE FROM audit_log WHERE created_at < now() - interval '180 days'")
 
     token = new_token()
     csrf = new_token()
@@ -121,6 +105,10 @@ def me(session=Depends(current_user)):
 
 @router.post("/change-password")
 def change_password(data: ChangePasswordIn, session=Depends(web_user_csrf)):
+    if not login_limiter.allow(f"pw:{session['user_id']}"):  # sessão roubada não testa senhas à vontade
+        raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
+    if data.new_password == data.current_password:  # inclusive a temporária que o admin viu
+        raise HTTPException(status_code=400, detail="a senha nova precisa ser diferente da atual")
     row = db.query_one("SELECT password_hash FROM users WHERE id = %s", (session["user_id"],))
     if not row or not verify_password(row["password_hash"], data.current_password):
         raise HTTPException(status_code=400, detail="senha atual incorreta")
@@ -141,10 +129,26 @@ def change_password(data: ChangePasswordIn, session=Depends(web_user_csrf)):
 
 @router.post("/settings")
 def save_settings(data: SettingsIn, session=Depends(active_user_csrf)):
-    """Preferências do próprio usuário (hoje: dias úteis)."""
-    before = session["work_days"]
-    db.execute("UPDATE users SET work_days = %s WHERE id = %s", (data.work_days, session["user_id"]))
-    if before != data.work_days:
-        audit.record(session, "settings.update", "user", session["user_id"],
-                     before={"work_days": before}, after={"work_days": data.work_days})
+    """Preferências do próprio usuário (hoje: dias úteis).
+
+    Mudar os dias úteis NÃO reescreve o passado: cada rotina "nos dias úteis"
+    que já tem história fica congelada com os dias antigos (vira semanal) e
+    recomeça hoje seguindo os novos; as já encerradas só congelam."""
+    uid, before = session["user_id"], session["work_days"]
+    if before == data.work_days:
+        return {"ok": True, "work_days": before}
+    today = app_today()
+    for r in db.query_all(
+            """SELECT id FROM recurring_tasks WHERE user_id = %s AND COALESCE(freq, 'daily') = 'daily'
+                  AND (active OR deactivated_at IS NOT NULL)""", (uid,)):
+        snap = audit.recurring_snapshot(r["id"], uid)
+        freeze = {"freq": "weekly", "weekdays": before}
+        if snap["active"] and snap["created_at"].astimezone(app_tz()).date() < today:
+            replace_routine(session, snap, {"label": snap["label"], "freq": "daily"}, freeze)
+        elif not snap["active"]:
+            db.execute("UPDATE recurring_tasks SET freq = 'weekly', weekdays = %s WHERE id = %s AND user_id = %s",
+                       (before, r["id"], uid))
+    db.execute("UPDATE users SET work_days = %s WHERE id = %s", (data.work_days, uid))
+    audit.record(session, "settings.update", "user", uid,
+                 before={"work_days": before}, after={"work_days": data.work_days})
     return {"ok": True, "work_days": data.work_days}

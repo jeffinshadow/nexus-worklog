@@ -108,7 +108,7 @@ docker compose up -d --build
 log "Conferindo se a aplicação respondeu..."
 ok=false
 for _ in $(seq 1 30); do
-  if docker compose exec -T web wget -q -O /dev/null http://127.0.0.1/api/auth/config 2>/dev/null; then
+  if docker compose exec -T web wget -q -O /dev/null http://127.0.0.1/api/branding 2>/dev/null; then
     ok=true; break
   fi
   sleep 2

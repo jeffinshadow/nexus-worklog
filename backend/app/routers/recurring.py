@@ -28,6 +28,28 @@ def create(data: RecurringIn, user=Depends(active_user_csrf)):
     return row
 
 
+def replace_routine(user: dict, before: dict, new: dict, freeze: dict | None = None) -> int:
+    """Encerra a rotina `before` hoje e cria outra (mesma posição) a partir de
+    hoje com `new` (label + agenda): o passado da antiga não muda. `freeze`
+    regrava a agenda da antiga (ex.: dias úteis antigos, congelados como
+    semanal). A marcação de hoje passa para a nova. UMA ação no histórico
+    ("recurring.replace", na nova), desfeita por inteiro."""
+    uid, old_id = user["user_id"], before["id"]
+    sets = ["active = false", "deactivated_at = now()"] + [f"{k} = %s" for k in (freeze or {})]
+    db.execute(f"UPDATE recurring_tasks SET {', '.join(sets)} WHERE id = %s AND user_id = %s",
+               tuple((freeze or {}).values()) + (old_id, uid))
+    row = db.query_one(
+        """INSERT INTO recurring_tasks (user_id, label, position, freq, weekdays, month_day, interval_days)
+           VALUES (%(uid)s, %(label)s, %(position)s, %(freq)s, %(weekdays)s, %(month_day)s, %(interval_days)s)
+           RETURNING id""",
+        {"uid": uid, "position": before["position"], "weekdays": None, "month_day": None, "interval_days": None, **new})
+    db.execute("UPDATE recurring_completions SET task_id = %s WHERE task_id = %s AND user_id = %s AND completed_date = %s",
+               (row["id"], old_id, uid, app_today()))
+    audit.record(user, "recurring.replace", "recurring", row["id"], before=before,
+                 after={"replaced": old_id, **audit.recurring_snapshot(row["id"], uid)})
+    return row["id"]
+
+
 @router.patch("/{task_id}")
 def update(task_id: int, data: RecurringUpdate, user=Depends(active_user_csrf)):
     """Nome e agenda. Trocar a agenda de uma rotina que já tem passado NÃO
@@ -45,19 +67,8 @@ def update(task_id: int, data: RecurringUpdate, user=Depends(active_user_csrf)):
     tem_passado = before["created_at"].astimezone(app_tz()).date() < today
 
     if muda_agenda and tem_passado:
-        db.execute("UPDATE recurring_tasks SET active = false, deactivated_at = now() WHERE id = %s AND user_id = %s",
-                   (task_id, uid))
-        audit.record(user, "recurring.deactivate", "recurring", task_id, before=before,
-                     after=audit.recurring_snapshot(task_id, uid))
-        new = db.query_one(
-            """INSERT INTO recurring_tasks (user_id, label, position, freq, weekdays, month_day, interval_days)
-               VALUES (%(uid)s, %(label)s, %(position)s, %(freq)s, %(weekdays)s, %(month_day)s, %(interval_days)s)
-               RETURNING id""",
-            {"uid": uid, "label": data.label or before["label"], "position": before["position"], **agenda})
-        db.execute("UPDATE recurring_completions SET task_id = %s WHERE task_id = %s AND user_id = %s AND completed_date = %s",
-                   (new["id"], task_id, uid, today))
-        audit.record(user, "recurring.create", "recurring", new["id"], after=audit.recurring_snapshot(new["id"], uid))
-        return {"ok": True, "id": new["id"], "replaced": task_id}
+        new_id = replace_routine(user, before, {"label": data.label or before["label"], **agenda})
+        return {"ok": True, "id": new_id, "replaced": task_id}
 
     fields, values = [], []
     if data.label is not None:

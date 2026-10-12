@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from .. import audit, db
 from ..labels import dur
-from ..services import app_today, board_day_range
+from ..services import RETRO_DAYS, app_today, board_day_range
 from .worklog import check_day_total
 from ..deps import active_user, active_user_csrf
 
@@ -20,8 +20,7 @@ router = APIRouter(prefix="/api/history", tags=["history"])
 
 UNDOABLE = {
     "worklog.create", "worklog.update", "worklog.finish", "worklog.delete",
-    "recurring.create", "recurring.update", "recurring.deactivate", "recurring.toggle",
-    "settings.update",
+    "recurring.create", "recurring.update", "recurring.deactivate", "recurring.toggle", "recurring.replace",
     "note.create", "note.delete", "checklist.create", "checklist.update", "checklist.delete",
     "time.create", "time.delete", "project.create", "project.update", "project.delete",
 }
@@ -35,6 +34,7 @@ ACTION_LABELS = {
     "recurring.update": "editou a rotina",
     "recurring.deactivate": "removeu a rotina",
     "recurring.toggle": "marcou a rotina",
+    "recurring.replace": "trocou a agenda da rotina",
     "settings.update": "alterou os dias úteis",
     "notifications.update": "alterou os avisos por e-mail",
     "calendar.create": "criou o link do calendário",
@@ -267,6 +267,8 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
         for e in kids.get("time", []):
             _put_time(uid, eid, e)
     elif a == "recurring.create":
+        if not db.query_one("SELECT 1 FROM recurring_tasks WHERE id = %s AND user_id = %s AND active", (eid, uid)):
+            raise HTTPException(status_code=409, detail="a rotina já foi encerrada")
         has_done = db.query_one("SELECT 1 FROM recurring_completions WHERE task_id = %s LIMIT 1", (eid,))
         if has_done:
             db.execute(
@@ -275,7 +277,17 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
                     WHERE id = %s AND user_id = %s""", (eid, uid))
         else:
             db.execute("DELETE FROM recurring_tasks WHERE id = %s AND user_id = %s", (eid, uid))
-    elif a in ("recurring.update", "recurring.deactivate"):
+    elif a == "recurring.update":
+        _restore_recurring(uid, before)
+    elif a == "recurring.deactivate":
+        if (app_today() - row["created_at"].date()).days > RETRO_DAYS:  # dias parados viraram faltas
+            raise HTTPException(status_code=409, detail="essa remoção já saiu da janela de 7 dias; crie a rotina de novo")
+        _restore_recurring(uid, before)
+    elif a == "recurring.replace":
+        # Tira a nova (devolvendo a marcação de hoje) e reativa a antiga como era.
+        db.execute("UPDATE recurring_completions SET task_id = %s WHERE task_id = %s AND user_id = %s AND completed_date = %s",
+                   (after["replaced"], eid, uid, app_today()))
+        db.execute("DELETE FROM recurring_tasks WHERE id = %s AND user_id = %s", (eid, uid))
         _restore_recurring(uid, before)
     elif a == "recurring.toggle":
         day = date.fromisoformat(before["day"])
@@ -291,8 +303,6 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
             db.execute(
                 "DELETE FROM recurring_completions WHERE task_id = %s AND user_id = %s AND completed_date = %s",
                 (eid, uid, day))
-    elif a == "settings.update":
-        db.execute("UPDATE users SET work_days = %s WHERE id = %s", (before["work_days"], uid))
     elif a == "note.create":
         if not db.execute("DELETE FROM task_notes WHERE id = %s AND user_id = %s", (eid, uid)):
             raise _gone()
@@ -323,6 +333,8 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
         else:
             db.execute("DELETE FROM projects WHERE id = %s AND user_id = %s", (eid, uid))
     elif a == "project.update":
+        if db.query_one("SELECT 1 FROM projects WHERE user_id = %s AND name = %s AND id <> %s", (uid, before["name"], eid)):
+            raise HTTPException(status_code=409, detail="já existe um projeto com esse nome")
         db.execute("UPDATE projects SET name = %s, color = %s, archived = %s WHERE id = %s AND user_id = %s",
                    (before["name"], before["color"], before["archived"], eid, uid))
     elif a == "project.delete":

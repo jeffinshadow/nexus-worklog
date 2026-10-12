@@ -5,7 +5,8 @@ Tipos (opt-in em Configurações > Avisos, cada um com sua hora):
   evening  Rotinas de hoje ainda não feitas (não sai se já fez tudo).
   weekly   Resumo da semana anterior (sai às segundas).
 
-morning/evening só saem nos dias úteis do usuário. Cada (usuário, tipo, dia)
+morning/evening saem nos dias úteis do usuário — ou em qualquer dia com rotina
+na agenda (ex.: backup de sábado). Cada (usuário, tipo, dia)
 é registrado em notification_log ANTES do envio: nunca manda duas vezes,
 mesmo reiniciando. Aviso sem nada a dizer não sai (fica registrado assim).
 """
@@ -17,30 +18,29 @@ from zoneinfo import ZoneInfo
 
 from . import db, mailer
 from .config import config
+from .labels import DIAS, MESES
 from .labels import dur as _dur
-from .services import _rotinas, _week_start, get_board, get_report_range, is_due, is_work_day, work_mask
+from .routers.branding import branding
+from .schemas import PrefsIn
+from .services import rotinas, week_start, get_board, get_report_range, is_due, is_work_day, work_mask
 
 log = logging.getLogger("uvicorn.error")
 
-_WD = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"]
-_MES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]
 KINDS = ("morning", "evening", "weekly")
 LIST_MAX = 10
 CATCH_UP_HOURS = 2
 
-DEFAULT_PREFS = {"morning": False, "morning_hour": 8, "evening": False, "evening_hour": 17,
-                 "weekly": False, "weekly_hour": 8, "show_titles": True}
 
 
 def get_prefs(uid: int) -> dict:
     row = db.query_one(
         """SELECT morning, morning_hour, evening, evening_hour, weekly, weekly_hour, show_titles
              FROM notification_prefs WHERE user_id = %s""", (uid,))
-    return dict(row) if row else dict(DEFAULT_PREFS)
+    return dict(row) if row else PrefsIn().model_dump()
 
 
 def _day(d: date) -> str:
-    return f"{_WD[d.weekday()]}, {d.day} {_MES[d.month - 1]}"
+    return f"{DIAS[d.weekday()]}, {d.day} {MESES[d.month - 1]}"
 
 
 # --------------------------------------------------------------- montagem --
@@ -78,7 +78,7 @@ class Mail:
 
     def html(self) -> str:
         e = html.escape
-        brand = db.query_one("SELECT line1, line2 FROM app_branding WHERE id = 1") or {"line1": "nexus", "line2": "worklog"}
+        brand = branding()
         parts = []
         for heading, items in self.blocks:
             parts.append(f'<p style="margin:22px 0 8px;font:600 14px/1.4 Arial,sans-serif;color:#18181b">{e(heading)}</p>')
@@ -104,17 +104,17 @@ class Mail:
 
 def build_morning(uid: int, today: date, show: bool) -> Mail:
     b = get_board(uid, today)
-    rotinas = [r["label"] for r in b["recurring"] if r.get("due") and not r["done_today"]]
+    do_dia = [r["label"] for r in b["recurring"] if r.get("due") and not r["done_today"]]
     abertas = b["in_progress"]
     hoje = [t["title"] for t in abertas if t["due_date"] == today]
     atrasadas = [f"{t['title']} (prazo {t['due_date']:%d/%m})" for t in abertas if t["due_date"] and t["due_date"] < today]
     alta = [t["title"] for t in abertas if t["priority"] == 1 and t["title"] not in hoje
             and not (t["due_date"] and t["due_date"] < today)]
     m = Mail(f"Seu dia · {_day(today)}", f"Bom dia — {_day(today)}",
-             f"{len(rotinas)} rotina{'s' if len(rotinas) != 1 else ''} para hoje e {len(abertas)} tarefa{'s' if len(abertas) != 1 else ''} em aberto.")
+             f"{len(do_dia)} rotina{'s' if len(do_dia) != 1 else ''} para hoje e {len(abertas)} tarefa{'s' if len(abertas) != 1 else ''} em aberto.")
     m.block("Atrasadas", atrasadas, show)
     m.block("Vencem hoje", hoje, show)
-    m.block("Rotinas de hoje", rotinas, show)
+    m.block("Rotinas de hoje", do_dia, show)
     m.block("Prioridade alta", alta, show)
     return m
 
@@ -132,7 +132,7 @@ def build_evening(uid: int, today: date, show: bool) -> Mail:
 
 
 def build_weekly(uid: int, today: date, show: bool) -> Mail:
-    end = _week_start(today) - timedelta(days=1)  # sábado passado
+    end = week_start(today) - timedelta(days=1)  # sábado passado
     start = end - timedelta(days=6)               # domingo anterior
     r = get_report_range(uid, start, end)
     s = r["summary"]
@@ -156,7 +156,7 @@ def build_weekly(uid: int, today: date, show: bool) -> Mail:
 
 
 def _rotina_devida(uid: int, day: date, mask: int) -> bool:
-    return any(r["start_d"] <= day <= r["end_d"] and is_due(r, day, mask) for r in _rotinas(uid))
+    return any(r["start_d"] <= day <= r["end_d"] and is_due(r, day, mask) for r in rotinas(uid))
 
 
 BUILDERS = {"morning": build_morning, "evening": build_evening, "weekly": build_weekly}
@@ -225,7 +225,13 @@ def run_once(now: datetime, send=None) -> list[tuple[int, str, str]]:
                 continue
             if not _claim(u["id"], kind, today):
                 continue
-            mail = BUILDERS[kind](u["id"], today, u["show_titles"])
+            try:
+                mail = BUILDERS[kind](u["id"], today, u["show_titles"])
+            except Exception as e:  # noqa: BLE001 — registra; o dia não se perde em silêncio
+                _finish(u["id"], kind, today, False, f"falha ao montar: {e}"[:300])
+                log.exception("aviso %s para usuário %s não montou", kind, u["id"])
+                done.append((u["id"], kind, "error"))
+                continue
             done.append((u["id"], kind, deliver(u["id"], u["email"], kind, today, mail, send)))
     return done
 

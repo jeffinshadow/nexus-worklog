@@ -10,11 +10,6 @@ Status = Literal["todo", "in_progress", "blocked", "done"]
 _PW = Field(min_length=config.MIN_PASSWORD_LEN, max_length=config.MAX_PASSWORD_LEN)
 
 
-class RegisterIn(BaseModel):
-    email: EmailStr
-    password: str = _PW
-
-
 class InviteIn(BaseModel):
     email: EmailStr
 
@@ -141,3 +136,19 @@ class TimeIn(BaseModel):
     minutes: int = Field(ge=1, le=1440)
     day: Optional[date] = None  # padrão: hoje
     note: Optional[str] = Field(default=None, max_length=200)
+
+
+# Avisos por e-mail: os padrões daqui valem também quando o usuário ainda não
+# salvou nada (notify.get_prefs).
+class PrefsIn(BaseModel):
+    morning: bool = False
+    morning_hour: int = Field(default=8, ge=0, le=23)
+    evening: bool = False
+    evening_hour: int = Field(default=17, ge=0, le=23)
+    weekly: bool = False
+    weekly_hour: int = Field(default=8, ge=0, le=23)
+    show_titles: bool = True
+
+
+class FeedIn(BaseModel):
+    include_recurring: bool = True

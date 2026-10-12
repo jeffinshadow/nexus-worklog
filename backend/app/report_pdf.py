@@ -16,16 +16,14 @@ from pathlib import Path
 from fontTools.ttLib import TTFont
 from fpdf import FPDF
 
+from .labels import DIAS_CURTOS, MESES, MESES_LONGOS
 from .labels import STATUS_PT as _STATUS
 from .labels import dur as _dur
+from .services import week_start
 
 ASSETS = Path(__file__).parent / "assets"
 FONTS = ASSETS / "fonts"
 
-_WD_SHORT = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"]
-_MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]
-_MESES_LONGOS = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto",
-                 "setembro", "outubro", "novembro", "dezembro"]
 
 # Paleta (impressão em fundo branco; o azul é o mesmo do app).
 INK = (24, 24, 27)
@@ -64,11 +62,11 @@ def _dfull(d: date) -> str:
 
 def _period(start: date, end: date) -> str:
     if start == end:
-        return f"{start.day} {_MESES[start.month - 1]} {start.year}"
+        return f"{start.day} {MESES[start.month - 1]} {start.year}"
     if start.year == end.year:
         if start.month == end.month:
-            return f"{start.day} – {end.day} {_MESES[end.month - 1]} {end.year}"
-        return f"{start.day} {_MESES[start.month - 1]} – {end.day} {_MESES[end.month - 1]} {end.year}"
+            return f"{start.day} – {end.day} {MESES[end.month - 1]} {end.year}"
+        return f"{start.day} {MESES[start.month - 1]} – {end.day} {MESES[end.month - 1]} {end.year}"
     return f"{_dfull(start)} – {_dfull(end)}"
 
 
@@ -77,7 +75,7 @@ def _schedule(r: dict) -> str:
     if f == "weekly":
         bits = r.get("weekdays") or 0
         # máscara com domingo = bit 0; listamos de segunda a domingo
-        dias = [_WD_SHORT[i] for i in range(7) if (bits >> ((i + 1) % 7)) & 1]
+        dias = [DIAS_CURTOS[i] for i in range(7) if (bits >> ((i + 1) % 7)) & 1]
         return "todo dia" if len(dias) == 7 else ", ".join(dias)
     if f == "monthly":
         return "último dia do mês" if (r.get("month_day") or 0) >= 31 else f"todo dia {r['month_day']}"
@@ -317,7 +315,7 @@ def _chart(pdf: _Report, data: dict) -> None:
         buckets: dict[date, dict] = {}
         for p in series:
             if gran == "semana":
-                k = p["date"] - timedelta(days=(p["date"].weekday() + 1) % 7)
+                k = week_start(p["date"])
             else:
                 k = p["date"].replace(day=1)
             b = buckets.setdefault(k, {"date": k, "work_day": True, "recurring_done": 0, "pontual": 0, "minutes": 0})
@@ -364,7 +362,7 @@ def _chart(pdf: _Report, data: dict) -> None:
         if i % label_every == 0:
             pdf.font("mono", 5.8, DIM)
             if gran == "mês":
-                lab = _MESES[p["date"].month - 1] + (f" {p['date'].year % 100:02d}" if p["date"].month == 1 or i == 0 else "")
+                lab = MESES[p["date"].month - 1] + (f" {p['date'].year % 100:02d}" if p["date"].month == 1 or i == 0 else "")
             else:
                 lab = _d(p["date"]) if weekly else str(p["date"].day)
             pdf.text_at(cx - 6, y0 + h + 1.2, 12, 3, lab, "C")
@@ -649,7 +647,7 @@ def _diary(pdf: _Report, data: dict) -> None:
             pdf.room(min(est, 40) + 10)
             ym = pdf.get_y()
             pdf.font("monom", 7.4, ACCENT)
-            pdf.text_at(M, ym, 80, 4, f"{_MESES_LONGOS[d.month - 1]} {d.year}".upper())
+            pdf.text_at(M, ym, 80, 4, f"{MESES_LONGOS[d.month - 1]} {d.year}".upper())
             pdf.set_y(ym + 7)
         pdf.room(min(est, 40))
         y = pdf.get_y()
@@ -658,7 +656,7 @@ def _diary(pdf: _Report, data: dict) -> None:
         pdf.font("sanss", 17, INK)
         pdf.text_at(M, y - 0.6, 22, 7, str(d.day))
         pdf.font("monom", 6.4, DIM)
-        pdf.text_at(M, y + 6.6, 22, 3, f"{_WD_SHORT[d.weekday()]} · {_MESES[d.month - 1]}")
+        pdf.text_at(M, y + 6.6, 22, 3, f"{DIAS_CURTOS[d.weekday()]} · {MESES[d.month - 1]}")
         if not day["work_day"]:
             pdf.font("mono", 5.8, WARN)
             pdf.text_at(M, y + 10, 22, 3, "não útil")

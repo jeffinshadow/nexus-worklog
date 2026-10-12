@@ -2,11 +2,13 @@ import hashlib
 import hmac
 import secrets
 import threading
+from contextlib import contextmanager
 import time
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
 
+from . import db
 from .config import config
 
 # Perfil OWASP (19 MiB, 2 passadas): seguro e cabível numa VM de 1 GB. O
@@ -17,8 +19,24 @@ _ph = PasswordHasher(time_cost=2, memory_cost=19456, parallelism=1)
 _hash_slots = threading.BoundedSemaphore(2)
 
 
+class Busy(Exception):
+    """Sem vaga para calcular hash agora (servidor sob carga)."""
+
+
+@contextmanager
+def _slot():
+    # Espera no máximo 1 s: sob ataque, falha rápido (503) em vez de prender
+    # as threads do servidor esperando a vez.
+    if not _hash_slots.acquire(timeout=1):
+        raise Busy()
+    try:
+        yield
+    finally:
+        _hash_slots.release()
+
+
 def hash_password(password: str) -> str:
-    with _hash_slots:
+    with _slot():
         return _ph.hash(password)
 
 
@@ -34,7 +52,7 @@ def burn_password_check(password: str) -> None:
 
 def verify_password(stored_hash: str, password: str) -> bool:
     try:
-        with _hash_slots:
+        with _slot():
             _ph.verify(stored_hash, password)
         return True
     except (VerifyMismatchError, InvalidHashError):
@@ -96,8 +114,8 @@ class RateLimiter:
             self._hits = {
                 k: v for k, v in self._hits.items() if now - v[0] < self.window
             }
-            if len(self._hits) >= self._PRUNE_AT:  # ataque com chaves novas: zera
-                self._hits = {}
+            if len(self._hits) >= self._PRUNE_AT and key not in self._hits:
+                return False  # cheio de chaves vivas (ataque): recusa as novas, não zera as antigas
         start, count = self._hits.get(key, (now, 0))
         if now - start >= self.window:
             start, count = now, 0
@@ -119,14 +137,12 @@ login_email_limiter = RateLimiter(max_hits=100, window_seconds=300)
 # PDF: gerar e pesado (CPU, um processo so). Ate 6 por usuario por minuto.
 pdf_limiter = RateLimiter(max_hits=6, window_seconds=60)
 
+# Chaves de API: ate 240 requisicoes por pessoa por minuto (IA em laço).
+token_limiter = RateLimiter(max_hits=240, window_seconds=60)
+
 
 def revoke_access(user_id: int) -> None:
     """Corta o que nao depende da senha: chaves de API e link do calendario.
     Usado na troca de senha e no reset pelo admin ("senha nova = acessos novos")."""
-    from . import db
     db.execute("UPDATE api_tokens SET revoked_at = now() WHERE user_id = %s AND revoked_at IS NULL", (user_id,))
     db.execute("DELETE FROM calendar_feeds WHERE user_id = %s", (user_id,))
-# Cadastro publico (quando aberto): ate 5 contas por IP por hora.
-register_limiter = RateLimiter(max_hits=5, window_seconds=3600)
-# Chaves de API: ate 240 requisicoes por chave por minuto (IA em laço).
-token_limiter = RateLimiter(max_hits=240, window_seconds=60)

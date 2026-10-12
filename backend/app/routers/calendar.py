@@ -5,12 +5,13 @@ import secrets
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response
-from pydantic import BaseModel
 
 from .. import audit, db
 from ..config import config
 from ..deps import web_active, web_active_csrf
 from ..labels import PRIO_PT, STATUS_PT
+from ..schemas import FeedIn
+from .branding import branding
 from ..security import token_hash, token_limiter
 from ..services import app_today, is_due, work_mask
 
@@ -18,10 +19,6 @@ router = APIRouter(prefix="/api/calendar", tags=["calendar"])
 
 PREFIX = "nxc_"
 _DAYS = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"]  # bit 0 = domingo
-
-
-class FeedIn(BaseModel):
-    include_recurring: bool = True
 
 
 # ------------------------------------------------------------- gerenciamento --
@@ -74,7 +71,7 @@ def _esc(text: str) -> str:
     return (text or "").replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\r", "").replace("\n", "\\n")
 
 
-def _fold(line: str) -> str:
+def _fold_line(line: str) -> str:
     """Quebra em 75 octetos (RFC 5545), sem partir caracteres UTF-8."""
     out, cur, size = [], "", 0
     for ch in line:
@@ -132,8 +129,7 @@ def build_ics(uid: int, include_recurring: bool, cal_name: str) -> str:
             WHERE w.user_id = %s AND w.status <> 'done' AND w.due_date IS NOT NULL""", (uid,)):
         summary = f"Prazo: {t['title']}" + (f" [{t['project']}]" if t["project"] else "")
         desc = f"Status: {STATUS_PT.get(t['status'], t['status'])} · prioridade {PRIO_PT.get(t['priority'], 'normal')}"
-        if t["description"]:
-            desc += f"\n{t['description']}"
+        # Sem a descrição: o feed vai para Google/Apple/Microsoft — só o necessário.
         extra = [f"CATEGORIES:{_esc(t['project'])}"] if t["project"] else []
         if t["priority"] == 1:
             extra.append("PRIORITY:1")
@@ -156,7 +152,7 @@ def build_ics(uid: int, include_recurring: bool, cal_name: str) -> str:
                   "Recorrente do Nexus Worklog. Marque como feita no app.", [f"RRULE:{rule}"])
 
     lines.append("END:VCALENDAR")
-    return "\r\n".join(_fold(x) for x in lines) + "\r\n"
+    return "\r\n".join(_fold_line(x) for x in lines) + "\r\n"
 
 
 @router.get("/{token}.ics")
@@ -173,7 +169,7 @@ def feed(token: str):
     now = datetime.now(timezone.utc)
     if row["last_used_at"] is None or now - row["last_used_at"] > timedelta(minutes=10):
         db.execute("UPDATE calendar_feeds SET last_used_at = now() WHERE user_id = %s", (row["user_id"],))
-    brand = db.query_one("SELECT line1, line2 FROM app_branding WHERE id = 1") or {"line1": "nexus", "line2": "worklog"}
+    brand = branding()
     name = f"{brand['line1']} {brand['line2']}".strip().title()
     return Response(
         content=build_ics(row["user_id"], row["include_recurring"], name),

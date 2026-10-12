@@ -108,11 +108,16 @@ def test_desfazer_exclusao_de_projeto_devolve_tarefas(usuario):
     assert {usuario.get(f"/worklog/{i}").json()["project_id"] for i in ids} == {pid}
 
 
-def test_avisos_nao_bloqueiam_desfazer_dos_dias_uteis(usuario):
-    usuario.post("/auth/settings", {"work_days": 2})
-    usuario.c.put("/api/notifications", json={"morning": True}, headers=usuario._h())
-    h = [x for x in hist(usuario) if x["action"] == "settings.update"][0]
-    assert h["can_undo"] and usuario.post(f"/history/{h['id']}/undo").status_code == 200
+def test_mudar_dias_uteis_nao_reescreve_o_passado(usuario):
+    rid = usuario.post("/recurring", {"label": "Backup"}).json()["id"]
+    recuar_criacao(rid, 14)
+    hoje = dia_hoje(usuario)
+    antes = get_report_range(uid_de(usuario), hoje - timedelta(days=13), hoje - timedelta(days=1))["summary"]
+    usuario.post("/auth/settings", {"work_days": 127})  # passa a incluir o fim de semana
+    depois = get_report_range(uid_de(usuario), hoje - timedelta(days=13), hoje - timedelta(days=1))["summary"]
+    assert depois["recurring_total"] == antes["recurring_total"]  # sábados/domingos antigos não viram faltas
+    board = usuario.get("/board").json()["recurring"]
+    assert len(board) == 1 and board[0]["id"] != rid and board[0]["freq"] == "daily"
 
 
 def test_reativar_pelo_patch_nao_existe_mais(usuario):
@@ -152,7 +157,8 @@ def test_mesmos_numeros_no_quadro_resumo_e_relatorio(usuario):
     devidas = [r for r in board["recurring"] if r["due"]]
     hoje = dia_hoje(usuario)
     rep = get_report_range(uid_de(usuario), hoje, hoje)["summary"]
-    assert rep["recurring_total"] == len(devidas)
+    # hoje, a pendente ainda não é falta: só entram as devidas já feitas
+    assert rep["recurring_total"] == sum(1 for r in devidas if r["done_today"])
     assert rep["recurring_done"] == sum(1 for r in devidas if r["done_today"])
     assert rep["recurring_extra"] == sum(1 for r in board["recurring"] if not r["due"] and r["done_today"])
 
@@ -338,3 +344,76 @@ def test_ordem_das_abertas(usuario):
     ids["atrasada"] = usuario.post("/worklog", {"title": "d", "due_date": (hoje - timedelta(days=1)).isoformat(), "priority": 3}).json()["id"]
     ordem = [t["id"] for t in usuario.get("/board").json()["in_progress"]]
     assert ordem == [ids["atrasada"], ids["hoje"], ids["alta"], ids["normal_prazo"]]
+
+
+# ================================================================ rodada 3 --
+
+def test_troca_de_agenda_desfaz_por_inteiro(usuario):
+    rid = usuario.post("/recurring", {"label": "Backup"}).json()["id"]
+    recuar_criacao(rid, 10)
+    usuario.post(f"/recurring/{rid}/toggle", {"done": True})
+    novo = usuario.patch(f"/recurring/{rid}", {"freq": "weekly", "weekdays": 2}).json()["id"]
+    acoes = [x["action"] for x in hist(usuario, entity="recurring")]
+    assert acoes.count("recurring.replace") == 1 and "recurring.deactivate" not in acoes[:2]
+    criou_antiga = [x for x in hist(usuario, entity="recurring", entity_id=rid) if x["action"] == "recurring.create"][0]
+    assert usuario.post(f"/history/{criou_antiga['id']}/undo").status_code == 409  # antiga já encerrada
+    assert _desfazer(usuario, "recurring", novo).status_code == 200
+    board = {x["id"]: x for x in usuario.get("/board").json()["recurring"]}
+    assert list(board) == [rid] and board[rid]["done_today"] and board[rid]["freq"] == "daily"
+
+
+def test_desfazer_remocao_antiga_da_409(usuario):
+    rid = usuario.post("/recurring", {"label": "R"}).json()["id"]
+    usuario.delete(f"/recurring/{rid}")
+    db.execute("UPDATE audit_log SET created_at = now() - interval '10 days' WHERE entity_id = %s AND action = 'recurring.deactivate'", (rid,))
+    assert _desfazer(usuario, "recurring", rid).status_code == 409
+
+
+def test_ia_nao_desfaz_o_que_o_usuario_fez(usuario):
+    tid = usuario.post("/worklog", {"title": "Do humano"}).json()["id"]
+    h = hist(usuario, entity="worklog", entity_id=tid)[0]
+    b = Bearer(criar_chave(usuario)["token"])
+    res = b.tool("undo", history_id=h["id"])
+    assert res["isError"] and usuario.get(f"/worklog/{tid}").status_code == 200
+
+
+def test_desfazer_renomeacao_com_nome_ocupado_da_409(usuario):
+    pid = usuario.post("/projects", {"name": "A"}).json()["id"]
+    usuario.patch(f"/projects/{pid}", {"name": "B"})
+    usuario.post("/projects", {"name": "A"})
+    assert _desfazer(usuario, "project", pid).status_code == 409
+
+
+def test_ics_sem_descricao(usuario):
+    hoje = dia_hoje(usuario)
+    usuario.post("/worklog", {"title": "Prazo", "description": "senha do cliente: segredo", "due_date": hoje.isoformat()})
+    path = usuario.post("/calendar", {"include_recurring": False}).json()["path"]
+    ics = Api().c.get(path).text
+    assert "Prazo" in ics and "segredo" not in ics
+
+
+def test_troca_obrigatoria_recusa_a_mesma_senha(usuario):
+    r = usuario.post("/auth/change-password", {"current_password": SENHA_PADRAO, "new_password": SENHA_PADRAO})
+    assert r.status_code == 400
+
+
+def test_ip_v6_agrupa_por_64_e_limitador_cheio_recusa_novas():
+    from types import SimpleNamespace
+    from app.deps import client_ip
+    from app.security import RateLimiter
+    req = lambda ip: SimpleNamespace(headers={"x-client-ip": ip}, client=None)
+    assert client_ip(req("2001:db8:1:2:aaaa::1")) == client_ip(req("2001:db8:1:2:bbbb::9")) == "2001:db8:1:2::/64"
+    assert client_ip(req("203.0.113.5")) == "203.0.113.5"
+    lim = RateLimiter(max_hits=5, window_seconds=60)
+    lim._PRUNE_AT = 3
+    for k in ("a", "b", "c"):
+        assert lim.allow(k)
+    assert not lim.allow("nova") and lim.allow("a")  # cheio: recusa a nova, não zera as antigas
+
+
+def test_rotina_pendente_hoje_nao_fica_para_tras(usuario):
+    rid = usuario.post("/recurring", {"label": "Revisar alertas"}).json()["id"]
+    recuar_criacao(rid, 2)
+    hoje = dia_hoje(usuario)
+    r = get_report_range(uid_de(usuario), hoje, hoje)
+    assert all(x["due"] == 0 for x in r["recurring_stats"])  # hoje ainda dá tempo

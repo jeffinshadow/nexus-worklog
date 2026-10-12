@@ -1,4 +1,5 @@
 import re
+import threading
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -7,11 +8,13 @@ from .. import db
 from ..config import config
 from ..deps import active_user
 from ..security import pdf_limiter
+from .branding import branding
 from ..report_pdf import build_report_pdf
 from ..services import app_today, get_report_range
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
+_pdf_slot = threading.BoundedSemaphore(1)
 MAX_RANGE_DAYS = 366       # período escolhido, em dias (inclusivo)
 MAX_PROJECT_DAYS = 3 * 366  # "projeto inteiro": no máximo os últimos ~3 anos
 
@@ -70,10 +73,14 @@ def build_pdf_response(user_email: str, user_id: int, start: date | None, end: d
         project["truncated"] = truncated
 
     data = get_report_range(user_id, start, end, project)
-    brand = db.query_one("SELECT line1, line2, logo FROM app_branding WHERE id = 1") or {}
-    if brand.get("logo") is not None:
-        brand["logo"] = bytes(brand["logo"])
-    pdf = build_report_pdf(user_email, start, end, data, brand)
+    brand = branding()
+    # Um PDF por vez no servidor (o fpdf2 monta tudo em memória numa VM pequena).
+    if not _pdf_slot.acquire(timeout=5):
+        raise HTTPException(status_code=429, detail="outro relatório está sendo gerado; tente em instantes")
+    try:
+        pdf = build_report_pdf(user_email, start, end, data, brand)
+    finally:
+        _pdf_slot.release()
 
     slug = re.sub(r"[^a-zA-Z0-9._-]+", "-", user_email).strip("-").lower() or "usuario"
     if project:

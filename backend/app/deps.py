@@ -1,3 +1,4 @@
+import ipaddress
 import hmac
 from datetime import datetime, timedelta, timezone
 
@@ -16,10 +17,15 @@ def client_ip(request: Request) -> str:
     endereco da conexao. Nao usamos X-Forwarded-For: o primeiro valor dele vem
     do proprio cliente e pode ser forjado para escapar do rate limit.
     """
-    real = request.headers.get("x-client-ip")
-    if real:
-        return real.strip()
-    return request.client.host if request.client else "unknown"
+    real = (request.headers.get("x-client-ip") or "").strip()
+    ip = real or (request.client.host if request.client else "unknown")
+    # IPv6: um cliente costuma ter um /64 inteiro; agrupa para o limite valer.
+    if ":" in ip:
+        try:
+            return str(ipaddress.ip_network(f"{ip}/64", strict=False))
+        except ValueError:
+            pass
+    return ip
 
 
 def set_session_cookie(response: Response, token: str) -> None:
@@ -89,7 +95,7 @@ def _load_token(raw: str) -> dict:
             detail="chave de API inválida, revogada ou vencida",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    if not token_limiter.allow(f"tok:{row['token_id']}"):
+    if not token_limiter.allow(f"tok:{row['user_id']}"):  # por pessoa: 20 chaves não multiplicam o limite
         raise HTTPException(status_code=429, detail="muitas requisições com esta chave, aguarde um minuto")
     now = datetime.now(timezone.utc)
     # "Último uso" com resolução de 1 minuto: evita uma escrita por requisição.

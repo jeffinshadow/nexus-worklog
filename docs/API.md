@@ -52,8 +52,6 @@ Legenda: **S** = só sessão do app · **W** = exige escopo `write` (chave) ou C
 
 | Rota | | Corpo / observação |
 | --- | --- | --- |
-| `GET /config` | público | `{registration_open}` |
-| `POST /register` | público | `{email, password}` — só com `REGISTRATION_OPEN=true` |
 | `POST /login` | público | `{email, password}` → identidade + `csrf_token`; limite por IP e por e-mail (falhas) |
 | `POST /logout` | S W | |
 | `GET /me` | | `{id, email, role, must_change_password, work_days, tz, csrf_token}` |

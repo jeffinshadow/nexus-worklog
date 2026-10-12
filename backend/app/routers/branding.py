@@ -40,21 +40,24 @@ def _sniff(data: bytes) -> str | None:
     return None
 
 
-def _row():
-    return db.query_one(
-        "SELECT line1, line2, logo IS NOT NULL AS has_logo, "
-        "extract(epoch FROM updated_at)::bigint AS v FROM app_branding WHERE id = 1"
-    )
+def branding() -> dict:
+    """A identidade visual (a linha id=1 sempre existe: sql/005). `logo` em bytes
+    ou None — para o PDF, o e-mail e o calendário."""
+    r = db.query_one("""SELECT line1, line2, logo, extract(epoch FROM updated_at)::bigint AS v
+                          FROM app_branding WHERE id = 1""")
+    if r["logo"] is not None:
+        r["logo"] = bytes(r["logo"])
+    return r
 
 
 @router.get("/api/branding")
 def get_branding():
-    r = _row() or {"line1": "nexus", "line2": "worklog", "has_logo": False, "v": 0}
+    r = branding()
     return {
         "line1": r["line1"],
         "line2": r["line2"],
         # URL versionada: troca o logo -> muda a URL -> cache não segura o antigo.
-        "logo": f"/api/branding/logo?v={r['v']}" if r["has_logo"] else None,
+        "logo": f"/api/branding/logo?v={r['v']}" if r["logo"] is not None else None,
     }
 
 
@@ -76,7 +79,7 @@ def get_logo():
 
 @router.put("/api/admin/branding")
 def put_branding(data: BrandingIn, admin=Depends(require_admin_csrf)):
-    before = _row()
+    before = branding()
     db.execute(
         "UPDATE app_branding SET line1 = %s, line2 = %s, updated_at = now(), updated_by = %s WHERE id = 1",
         (data.line1.strip(), data.line2.strip(), admin["user_id"]),

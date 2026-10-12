@@ -36,15 +36,7 @@ def execute(sql: str, params=None) -> int:
 
 
 def execute_script(sql_text: str) -> None:
-    # psycopg3 (protocolo estendido) executa um comando por vez; dividimos o
-    # script em statements. Removemos linhas de comentario (-- ...) e linhas em
-    # branco antes do split, para que qualquer ';' dentro de um comentario nao
-    # quebre um statement. O schema usa apenas comentarios de linha inteira.
-    lines = [
-        ln for ln in sql_text.splitlines() if not ln.lstrip().startswith("--")
-    ]
-    cleaned = "\n".join(lines)
-    statements = [s.strip() for s in cleaned.split(";") if s.strip()]
-    with pool.connection() as conn, conn.cursor() as cur:
-        for stmt in statements:
-            cur.execute(stmt)
+    """Roda um arquivo .sql inteiro. Sem parâmetros, o psycopg 3 aceita vários
+    comandos numa chamada só (e numa transação: ou o arquivo todo, ou nada)."""
+    with pool.connection() as conn:
+        conn.execute(sql_text)

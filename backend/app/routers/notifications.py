@@ -1,24 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
 
 from .. import audit, db, mailer, notify
 from ..deps import web_active, web_active_csrf
+from ..schemas import PrefsIn
 from ..security import RateLimiter
 from ..services import app_today
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
 test_limiter = RateLimiter(max_hits=3, window_seconds=600)
-
-
-class PrefsIn(BaseModel):
-    morning: bool = False
-    morning_hour: int = Field(default=8, ge=0, le=23)
-    evening: bool = False
-    evening_hour: int = Field(default=17, ge=0, le=23)
-    weekly: bool = False
-    weekly_hour: int = Field(default=8, ge=0, le=23)
-    show_titles: bool = True
 
 
 def _out(uid: int, email: str) -> dict:

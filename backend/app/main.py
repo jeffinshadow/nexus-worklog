@@ -1,18 +1,17 @@
+import asyncio
 import logging
 import pathlib
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from pydantic import EmailStr, TypeAdapter, ValidationError
 
-from . import db
+from . import db, notify
 from .config import config
-import asyncio
-
-from . import notify
-from .routers import (admin, auth, board, branding, calendar, dashboard, history, mcp, notifications, projects,
-                      recurring, reports, search, summary, tokens, worklog)
-from .security import hash_password
+from .routers import (admin, auth, board, branding, calendar, dashboard, export, history, mcp, notifications,
+                      projects, recurring, reports, search, summary, tokens, worklog)
+from .security import Busy, hash_password
 
 SQL_DIR = pathlib.Path(__file__).resolve().parent.parent / "sql"
 
@@ -65,7 +64,12 @@ app = FastAPI(
     openapi_url=None,
 )
 
+
+@app.exception_handler(Busy)
+async def _busy(request: Request, exc: Busy):
+    return JSONResponse({"detail": "servidor ocupado, tente de novo em instantes"}, status_code=503)
+
 for module in (auth, recurring, worklog, board, dashboard, reports, admin, history, tokens, mcp, branding, projects,
-               summary, search, calendar, notifications):
+               summary, search, export, calendar, notifications):
     app.include_router(module.router)
 app.include_router(worklog.items)  # /api/notes, /api/checklist, /api/time

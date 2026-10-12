@@ -25,10 +25,6 @@
       </div>
       <h1 class="sr-only">Entrar no Nexus Worklog</h1>
 
-      <div class="seg seg-sm hidden" role="tablist" id="auth-tabs">
-        <button id="tab-login" type="button" class="chip-btn" role="tab" aria-selected="true">Entrar</button>
-        <button id="tab-register" type="button" class="chip-btn" role="tab" aria-selected="false">Criar conta</button>
-      </div>
 
       <form id="form-login" autocomplete="on">
         <div class="field">
@@ -43,20 +39,8 @@
         <button class="btn btn-primary full" type="submit">Entrar</button>
       </form>
 
-      <form id="form-register" class="hidden" autocomplete="on">
-        <div class="field">
-          <label for="reg-email">E-mail</label>
-          <input id="reg-email" name="email" type="email" required autocomplete="username">
-        </div>
-        <div class="field">
-          <label for="reg-password">Senha (mínimo 10 caracteres)</label>
-          <input id="reg-password" name="password" type="password" required minlength="10" autocomplete="new-password">
-        </div>
-        <p class="error-text" id="reg-error"></p>
-        <button class="btn btn-primary full" type="submit">Criar conta</button>
-      </form>
 
-      <p class="auth-foot hidden" id="invite-note">acesso por convite · peça ao administrador</p>
+      <p class="auth-foot">acesso por convite · peça ao administrador</p>
     </div>
   </div>
 

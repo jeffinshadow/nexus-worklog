@@ -27,7 +27,7 @@ def _sun_index(d: date) -> int:
     return (d.weekday() + 1) % 7
 
 
-def _week_start(d: date) -> date:
+def week_start(d: date) -> date:
     return d - timedelta(days=_sun_index(d))
 
 
@@ -108,14 +108,14 @@ _ROTINAS_SQL = """
      WHERE r.user_id = %(uid)s AND (r.active OR r.deactivated_at IS NOT NULL)"""
 
 
-def _rotinas(user_id: int, task_id: int | None = None) -> list[dict]:
+def rotinas(user_id: int, task_id: int | None = None) -> list[dict]:
     extra = " AND r.id = %(id)s" if task_id is not None else ""
     return db.query_all(_ROTINAS_SQL + extra + " ORDER BY r.position, r.id",
                         {"tz": config.APP_TZ, "uid": user_id, "id": task_id})
 
 
 def recurring_vigente(task_id: int, user_id: int, day: date) -> bool:
-    return any(r["start_d"] <= day <= r["end_d"] for r in _rotinas(user_id, task_id))
+    return any(r["start_d"] <= day <= r["end_d"] for r in rotinas(user_id, task_id))
 
 
 # Concluídas no quadro: as mais recentes (o resto fica no relatório/exportação).
@@ -134,7 +134,7 @@ def get_board(user_id: int, day: date | None = None, project: int | None = None)
     mask = work_mask(user_id)
     feitas = {r["task_id"] for r in db.query_all(
         "SELECT task_id FROM recurring_completions WHERE user_id = %s AND completed_date = %s", (user_id, day))}
-    recurring = [r for r in _rotinas(user_id) if r["start_d"] <= day <= r["end_d"]]
+    recurring = [r for r in rotinas(user_id) if r["start_d"] <= day <= r["end_d"]]
     for r in recurring:
         r["done_today"] = r["id"] in feitas
     filtro_proj, params = "", [user_id]
@@ -173,7 +173,7 @@ def get_board(user_id: int, day: date | None = None, project: int | None = None)
 
 
 def _recurring_tasks_and_completions(user_id: int, since: date, until: date):
-    tasks = _rotinas(user_id)
+    tasks = rotinas(user_id)
     completions = db.query_all(
         """
         SELECT task_id, completed_date
@@ -192,11 +192,11 @@ def get_dashboard(user_id: int) -> dict:
     tasks, completions = _recurring_tasks_and_completions(
         user_id, today - timedelta(days=_STREAK_LOOKBACK), today
     )
-    return {"analytics": get_dashboard_analytics(user_id, tasks, completions, mask, today)}
+    return get_dashboard_analytics(user_id, tasks, completions, mask, today)
 
 
 # Janelas dos gráficos analíticos (em dias / semanas, sempre no fuso do app).
-_HEAT_WEEKS = 8          # série diária: calendário mostra 4 sem., tendência 8 sem.
+_HEAT_WEEKS = 4          # calendário de aderência
 _ADHERENCE_DAYS = 30     # ranking de aderência por tarefa
 _THROUGHPUT_WEEKS = 4    # vazão semanal de tarefas
 _PROJECT_DAYS = 30       # tempo por projeto
@@ -233,7 +233,7 @@ def get_dashboard_analytics(user_id: int, tasks, completions, mask: int, today: 
     fuso do app; `today` é a referência única.
     """
     tz = config.APP_TZ
-    tp_start = _week_start(today) - timedelta(days=(_THROUGHPUT_WEEKS - 1) * 7)
+    tp_start = week_start(today) - timedelta(days=(_THROUGHPUT_WEEKS - 1) * 7)
     pont = db.query_all(
         """
         SELECT (completed_at AT TIME ZONE %s)::date AS done_d
@@ -259,8 +259,6 @@ def get_dashboard_analytics(user_id: int, tasks, completions, mask: int, today: 
           count(*) FILTER (WHERE status = 'todo')::int        AS todo,
           count(*) FILTER (WHERE status = 'in_progress')::int AS in_progress,
           count(*) FILTER (WHERE status = 'blocked')::int     AS blocked,
-          count(*) FILTER (WHERE status <> 'done' AND due_date IS NOT NULL
-                             AND due_date < %s)::int           AS overdue,
           count(*) FILTER (WHERE status <> 'done'
                              AND %s - (created_at AT TIME ZONE %s)::date < 7)::int          AS age_new,
           count(*) FILTER (WHERE status <> 'done'
@@ -270,7 +268,7 @@ def get_dashboard_analytics(user_id: int, tasks, completions, mask: int, today: 
           FROM worklog_tasks
          WHERE user_id = %s
         """,
-        (today, today, tz, today, tz, today, tz, user_id),
+        (today, tz, today, tz, today, tz, user_id),
     )
 
     # Índices das completions de recorrentes.
@@ -279,26 +277,19 @@ def get_dashboard_analytics(user_id: int, tasks, completions, mask: int, today: 
         dates_by_task.setdefault(c["task_id"], set()).add(c["completed_date"])
 
     # 1) Heatmap: série diária (done, slots) das últimas _HEAT_WEEKS semanas.
-    #    _week_start(today) é um domingo, então heat_start também é domingo:
+    #    week_start(today) é um domingo, então heat_start também é domingo:
     #    cada coluna do calendário é uma semana começando no domingo.
-    heat_start = _week_start(today) - timedelta(days=(_HEAT_WEEKS - 1) * 7)
+    heat_start = week_start(today) - timedelta(days=(_HEAT_WEEKS - 1) * 7)
     heat_days = []
     d = heat_start
-    by_id = {t["id"]: t for t in tasks}
     tasks_done_on: dict[date, set] = {}
     for c in completions:
         tasks_done_on.setdefault(c["completed_date"], set()).add(c["task_id"])
     while d <= today:
         due_ids = {t["id"] for t in tasks if t["start_d"] <= d <= t["end_d"] and is_due(t, d, mask)}
         feitos = tasks_done_on.get(d, set())
-        # Fora da agenda da tarefa: conta como extra, para não inflar a
-        # tendência semanal (done/slots). Dia sem nada devido = quadro vazio.
-        heat_days.append({
-            "date": d,
-            "slots": len(due_ids),
-            "done": len(feitos & due_ids),
-            "extra": len({i for i in feitos - due_ids if i in by_id}),
-        })
+        # Feito fora da agenda não entra (é extra). Dia sem nada devido = quadro vazio.
+        heat_days.append({"date": d, "slots": len(due_ids), "done": len(feitos & due_ids)})
         d += timedelta(days=1)
 
     # 2) Ranking de aderência por tarefa (últimos _ADHERENCE_DAYS) + streak atual.
@@ -307,16 +298,18 @@ def get_dashboard_analytics(user_id: int, tasks, completions, mask: int, today: 
     for t in tasks:
         s = max(win_start, t["start_d"])
         e = min(today, t["end_d"])
+        dts = dates_by_task.get(t["id"], set())
         slots = _due_between(t, s, e, mask)
+        if e == today and is_due(t, today, mask) and today not in dts:
+            slots -= 1  # hoje ainda dá tempo: pendente não é falta
         if slots <= 0:
             continue  # nenhum dia devido na janela: fora do ranking
-        dts = dates_by_task.get(t["id"], set())
         done = sum(1 for dd in dts if s <= dd <= e and is_due(t, dd, mask))
         task_rows.append({
             "label": t["label"], "slots": slots, "done": done,
             "streak": _current_streak(dts, today, mask, t),
         })
-    task_rows.sort(key=lambda r: (r["done"] / r["slots"], r["done"]), reverse=True)
+    task_rows.sort(key=lambda r: (r["done"] / r["slots"], r["done"]))  # a mais pulada primeiro (retro)
 
     # 3) Vazão: tarefas concluídas por semana (últimas _THROUGHPUT_WEEKS).
     week_counts: dict[date, int] = {}
@@ -325,21 +318,20 @@ def get_dashboard_analytics(user_id: int, tasks, completions, mask: int, today: 
         week_counts[wk] = 0
         wk += timedelta(days=7)
     for p in pont:
-        ws = _week_start(p["done_d"])
+        ws = week_start(p["done_d"])
         if ws in week_counts:
             week_counts[ws] += 1
     throughput = [{"week_start": w, "done": week_counts[w]} for w in sorted(week_counts)]
 
     return {
-        "heatmap": {"start": heat_start, "today": today, "days": heat_days},
-        "task_adherence": {"window_days": _ADHERENCE_DAYS, "tasks": task_rows},
+        "heatmap": {"days": heat_days},
+        "task_adherence": {"tasks": task_rows},
         "throughput": {"weeks": throughput},
-        "projects": {"days": _PROJECT_DAYS, "items": projects},
+        "projects": {"items": projects},
         "backlog": {
             "todo": backlog["todo"],
             "in_progress": backlog["in_progress"],
             "blocked": backlog["blocked"],
-            "overdue": backlog["overdue"],
             "aging": {
                 "new": backlog["age_new"],
                 "mid": backlog["age_mid"],
@@ -363,6 +355,7 @@ def get_report_range(user_id: int, start: date, end: date, project: dict | None 
     abertas dele; recorrentes não têm projeto e ficam de fora.
     """
     tz = config.APP_TZ
+    hoje = app_today()
     mask = work_mask(user_id)
     if project:
         tasks, completions = [], []
@@ -428,6 +421,8 @@ def get_report_range(user_id: int, start: date, end: date, project: dict | None 
         for t in vigentes:
             st = per_rec[t["id"]]
             feito = t["id"] in done_ids
+            if d == hoje and not feito:
+                continue  # hoje ainda dá tempo: pendente não é falta
             if is_due(t, d, mask):
                 st["due"] += 1
                 st["done"] += feito
@@ -534,7 +529,7 @@ def get_summary(user_id: int) -> dict:
     today = app_today()
     mask = work_mask(user_id)
     last = last_work_day(today, mask)
-    ws = _week_start(today)
+    ws = week_start(today)
     prev_s = ws - timedelta(days=7)
     prev_e = prev_s + (today - ws)
     week = _compact(get_report_range(user_id, ws, today))

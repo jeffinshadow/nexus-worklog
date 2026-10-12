@@ -284,7 +284,7 @@ def t_get_summary(ctx, args):
 
 def t_set_recurring(ctx, args):
     data = _call(ToggleIn, done=args.get("done", True), day=args.get("day"))
-    rid = args.get("recurring_id", args.get("task_id"))  # task_id: nome antigo, ainda aceito
+    rid = args.get("recurring_id")
     if rid is None:
         raise ToolError("informe recurring_id (veja list_recurring)")
     res = _call(recurring_routes.toggle, int(rid), data, user=ctx)
@@ -303,7 +303,12 @@ def t_get_history(ctx, args):
 
 
 def t_undo(ctx, args):
-    res = _call(history_routes.undo, int(args["history_id"]), user=ctx)
+    # A IA só desfaz o que ela mesma (esta chave) fez — nunca o trabalho do usuário.
+    hid = int(args["history_id"])
+    row = db.query_one("SELECT token_id FROM audit_log WHERE id = %s AND user_id = %s", (hid, ctx["user_id"]))
+    if not row or row["token_id"] != ctx.get("token_id"):
+        raise ToolError("só dá para desfazer ações feitas por esta chave")
+    res = _call(history_routes.undo, hid, user=ctx)
     return f"Desfeito: ação #{res['undid']} ({res['action']})."
 
 
@@ -366,7 +371,7 @@ TOOLS = {
                           "done": {"type": "boolean", "default": True},
                           "day": DATE}}),
     "get_history": (t_get_history, False, "Últimas ações na conta (app, API ou IA), com o que pode ser desfeito.",
-                    {"type": "object", "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20}}}),
+                    {"type": "object", "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 20}}}),
     "undo": (t_undo, True, "Desfaz uma ação do histórico (só a mais recente de cada item).",
              {"type": "object", "required": ["history_id"], "properties": {"history_id": {"type": "integer"}}}),
 }
