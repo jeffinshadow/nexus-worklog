@@ -239,7 +239,7 @@ button.column-toggle { display: none; }
 .hist-what { min-width: 0; font-size: .92rem; }
 .hist-what .who-badge { margin-right: 6px; }
 .hist-row.undone .hist-what { color: var(--dim); text-decoration: line-through; }
-.who-badge { display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-label); font-size: .68rem; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--outline-variant); color: var(--on-surface-variant); vertical-align: 1px; }
+.who-badge { display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-label); font-size: .78rem; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--outline-variant); color: var(--on-surface-variant); vertical-align: 1px; }
 .who-badge.mcp, .who-badge.api { color: var(--primary-hi); border-color: rgba(82,148,226,.4); }
 .who-badge.admin { color: var(--warning); border-color: rgba(253,214,99,.35); }
 .who-badge .ico { width: 12px; height: 12px; }
@@ -299,7 +299,7 @@ button.column-toggle { display: none; }
 .chart-val { fill: var(--on-surface-variant); font-size: 9px; font-weight: 600; }
 .chart-svg line { stroke-width: 1; }
 .heatmap { max-width: 100%; }
-.heat-axis { fill: var(--dim); font-size: 8px; }
+.heat-axis { fill: var(--dim); font-size: 12px; }  /* o mapa não estica: 12 = ~11px reais */
 .heat-legend { display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 10px; font-size: .72rem; color: var(--dim); }
 .heat-legend .heat-cell { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
 .rank-list { display: flex; flex-direction: column; gap: 11px; }
@@ -493,7 +493,7 @@ mark { background: rgba(82,148,226,.28); color: var(--on-surface); border-radius
 .fig { background: var(--surface); padding: 12px 14px; }
 .fig-n { font-size: 1.35rem; font-weight: 600; letter-spacing: -.03em; display: flex; align-items: baseline; gap: 6px; }
 .fig-l { font-size: .74rem; color: var(--on-surface-variant); margin-top: 2px; }
-.delta { font-family: var(--font-label); font-size: .68rem; font-weight: 500; letter-spacing: 0; color: var(--dim); }
+.delta { font-family: var(--font-label); font-size: .78rem; font-weight: 500; letter-spacing: 0; color: var(--dim); }
 .delta.up { color: var(--success); }
 .delta.down { color: var(--warning); }
 .sum-h { font-family: var(--font-label); font-size: .7rem; color: var(--primary); margin: 16px 0 6px; }
