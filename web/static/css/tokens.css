@@ -1,5 +1,5 @@
 /* Design tokens do Nexus — identidade da ShadowTec (a mesma do shadow.tec.br):
-   grafite + azul #5294E2, Google Sans Flex / Google Sans Code (OFL, self-hosted).
+   grafite + azul #5294E2, Google Sans Flex (OFL, self-hosted); rótulos e código usam variações dela.
    Os NOMES das variáveis vêm da versão Material: o dashboard desenha SVG com
    eles, então só os valores mudaram. Tema escuro único. */
 
@@ -10,17 +10,10 @@
   font-display: swap;
   font-style: normal;
 }
-@font-face {
-  font-family: "Google Sans Code";
-  src: url("/fonts/GoogleSansCode.woff2") format("woff2");
-  font-weight: 300 800;
-  font-display: swap;
-  font-style: normal;
-}
 
 :root {
   --font-sans: "Google Sans Flex", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "Google Sans Code", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --font-label: var(--font-sans);  /* rótulos e código: mesma família, diferenciada em app.css */
 
   /* Escala */
   --radius-s: 10px;

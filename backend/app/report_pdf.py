@@ -3,8 +3,8 @@
 Sem dependência do resto do app: recebe os dados já montados por
 services.get_report_range (+ a identidade visual) e devolve os bytes do PDF.
 
-Visual alinhado ao app: Google Sans Flex/Code (OFL, em assets/fonts, estáticas
-geradas da fonte variável do web), grafite + azul #5294E2, faixa escura no topo
+Visual alinhado ao app: Google Sans Flex (OFL, em assets/fonts, estáticas
+geradas da fonte variável do web; rótulos em Medium/SemiBold), grafite + azul #5294E2, faixa escura no topo
 com a linha azul do login e o lockup configurado pelo admin.
 """
 
@@ -115,7 +115,7 @@ class _Report(FPDF):
         for fam, style, file in [
             ("sans", "", "GoogleSansFlex-Regular"), ("sans", "B", "GoogleSansFlex-Bold"),
             ("sansm", "", "GoogleSansFlex-Medium"), ("sanss", "", "GoogleSansFlex-SemiBold"),
-            ("mono", "", "GoogleSansCode-Regular"), ("monom", "", "GoogleSansCode-Medium"),
+            ("label", "", "GoogleSansFlex-Medium"), ("labelb", "", "GoogleSansFlex-SemiBold"),
         ]:
             self.add_font(fam, style, str(FONTS / f"{file}.ttf"))
         self.set_margins(M, 22, M)
@@ -125,7 +125,7 @@ class _Report(FPDF):
     def header(self):
         if self.page_no() == 1:
             return
-        self.font("monom", 7, DIM)
+        self.font("labelb", 7, DIM)
         self.set_xy(M, 9)
         self.cell(90, 4, _s(f"{self.brand['line1']} {self.brand['line2']}".strip()))
         self.set_xy(self.w - M - 90, 9)
@@ -135,7 +135,7 @@ class _Report(FPDF):
 
     def footer(self):
         self.hline(self.h - 13, LINE)
-        self.font("mono", 6.8, DIM)
+        self.font("label", 6.8, DIM)
         self.set_xy(M, self.h - 11.5)
         self.cell(120, 4, _s(f"gerado em {self.generated} · {self.brand['line1']} {self.brand['line2']}".strip()))
         self.set_xy(self.w - M - 40, self.h - 11.5)
@@ -228,11 +228,11 @@ def _cover(pdf: _Report, user_email: str, data: dict) -> None:
     pdf.text_at(tx, y + 7.2, 80, 6.6, brand["line2"])
 
     rx, rw = pdf.w - M - 110, 110
-    pdf.font("monom", 7, ACCENT_MID)
+    pdf.font("labelb", 7, ACCENT_MID)
     pdf.text_at(rx, 12, rw, 4, "RELATÓRIO DE ATIVIDADES" + (" · PROJETO" if data.get("project") else ""), "R")
     pdf.font("sanss", 17, (255, 255, 255))
     pdf.text_at(rx, 17, rw, 8, data.get("project") or _period(data["start"], data["end"]), "R")
-    pdf.font("mono", 7.6, (161, 161, 168))
+    pdf.font("label", 7.6, (161, 161, 168))
     if data.get("whole_project"):
         escopo = "últimos 3 anos do projeto" if data.get("project_truncated") else "projeto completo"
         sub = f"{escopo} · desde {_dfull(data['start'])} · {user_email}"
@@ -268,7 +268,7 @@ def _kpis(pdf: _Report, data: dict) -> None:
     for i, (label, value, sub, pct) in enumerate(tiles):
         x = M + i * (w + gap)
         pdf.box(x, y, w, h, TILE, r=2.6)
-        pdf.font("monom", 6.6, DIM)
+        pdf.font("labelb", 6.6, DIM)
         pdf.text_at(x + 4.5, y + 4, w - 9, 3.5, label.upper())
         pdf.font("sanss", 20, INK)
         pdf.text_at(x + 4.5, y + 9, w - 9, 9, value)
@@ -291,14 +291,14 @@ def _section(pdf: _Report, title: str, note: str = "", need: float = 18, prio_le
     pdf.text_at(M, y, 120, 6, title)
     right = pdf.w - M
     if prio_legend:
-        pdf.font("mono", 7, DIM)
+        pdf.font("label", 7, DIM)
         lab = "prioridade alta"
         lw = pdf.get_string_width(lab)
         pdf.text_at(right - lw, y + 1, lw + 1, 5, lab)
         pdf.dot(right - lw - 3, y + 2.75, 1.5, WARN)
         right -= lw + 8
     if note:
-        pdf.font("mono", 7, DIM)
+        pdf.font("label", 7, DIM)
         pdf.text_at(right - 110, y + 1, 110, 5, note, "R")
     pdf.set_y(y + 9)
 
@@ -339,7 +339,7 @@ def _chart(pdf: _Report, data: dict) -> None:
 
     # grade leve
     pdf.hline(y0 + h - h / 1.12, LINE, x0, x0 + w, 0.15)
-    pdf.font("mono", 6.2, DIM)
+    pdf.font("label", 6.2, DIM)
     peak = top / 1.12
     pdf.text_at(x0, y0 - 3.6, 60, 3, ("pico " + _dur(round(peak * 60))) if use_time else f"pico {round(peak)} itens/{gran}")
 
@@ -360,7 +360,7 @@ def _chart(pdf: _Report, data: dict) -> None:
             if p_h:
                 pdf.box(cx - bw / 2, y0 + h - r_h - p_h, bw, p_h, ACCENT, r=0)
         if i % label_every == 0:
-            pdf.font("mono", 5.8, DIM)
+            pdf.font("label", 5.8, DIM)
             if gran == "mês":
                 lab = MESES[p["date"].month - 1] + (f" {p['date'].year % 100:02d}" if p["date"].month == 1 or i == 0 else "")
             else:
@@ -398,7 +398,7 @@ def _row_y(pdf: _Report, y: float, h: float, flow: bool) -> float:
 def _recurring_block(pdf: _Report, stats: list, x: float, w: float, y: float, flow: bool = False) -> float:
     pdf.font("sanss", 10, INK)
     pdf.text_at(x, y, w, 5, "Rotinas")
-    pdf.font("mono", 6.6, DIM)
+    pdf.font("label", 6.6, DIM)
     pdf.text_at(x, y + 0.4, w, 5, "feitas / devidas", "R")
     y += 8
     for r in stats:
@@ -408,10 +408,10 @@ def _recurring_block(pdf: _Report, stats: list, x: float, w: float, y: float, fl
         pct = round(100 * r["done"] / r["due"]) if r["due"] else None
         pdf.font("sans", 8.4, INK)
         pdf.text_at(x, y, w - 30, 4.2, pdf.fit(r["label"], w - 30))
-        pdf.font("monom", 7.4, INK if pct is None or pct >= 60 else WARN)
+        pdf.font("labelb", 7.4, INK if pct is None or pct >= 60 else WARN)
         right = f"{r['done']}/{r['due']}" + (f"  {pct}%" if pct is not None else "")
         pdf.text_at(x + w - 30, y, 30, 4.2, right, "R")
-        pdf.font("mono", 6.2, DIM)
+        pdf.font("label", 6.2, DIM)
         sub = _schedule(r) + (f" · +{r['extra']} extra" if r["extra"] else "")
         pdf.text_at(x, y + 4.3, w, 3.2, sub)
         pdf.box(x, y + 8, w, 1.1, LINE, r=0.55)
@@ -424,7 +424,7 @@ def _recurring_block(pdf: _Report, stats: list, x: float, w: float, y: float, fl
 def _projects_block(pdf: _Report, projects: list, x: float, w: float, y: float, flow: bool = False) -> float:
     pdf.font("sanss", 10, INK)
     pdf.text_at(x, y, w, 5, "Projetos")
-    pdf.font("mono", 6.6, DIM)
+    pdf.font("label", 6.6, DIM)
     pdf.text_at(x, y + 0.4, w, 5, "tempo · concluídas", "R")
     y += 8
     top = max([p["minutes"] for p in projects] + [1])
@@ -434,7 +434,7 @@ def _projects_block(pdf: _Report, projects: list, x: float, w: float, y: float, 
         pdf.dot(x, y + 1.1, 2.2, col)
         pdf.font("sans", 8.4, INK if p["name"] else INK2)
         pdf.text_at(x + 3.6, y, w - 34, 4.2, pdf.fit(p["name"] or "Sem projeto", w - 34))
-        pdf.font("monom", 7.4, INK)
+        pdf.font("labelb", 7.4, INK)
         right = (_dur(p["minutes"]) if p["minutes"] else "—") + f" · {p['done']}"
         pdf.text_at(x + w - 30, y, 30, 4.2, right, "R")
         pdf.box(x, y + 6, w, 1.1, LINE, r=0.55)
@@ -472,7 +472,7 @@ def _overview(pdf: _Report, data: dict) -> None:
 
 def _table_head(pdf: _Report, cols: list) -> None:
     y = pdf.get_y()
-    pdf.font("monom", 6.4, DIM)
+    pdf.font("labelb", 6.4, DIM)
     x = M
     for label, w, align in cols:
         pdf.text_at(x, y, w, 4, label.upper(), align)
@@ -483,7 +483,7 @@ def _table_head(pdf: _Report, cols: list) -> None:
 
 def _project_tag(pdf: _Report, name, color, x, y, w) -> None:
     if not name:
-        pdf.font("mono", 7, DIM)
+        pdf.font("label", 7, DIM)
         pdf.text_at(x, y, w, 4, "—")
         return
     pdf.dot(x, y + 1.05, 2, _hex(color))
@@ -517,7 +517,7 @@ def _deliveries(pdf: _Report, data: dict) -> None:
             pdf.add_page()
             _table_head(pdf, cols)
         y = pdf.get_y()
-        pdf.font("mono", 7.4, INK2)
+        pdf.font("label", 7.4, INK2)
         pdf.text_at(M, y, 15, 4.2, _d(r["done_date"]))
         x = M + 15
         if r["priority"] == 1:
@@ -533,10 +533,10 @@ def _deliveries(pdf: _Report, data: dict) -> None:
         if show_proj:
             _project_tag(pdf, r["project"], r["project_color"], x, y, wp)
             x += wp
-        pdf.font("monom", 7.6, ACCENT if r["minutes"] else DIM)
+        pdf.font("labelb", 7.6, ACCENT if r["minutes"] else DIM)
         pdf.text_at(x, y, 16, 4.2, _dur(r["minutes"]) if r["minutes"] else "—", "R")
         x += 16
-        pdf.font("mono", 7.4, OK if r["check_total"] and r["check_done"] == r["check_total"] else INK2)
+        pdf.font("label", 7.4, OK if r["check_total"] and r["check_done"] == r["check_total"] else INK2)
         pdf.text_at(x, y, 15, 4.2, f"{r['check_done']}/{r['check_total']}" if r["check_total"] else "—", "R")
         pdf.set_y(y + h - 1.6)
         pdf.hline(pdf.get_y(), LINE)
@@ -566,7 +566,7 @@ def _open(pdf: _Report, data: dict) -> None:
             _table_head(pdf, cols)
         y = pdf.get_y()
         st_col = {"blocked": BAD, "in_progress": ACCENT}.get(r["status"], INK2)
-        pdf.font("mono", 7.2, st_col)
+        pdf.font("label", 7.2, st_col)
         pdf.text_at(M, y, 24, 4.2, _STATUS.get(r["status"], r["status"]))
         x = M + 24
         if r["priority"] == 1:
@@ -579,14 +579,14 @@ def _open(pdf: _Report, data: dict) -> None:
             x += wp
         if r["due_date"]:
             late = r["due_date"] < today
-            pdf.font("monom" if late else "mono", 7.4, BAD if late else (WARN if r["due_date"] == today else INK2))
+            pdf.font("labelb" if late else "label", 7.4, BAD if late else (WARN if r["due_date"] == today else INK2))
             txt = ("atrasada · " if late else "hoje · " if r["due_date"] == today else "") + _d(r["due_date"])
         else:
-            pdf.font("mono", 7.4, DIM)
+            pdf.font("label", 7.4, DIM)
             txt = "—"
         pdf.text_at(x, y, 28, 4.2, txt, "R")
         x += 28
-        pdf.font("mono", 7.4, INK2)
+        pdf.font("label", 7.4, INK2)
         pdf.text_at(x, y, 15, 4.2, f"{r['check_done']}/{r['check_total']}" if r["check_total"] else "—", "R")
         pdf.set_y(y + 5.4)
         pdf.hline(pdf.get_y(), LINE)
@@ -646,7 +646,7 @@ def _diary(pdf: _Report, data: dict) -> None:
             month = (d.year, d.month)
             pdf.room(min(est, 40) + 10)
             ym = pdf.get_y()
-            pdf.font("monom", 7.4, ACCENT)
+            pdf.font("labelb", 7.4, ACCENT)
             pdf.text_at(M, ym, 80, 4, f"{MESES_LONGOS[d.month - 1]} {d.year}".upper())
             pdf.set_y(ym + 7)
         pdf.room(min(est, 40))
@@ -655,10 +655,10 @@ def _diary(pdf: _Report, data: dict) -> None:
         # coluna da data
         pdf.font("sanss", 17, INK)
         pdf.text_at(M, y - 0.6, 22, 7, str(d.day))
-        pdf.font("monom", 6.4, DIM)
+        pdf.font("labelb", 6.4, DIM)
         pdf.text_at(M, y + 6.6, 22, 3, f"{DIAS_CURTOS[d.weekday()]} · {MESES[d.month - 1]}")
         if not day["work_day"]:
-            pdf.font("mono", 5.8, WARN)
+            pdf.font("label", 5.8, WARN)
             pdf.text_at(M, y + 10, 22, 3, "não útil")
 
         # resumo da linha
@@ -672,7 +672,7 @@ def _diary(pdf: _Report, data: dict) -> None:
             bits.append(f"{len(day['pontual'])} concluída{'s' if len(day['pontual']) != 1 else ''}")
         if day["minutes"]:
             bits.append(_dur(day["minutes"]))
-        pdf.font("mono", 6.8, DIM)
+        pdf.font("label", 6.8, DIM)
         pdf.text_at(gx, y, gw, 3.6, "  ·  ".join(bits))
         pdf.set_y(y + 5)
 
@@ -688,7 +688,7 @@ def _diary(pdf: _Report, data: dict) -> None:
             pdf.text_at(gx + 3.6, yy, title_w, 4.4, pdf.fit(w["title"], title_w - 1))
             xr = gx + gw
             if w["minutes"]:
-                pdf.font("monom", 7.2, ACCENT)
+                pdf.font("labelb", 7.2, ACCENT)
                 pdf.text_at(xr - 14, yy, 14, 4.4, _dur(w["minutes"]), "R")
                 xr -= 16
             if show_proj and w["project"]:
@@ -699,7 +699,7 @@ def _diary(pdf: _Report, data: dict) -> None:
             for e in day["time"]:
                 pdf.room(5)
                 yy = pdf.get_y()
-                pdf.font("monom", 7.2, ACCENT)
+                pdf.font("labelb", 7.2, ACCENT)
                 pdf.text_at(gx, yy, 13, 4.2, _dur(e["minutes"]))
                 pdf.font("sans", 7.8, INK2)
                 txt = e["title"] + (f" — {e['note']}" if e["note"] else "")
