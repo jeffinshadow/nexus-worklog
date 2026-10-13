@@ -269,7 +269,7 @@ button.column-toggle { display: none; }
 .fluxo-grid .fluxo-body > .chart-svg { margin-top: auto; }
 .consist-grid { display: flex; flex-wrap: wrap; gap: var(--gap); align-items: stretch; }
 .consist-grid > .heat  { flex: 0 1 260px; min-width: 0; }
-.consist-grid > .grow  { flex: 1.4 1 360px; min-width: 0; max-width: 780px; }
+.consist-grid > .grow  { flex: 1.4 1 360px; min-width: 0; }
 .consist-grid > .compact { display: flex; flex-direction: column; }
 .consist-grid > .compact > :last-child { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; align-items: center; }
 .chart-svg.heatmap { width: auto; max-width: 100%; }
