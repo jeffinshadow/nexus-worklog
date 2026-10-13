@@ -117,6 +117,8 @@ input::placeholder { color: var(--dim); }
 .more-me { margin-bottom: 8px; }
 
 .main { min-width: 0; padding: 28px clamp(16px, 3vw, 40px) 48px; }
+/* Área útil única em todas as telas: cabeçalho, falas e painéis até 880px. */
+.main > * { max-width: 880px; }
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
 .page-head h1 { font-size: clamp(1.6rem, 2.6vw, 2.1rem); font-weight: 600; letter-spacing: -.035em; line-height: 1.1; margin-top: 4px; }
 .page-actions { display: flex; gap: 8px; flex-wrap: wrap; }
