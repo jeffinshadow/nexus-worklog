@@ -261,14 +261,16 @@ export function todayCard(b, sum, ctx) {
   const algo = st && (st.pontual_done || st.recurring_done || st.recurring_extra);
   const desde = me.assistant.summary_from ?? 840;
   const fechamento = algo || (b.work_day && t.hour * 60 + t.minute >= desde) ? closing(sum, pendentes) : null;
+  // Recapitulação: "Ontem, você concluiu…" vai no texto principal; o fechamento
+  // da sexta (com o botão do relatório) é um aviso.
   const r = recap(sum, t, ctx.go);
-  if (r.line) items.push({ key: "hoje:recap", lines: [{ line: r.line, actions: r.act ? [r.act] : [] }] });
+  if (r.line && r.act) items.push({ key: "hoje:recap", lines: [{ line: r.line, actions: [r.act] }] });
   if (b.work_day) items.push({ key: "hoje:daily", lines: [{ line: "Posso montar o texto da daily: ontem, hoje e impedimentos, pronto para colar no chat da equipe.",
     actions: [action("Copiar para a daily", () => copyDaily(b, sum))] }] });
   const ask = invite(me, ctx.onProfile);
   if (ask) items.push({ key: "hoje:nome", lines: [], extra: ask });
 
-  return stack("hoje", { hello: greeting(me.name), lines: [resumo, fechamento] }, items);
+  return stack("hoje", { hello: greeting(me.name), lines: [resumo, r.line && !r.act ? r.line : null, fechamento] }, items);
 }
 
 // --------------------------------------------------------- Retrospectiva --
