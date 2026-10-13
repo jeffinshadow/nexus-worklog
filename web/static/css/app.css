@@ -278,7 +278,7 @@ button.column-toggle { display: none; }
 /* ----------------------------------------------------- dashboard (SVG) -- */
 
 .dash-section { margin-bottom: 28px; }
-.dash-section-title { font-size: .76rem; font-family: var(--font-label); font-weight: 500; color: var(--primary); margin: 0 0 12px; letter-spacing: .02em; }
+.dash-section-title { font-size: .76rem; font-family: var(--font-label); color: var(--primary); margin: 0 0 12px; }
 .chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--gap); }
 .fluxo-grid > .chart-card { display: flex; flex-direction: column; }
 .fluxo-grid .fluxo-body { flex: 1 1 auto; display: flex; flex-direction: column; }
@@ -495,7 +495,7 @@ mark { background: rgba(82,148,226,.28); color: var(--on-surface); border-radius
 .fig { background: var(--surface); padding: 12px 14px; }
 .fig-n { font-size: 1.35rem; font-weight: 600; letter-spacing: -.03em; display: flex; align-items: baseline; gap: 6px; }
 .fig-l { font-size: .74rem; color: var(--on-surface-variant); margin-top: 2px; }
-.delta { font-family: var(--font-label); font-size: .78rem; font-weight: 500; letter-spacing: 0; color: var(--dim); }
+.delta { font-family: var(--font-label); font-size: .78rem; letter-spacing: 0; color: var(--dim); }
 .delta.up { color: var(--success); }
 .delta.down { color: var(--warning); }
 .sum-h { font-family: var(--font-label); font-size: .7rem; color: var(--primary); margin: 16px 0 6px; }
