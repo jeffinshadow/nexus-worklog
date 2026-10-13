@@ -97,7 +97,7 @@ input::placeholder { color: var(--dim); }
   padding: 22px 14px 16px; border-right: 1px solid var(--outline-variant);
   background: linear-gradient(180deg, #151517, var(--surface));
 }
-.sidebar > .lockup { padding: 0 12px; }
+.sidebar > .lockup { padding: 0 12px; --lock-fs: 1.255rem; }  /* símbolo + texto 25% maiores no menu */
 .nav { display: flex; flex-direction: column; gap: 2px; }
 .nav a, .nav-link {
   display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px;
