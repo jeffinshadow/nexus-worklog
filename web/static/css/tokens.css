@@ -25,7 +25,7 @@
   --radius-l: 999px;
   --gap: 16px;
   --gap-s: 8px;
-  --sidebar-w: 236px;
+  --sidebar-w: 283px;  /* 236 + 20% */
 
   /* Destaque (azul do Sway) */
   --primary: #5294E2;

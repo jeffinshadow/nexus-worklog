@@ -44,14 +44,20 @@ function closeCard(key, el) {
   }, ms);
 }
 
-// O cartão do assistente. parts: {key (tela, para fechar no X), hello, lines: [texto|nó], actions: [nó], extra: nó}
+// O cartão do assistente. parts: {key (tela, para fechar no X), hello, lines, actions: [nó], extra: nó}.
+// Cada linha é texto, um nó ou { line: texto|nó, actions: [botões] }: os botões
+// aparecem logo abaixo da frase que sugere a ação.
 export function card({ key = null, hello, lines = [], actions = [], extra = null, compact = false }) {
   const el = h("section", { class: "panel assist" + (compact ? " compact" : "") + (key && isClosed(key) ? " hidden" : ""),
     "aria-label": "Assistente", "data-key": key },
     h("span", { class: "assist-mark", "aria-hidden": "true" }, icon("spark")),
     h("div", { class: "assist-body" },
       hello ? h("p", { class: "assist-hello", text: hello }) : null,
-      ...lines.filter(Boolean).map((l) => (typeof l === "string" ? h("p", { text: l }) : l)),
+      ...lines.filter(Boolean).flatMap((l) => {
+        const item = l.line !== undefined ? l : { line: l, actions: [] };
+        const p = typeof item.line === "string" ? h("p", { text: item.line }) : item.line;
+        return item.actions && item.actions.length ? [p, h("div", { class: "assist-actions" }, ...item.actions)] : [p];
+      }),
       actions.length ? h("div", { class: "assist-actions" }, ...actions) : null,
       extra));
   if (key) el.append(h("button", { type: "button", class: "icon assist-close", title: "Fechar por enquanto",
@@ -205,8 +211,8 @@ export function todayCard(b, sum, ctx) {
     lines.push(`Para hoje: ${partes.filter(Boolean).join(" e ")}.`);
     if (open.length) {
       const first = open[0];
-      lines.push(h("p", {}, "Sugiro começar por ", h("strong", { text: q(first.title) }), `${why(first, today)}.`));
-      actions.push(action("Abrir tarefa", () => ctx.openTask(first.id)));
+      lines.push({ line: h("p", {}, "Sugiro começar por ", h("strong", { text: q(first.title) }), `${why(first, today)}.`),
+        actions: [action("Abrir tarefa", () => ctx.openTask(first.id))] });
     }
   } else {
     lines.push(b.recurring.some((r) => r.due !== false)
@@ -218,15 +224,15 @@ export function todayCard(b, sum, ctx) {
   // Tempo esquecido: concluídas hoje sem nenhum apontamento.
   const semTempo = b.done.filter((x) => x.completed_at && localDay(x.completed_at) === today && !x.minutes);
   if (semTempo.length) {
-    lines.push(h("p", {}, `${semTempo.length === 1 ? "Uma tarefa concluída hoje está" : `${semTempo.length} tarefas concluídas hoje estão`} sem tempo apontado: `,
-      ...semTempo.slice(0, 3).flatMap((x, i) => [i ? ", " : "", h("strong", { text: q(x.title) })]), semTempo.length > 3 ? " e outras." : "."));
-    for (const x of semTempo.slice(0, 2)) actions.push(action(`Apontar em ${q(x.title.length > 24 ? x.title.slice(0, 23) + "…" : x.title)}`, () => ctx.openTask(x.id)));
+    lines.push({ line: h("p", {}, `${semTempo.length === 1 ? "Uma tarefa concluída hoje está" : `${semTempo.length} tarefas concluídas hoje estão`} sem tempo apontado: `,
+      ...semTempo.slice(0, 3).flatMap((x, i) => [i ? ", " : "", h("strong", { text: q(x.title) })]), semTempo.length > 3 ? " e outras." : "."),
+      actions: semTempo.slice(0, 2).map((x) => action(`Apontar em ${q(x.title.length > 24 ? x.title.slice(0, 23) + "…" : x.title)}`, () => ctx.openTask(x.id))) });
   }
   if (b.work_day && t.hour >= 16) { const c = closing(sum, pendentes); if (c) lines.push(c); }
-  if (b.work_day) actions.push(action("Copiar para a daily", () => copyDaily(b, sum)));
   const r = recap(sum, t, ctx.go);
-  if (r.line) lines.push(r.line);
-  if (r.act) actions.push(r.act);
+  if (r.line) lines.push({ line: r.line, actions: r.act ? [r.act] : [] });
+  if (b.work_day) lines.push({ line: "Posso montar o texto da daily: ontem, hoje e impedimentos, pronto para colar no chat da equipe.",
+    actions: [action("Copiar para a daily", () => copyDaily(b, sum))] });
 
   return card({ hello: greeting(me.name), lines, actions, extra: invite(me, ctx.onProfile), key: "hoje" });
 }

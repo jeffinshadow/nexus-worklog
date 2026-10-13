@@ -118,8 +118,8 @@ input::placeholder { color: var(--dim); }
 .more-me { margin-bottom: 8px; }
 
 .main { min-width: 0; padding: 28px clamp(16px, 3vw, 40px) 48px; }
-/* Área útil única em todas as telas: cabeçalho, falas, painéis, Relatórios e Configurações até 880px. */
-.main > * { max-width: calc(880px / var(--ui-zoom)); }  /* 880px reais na tela, mesmo com a escala */
+/* Área útil única em todas as telas: cabeçalho, falas, painéis, Relatórios e Configurações até 900px. */
+.main > * { max-width: calc(900px / var(--ui-zoom)); }  /* 900px reais na tela, mesmo com a escala */
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
 .page-head h1 { font-size: clamp(1.6rem, 2.6vw, 2.1rem); font-weight: 600; letter-spacing: -.035em; line-height: 1.1; margin-top: 4px; }
 .page-actions { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -532,7 +532,7 @@ mark { background: rgba(82,148,226,.28); color: var(--on-surface); border-radius
 .profile-row .help { margin: 8px 0 0; }
 
 #assist-slot > .assist { margin-bottom: 22px; }  /* acima do título da página */
-/* As falas seguem a área útil (880px reais, em .main > *). */
+/* As falas seguem a área útil (900px reais, em .main > *). */
 .assist { position: relative; display: flex; gap: 14px; align-items: flex-start; border-color: rgba(82,148,226,.32);
   background: radial-gradient(520px circle at 0% 0%, rgba(82,148,226,.1), transparent 60%), linear-gradient(180deg, var(--surface-container), #161617); }
 .assist.compact { padding: 14px 18px; }
@@ -547,7 +547,8 @@ mark { background: rgba(82,148,226,.28); color: var(--on-surface); border-radius
 .assist-body p strong { color: var(--on-surface); font-weight: 600; }
 .assist.compact .assist-body p { margin: 4px 0 0; }
 .assist-body .assist-hello { margin: 2px 0 6px; font-size: 1.2rem; font-weight: 600; letter-spacing: -.01em; color: var(--on-surface); }
-.assist-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.assist-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 12px; }  /* logo abaixo da frase que sugere a ação */
+.assist-body > .assist-actions:last-child { margin-bottom: 0; }
 .assist-ask { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--outline-variant); }
 .assist-ask p { flex-basis: 100%; margin: 0 0 2px; }
 .assist-ask input { max-width: 280px; height: 36px; }
