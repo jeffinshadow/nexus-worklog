@@ -47,34 +47,46 @@ function closeCard(key, el) {
 // O cartão do assistente. parts: {key (tela, para fechar no X), hello, lines, actions: [nó], extra: nó}.
 // Cada linha é texto, um nó ou { line: texto|nó, actions: [botões] }: os botões
 // aparecem logo abaixo da frase que sugere a ação.
+function renderLines(lines) {
+  return lines.filter(Boolean).flatMap((l) => {
+    const item = l.line !== undefined ? l : { line: l, actions: [] };
+    const p = typeof item.line === "string" ? h("p", { text: item.line }) : item.line;
+    return item.actions && item.actions.length ? [p, h("div", { class: "assist-actions" }, ...item.actions)] : [p];
+  });
+}
+
+// main: a fala com avisos dentro; o X dela fecha tudo.
 export function card({ key = null, hello, lines = [], actions = [], extra = null, compact = false, main = false }) {
-  // main: a pílula principal de um grupo; quem some e reabre é o grupo inteiro.
-  const el = h("section", { class: "panel assist" + (compact ? " compact" : "") + (main ? " main" : "") + (key && !main && isClosed(key) ? " hidden" : ""),
-    "aria-label": "Assistente", "data-key": main ? null : key },
+  const el = h("section", { class: "panel assist" + (compact ? " compact" : "") + (key && isClosed(key) ? " hidden" : ""),
+    "aria-label": "Assistente", "data-key": key },
     h("span", { class: "assist-mark", "aria-hidden": "true" }, icon("spark")),
     h("div", { class: "assist-body" },
       hello ? h("p", { class: "assist-hello", text: hello }) : null,
-      ...lines.filter(Boolean).flatMap((l) => {
-        const item = l.line !== undefined ? l : { line: l, actions: [] };
-        const p = typeof item.line === "string" ? h("p", { text: item.line }) : item.line;
-        return item.actions && item.actions.length ? [p, h("div", { class: "assist-actions" }, ...item.actions)] : [p];
-      }),
+      ...renderLines(lines),
       actions.length ? h("div", { class: "assist-actions" }, ...actions) : null,
       extra));
   if (key) el.append(h("button", { type: "button", class: "icon assist-close",
-    title: main ? "Fechar todas as falas por enquanto" : "Fechar esta fala por enquanto",
-    "aria-label": main ? "Fechar todas as falas do assistente" : "Fechar esta fala do assistente",
-    onClick: () => closeCard(key, main ? el.closest(".assist-stack") || el : el) }, icon("close")));
+    title: main ? "Fechar o assistente por enquanto" : "Fechar esta fala por enquanto",
+    "aria-label": main ? "Fechar o assistente e todos os avisos" : "Fechar esta fala do assistente",
+    onClick: () => closeCard(key, el) }, icon("close")));
   return el;
 }
 
-// Grupo de falas: a pílula principal (o X dela fecha todas) e uma pílula por
-// aviso, cada uma com o próprio X. Sem avisos, fica só a principal.
+// Um aviso dentro da fala principal: sem moldura própria, só um fundo leve e
+// um X discreto para dispensá-lo sem fechar o resto.
+function noticeItem({ key, lines = [], extra = null }) {
+  const el = h("div", { class: "assist-item" + (isClosed(key) ? " hidden" : ""), "data-key": key },
+    h("div", { class: "assist-item-body" }, ...renderLines(lines), extra),
+    h("button", { type: "button", class: "icon assist-item-close", title: "Dispensar este aviso por enquanto",
+      "aria-label": "Dispensar este aviso", onClick: () => closeCard(key, el) }, icon("close")));
+  return el;
+}
+
+// A fala principal com os avisos dentro dela: tudo uma coisa só.
 function stack(key, mainParts, items) {
-  const subs = items.filter(Boolean).map((it) => card({ ...it, compact: true }));
-  const head = card({ ...mainParts, key, main: subs.length > 0 });
-  if (!subs.length) return head;
-  return h("div", { class: "assist-stack" + (isClosed(key) ? " hidden" : ""), "data-key": key }, head, ...subs);
+  const notices = items.filter(Boolean).map(noticeItem);
+  return card({ ...mainParts, key, main: notices.length > 0,
+    extra: notices.length ? h("div", { class: "assist-items" }, ...notices) : null });
 }
 
 function greeting(name) {
@@ -199,7 +211,7 @@ function invite(me, onProfile) {
     return h("div", { class: "assist-ask" },
       h("p", { text: "Qual nome devo usar com você?" }), input,
       action("Salvar", save, true),
-      action("Agora não", (ev) => { localStorage.setItem(ASK_NAME, "1"); (ev.target.closest(".assist.compact") || ev.target.closest(".assist-ask")).remove(); }));
+      action("Agora não", (ev) => { localStorage.setItem(ASK_NAME, "1"); (ev.target.closest(".assist-item") || ev.target.closest(".assist-ask")).remove(); }));
   }
   return null;
 }
@@ -241,7 +253,7 @@ export function todayCard(b, sum, ctx) {
       ...semTempo.slice(0, 3).flatMap((x, i) => [i ? ", " : "", h("strong", { text: q(x.title) })]), semTempo.length > 3 ? " e outras." : "."),
       actions: semTempo.slice(0, 2).map((x) => action(`Apontar em ${q(x.title.length > 24 ? x.title.slice(0, 23) + "…" : x.title)}`, () => ctx.openTask(x.id))) }] });
   }
-  if (b.work_day && t.hour >= 16) { const c = closing(sum, pendentes); if (c) items.push({ key: "hoje:fechamento", lines: [c] }); }
+  const fechamento = b.work_day && t.hour >= 16 ? closing(sum, pendentes) : null;
   const r = recap(sum, t, ctx.go);
   if (r.line) items.push({ key: "hoje:recap", lines: [{ line: r.line, actions: r.act ? [r.act] : [] }] });
   if (b.work_day) items.push({ key: "hoje:daily", lines: [{ line: "Posso montar o texto da daily: ontem, hoje e impedimentos, pronto para colar no chat da equipe.",
@@ -249,7 +261,7 @@ export function todayCard(b, sum, ctx) {
   const ask = invite(me, ctx.onProfile);
   if (ask) items.push({ key: "hoje:nome", lines: [], extra: ask });
 
-  return stack("hoje", { hello: greeting(me.name), lines: [resumo] }, items);
+  return stack("hoje", { hello: greeting(me.name), lines: [resumo, fechamento] }, items);
 }
 
 // --------------------------------------------------------- Retrospectiva --

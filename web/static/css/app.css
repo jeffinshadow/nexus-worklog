@@ -532,11 +532,17 @@ mark { background: rgba(82,148,226,.28); color: var(--on-surface); border-radius
 .profile-row { display: flex; gap: 18px; align-items: center; margin-bottom: 12px; }
 .profile-row .help { margin: 8px 0 0; }
 
-#assist-slot > .assist, #assist-slot > .assist-stack { margin-bottom: 22px; }  /* acima do título da página */
-/* Grupo: a pílula principal (o X dela fecha todas) e uma pílula por aviso. */
-.assist-stack { display: flex; flex-direction: column; gap: 10px; }
-.assist-stack > .assist.compact { border-color: var(--outline-variant); background: linear-gradient(180deg, var(--surface-container), #161617); }
-.assist-body > .assist-ask:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+#assist-slot > .assist { margin-bottom: 22px; }  /* acima do título da página */
+/* Avisos dentro da fala principal: sem moldura, só um fundo leve, para tudo
+   parecer uma coisa só; cada um com um X discreto. */
+.assist-items { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; }
+.assist-item { position: relative; padding: 10px 40px 10px 14px; border-radius: 12px; background: rgba(255,255,255,.028); }
+.assist-item .assist-item-body > p:first-child { margin-top: 0; }
+.assist-item .assist-actions { margin-bottom: 2px; }
+.assist-item-close { position: absolute; top: 4px; right: 4px; width: 30px; height: 30px; opacity: .55; }
+.assist-item-close:hover, .assist-item-close:focus-visible { opacity: 1; }
+.assist-item-close .ico { width: 15px; height: 15px; }
+.assist-item-body > .assist-ask:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
 /* As falas seguem a área útil (990px reais, em .main > *). */
 .assist { position: relative; display: flex; gap: 14px; align-items: flex-start; border-color: rgba(82,148,226,.32);
   background: radial-gradient(520px circle at 0% 0%, rgba(82,148,226,.1), transparent 60%), linear-gradient(180deg, var(--surface-container), #161617); }
