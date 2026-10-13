@@ -13,8 +13,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Nexus">
   <link rel="preload" as="font" type="font/woff2" href="/fonts/GoogleSansFlex.woff2" crossorigin>
-  <link rel="stylesheet" href="/css/tokens.css?v=25">
-  <link rel="stylesheet" href="/css/app.css?v=25">
+  <link rel="stylesheet" href="/css/tokens.css?v=28">
+  <link rel="stylesheet" href="/css/app.css?v=28">
 </head>
 <body>
   <!-- Ícones (traço 1.75, 24px), sem script/style inline (CSP). -->
@@ -30,6 +30,8 @@
     <symbol id="icon-logout" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></g></symbol>
     <symbol id="icon-add" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></g></symbol>
     <symbol id="icon-edit" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></g></symbol>
+    <symbol id="icon-play" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m10 8.5 5 3.5-5 3.5z"/></g></symbol>
+    <symbol id="icon-stop" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><rect x="9" y="9" width="6" height="6" rx="1"/></g></symbol>
     <symbol id="icon-check" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></g></symbol>
     <symbol id="icon-chevron" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></g></symbol>
     <symbol id="icon-left" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></g></symbol>
@@ -95,6 +97,7 @@
         <a href="#/admin" data-view="admin" class="hidden" id="nav-admin"><svg class="ico"><use href="#icon-admin"></use></svg><span>Admin</span></a>
       </nav>
       <div class="sidebar-foot">
+        <div class="timer-chip hidden" id="timer-side" role="status" aria-live="polite"></div>
         <a href="#/config" data-view="config" class="nav-link"><svg class="ico"><use href="#icon-settings"></use></svg><span>Configurações</span></a>
         <div class="who">
           <a href="#/config?aba=conta" class="who-me" id="who" title="Seu perfil"></a>
@@ -172,6 +175,10 @@
   <dialog id="dialog-worklog">
     <h2 id="dlg-wl-title">Tarefa</h2>
     <form id="form-worklog">
+      <div class="field hidden" id="wl-template-wrap">
+        <label for="wl-template">Modelo</label>
+        <select id="wl-template"></select>
+      </div>
       <div class="field">
         <label for="wl-title">Título</label>
         <input id="wl-title" type="text" required maxlength="200">
@@ -209,6 +216,15 @@
           </select>
         </div>
       </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="wl-ticket">Chamado (opcional)</label>
+          <input id="wl-ticket" type="text" maxlength="41" placeholder="ex.: 4821" autocomplete="off">
+        </div>
+        <div class="field field-check">
+          <label class="weekday-option"><input id="wl-after" type="checkbox"><span>Plantão / fora do horário</span></label>
+        </div>
+      </div>
       <div class="field" id="wl-time-wrap">
         <label for="wl-time">Tempo gasto (opcional)</label>
         <input id="wl-time" type="text" inputmode="text" maxlength="10" placeholder="ex.: 45, 1h30, 2:15">
@@ -223,8 +239,9 @@
   </dialog>
 
   <div class="toasts" id="toasts" aria-live="polite"></div>
+  <div class="timer-chip timer-mobile hidden" id="timer-mobile" role="status" aria-live="polite"></div>
 
-  <script type="module" src="/js/app.js?v=25"></script>
-  <script type="module" src="/js/pwa.js?v=25"></script>
+  <script type="module" src="/js/app.js?v=28"></script>
+  <script type="module" src="/js/pwa.js?v=28"></script>
 </body>
 </html>

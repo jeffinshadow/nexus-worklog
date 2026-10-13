@@ -1,9 +1,10 @@
 // Detalhe de uma tarefa: checklist, tempo apontado e anotações.
 // Abre por cima do quadro/Hoje; ao fechar, quem abriu recarrega (onChange).
 import { api } from "./api.js";
-import { h, icon, clear, addDays, shortDate, dateTime } from "./dom.js";
-import { errorToast, toast, undoLatest } from "./ui.js";
+import { h, icon, clear, addDays, shortDate, dateTime, field } from "./dom.js";
+import { errorToast, modal, toast, undoLatest } from "./ui.js";
 import { openWorklog, finishTask, taskChips } from "./board.js";
+import { timerButton } from "./timer.js";
 
 export function duration(min) {
   if (!min) return "0 min";
@@ -57,9 +58,11 @@ export async function openTask(taskId, onChange) {
         t.description ? h("p", { text: t.description }) : null,
         h("div", { class: "card-meta" }, ...chips)),
       h("div", { class: "task-tools" },
+        timerButton(t, after),
         t.status !== "done"
           ? h("button", { type: "button", class: "icon", title: "Concluir", "aria-label": "Concluir", onClick: () => finishTask(t, after) }, icon("check"))
           : null,
+        h("button", { type: "button", class: "icon", title: "Salvar como modelo", "aria-label": "Salvar como modelo", onClick: () => saveAsTemplate(t) }, icon("copy")),
         h("button", { type: "button", class: "icon", title: "Editar", "aria-label": "Editar", onClick: () => {
           dlg.close();
           openWorklog(t, () => { onChange && onChange(); openTask(taskId, onChange); });
@@ -186,4 +189,29 @@ export async function openTask(taskId, onChange) {
 
   await render();
   dlg.showModal();
+}
+
+// "Salvar como modelo": título, descrição, prioridade, projeto, plantão e os
+// itens do checklist viram um modelo (Configurações > Modelos).
+function saveAsTemplate(t) {
+  const name = h("input", { type: "text", maxlength: "60", value: t.title.slice(0, 60), required: "required" });
+  const err = h("p", { class: "error-text" });
+  const form = h("form", {}, h("h2", { text: "Salvar como modelo" }),
+    h("p", { class: "dialog-note", text: `Vai junto: título, descrição, prioridade, projeto${t.checklist.length ? ` e os ${t.checklist.length} itens do checklist` : ""}.` }),
+    field("Nome do modelo", name), err,
+    h("div", { class: "dialog-actions" },
+      h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
+      h("button", { type: "submit", class: "btn btn-primary", text: "Salvar modelo" })));
+  const dlg = modal(form);
+  form.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    try {
+      await api.post("/templates", { name: name.value.trim(), title: t.title, description: t.description || null,
+        priority: t.priority || 2, project_id: t.project_id || null, after_hours: !!t.after_hours,
+        checklist: t.checklist.map((c) => c.label) });
+      dlg.close();
+      toast(`Modelo “${name.value.trim()}” salvo. Use em “+ Tarefa”.`);
+    } catch (e) { err.textContent = e.message || "Não foi possível salvar."; }
+  });
+  setTimeout(() => name.select(), 0);
 }

@@ -10,7 +10,7 @@ from . import db
 
 # Ações que contam como "registrar algo no worklog" para o lembrete de
 # inatividade (configurações, chaves e avisos não contam).
-WORK_ACTIONS = ("worklog.%", "recurring.toggle", "note.%", "checklist.%", "time.%")
+WORK_ACTIONS = ("worklog.%", "recurring.toggle", "note.%", "checklist.%", "time.%", "timer.start")
 
 ASSISTANT_DEFAULTS = {"enabled": True, "idle_on": True, "idle_minutes": 30, "idle_start": 480, "idle_end": 1080,
                       "reopen_on": True, "reopen_minutes": 10}

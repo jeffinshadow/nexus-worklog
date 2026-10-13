@@ -66,14 +66,26 @@ Legenda: **S** = só sessão do app · **W** = exige escopo `write` (chave) ou C
 | `POST /avatar` · `DELETE /avatar` | S W | corpo bruto PNG, JPEG ou WebP até 256 KB (tipo pelo conteúdo; SVG não). O app recorta e reduz antes |
 | `GET /avatar/{user_id}?v=` | S | a própria foto; o admin vê a de todos |
 | `PUT /assistant` | S W | `{enabled, idle_on, idle_minutes (5–480), idle_start, idle_end}` — janela em minutos do dia |
-| `GET /activity` | S | `{last_activity}`: último registro de qualquer origem (tarefa, rotina, anotação, checklist, tempo) |
+| `GET /activity` | S | `{last_activity, timer}`: último registro de qualquer origem (tarefa, rotina, anotação, checklist, tempo, cronômetro) e o cronômetro rodando |
+| `PUT /tickets` | S W | `{ticket_url}` — endereço do sistema de chamados; `{id}` vira o número (sem `{id}`, vai no fim) |
+
+## Cronômetro e modelos
+
+| Rota | | Corpo / observação |
+| --- | --- | --- |
+| `GET /api/timer` | | `{timer}`: `{task_id, title, started_at}` ou null (um por pessoa, vale em qualquer aparelho) |
+| `POST /api/timer/start` | W | `{task_id}` — tarefa aberta; se outro estiver rodando, ele para e aponta (`stopped`). "A fazer" vira "em andamento" |
+| `POST /api/timer/stop` | W | para e aponta o tempo (nota "cronômetro", no dia em que começou); concluir a tarefa também para |
+| `DELETE /api/timer` | W | descarta sem apontar |
+| `GET /api/templates` · `POST` · `PUT /{id}` · `DELETE /{id}` | (W) | `{name, title, description, priority, project_id, after_hours, checklist: [itens]}` — até 50 modelos, 30 itens |
+| `POST /api/templates/{id}/use` | W | cria a tarefa do modelo, com o checklist |
 
 ## Hoje e quadro
 
 | Rota | | Observação |
 | --- | --- | --- |
-| `GET /api/board?day=&project=` | | `day` até 7 dias atrás (padrão hoje); `project` filtra as tarefas (`0` = sem projeto). Devolve `recurring` (com `due`, `done_today`, agenda), `in_progress` (tarefas abertas: a fazer, em andamento, bloqueadas; com `touched_at`, o último movimento), `done`, `day`, `today`, `min_day`, `work_day` |
-| `GET /api/summary` | | `last_day` (do último dia útil até ontem) e `week` (com `previous` = mesmos dias da semana passada): rotinas, tarefas concluídas, minutos, por projeto, rotinas não feitas |
+| `GET /api/board?day=&project=` | | `day` até 7 dias atrás (padrão hoje); `project` filtra as tarefas (`0` = sem projeto). Devolve `recurring` (com `due`, `done_today`, agenda), `in_progress` (tarefas abertas: a fazer, em andamento, bloqueadas; com `touched_at`, o último movimento), `timer`, `done`, `day`, `today`, `min_day`, `work_day` |
+| `GET /api/summary` | | `last_day` (do último dia útil até ontem), `week` (com `previous` = mesmos dias da semana passada) e `today_stats` (o dia de hoje): rotinas, tarefas concluídas, minutos, por projeto, rotinas não feitas |
 | `GET /api/dashboard` | | retrospectiva: `heatmap` (4 semanas), `task_adherence` (30 dias, a mais pulada primeiro), `throughput`, `projects` (tempo, 30 dias), `backlog` |
 
 ## Rotinas — `/api/recurring`
@@ -93,10 +105,10 @@ Agenda: `daily` (dias úteis do dono) · `weekly` + `weekdays` (máscara) ·
 
 | Rota | | Corpo / observação |
 | --- | --- | --- |
-| `POST /` | W | `{title, description?, status?, due_date?, project_id?, priority?}` (prioridade 1 alta, 2 normal, 3 baixa) |
+| `POST /` | W | `{title, description?, status?, due_date?, project_id?, priority?, ticket?, after_hours?}` (prioridade 1 alta, 2 normal, 3 baixa; `ticket` = número do chamado, sem o "#"; `after_hours` = plantão) |
 | `GET /{id}` | | tarefa + `checklist`, `notes`, `time`, `minutes`, `today` |
-| `PATCH /{id}` | W | campos a mudar; `description`/`due_date`/`project_id` = `null` apaga |
-| `POST /{id}/finish` | W | conclui |
+| `PATCH /{id}` | W | campos a mudar; `description`/`due_date`/`project_id`/`ticket` = `null` apaga |
+| `POST /{id}/finish` | W | conclui (com o cronômetro rodando nela, ele para e aponta) |
 | `DELETE /{id}` | W | exclui junto anotações, checklist e tempo (o desfazer devolve tudo) |
 | `POST /{id}/notes` | W | `{body}` (até 2000) |
 | `DELETE /api/notes/{id}` | W | |
@@ -170,10 +182,13 @@ JSON-RPC 2.0 sobre HTTP, **uma mensagem por requisição** (sem lote, sem SSE),
 `Authorization: Bearer nxs_…`. Versões: 2025-11-25, 2025-06-18, 2025-03-26.
 
 Leitura: `get_today`, `get_summary`, `list_tasks`, `get_task`, `search`,
-`list_projects`, `list_recurring`, `get_history`.
-Escrita (chave `write`): `create_task`, `update_task`, `complete_task`,
-`add_note`, `add_checklist_item`, `set_checklist_item`, `log_time`,
-`set_recurring` (`recurring_id`), `undo` (só ações da própria chave). A IA não exclui o que o usuário fez.
+`list_projects`, `list_recurring`, `list_templates`, `get_history`.
+Escrita (chave `write`): `create_task`, `update_task` (ambas com `ticket` e `after_hours`), `complete_task`,
+`add_note`, `add_checklist_item`, `set_checklist_item`, `log_time`, `start_timer`, `stop_timer`,
+`create_from_template`, `set_recurring` (`recurring_id`), `undo` (só ações da própria chave). A IA não exclui o que o usuário fez.
+
+Prompts (`prompts/list`, `prompts/get`): `resumo_semanal` (argumento `para`: gestor, time, cliente) e `daily`.
+No Claude Code viram `/mcp__nexus__resumo_semanal` e `/mcp__nexus__daily`.
 
 ```bash
 claude mcp add --transport http nexus https://SEU-HOST/mcp --header "Authorization: Bearer nxs_SUA_CHAVE"

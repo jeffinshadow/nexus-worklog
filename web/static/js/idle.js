@@ -7,6 +7,7 @@ import { h, icon, nowInTz } from "./dom.js";
 import { duration } from "./task.js";
 import { quickRegister } from "./quick.js";
 import { errorToast, toast } from "./ui.js";
+import { timerState } from "./timer.js";
 
 const CHECK_MS = 60 * 1000;
 let me = null;
@@ -40,6 +41,7 @@ function windowStart() {
 
 async function check() {
   if (box || Date.now() < snoozeUntil || document.querySelector("dialog[open]")) return;
+  if (timerState()) { lastKnown = Date.now(); return; } // cronômetro rodando = trabalhando
   const start = windowStart();
   if (start === null) return;
   const limit = me.assistant.idle_minutes * 60000;
@@ -47,6 +49,7 @@ async function check() {
   let r;
   try { r = await api.get("/me/activity"); } catch { return; }
   lastKnown = r.last_activity ? new Date(r.last_activity).getTime() : 0;
+  if (r.timer) { lastKnown = Date.now(); return; } // cronômetro rodando em outro aparelho
   if (Date.now() - Math.max(lastKnown, start, openedAt) < limit) return;
   show(lastKnown >= start ? Date.now() - lastKnown : null);
 }

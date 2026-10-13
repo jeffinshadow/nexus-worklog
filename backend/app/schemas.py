@@ -108,6 +108,19 @@ class AssistantIn(BaseModel):
         return self
 
 
+def _ticket(v):
+    """Número do chamado: sem espaços e sem o "#" que as pessoas costumam digitar."""
+    if v is None:
+        return None
+    v = str(v).strip().lstrip("#").strip()
+    if len(v) > 40:
+        raise ValueError("número do chamado com até 40 caracteres")
+    return v or None
+
+
+Ticket = Field(default=None, max_length=41)
+
+
 class WorklogIn(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     description: Optional[str] = Field(default=None, max_length=300)
@@ -115,6 +128,13 @@ class WorklogIn(BaseModel):
     due_date: Optional[date] = None
     project_id: Optional[int] = None
     priority: int = Field(default=2, ge=1, le=3)  # 1 alta, 2 normal, 3 baixa
+    ticket: Optional[str] = Ticket          # número no sistema de chamados
+    after_hours: bool = False               # plantão / fora do horário
+
+    @model_validator(mode="after")
+    def _norm(self):
+        self.ticket = _ticket(self.ticket)
+        return self
 
 
 class WorklogUpdate(BaseModel):
@@ -124,6 +144,40 @@ class WorklogUpdate(BaseModel):
     due_date: Optional[date] = None
     project_id: Optional[int] = None  # enviado como null = tirar do projeto
     priority: Optional[int] = Field(default=None, ge=1, le=3)
+    ticket: Optional[str] = Ticket     # null ou vazio = tirar o chamado
+    after_hours: Optional[bool] = None
+
+    @model_validator(mode="after")
+    def _norm(self):
+        self.ticket = _ticket(self.ticket)
+        return self
+
+
+class TemplateIn(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+    title: str = Field(min_length=1, max_length=200)
+    description: Optional[str] = Field(default=None, max_length=300)
+    priority: int = Field(default=2, ge=1, le=3)
+    project_id: Optional[int] = None
+    after_hours: bool = False
+    checklist: list[str] = Field(default_factory=list, max_length=30)
+
+    @model_validator(mode="after")
+    def _itens(self):
+        self.checklist = [i.strip()[:200] for i in self.checklist if i and i.strip()]
+        self.name, self.title = self.name.strip(), self.title.strip()
+        if not self.name or not self.title:
+            raise ValueError("nome e título não podem ficar em branco")
+        return self
+
+
+class TicketUrlIn(BaseModel):
+    # Ex.: https://glpi.empresa.com/front/ticket.form.php?id={id}  ({id} vira o número)
+    ticket_url: Optional[str] = Field(default=None, max_length=300, pattern=r"^(https?://\S+)?$")
+
+
+class TimerIn(BaseModel):
+    task_id: int
 
 
 Color = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")

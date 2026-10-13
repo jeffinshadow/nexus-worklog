@@ -9,7 +9,8 @@ from fastapi.responses import Response
 
 from .. import audit, db, people
 from ..deps import web_active, web_active_csrf
-from ..schemas import AssistantIn, ProfileIn
+from ..schemas import AssistantIn, ProfileIn, TicketUrlIn
+from ..services import running_timer
 
 router = APIRouter(prefix="/api/me", tags=["me"])
 
@@ -104,4 +105,14 @@ def put_assistant(data: AssistantIn, user=Depends(web_active_csrf)):
 def activity(user=Depends(web_active)):
     """Último registro (de qualquer origem): o lembrete de inatividade confere
     aqui antes de avisar, para não cobrar quem registrou pela IA ou no celular."""
-    return {"last_activity": people.last_activity(user["user_id"])}
+    # Com o cronômetro rodando a pessoa está trabalhando: o lembrete não cobra.
+    return {"last_activity": people.last_activity(user["user_id"]), "timer": running_timer(user["user_id"])}
+
+
+@router.put("/tickets")
+def put_ticket_url(data: TicketUrlIn, user=Depends(web_active_csrf)):
+    """Endereço do sistema de chamados; {id} vira o número (sem {id}, o número vai no fim)."""
+    url = (data.ticket_url or "").strip() or None
+    db.execute("UPDATE users SET ticket_url = %s WHERE id = %s", (url, user["user_id"]))
+    audit.record(user, "tickets.update", "user", user["user_id"], after={"ticket_url": url})
+    return {"ticket_url": url}

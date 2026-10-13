@@ -1,12 +1,13 @@
-// Configurações: projetos, avisos, calendário, IA e API (chaves), conta (perfil, assistente, dias úteis e senha).
+// Configurações: projetos, modelos, avisos, calendário, IA e API (chaves), conta (perfil, assistente, chamados, dias úteis e senha).
 import { api } from "./api.js";
 import { h, icon, clear, dateTime, field } from "./dom.js";
 import { codeBox, confirmDialog, errorToast, modal, toast, warnBox } from "./ui.js";
-import { projectsPanel } from "./projects.js";
+import { fillProjectSelect, projectsPanel } from "./projects.js";
 import { avatar, squarePhoto } from "./profile.js";
 
 const TABS = [
   ["projetos", "Projetos"],
+  ["modelos", "Modelos"],
   ["avisos", "Avisos"],
   ["calendario", "Calendário"],
   ["ia", "IA e API"],
@@ -42,10 +43,11 @@ export async function mount(root, ctx) {
   async function render() {
     clear(body);
     if (active === "projetos") body.append(await projectsPanel(() => render()));
+    else if (active === "modelos") body.append(await templatesPanel(() => render()));
     else if (active === "avisos") body.append(await notices());
     else if (active === "calendario") body.append(await calendarFeed(() => render()));
     else if (active === "ia") body.append(...aiHelp(), await tokens(() => render()));
-    else body.append(profilePanel(ctx.me, render), assistantPanel(ctx.me), workDays(ctx.me), account(ctx.me));
+    else body.append(profilePanel(ctx.me, render), assistantPanel(ctx.me), ticketsPanel(ctx.me), workDays(ctx.me), shortcutsPanel(), account(ctx.me));
   }
   await render();
 }
@@ -158,6 +160,98 @@ function assistantPanel(me) {
       h("label", {}, "Avisar após", mins, "min sem registro"),
       h("label", {}, "entre", from, "e", to)),
     h("div", { class: "row-actions" }, save));
+}
+
+// ---------------------------------------------------------------- modelos --
+
+const PRIO = [["1", "Alta"], ["2", "Normal"], ["3", "Baixa"]];
+
+async function templatesPanel(rerender) {
+  const list = await api.get("/templates");
+  const rows = list.length ? list.map((t) => h("div", { class: "token-row" },
+    h("span", { class: "token-name", text: t.name }),
+    h("div", { class: "actions" },
+      h("button", { type: "button", class: "btn btn-ghost btn-sm", text: "Editar", onClick: () => editTemplate(t, rerender) }),
+      h("button", { type: "button", class: "btn btn-danger btn-sm", text: "Excluir", onClick: async () => {
+        if (!(await confirmDialog({ title: `Excluir o modelo “${t.name}”?`, text: "As tarefas já criadas com ele continuam.", confirm: "Excluir", danger: true }))) return;
+        try { await api.del(`/templates/${t.id}`); toast("Modelo excluído."); rerender(); } catch (e) { errorToast(e); }
+      } })),
+    h("span", { class: "token-meta", text: [t.title, t.checklist.length ? `${t.checklist.length} itens no checklist` : "sem checklist", t.after_hours ? "plantão" : ""].filter(Boolean).join(" · ") })))
+    : [h("p", { class: "empty", text: "Nenhum modelo ainda." })];
+  return h("div", { class: "settings-grid" },
+    h("section", { class: "panel" },
+      h("div", { class: "panel-head" }, icon("list"), h("h2", { text: "Modelos de tarefa" }),
+        h("button", { type: "button", class: "btn btn-primary btn-sm", onClick: () => editTemplate(null, rerender) }, icon("add"), "Novo modelo")),
+      h("p", { class: "help", text: "Procedimentos que se repetem (onboarding de colaborador, troca de equipamento, servidor novo) viram um modelo com checklist pronto. Use em “+ Tarefa”, escolhendo o modelo, ou salve uma tarefa existente como modelo pelo detalhe dela." })),
+    h("section", { class: "panel" },
+      h("div", { class: "panel-head" }, h("h2", { text: "Meus modelos" }), h("span", { class: "count", text: String(list.length) })),
+      ...rows));
+}
+
+function editTemplate(t, rerender) {
+  const name = h("input", { type: "text", maxlength: "60", required: "required", value: t ? t.name : "" });
+  const title = h("input", { type: "text", maxlength: "200", required: "required", value: t ? t.title : "" });
+  const desc = h("input", { type: "text", maxlength: "300", value: t && t.description ? t.description : "" });
+  const prio = h("select", {}, ...PRIO.map(([v, l]) => h("option", { value: v, text: l })));
+  prio.value = String(t ? t.priority : 2);
+  const proj = h("select", {});
+  fillProjectSelect(proj, t ? t.project_id : null).catch(() => {});
+  const after = h("input", { type: "checkbox" });
+  after.checked = !!(t && t.after_hours);
+  const items = h("textarea", { rows: "6", maxlength: "6200", placeholder: "Um item por linha" });
+  items.value = t ? t.checklist.join("\n") : "";
+  const err = h("p", { class: "error-text" });
+  const form = h("form", {}, h("h2", { text: t ? "Editar modelo" : "Novo modelo" }),
+    field("Nome do modelo", name), field("Título da tarefa", title), field("Descrição (uma linha)", desc),
+    h("div", { class: "field-row" }, field("Prioridade", prio), field("Projeto / cliente", proj)),
+    h("label", { class: "weekday-option" }, after, h("span", { text: "Plantão / fora do horário" })),
+    field("Checklist (um item por linha, até 30)", items), err,
+    h("div", { class: "dialog-actions" },
+      h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
+      h("button", { type: "submit", class: "btn btn-primary", text: "Salvar modelo" })));
+  const dlg = modal(form);
+  form.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const body = { name: name.value.trim(), title: title.value.trim(), description: desc.value.trim() || null,
+      priority: Number(prio.value), project_id: proj.value && proj.value !== "__new" ? Number(proj.value) : null,
+      after_hours: after.checked, checklist: items.value.split("\n").map((x) => x.trim()).filter(Boolean).slice(0, 30) };
+    try {
+      if (t) await api.put(`/templates/${t.id}`, body); else await api.post("/templates", body);
+      dlg.close(); toast("Modelo salvo."); rerender();
+    } catch (e) { err.textContent = e.message || "Falha ao salvar."; }
+  });
+  setTimeout(() => (t ? title : name).focus(), 0);
+}
+
+// --------------------------------------------------------------- chamados --
+
+function ticketsPanel(me) {
+  const url = h("input", { type: "url", maxlength: "300", value: me.ticket_url || "",
+    placeholder: "https://glpi.empresa.com.br/front/ticket.form.php?id={id}" });
+  const save = h("button", { type: "button", class: "btn btn-primary", text: "Salvar endereço" });
+  save.addEventListener("click", async () => {
+    try {
+      const r = await api.put("/me/tickets", { ticket_url: url.value.trim() || null });
+      meChanged(me, r);
+      toast(r.ticket_url ? "Endereço salvo: o número do chamado vira link." : "Endereço removido.");
+    } catch (e) { errorToast(e, "Use um endereço começando com http:// ou https://."); }
+  });
+  return h("section", { class: "panel" },
+    h("div", { class: "panel-head" }, h("h2", { text: "Chamados" })),
+    h("p", { class: "help", text: "Endereço do sistema de chamados da sua equipe (GLPI, TomTicket, Jira...). Onde estiver {id} entra o número do chamado; sem {id}, ele vai no fim. Com o endereço, o “#4821” das tarefas abre o chamado." }),
+    field("Endereço do chamado", url),
+    h("div", { class: "row-actions" }, save));
+}
+
+// ---------------------------------------------------------------- atalhos --
+
+function shortcutsPanel() {
+  const keys = [["n", "nova tarefa"], ["/", "buscar"], ["h", "Hoje"], ["t", "Tarefas"], ["r", "Retrospectiva"],
+    ["l", "Relatórios"], ["s", "parar o cronômetro"], ["?", "ver todos os atalhos"]];
+  return h("section", { class: "panel" },
+    h("div", { class: "panel-head" }, h("h2", { text: "Atalhos de teclado" })),
+    h("dl", { class: "shortcuts" }, ...keys.flatMap(([k, l]) => [h("dt", {}, h("kbd", { text: k })), h("dd", { text: l })])),
+    h("p", { class: "help", text: "Funcionam fora dos campos de texto." }));
 }
 
 // ------------------------------------------------------------- dias úteis --
@@ -407,6 +501,12 @@ function aiHelp() {
       h("p", { class: "help", text: "Ver o dia, buscar, listar e criar tarefas (com projeto e prioridade), editar, concluir, marcar rotinas (até 7 dias atrás), anotar progresso, montar e marcar checklist, apontar tempo, consultar o histórico e desfazer um engano dela. Ela não exclui tarefas. Com uma chave “só leitura”, ela apenas consulta." }),
       h("p", { class: "dialog-note", text: "API REST direta (scripts, automações):" }),
       codeBox(`curl -H "Authorization: Bearer nxs_SUA_CHAVE" ${location.origin}/api/board`)),
+    h("section", { class: "panel" },
+      h("div", { class: "panel-head" }, icon("spark"), h("h2", { text: "Comandos prontos" })),
+      h("p", { class: "help", text: "O Nexus oferece dois comandos para a IA: o resumo da semana (para o gestor, o time ou um cliente) e o texto da daily. No Claude Code eles aparecem como comandos de barra:" }),
+      codeBox("/mcp__nexus__resumo_semanal o cliente\n/mcp__nexus__daily"),
+      h("p", { class: "dialog-note", text: "Em outros clientes, cole o pedido:" }),
+      codeBox("Use o Nexus (get_summary e get_today) e escreva um resumo da minha semana para o meu gestor: o que foi entregue por projeto, o tempo por projeto, o que segue em andamento e os impedimentos. Só com o que está registrado.")),
   ];
 }
 

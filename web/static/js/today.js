@@ -9,6 +9,7 @@ import { fillProjectSelect } from "./projects.js";
 import { summaryPanel } from "./summary.js";
 import { quickRegister } from "./quick.js";
 import { todayCard } from "./assistant.js";
+import { timerButton } from "./timer.js";
 
 const LAST_PROJECT = "nexus.quick.project";
 
@@ -116,6 +117,7 @@ export async function mount(root, ctx, opts = {}) {
       h("div", { class: "t" },
         h("button", { type: "button", class: "card-open", text: t.title, onClick: () => openTask(t.id, refresh) }),
         h("small", {}, h("span", { class: "card-meta" }, ...taskChips(t, today)))),
+      timerButton(t, refresh),
       h("button", { type: "button", class: "icon", title: "Editar", "aria-label": "Editar " + t.title, onClick: () => openWorklog(t, refresh) }, icon("edit"))));
   }
 

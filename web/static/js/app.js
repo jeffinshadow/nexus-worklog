@@ -13,6 +13,10 @@ import { loadBranding } from "./branding.js";
 import { avatar } from "./profile.js";
 import { startIdle } from "./idle.js";
 import { configure as configureAssistant } from "./assistant.js";
+import { session } from "./session.js";
+import { initTimer, stopTimer, timerState } from "./timer.js";
+import { openWorklog } from "./board.js";
+import { modal } from "./ui.js";
 
 let me = null;
 
@@ -147,8 +151,10 @@ async function boot() {
     return;
   }
   document.getElementById("app").classList.remove("hidden");
+  session.me = me;
   renderWho();
   configureAssistant(me);
+  initTimer(route);
   startIdle(me, route);
   // Perfil ou assistente mudou (Configurações, convite do assistente): atualiza o menu e o lembrete.
   window.addEventListener("nexus:me", () => { renderWho(); configureAssistant(me); startIdle(me, route); });
@@ -161,13 +167,34 @@ async function boot() {
     const v = sideQ.value.trim();
     if (v.length >= 2) location.hash = "#/busca?q=" + encodeURIComponent(v);
   });
+  // Atalhos de teclado (fora de campos e diálogos). "?" mostra a lista.
+  const SHORTCUTS = {
+    "/": ["Buscar", () => {
+      if (getComputedStyle(sideQ).display !== "none" && sideQ.offsetParent) sideQ.focus();
+      else location.hash = "#/busca";
+    }],
+    n: ["Nova tarefa", () => openWorklog(null, route)],
+    h: ["Ir para Hoje", () => go("hoje")],
+    t: ["Ir para Tarefas", () => go("tarefas")],
+    r: ["Ir para Retrospectiva", () => go("dashboard")],
+    l: ["Ir para Relatórios", () => go("relatorios")],
+    s: ["Parar o cronômetro (e apontar)", () => { if (timerState()) stopTimer(); }],
+    "?": ["Mostrar estes atalhos", showShortcuts],
+  };
+  function showShortcuts() {
+    const dlg = modal(h("h2", { text: "Atalhos de teclado" }),
+      h("dl", { class: "shortcuts" }, ...Object.entries(SHORTCUTS).flatMap(([k, [label]]) => [h("dt", {}, h("kbd", { text: k })), h("dd", { text: label })])),
+      h("p", { class: "dialog-note", text: "Funcionam fora dos campos de texto. Esc fecha qualquer janela." }),
+      h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Fechar", onClick: () => dlg.close() })));
+  }
   document.addEventListener("keydown", (ev) => {
-    if (ev.key !== "/" || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    const sc = SHORTCUTS[ev.key.length === 1 ? ev.key.toLowerCase() : ""] || SHORTCUTS[ev.key];
+    if (!sc) return;
     const tag = (document.activeElement && document.activeElement.tagName) || "";
-    if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag) || document.querySelector("dialog[open]")) return;
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag) || document.activeElement?.isContentEditable || document.querySelector("dialog[open]")) return;
     ev.preventDefault();
-    if (getComputedStyle(sideQ).display !== "none" && sideQ.offsetParent) sideQ.focus();
-    else location.hash = "#/busca";
+    sc[1]();
   });
   window.addEventListener("hashchange", route);
   route();

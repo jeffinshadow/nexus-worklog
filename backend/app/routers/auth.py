@@ -38,6 +38,7 @@ def _public(row: dict, csrf: str) -> dict:
         "id": uid,
         "email": row["email"],
         **people.profile(uid),  # display_name, name, avatar
+        "ticket_url": (db.query_one("SELECT ticket_url FROM users WHERE id = %s", (uid,)) or {}).get("ticket_url"),
         "assistant": people.assistant_prefs(uid),
         "role": row["role"],
         "must_change_password": row["must_change_password"],

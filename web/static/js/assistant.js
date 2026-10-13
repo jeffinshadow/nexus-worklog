@@ -4,7 +4,7 @@
 import { api } from "./api.js";
 import { h, icon, nowInTz, localDay, daysBetween, shortDate, addDays } from "./dom.js";
 import { duration } from "./task.js";
-import { errorToast } from "./ui.js";
+import { errorToast, modal, toast } from "./ui.js";
 
 export const enabled = (me) => !!(me && me.assistant && me.assistant.enabled);
 
@@ -96,9 +96,52 @@ function notes(open, today, pendentes, hour) {
     else if (t.status === "in_progress" && d >= 7) out.push(`${q(t.title)} está em andamento sem movimento há ${d} dias.`);
     else if (t.due_date && daysBetween(today, t.due_date) === 1) out.push(`${q(t.title)} vence amanhã.`);
   }
-  if (out.length < 2 && hour >= 16 && pendentes.length && pendentes.length <= 3)
-    out.push(`Antes de encerrar o dia, ainda faltam: ${pendentes.map((r) => r.label).join(", ")}.`);
   return out;
+}
+
+// Fechamento do dia (a partir das 16h, em dia útil): o que saiu hoje e o que falta.
+function closing(sum, pendentes) {
+  const s = sum && sum.today_stats;
+  if (!s) return null;
+  const tempo = s.minutes ? ` e ${duration(s.minutes)} apontadas` : ", sem tempo apontado";
+  const falta = pendentes.length
+    ? `; ainda ${pendentes.length === 1 ? "falta" : "faltam"} ${pendentes.length <= 3 ? pendentes.map((r) => r.label).join(", ") : plural(pendentes.length, "rotina", "rotinas")}`
+    : "";
+  return `Encerrando o dia: ${plural(s.pontual_done, "tarefa concluída", "tarefas concluídas", "nenhuma tarefa concluída")}${tempo} hoje${falta}.`;
+}
+
+// Texto da daily: Ontem (desde o último dia útil), Hoje e Impedimentos.
+export function dailyText(b, sum) {
+  const today = b.today;
+  const lines = [];
+  const last = sum && sum.last_day;
+  const quando = last ? (last.start === addDays(today, -1) ? "Ontem" : `Desde ${shortDate(last.start)}`) : "Ontem";
+  lines.push(`${quando}:`);
+  const feitas = last ? last.deliveries.slice(0, 10) : [];
+  lines.push(...(feitas.length ? feitas.map((d) => `- ${d.title}${d.project ? ` [${d.project}]` : ""}${d.minutes ? ` (${duration(d.minutes)})` : ""}`) : ["- nada registrado"]));
+  lines.push("", "Hoje:");
+  const hoje = b.in_progress.filter((t) => t.status !== "blocked").slice(0, 6);
+  lines.push(...(hoje.length ? hoje.map((t) => `- ${t.title}${t.ticket ? ` (#${t.ticket})` : ""}${t.due_date && t.due_date < today ? " — atrasada" : t.due_date === today ? " — vence hoje" : ""}`) : ["- sem tarefas em aberto"]));
+  lines.push("", "Impedimentos:");
+  const bloq = b.in_progress.filter((t) => t.status === "blocked");
+  lines.push(...(bloq.length ? bloq.map((t) => `- ${t.title}${t.ticket ? ` (#${t.ticket})` : ""}`) : ["- nenhum"]));
+  return lines.join("\n");
+}
+
+async function copyDaily(b, sum) {
+  const text = dailyText(b, sum);
+  try {
+    await navigator.clipboard.writeText(text);
+    toast("Texto da daily copiado. É só colar no chat da equipe.");
+  } catch {
+    // Área de transferência bloqueada: mostra o texto selecionado para copiar à mão.
+    const area = h("textarea", { class: "daily-text", rows: "12", readonly: "readonly" });
+    area.value = text;
+    const dlg = modal(h("h2", { text: "Texto da daily" }),
+      h("p", { class: "dialog-note", text: "Não consegui copiar sozinho. O texto já está selecionado: use Ctrl+C." }), area,
+      h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Fechar", onClick: () => dlg.close() })));
+    setTimeout(() => area.select(), 0);
+  }
 }
 
 // O que aconteceu desde o último dia útil (manhã) e o fechamento da sexta (tarde).
@@ -171,6 +214,16 @@ export function todayCard(b, sum, ctx) {
       : "Nada pendente por aqui. O que surgir, registre no campo de registro rápido.");
   }
   if (b.work_day) lines.push(...notes(open, today, pendentes, t.hour));
+
+  // Tempo esquecido: concluídas hoje sem nenhum apontamento.
+  const semTempo = b.done.filter((x) => x.completed_at && localDay(x.completed_at) === today && !x.minutes);
+  if (semTempo.length) {
+    lines.push(h("p", {}, `${semTempo.length === 1 ? "Uma tarefa concluída hoje está" : `${semTempo.length} tarefas concluídas hoje estão`} sem tempo apontado: `,
+      ...semTempo.slice(0, 3).flatMap((x, i) => [i ? ", " : "", h("strong", { text: q(x.title) })]), semTempo.length > 3 ? " e outras." : "."));
+    for (const x of semTempo.slice(0, 2)) actions.push(action(`Apontar em ${q(x.title.length > 24 ? x.title.slice(0, 23) + "…" : x.title)}`, () => ctx.openTask(x.id)));
+  }
+  if (b.work_day && t.hour >= 16) { const c = closing(sum, pendentes); if (c) lines.push(c); }
+  if (b.work_day) actions.push(action("Copiar para a daily", () => copyDaily(b, sum)));
   const r = recap(sum, t, ctx.go);
   if (r.line) lines.push(r.line);
   if (r.act) actions.push(r.act);

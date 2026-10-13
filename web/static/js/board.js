@@ -1,11 +1,13 @@
 // Quadro de tarefas: rotinas (com seletor de dia), tarefas abertas e
 // concluídas. Também exporta os diálogos de criar/editar, usados pela tela Hoje.
 import { api } from "./api.js";
-import { h, icon, clear, addDays, shortDate } from "./dom.js";
+import { h, icon, clear, addDays, shortDate, localDay } from "./dom.js";
 import { confirmDialog, errorToast, toast, undoLatest } from "./ui.js";
 import { fillProjectSelect, listProjects, projectChip } from "./projects.js";
 import { openTask, duration, parseDuration } from "./task.js";
 import { boardLine } from "./assistant.js";
+import { session } from "./session.js";
+import { timerButton } from "./timer.js";
 
 const WEEKDAYS_SHORT = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 const DONE_PAGE = 10;
@@ -33,7 +35,8 @@ export function taskChips(t, today) {
   const chips = t.status === "done" ? [] : [h("span", { class: "chip " + t.status, text: STATUS_LABELS[t.status] })];
   if (t.priority === 1 && t.status !== "done") chips.push(h("span", { class: "chip prio-1", text: "alta" }));
   if (t.status === "done") {
-    if (t.completed_at) chips.push(h("span", { class: "chip done", text: "fim " + shortDate(t.completed_at) }));
+    // O dia da conclusão no fuso da app (o timestamp vem em UTC: à noite já seria "amanhã").
+    if (t.completed_at) chips.push(h("span", { class: "chip done", text: "fim " + shortDate(localDay(t.completed_at)) }));
   } else if (t.due_date) {
     if (t.due_date < today) chips.push(h("span", { class: "chip late", text: "atrasada · " + shortDate(t.due_date) }));
     else if (t.due_date === today) chips.push(h("span", { class: "chip today", text: "vence hoje" }));
@@ -41,10 +44,27 @@ export function taskChips(t, today) {
   }
   const pc = projectChip(t);
   if (pc) chips.push(pc);
+  if (t.ticket) chips.push(ticketChip(t.ticket));
+  if (t.after_hours) chips.push(h("span", { class: "chip after-hours", title: "Plantão / fora do horário", text: "plantão" }));
   if (t.check_total) chips.push(h("span", { class: "tag" + (t.check_done === t.check_total ? " ok" : ""), title: "Checklist" }, icon("list"), `${t.check_done}/${t.check_total}`));
   if (t.minutes) chips.push(h("span", { class: "tag", title: "Tempo apontado" }, icon("clock"), duration(t.minutes)));
   if (t.notes_count) chips.push(h("span", { class: "tag", title: "Anotações" }, icon("note"), String(t.notes_count)));
   return chips;
+}
+
+// Número do chamado; com o endereço do sistema (Configurações > Conta), vira link.
+export function ticketUrl(ticket) {
+  const base = session.me && session.me.ticket_url;
+  if (!base) return null;
+  const id = encodeURIComponent(ticket);
+  return base.includes("{id}") ? base.split("{id}").join(id) : base + id;
+}
+
+function ticketChip(ticket) {
+  const url = ticketUrl(ticket);
+  return url
+    ? h("a", { class: "chip ticket", href: url, target: "_blank", rel: "noopener noreferrer", title: "Abrir o chamado", text: "#" + ticket })
+    : h("span", { class: "chip ticket", title: "Chamado", text: "#" + ticket });
 }
 
 // Resumo da agenda de uma rotina ("seg, qua", "todo dia 5", "a cada 15 dias").
@@ -78,7 +98,37 @@ export function openWorklog(item, onDone, opts = {}) {
   timeInput.value = "";
   document.getElementById("wl-time-wrap").classList.toggle("hidden", !!item);
   const projSel = document.getElementById("wl-project");
-  fillProjectSelect(projSel, item ? item.project_id : null).catch(() => {});
+  const projReady = fillProjectSelect(projSel, item ? item.project_id : null).catch(() => {});
+  const ticket = document.getElementById("wl-ticket");
+  const after = document.getElementById("wl-after");
+  ticket.value = item && item.ticket ? item.ticket : "";
+  after.checked = !!(item && item.after_hours);
+
+  // Modelo: preenche o formulário; o checklist dele entra depois de criar.
+  let checklist = [];
+  const tplWrap = document.getElementById("wl-template-wrap");
+  const tplSel = document.getElementById("wl-template");
+  tplWrap.classList.add("hidden");
+  if (!item) {
+    api.get("/templates").then((list) => {
+      if (!list.length) return;
+      clear(tplSel);
+      tplSel.append(h("option", { value: "", text: "Nenhum (tarefa em branco)" }),
+        ...list.map((t) => h("option", { value: String(t.id), text: t.name + (t.checklist.length ? ` · ${t.checklist.length} itens` : "") })));
+      tplSel.onchange = async () => {
+        const t = list.find((x) => String(x.id) === tplSel.value);
+        checklist = t ? t.checklist : [];
+        if (!t) return;
+        document.getElementById("wl-title").value = t.title;
+        document.getElementById("wl-desc").value = t.description || "";
+        document.getElementById("wl-prio").value = String(t.priority);
+        after.checked = t.after_hours;
+        await projReady;
+        if (t.project_id && [...projSel.options].some((o) => o.value === String(t.project_id))) projSel.value = String(t.project_id);
+      };
+      tplWrap.classList.remove("hidden");
+    }).catch(() => {});
+  }
 
   const del = document.getElementById("wl-delete");
   del.classList.toggle("hidden", !item);
@@ -106,6 +156,8 @@ export function openWorklog(item, onDone, opts = {}) {
       due_date: document.getElementById("wl-due").value || null,
       priority: Number(document.getElementById("wl-prio").value),
       project_id: projSel.value && projSel.value !== "__new" ? Number(projSel.value) : null,
+      ticket: ticket.value.trim() || null,
+      after_hours: after.checked,
     };
     if (!payload.title) return;
     const minutes = !item && timeInput.value.trim() ? parseDuration(timeInput.value) : null;
@@ -114,6 +166,7 @@ export function openWorklog(item, onDone, opts = {}) {
       if (item) await api.patch(`/worklog/${item.id}`, payload);
       else {
         const created = await api.post("/worklog", payload);
+        for (const label of checklist) await api.post(`/worklog/${created.id}/checklist`, { label });
         if (minutes) await api.post(`/worklog/${created.id}/time`, { minutes });
       }
       dlg.close();
@@ -290,7 +343,8 @@ export async function mount(root, opts = {}) {
       if (!readOnly) {
         const actions = h("div", { class: "card-actions" });
         if (!isDone)
-          actions.append(h("button", { type: "button", class: "icon", title: "Concluir", "aria-label": "Concluir " + it.title, onClick: () => finishTask(it, refresh) }, icon("check")));
+          actions.append(timerButton(it, refresh),
+            h("button", { type: "button", class: "icon", title: "Concluir", "aria-label": "Concluir " + it.title, onClick: () => finishTask(it, refresh) }, icon("check")));
         actions.append(h("button", { type: "button", class: "icon", title: "Editar", "aria-label": "Editar " + it.title, onClick: () => openWorklog(it, refresh) }, icon("edit")));
         card.append(actions);
       }
