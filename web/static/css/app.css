@@ -84,7 +84,7 @@ input::placeholder { color: var(--dim); }
    do bloco de duas linhas e fica no mesmo eixo dele. Vale para o dragão padrão
    (recortado no contorno do desenho) e para logos enviados pelo admin. */
 .lockup { --lock-fs: 1rem; display: inline-flex; align-items: center; gap: .55em; color: var(--on-surface); font-size: var(--lock-fs); }
-.lockup-mark { display: block; height: 1.84em; width: auto; max-width: 3.2em; object-fit: contain; flex: none; }
+.lockup-mark { display: block; height: 2.02em; width: auto; max-width: 3.52em; object-fit: contain; flex: none; }  /* o símbolo 10% maior; o texto não muda */
 .lockup-type { display: flex; flex-direction: column; justify-content: center; font-weight: 700; line-height: .92; letter-spacing: -.02em; }
 .lockup-type span:last-child { color: var(--on-surface-variant); }
 .lockup-type span:last-child:empty { display: none; }
@@ -117,7 +117,7 @@ input::placeholder { color: var(--dim); }
 .more-me { margin-bottom: 8px; }
 
 .main { min-width: 0; padding: 28px clamp(16px, 3vw, 40px) 48px; }
-/* Área útil única em todas as telas: cabeçalho, falas e painéis até 880px. */
+/* Área útil única em todas as telas: cabeçalho, falas, painéis, Relatórios e Configurações até 880px. */
 .main > * { max-width: calc(880px / var(--ui-zoom)); }  /* 880px reais na tela, mesmo com a escala */
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
 .page-head h1 { font-size: clamp(1.6rem, 2.6vw, 2.1rem); font-weight: 600; letter-spacing: -.035em; line-height: 1.1; margin-top: 4px; }
@@ -249,7 +249,7 @@ button.column-toggle { display: none; }
 .seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; border: 1px solid var(--outline-variant); background: var(--surface); margin-bottom: 20px; flex-wrap: wrap; }
 .seg button.chip-btn { border: 0; background: transparent; color: var(--on-surface-variant); padding: 7px 14px; border-radius: 999px; font-weight: 500; font-size: .86rem; }
 .seg button.chip-btn[aria-selected="true"] { background: var(--primary-container); color: var(--on-surface); }
-.settings-grid { display: grid; gap: var(--gap); max-width: 860px; }
+.settings-grid { display: grid; gap: var(--gap); }
 .panel p.help { color: var(--on-surface-variant); font-size: .88rem; margin-bottom: 14px; max-width: 62ch; }
 .weekday-picker { border: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
 .weekday-picker legend { font-size: .8rem; color: var(--on-surface-variant); margin-bottom: 8px; padding: 0; }
@@ -326,7 +326,7 @@ button.column-toggle { display: none; }
 .aging-count { font-size: 1rem; font-weight: 600; }
 
 /* ----------------------------------------------------------- relatórios -- */
-.report-section { background: linear-gradient(180deg, var(--surface-container), #161617); border: 1px solid var(--outline-variant); border-radius: var(--radius-m); padding: 20px; margin-bottom: var(--gap); max-width: 760px; }
+.report-section { background: linear-gradient(180deg, var(--surface-container), #161617); border: 1px solid var(--outline-variant); border-radius: var(--radius-m); padding: 20px; margin-bottom: var(--gap); }
 .report-section h3 { font-size: 1.05rem; font-weight: 600; margin-bottom: 6px; }
 .report-section .sub { color: var(--on-surface-variant); font-size: .9rem; margin-bottom: 18px; max-width: 60ch; }
 .report-controls { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
@@ -468,7 +468,7 @@ dialog.task-dialog { max-width: 640px; padding: 0; max-height: min(88vh / var(--
 .side-search input:focus + kbd { display: none; }
 @media (max-width: 860px) { .side-search { display: none; } }
 
-.search-big { position: relative; display: flex; gap: 8px; align-items: center; margin-bottom: var(--gap); max-width: 720px; }
+.search-big { position: relative; display: flex; gap: 8px; align-items: center; margin-bottom: var(--gap); }
 .search-big .ico { position: absolute; left: 14px; color: var(--dim); pointer-events: none; }
 .search-big input { padding-left: 42px; height: 46px; border-radius: 999px; }
 .search-row { padding: 12px 2px; border-bottom: 1px solid var(--outline-variant); }
