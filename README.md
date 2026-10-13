@@ -12,21 +12,55 @@ público.
 
 ## O que faz
 
-- **Hoje** — o dia em um olhar: rotinas da agenda, tarefas abertas por urgência
-  (atrasadas, bloqueadas), registro rápido e resumos (último dia útil e a semana,
-  comparada com a anterior). É a primeira tela.
+- **Hoje** — o dia em um olhar, com um **assistente**: saudação, o que está
+  pra hoje, o que saiu ontem, o resumo do dia e por onde começar. Avisa tarefa
+  bloqueada há dias, prazo de amanhã e tempo esquecido, e copia o texto da
+  daily. Cada aviso tem o próprio X; tudo é calculado a partir dos registros da
+  pessoa, sem IA chamada a cada tela.
 - **Rotinas** — verificações que se repetem (backups, alertas, fila…), com agenda:
   dias úteis, dias da semana, mensal (inclui "último dia") ou a cada N dias.
   Marcação até 7 dias para trás; feito fora da agenda conta como *extra*.
 - **Tarefas** — status, prioridade, prazo, projeto/cliente, checklist,
-  anotações e apontamento de tempo.
+  anotações e apontamento de tempo; **cronômetro** (um por pessoa, vale em
+  qualquer aparelho); **número do chamado** (GLPI, TomTicket, Jira…) que vira
+  link; **plantão** fora do horário, com o tempo separado no relatório; e
+  **modelos** de tarefa com checklist pronto.
 - **Relatórios** — PDF por período, por projeto ou do projeto inteiro;
   exportação em CSV (planilha) e JSON (backup).
-- **Retrospectiva** (aderência das rotinas, vazão, tempo por projeto, backlog), **histórico com desfazer**, **busca** sem acento, **feed de
-  calendário (ICS)**, **avisos por e-mail** (opt-in) e **identidade visual**
-  configurável pelo admin.
-- **IA** — chaves de API e servidor **MCP** (`/mcp`): a IA registra o que você
-  contar, com tudo marcado no histórico pelo nome da chave.
+- **Retrospectiva** (aderência das rotinas, vazão, tempo por projeto, backlog),
+  **histórico com desfazer**, **busca** sem acento (inclusive por `#chamado`),
+  **feed de calendário (ICS)**, **avisos por e-mail** (opt-in), **lembrete** no
+  app depois de X minutos sem registro, **atalhos de teclado** (`n`, `/`, `s`,
+  `?`…), perfil com nome e foto e **identidade visual** configurável pelo admin.
+- **IA** — chaves de API e servidor **MCP** (`/mcp`): a IA registra, anota,
+  aponta e cronometra o que você contar, com tudo marcado no histórico pelo nome
+  da chave. Comandos prontos para o resumo da semana e para a daily.
+
+## Telas
+
+Capturas de uma conta de demonstração, com dados fictícios.
+
+![Tela Hoje com o assistente, as rotinas e as tarefas em aberto](docs/screenshots/01-hoje.webp)
+*Hoje — o assistente resume o dia e o anterior e sugere por onde começar, com avisos de prazo, tarefa bloqueada e tempo esquecido. Abaixo, as rotinas e o registro rápido.*
+
+![Quadro de tarefas com chamados, plantão e o cronômetro no menu](docs/screenshots/02-tarefas.webp)
+*Tarefas — o número do chamado vira link, o plantão aparece em roxo e o cronômetro roda no menu.*
+
+![Detalhe de uma tarefa com checklist, tempo e anotações](docs/screenshots/03-tarefa.webp)
+*Detalhe da tarefa — checklist, apontamentos de tempo e anotações num lugar só.*
+
+![Retrospectiva com aderência, vazão, tempo por projeto e backlog](docs/screenshots/04-retrospectiva.webp)
+*Retrospectiva — aderência de cada rotina, vazão por semana, tempo por cliente e saúde do backlog, com uma leitura do assistente no topo.*
+
+![Nova tarefa preenchida a partir de um modelo](docs/screenshots/05-modelo.webp)
+*Modelos — escolhe o modelo no “+ Tarefa” e o checklist vem junto.*
+
+<p>
+  <img src="docs/screenshots/06-celular.webp" width="300" alt="Tela Hoje no celular">
+  <img src="docs/screenshots/07-relatorio.webp" width="420" alt="Primeira página do relatório em PDF">
+</p>
+
+*No celular, o mesmo assistente e o cronômetro acima da barra. Ao lado, a primeira página do relatório em PDF: indicadores, ritmo do período, rotinas, projetos e tarefas, com o plantão separado.*
 
 ## Arquitetura
 

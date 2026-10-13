@@ -90,6 +90,14 @@ def test_chamado_normalizado_editado_e_buscado(usuario):
     assert "4821" in usuario.c.get("/api/export/tarefas.csv").content.decode("utf-8-sig")
 
 
+def test_editar_sem_mandar_o_chamado_nao_apaga(usuario):
+    tid = usuario.post("/worklog", {"title": "Link oscilando", "ticket": "5133", "after_hours": True}).json()["id"]
+    usuario.patch(f"/worklog/{tid}", {"status": "in_progress"})
+    usuario.patch(f"/worklog/{tid}", {"title": "Link da clínica oscilando"})
+    t = usuario.get(f"/worklog/{tid}").json()
+    assert (t["ticket"], t["after_hours"], t["status"]) == ("5133", True, "in_progress")
+
+
 def test_plantao_separado_no_relatorio(usuario):
     hoje = dia_hoje(usuario).isoformat()
     a = usuario.post("/worklog", {"title": "Link caiu às 2h", "after_hours": True}).json()["id"]

@@ -150,7 +150,10 @@ class WorklogUpdate(BaseModel):
 
     @model_validator(mode="after")
     def _norm(self):
-        self.ticket = _ticket(self.ticket)
+        # Só quando veio no corpo: atribuir marca o campo como enviado no
+        # Pydantic, e o PATCH apagaria o chamado de quem só mudou o status.
+        if "ticket" in self.model_fields_set:
+            self.ticket = _ticket(self.ticket)
         return self
 
 
