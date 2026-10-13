@@ -98,7 +98,7 @@ input::placeholder { color: var(--dim); }
   background: linear-gradient(180deg, #151517, var(--surface));
 }
 .sidebar > .lockup { padding: 0 12px; --lock-fs: 1.443rem; }  /* texto do menu: 1.255rem + 15% */
-.sidebar > .lockup .lockup-mark { height: 2.323rem; max-width: 4.048rem; }  /* símbolo: 2.02rem + 15% */
+.sidebar > .lockup .lockup-mark { height: 2.5rem; max-width: 4.36rem; }  /* símbolo com 36px reais (2.5rem × 16 × 0.9) */
 .nav { display: flex; flex-direction: column; gap: 2px; }
 .nav a, .nav-link {
   display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px;
