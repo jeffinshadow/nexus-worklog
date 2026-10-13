@@ -532,7 +532,11 @@ mark { background: rgba(82,148,226,.28); color: var(--on-surface); border-radius
 .profile-row { display: flex; gap: 18px; align-items: center; margin-bottom: 12px; }
 .profile-row .help { margin: 8px 0 0; }
 
-#assist-slot > .assist { margin-bottom: 22px; }  /* acima do título da página */
+#assist-slot > .assist, #assist-slot > .assist-stack { margin-bottom: 22px; }  /* acima do título da página */
+/* Grupo: a pílula principal (o X dela fecha todas) e uma pílula por aviso. */
+.assist-stack { display: flex; flex-direction: column; gap: 10px; }
+.assist-stack > .assist.compact { border-color: var(--outline-variant); background: linear-gradient(180deg, var(--surface-container), #161617); }
+.assist-body > .assist-ask:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
 /* As falas seguem a área útil (990px reais, em .main > *). */
 .assist { position: relative; display: flex; gap: 14px; align-items: flex-start; border-color: rgba(82,148,226,.32);
   background: radial-gradient(520px circle at 0% 0%, rgba(82,148,226,.1), transparent 60%), linear-gradient(180deg, var(--surface-container), #161617); }

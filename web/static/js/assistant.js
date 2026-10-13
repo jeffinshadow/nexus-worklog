@@ -40,16 +40,17 @@ function closeCard(key, el) {
   setTimeout(() => {
     if (closed.get(key) !== at) return; // fechada de novo depois: vale o novo prazo
     closed.delete(key);
-    for (const n of document.querySelectorAll(`.assist[data-key="${key}"]`)) n.classList.remove("hidden");
+    for (const n of document.querySelectorAll(`[data-key="${key}"]`)) n.classList.remove("hidden");
   }, ms);
 }
 
 // O cartão do assistente. parts: {key (tela, para fechar no X), hello, lines, actions: [nó], extra: nó}.
 // Cada linha é texto, um nó ou { line: texto|nó, actions: [botões] }: os botões
 // aparecem logo abaixo da frase que sugere a ação.
-export function card({ key = null, hello, lines = [], actions = [], extra = null, compact = false }) {
-  const el = h("section", { class: "panel assist" + (compact ? " compact" : "") + (key && isClosed(key) ? " hidden" : ""),
-    "aria-label": "Assistente", "data-key": key },
+export function card({ key = null, hello, lines = [], actions = [], extra = null, compact = false, main = false }) {
+  // main: a pílula principal de um grupo; quem some e reabre é o grupo inteiro.
+  const el = h("section", { class: "panel assist" + (compact ? " compact" : "") + (main ? " main" : "") + (key && !main && isClosed(key) ? " hidden" : ""),
+    "aria-label": "Assistente", "data-key": main ? null : key },
     h("span", { class: "assist-mark", "aria-hidden": "true" }, icon("spark")),
     h("div", { class: "assist-body" },
       hello ? h("p", { class: "assist-hello", text: hello }) : null,
@@ -60,9 +61,20 @@ export function card({ key = null, hello, lines = [], actions = [], extra = null
       }),
       actions.length ? h("div", { class: "assist-actions" }, ...actions) : null,
       extra));
-  if (key) el.append(h("button", { type: "button", class: "icon assist-close", title: "Fechar por enquanto",
-    "aria-label": "Fechar a fala do assistente", onClick: () => closeCard(key, el) }, icon("close")));
+  if (key) el.append(h("button", { type: "button", class: "icon assist-close",
+    title: main ? "Fechar todas as falas por enquanto" : "Fechar esta fala por enquanto",
+    "aria-label": main ? "Fechar todas as falas do assistente" : "Fechar esta fala do assistente",
+    onClick: () => closeCard(key, main ? el.closest(".assist-stack") || el : el) }, icon("close")));
   return el;
+}
+
+// Grupo de falas: a pílula principal (o X dela fecha todas) e uma pílula por
+// aviso, cada uma com o próprio X. Sem avisos, fica só a principal.
+function stack(key, mainParts, items) {
+  const subs = items.filter(Boolean).map((it) => card({ ...it, compact: true }));
+  const head = card({ ...mainParts, key, main: subs.length > 0 });
+  if (!subs.length) return head;
+  return h("div", { class: "assist-stack" + (isClosed(key) ? " hidden" : ""), "data-key": key }, head, ...subs);
 }
 
 function greeting(name) {
@@ -98,9 +110,10 @@ function notes(open, today, pendentes, hour) {
   for (const t of open) {
     if (out.length >= 2) break;
     const d = idle(t);
-    if (t.status === "blocked" && d >= 3) out.push(`${q(t.title)} está bloqueada e sem movimento há ${d} dias. Vale confirmar se ainda depende de alguém.`);
-    else if (t.status === "in_progress" && d >= 7) out.push(`${q(t.title)} está em andamento sem movimento há ${d} dias.`);
-    else if (t.due_date && daysBetween(today, t.due_date) === 1) out.push(`${q(t.title)} vence amanhã.`);
+    const nota = (text) => out.push({ key: `hoje:tarefa:${t.id}`, text, task: t });
+    if (t.status === "blocked" && d >= 3) nota(`${q(t.title)} está bloqueada e sem movimento há ${d} dias. Vale confirmar se ainda depende de alguém.`);
+    else if (t.status === "in_progress" && d >= 7) nota(`${q(t.title)} está em andamento sem movimento há ${d} dias.`);
+    else if (t.due_date && daysBetween(today, t.due_date) === 1) nota(`${q(t.title)} vence amanhã.`);
   }
   return out;
 }
@@ -186,7 +199,7 @@ function invite(me, onProfile) {
     return h("div", { class: "assist-ask" },
       h("p", { text: "Qual nome devo usar com você?" }), input,
       action("Salvar", save, true),
-      action("Agora não", (ev) => { localStorage.setItem(ASK_NAME, "1"); ev.target.closest(".assist-ask").remove(); }));
+      action("Agora não", (ev) => { localStorage.setItem(ASK_NAME, "1"); (ev.target.closest(".assist.compact") || ev.target.closest(".assist-ask")).remove(); }));
   }
   return null;
 }
@@ -200,41 +213,43 @@ export function todayCard(b, sum, ctx) {
   const open = b.in_progress;
   const late = open.filter((x) => x.due_date && x.due_date < today).length;
   const pendentes = b.day === today ? b.recurring.filter((r) => r.due !== false && !r.done_today) : [];
-  const lines = [];
-  const actions = [];
+  const items = [];
+  let resumo;
 
   if (!b.work_day) {
-    lines.push("Hoje não é um dia útil na sua agenda." +
-      (open.length ? ` Há ${openLine(open.length, late)}, caso queira adiantar algo.` : " Aproveite o descanso."));
+    resumo = "Hoje não é um dia útil na sua agenda." +
+      (open.length ? ` Há ${openLine(open.length, late)}, caso queira adiantar algo.` : " Aproveite o descanso.");
   } else if (pendentes.length || open.length) {
     const partes = [pendentes.length ? plural(pendentes.length, "rotina pendente", "rotinas pendentes") : "", openLine(open.length, late)];
-    lines.push(`Para hoje: ${partes.filter(Boolean).join(" e ")}.`);
+    resumo = `Para hoje: ${partes.filter(Boolean).join(" e ")}.`;
     if (open.length) {
       const first = open[0];
-      lines.push({ line: h("p", {}, "Sugiro começar por ", h("strong", { text: q(first.title) }), `${why(first, today)}.`),
-        actions: [action("Abrir tarefa", () => ctx.openTask(first.id))] });
+      items.push({ key: "hoje:sugestao", lines: [{ line: h("p", {}, "Sugiro começar por ", h("strong", { text: q(first.title) }), `${why(first, today)}.`),
+        actions: [action("Abrir tarefa", () => ctx.openTask(first.id))] }] });
     }
   } else {
-    lines.push(b.recurring.some((r) => r.due !== false)
+    resumo = b.recurring.some((r) => r.due !== false)
       ? "As rotinas de hoje estão concluídas e não há tarefas em aberto. Tudo em dia."
-      : "Nada pendente por aqui. O que surgir, registre no campo de registro rápido.");
+      : "Nada pendente por aqui. O que surgir, registre no campo de registro rápido.";
   }
-  if (b.work_day) lines.push(...notes(open, today, pendentes, t.hour));
+  if (b.work_day) for (const n of notes(open, today, pendentes, t.hour)) items.push({ key: n.key, lines: [n.text] });
 
   // Tempo esquecido: concluídas hoje sem nenhum apontamento.
   const semTempo = b.done.filter((x) => x.completed_at && localDay(x.completed_at) === today && !x.minutes);
   if (semTempo.length) {
-    lines.push({ line: h("p", {}, `${semTempo.length === 1 ? "Uma tarefa concluída hoje está" : `${semTempo.length} tarefas concluídas hoje estão`} sem tempo apontado: `,
+    items.push({ key: "hoje:sem-tempo", lines: [{ line: h("p", {}, `${semTempo.length === 1 ? "Uma tarefa concluída hoje está" : `${semTempo.length} tarefas concluídas hoje estão`} sem tempo apontado: `,
       ...semTempo.slice(0, 3).flatMap((x, i) => [i ? ", " : "", h("strong", { text: q(x.title) })]), semTempo.length > 3 ? " e outras." : "."),
-      actions: semTempo.slice(0, 2).map((x) => action(`Apontar em ${q(x.title.length > 24 ? x.title.slice(0, 23) + "…" : x.title)}`, () => ctx.openTask(x.id))) });
+      actions: semTempo.slice(0, 2).map((x) => action(`Apontar em ${q(x.title.length > 24 ? x.title.slice(0, 23) + "…" : x.title)}`, () => ctx.openTask(x.id))) }] });
   }
-  if (b.work_day && t.hour >= 16) { const c = closing(sum, pendentes); if (c) lines.push(c); }
+  if (b.work_day && t.hour >= 16) { const c = closing(sum, pendentes); if (c) items.push({ key: "hoje:fechamento", lines: [c] }); }
   const r = recap(sum, t, ctx.go);
-  if (r.line) lines.push({ line: r.line, actions: r.act ? [r.act] : [] });
-  if (b.work_day) lines.push({ line: "Posso montar o texto da daily: ontem, hoje e impedimentos, pronto para colar no chat da equipe.",
-    actions: [action("Copiar para a daily", () => copyDaily(b, sum))] });
+  if (r.line) items.push({ key: "hoje:recap", lines: [{ line: r.line, actions: r.act ? [r.act] : [] }] });
+  if (b.work_day) items.push({ key: "hoje:daily", lines: [{ line: "Posso montar o texto da daily: ontem, hoje e impedimentos, pronto para colar no chat da equipe.",
+    actions: [action("Copiar para a daily", () => copyDaily(b, sum))] }] });
+  const ask = invite(me, ctx.onProfile);
+  if (ask) items.push({ key: "hoje:nome", lines: [], extra: ask });
 
-  return card({ hello: greeting(me.name), lines, actions, extra: invite(me, ctx.onProfile), key: "hoje" });
+  return stack("hoje", { hello: greeting(me.name), lines: [resumo] }, items);
 }
 
 // --------------------------------------------------------- Retrospectiva --
@@ -266,7 +281,9 @@ export function retroCard(a, me) {
   const done = weeks.reduce((s, w) => s + w.done, 0);
   if (weeks.length && !lines.length)
     lines.push(done ? `Nas últimas 4 semanas, você concluiu ${plural(done, "tarefa", "tarefas")}.` : "Ainda não há tarefas concluídas nas últimas 4 semanas para analisar.");
-  return lines.length ? card({ key: "retro", lines: lines.slice(0, 3), compact: true }) : null;
+  if (!lines.length) return null;
+  const [first, ...rest] = lines.slice(0, 3);
+  return stack("retro", { lines: [first], compact: true }, rest.map((l, i) => ({ key: `retro:${i}`, lines: [l] })));
 }
 
 // ---------------------------------------------------------------- Tarefas --
