@@ -17,7 +17,7 @@ export async function mount(root, opts = {}) {
   clear(root);
   // Retrospectiva: o "hoje" e a semana ficam na tela Hoje. A leitura do
   // assistente só na própria (o admin vendo outra pessoa não recebe "sua rotina").
-  if (!opts.dashUrl) { const c = retroCard(a, opts.me); if (c) root.append(c); }
+  if (!opts.dashUrl && opts.setAssist) opts.setAssist(retroCard(a, opts.me));
   root.append(
     section("Rotinas · consistência", [
       h("div", { class: "consist-grid" },

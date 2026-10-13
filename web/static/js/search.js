@@ -60,9 +60,9 @@ export async function mount(root, ctx) {
   const refresh = () => mount(root, ctx);
 
   if (!r.tasks.length && !r.recurring.length && !r.projects.length) {
-    root.append(enabled(ctx.me)
-      ? card({ lines: [`Não encontrei nada com “${q}”. Tente uma palavra só ou um termo mais curto; acentos e maiúsculas não importam.`], compact: true })
-      : h("p", { class: "empty", text: "Nada encontrado." }));
+    if (enabled(ctx.me))
+      ctx.setAssist(card({ lines: [`Não encontrei nada com “${q}”. Tente uma palavra só ou um termo mais curto; acentos e maiúsculas não importam.`], compact: true }));
+    else root.append(h("p", { class: "empty", text: "Nada encontrado." }));
     return;
   }
 

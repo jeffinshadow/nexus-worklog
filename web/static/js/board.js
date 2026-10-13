@@ -239,8 +239,7 @@ export async function mount(root, opts = {}) {
   // Tarefas (as rotinas ficam na tela Hoje).
   const wip = column("Em aberto");
   const done = column("Concluídas", { collapsible: true, className: "column-done" });
-  const assist = h("div");  // a linha do assistente (só no quadro do próprio usuário)
-  root.append(assist, h("div", { class: "columns" }, wip.section, done.section));
+  root.append(h("div", { class: "columns" }, wip.section, done.section));
 
   // Filtro por projeto (só no quadro do próprio usuário).
   const filter = h("select", { class: "select-sm", "aria-label": "Filtrar por projeto" });
@@ -269,7 +268,8 @@ export async function mount(root, opts = {}) {
   async function refresh() {
     const sep = boardUrl.includes("?") ? "&" : "?";
     const data = await api.get(project !== "" ? `${boardUrl}${sep}project=${project}` : boardUrl);
-    if (!readOnly) { clear(assist); const c = boardLine(data.in_progress, data.today, opts.me); if (c) assist.append(c); }
+    // A linha do assistente, acima do título (só no quadro do próprio usuário).
+    if (!readOnly && opts.setAssist) opts.setAssist(boardLine(data.in_progress, data.today, opts.me));
     renderCards(wip, data.in_progress, false, data.today);
     renderCards(done, data.done, true, data.today);
   }

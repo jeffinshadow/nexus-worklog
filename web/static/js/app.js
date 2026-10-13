@@ -18,7 +18,7 @@ let me = null;
 const VIEWS = {
   hoje: { title: "Hoje", mount: (el, ctx) => today.mount(el, ctx) },
   tarefas: { title: "Tarefas", mount: (el, ctx) => board.mount(el, ctx) },
-  dashboard: { title: "Retrospectiva", eyebrow: "rotinas · fluxo · tempo · backlog", mount: (el, ctx) => dashboard.mount(el, { me: ctx.me }) },
+  dashboard: { title: "Retrospectiva", eyebrow: "rotinas · fluxo · tempo · backlog", mount: (el, ctx) => dashboard.mount(el, { me: ctx.me, setAssist: ctx.setAssist }) },
   relatorios: { title: "Relatórios", eyebrow: "PDF · exportar dados", mount: (el, ctx) => reports.mount(el, { me: ctx.me }) },
   historico: { title: "Histórico", eyebrow: "o que mudou, por quem", mount: (el) => history.mount(el) },
   config: { title: "Configurações", mount: (el, ctx) => settings.mount(el, ctx) },
@@ -52,13 +52,25 @@ async function route() {
   setActions();
 
   const el = document.getElementById("view-" + name);
+  const seq = ++routeSeq;
+  setAssist(null);
+  // A fala do assistente fica acima do título; uma tela antiga que termina de
+  // carregar depois da troca não sobrescreve a da tela atual.
+  const assist = (node) => { if (seq === routeSeq) setAssist(node); };
   try {
-    await view.mount(el, { me, setActions, setEyebrow, go });
+    await view.mount(el, { me, setActions, setEyebrow, setAssist: assist, go });
   } catch (e) {
     clear(el);
     el.append(h("p", { class: "empty", text: "Erro ao carregar. Tente de novo." }));
   }
   window.scrollTo(0, 0);
+}
+
+let routeSeq = 0;
+function setAssist(node) {
+  const slot = document.getElementById("assist-slot");
+  clear(slot);
+  if (node) slot.append(node);
 }
 
 function setEyebrow(text) {

@@ -528,10 +528,10 @@ mark { background: rgba(82,148,226,.28); color: var(--on-surface); border-radius
 .profile-row { display: flex; gap: 18px; align-items: center; margin-bottom: 12px; }
 .profile-row .help { margin: 8px 0 0; }
 
-.today-grid > .assist { grid-column: 1 / -1; order: -2; }  /* acima até do registro rápido no celular */
+#assist-slot > .assist { margin-bottom: 22px; }  /* acima do título da página */
 .assist { display: flex; gap: 14px; align-items: flex-start; border-color: rgba(82,148,226,.32);
   background: radial-gradient(520px circle at 0% 0%, rgba(82,148,226,.1), transparent 60%), linear-gradient(180deg, var(--surface-container), #161617); }
-.assist.compact { padding: 14px 18px; margin-bottom: var(--gap); }
+.assist.compact { padding: 14px 18px; }
 .assist-mark { flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
   color: var(--primary-hi); background: rgba(82,148,226,.12); border: 1px solid rgba(82,148,226,.3); }
 .assist-mark .ico { width: 18px; height: 18px; }

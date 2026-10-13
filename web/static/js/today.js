@@ -137,5 +137,6 @@ export async function mount(root, ctx, opts = {}) {
     me: ctx.me, go: ctx.go, openTask: (id) => openTask(id, refresh),
     onProfile: meChanged, onAssistant: (res) => meChanged({ assistant: res }),
   });
-  root.append(h("div", { class: "today-grid" }, assist, recPanel, openPanel, donePanel, sum ? summaryPanel(sum, refresh) : null));
+  ctx.setAssist(assist);
+  root.append(h("div", { class: "today-grid" }, recPanel, openPanel, donePanel, sum ? summaryPanel(sum, refresh) : null));
 }
