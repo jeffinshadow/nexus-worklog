@@ -12,8 +12,8 @@
 }
 
 :root {
-  /* Escala da interface: no desktop tudo sai em 80% (como o zoom do navegador
-     em 80%), mantendo as proporções. Medidas da tela (vh/vw) e a área útil
+  /* Escala da interface: no desktop tudo sai em 90% (como o zoom do navegador
+     em 90%), mantendo as proporções. Medidas da tela (vh/vw) e a área útil
      dividem por este fator para continuarem no tamanho real. */
   --ui-zoom: 1;
   --font-sans: "Google Sans Flex", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -56,6 +56,6 @@
 }
 
 @media (min-width: 861px) {
-  :root { --ui-zoom: .8; }
+  :root { --ui-zoom: .9; }
   body { zoom: var(--ui-zoom); }
 }
