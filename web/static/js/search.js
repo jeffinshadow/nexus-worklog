@@ -61,7 +61,7 @@ export async function mount(root, ctx) {
 
   if (!r.tasks.length && !r.recurring.length && !r.projects.length) {
     if (enabled(ctx.me))
-      ctx.setAssist(card({ lines: [`Não encontrei nada com “${q}”. Tente uma palavra só ou um termo mais curto; acentos e maiúsculas não importam.`], compact: true }));
+      ctx.setAssist(card({ key: "busca", lines: [`Não encontrei nada com “${q}”. Tente uma palavra só ou um termo mais curto; acentos e maiúsculas não importam.`], compact: true }));
     else root.append(h("p", { class: "empty", text: "Nada encontrado." }));
     return;
   }

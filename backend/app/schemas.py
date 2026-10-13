@@ -94,10 +94,12 @@ class ProfileIn(BaseModel):
 
 class AssistantIn(BaseModel):
     enabled: bool = True
-    idle_on: bool = False
+    idle_on: bool = True
     idle_minutes: int = Field(default=30, ge=5, le=480)
     idle_start: int = Field(default=480, ge=0, le=1439)  # minutos do dia
     idle_end: int = Field(default=1080, ge=1, le=1440)
+    reopen_on: bool = True                                 # fala fechada no X volta sozinha
+    reopen_minutes: int = Field(default=10, ge=1, le=240)
 
     @model_validator(mode="after")
     def _janela(self):

@@ -122,13 +122,21 @@ function assistantPanel(me) {
   const mins = h("input", { type: "number", min: "5", max: "480", step: "5", value: String(a.idle_minutes), class: "input-sm", "aria-label": "Minutos sem registro" });
   const from = h("input", { type: "time", value: hhmm(a.idle_start), class: "input-sm", "aria-label": "Início do horário" });
   const to = h("input", { type: "time", value: hhmm(Math.min(a.idle_end, 1439)), class: "input-sm", "aria-label": "Fim do horário" });
-  const sync = () => { for (const el of [mins, from, to]) el.disabled = !idle.checked; };
-  idle.addEventListener("change", sync);
+  const reopen = h("input", { type: "checkbox" });
+  reopen.checked = a.reopen_on;
+  const reopenMins = h("input", { type: "number", min: "1", max: "240", value: String(a.reopen_minutes), class: "input-sm", "aria-label": "Minutos até reabrir" });
+  const sync = () => {
+    for (const el of [mins, from, to]) el.disabled = !idle.checked;
+    reopen.disabled = !falas.checked;
+    reopenMins.disabled = !falas.checked || !reopen.checked;
+  };
+  for (const el of [idle, falas, reopen]) el.addEventListener("change", sync);
   sync();
   const save = h("button", { type: "button", class: "btn btn-primary", text: "Salvar assistente" });
   save.addEventListener("click", async () => {
     const body = { enabled: falas.checked, idle_on: idle.checked, idle_minutes: Number(mins.value),
-      idle_start: toMin(from.value || "08:00"), idle_end: toMin(to.value || "18:00") };
+      idle_start: toMin(from.value || "08:00"), idle_end: toMin(to.value || "18:00"),
+      reopen_on: reopen.checked, reopen_minutes: Number(reopenMins.value) };
     if (body.idle_start >= body.idle_end) { toast("O início do horário precisa ser antes do fim.", { error: true }); return; }
     try {
       meChanged(me, { assistant: await api.put("/me/assistant", body) });
@@ -140,6 +148,9 @@ function assistantPanel(me) {
     h("div", { class: "notice-row" },
       h("label", { class: "notice-main" }, falas, h("span", {}, h("strong", { text: "Falas do assistente" }),
         h("small", { text: "A saudação e o resumo do Hoje, a leitura da Retrospectiva e as notas em Tarefas, Relatórios e Busca. Tudo calculado a partir dos seus próprios registros." })))),
+    h("div", { class: "idle-config" },
+      h("label", {}, reopen, "Reabrir uma fala fechada no X depois de", reopenMins, "min"),
+      h("small", { class: "muted", text: "Desligado: a fala fechada só volta ao recarregar a página." })),
     h("div", { class: "notice-row" },
       h("label", { class: "notice-main" }, idle, h("span", {}, h("strong", { text: "Lembrete quando passar um tempo sem registro" }),
         h("small", { text: "Só com o app aberto, nos seus dias úteis e dentro do horário abaixo. Vale registro de qualquer origem: app, celular ou IA." })))),

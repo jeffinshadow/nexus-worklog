@@ -12,6 +12,7 @@ import * as search from "./search.js";
 import { loadBranding } from "./branding.js";
 import { avatar } from "./profile.js";
 import { startIdle } from "./idle.js";
+import { configure as configureAssistant } from "./assistant.js";
 
 let me = null;
 
@@ -147,9 +148,10 @@ async function boot() {
   }
   document.getElementById("app").classList.remove("hidden");
   renderWho();
+  configureAssistant(me);
   startIdle(me, route);
   // Perfil ou assistente mudou (Configurações, convite do assistente): atualiza o menu e o lembrete.
-  window.addEventListener("nexus:me", () => { renderWho(); startIdle(me, route); });
+  window.addEventListener("nexus:me", () => { renderWho(); configureAssistant(me); startIdle(me, route); });
   if (me.role === "admin") document.getElementById("nav-admin").classList.remove("hidden");
   document.getElementById("btn-logout").addEventListener("click", logout);
   // Busca na barra lateral; "/" foca a busca de qualquer tela.

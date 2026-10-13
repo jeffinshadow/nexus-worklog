@@ -14,15 +14,22 @@ CREATE TABLE IF NOT EXISTS user_avatars (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Assistente: as falas nas telas (ligadas por padrão) e o lembrete de
--- "X minutos sem registro" (opt-in), só nos dias úteis e dentro da janela.
+-- Assistente: as falas nas telas e o lembrete de "X minutos sem registro"
+-- (os dois ligados por padrão; o lembrete só nos dias úteis e dentro da janela).
 CREATE TABLE IF NOT EXISTS assistant_prefs (
     user_id      BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     enabled      BOOLEAN NOT NULL DEFAULT true,
-    idle_on      BOOLEAN NOT NULL DEFAULT false,
+    idle_on      BOOLEAN NOT NULL DEFAULT true,
     idle_minutes SMALLINT NOT NULL DEFAULT 30 CHECK (idle_minutes BETWEEN 5 AND 480),
     idle_start   SMALLINT NOT NULL DEFAULT 480  CHECK (idle_start BETWEEN 0 AND 1439),   -- minutos do dia (08:00)
     idle_end     SMALLINT NOT NULL DEFAULT 1080 CHECK (idle_end BETWEEN 1 AND 1440),     -- 18:00
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     CHECK (idle_start < idle_end)
 );
+
+-- Lembrete ligado por padrão (bancos que já tinham a tabela com o padrão antigo).
+ALTER TABLE assistant_prefs ALTER COLUMN idle_on SET DEFAULT true;
+-- Fala fechada no X: volta sozinha depois de N minutos (ou só ao recarregar).
+ALTER TABLE assistant_prefs ADD COLUMN IF NOT EXISTS reopen_on BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE assistant_prefs ADD COLUMN IF NOT EXISTS reopen_minutes SMALLINT NOT NULL DEFAULT 10
+    CHECK (reopen_minutes BETWEEN 1 AND 240);

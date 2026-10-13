@@ -12,7 +12,8 @@ from . import db
 # inatividade (configurações, chaves e avisos não contam).
 WORK_ACTIONS = ("worklog.%", "recurring.toggle", "note.%", "checklist.%", "time.%")
 
-ASSISTANT_DEFAULTS = {"enabled": True, "idle_on": False, "idle_minutes": 30, "idle_start": 480, "idle_end": 1080}
+ASSISTANT_DEFAULTS = {"enabled": True, "idle_on": True, "idle_minutes": 30, "idle_start": 480, "idle_end": 1080,
+                      "reopen_on": True, "reopen_minutes": 10}
 
 
 def name_from_email(email: str) -> str:
@@ -46,7 +47,8 @@ def label(user_id: int, email: str) -> str:
 
 def assistant_prefs(user_id: int) -> dict:
     r = db.query_one(
-        "SELECT enabled, idle_on, idle_minutes, idle_start, idle_end FROM assistant_prefs WHERE user_id = %s",
+        """SELECT enabled, idle_on, idle_minutes, idle_start, idle_end, reopen_on, reopen_minutes
+             FROM assistant_prefs WHERE user_id = %s""",
         (user_id,),
     )
     return dict(r) if r else dict(ASSISTANT_DEFAULTS)

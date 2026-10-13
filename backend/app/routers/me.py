@@ -86,11 +86,14 @@ def put_assistant(data: AssistantIn, user=Depends(web_active_csrf)):
     uid = user["user_id"]
     before = people.assistant_prefs(uid)
     db.execute(
-        """INSERT INTO assistant_prefs (user_id, enabled, idle_on, idle_minutes, idle_start, idle_end)
-           VALUES (%(uid)s, %(enabled)s, %(idle_on)s, %(idle_minutes)s, %(idle_start)s, %(idle_end)s)
+        """INSERT INTO assistant_prefs (user_id, enabled, idle_on, idle_minutes, idle_start, idle_end,
+                                        reopen_on, reopen_minutes)
+           VALUES (%(uid)s, %(enabled)s, %(idle_on)s, %(idle_minutes)s, %(idle_start)s, %(idle_end)s,
+                   %(reopen_on)s, %(reopen_minutes)s)
            ON CONFLICT (user_id) DO UPDATE SET
              enabled = EXCLUDED.enabled, idle_on = EXCLUDED.idle_on, idle_minutes = EXCLUDED.idle_minutes,
-             idle_start = EXCLUDED.idle_start, idle_end = EXCLUDED.idle_end, updated_at = now()""",
+             idle_start = EXCLUDED.idle_start, idle_end = EXCLUDED.idle_end,
+             reopen_on = EXCLUDED.reopen_on, reopen_minutes = EXCLUDED.reopen_minutes, updated_at = now()""",
         {"uid": uid, **data.model_dump()},
     )
     audit.record(user, "assistant.update", "assistant", uid, before=before, after=data.model_dump())

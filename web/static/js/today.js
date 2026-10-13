@@ -135,7 +135,7 @@ export async function mount(root, ctx, opts = {}) {
   const meChanged = (res) => { Object.assign(ctx.me, res); window.dispatchEvent(new Event("nexus:me")); refresh(); };
   const assist = todayCard(b, sum, {
     me: ctx.me, go: ctx.go, openTask: (id) => openTask(id, refresh),
-    onProfile: meChanged, onAssistant: (res) => meChanged({ assistant: res }),
+    onProfile: meChanged,
   });
   ctx.setAssist(assist);
   root.append(h("div", { class: "today-grid" }, recPanel, openPanel, donePanel, sum ? summaryPanel(sum, refresh) : null));

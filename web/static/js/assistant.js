@@ -4,24 +4,59 @@
 import { api } from "./api.js";
 import { h, icon, nowInTz, localDay, daysBetween, shortDate, addDays } from "./dom.js";
 import { duration } from "./task.js";
-import { errorToast, toast } from "./ui.js";
+import { errorToast } from "./ui.js";
 
 export const enabled = (me) => !!(me && me.assistant && me.assistant.enabled);
 
 const plural = (n, um, varios, nenhum = null) => (n === 0 && nenhum ? nenhum : `${n} ${n === 1 ? um : varios}`);
 const q = (t) => `«${t}»`;
 const ASK_NAME = "nexus.ask.name";
-const ASK_IDLE = "nexus.ask.idle";
 
-// O cartão do assistente. parts: {hello, lines: [texto|nó], actions: [nó], extra: nó}
-export function card({ hello, lines = [], actions = [], extra = null, compact = false }) {
-  return h("section", { class: "panel assist" + (compact ? " compact" : ""), "aria-label": "Assistente" },
+// Falas fechadas no X, por tela (some ao recarregar a página). Com "reabrir
+// sozinha" ligado (Conta), a fala volta depois de N minutos se a página
+// continuar aberta.
+let ME = null;
+const closed = new Map(); // key -> quando foi fechada (ms)
+export function configure(me) { ME = me; }
+
+function reopenMs() {
+  const a = ME && ME.assistant;
+  return a && a.reopen_on ? a.reopen_minutes * 60000 : null;
+}
+
+function isClosed(key) {
+  if (!closed.has(key)) return false;
+  const ms = reopenMs();
+  if (ms !== null && Date.now() - closed.get(key) >= ms) { closed.delete(key); return false; }
+  return true;
+}
+
+function closeCard(key, el) {
+  closed.set(key, Date.now());
+  el.classList.add("hidden");
+  const ms = reopenMs();
+  if (ms === null) return;
+  const at = closed.get(key);
+  setTimeout(() => {
+    if (closed.get(key) !== at) return; // fechada de novo depois: vale o novo prazo
+    closed.delete(key);
+    for (const n of document.querySelectorAll(`.assist[data-key="${key}"]`)) n.classList.remove("hidden");
+  }, ms);
+}
+
+// O cartão do assistente. parts: {key (tela, para fechar no X), hello, lines: [texto|nó], actions: [nó], extra: nó}
+export function card({ key = null, hello, lines = [], actions = [], extra = null, compact = false }) {
+  const el = h("section", { class: "panel assist" + (compact ? " compact" : "") + (key && isClosed(key) ? " hidden" : ""),
+    "aria-label": "Assistente", "data-key": key },
     h("span", { class: "assist-mark", "aria-hidden": "true" }, icon("spark")),
     h("div", { class: "assist-body" },
       hello ? h("p", { class: "assist-hello", text: hello }) : null,
       ...lines.filter(Boolean).map((l) => (typeof l === "string" ? h("p", { text: l }) : l)),
       actions.length ? h("div", { class: "assist-actions" }, ...actions) : null,
       extra));
+  if (key) el.append(h("button", { type: "button", class: "icon assist-close", title: "Fechar por enquanto",
+    "aria-label": "Fechar a fala do assistente", onClick: () => closeCard(key, el) }, icon("close")));
+  return el;
 }
 
 function greeting(name) {
@@ -87,8 +122,8 @@ function recap(sum, t, go) {
   return { line: null, act: null };
 }
 
-// Pergunta o nome (uma vez) ou oferece o lembrete (uma vez). Um convite por vez.
-function invite(me, onProfile, onAssistant) {
+// Pergunta o nome, uma vez.
+function invite(me, onProfile) {
   if (!me.display_name && !localStorage.getItem(ASK_NAME)) {
     const input = h("input", { type: "text", maxlength: "60", placeholder: me.name, "aria-label": "Seu nome de exibição" });
     const save = async () => {
@@ -104,25 +139,10 @@ function invite(me, onProfile, onAssistant) {
       action("Salvar", save, true),
       action("Agora não", (ev) => { localStorage.setItem(ASK_NAME, "1"); ev.target.closest(".assist-ask").remove(); }));
   }
-  if (!me.assistant.idle_on && !localStorage.getItem(ASK_IDLE)) {
-    const mins = me.assistant.idle_minutes;
-    return h("div", { class: "assist-ask" },
-      h("p", { text: `Posso avisar quando passar ${mins} minutos sem nenhum registro. Deseja ativar?` }),
-      action("Ativar lembrete", async (ev) => {
-        try {
-          const res = await api.put("/me/assistant", { ...me.assistant, idle_on: true });
-          localStorage.setItem(ASK_IDLE, "1");
-          toast(`Lembrete ativado: ${mins} min sem registro, nos seus dias úteis. Ajuste em Configurações > Conta.`);
-          ev.target.closest(".assist-ask").remove();
-          onAssistant(res);
-        } catch (e) { errorToast(e, "Não foi possível ativar."); }
-      }, true),
-      action("Agora não", (ev) => { localStorage.setItem(ASK_IDLE, "1"); ev.target.closest(".assist-ask").remove(); }));
-  }
   return null;
 }
 
-// b = /board (do dia de hoje), sum = /summary. ctx: { me, go, openTask, onProfile, onAssistant }
+// b = /board (do dia de hoje), sum = /summary. ctx: { me, go, openTask, onProfile }
 export function todayCard(b, sum, ctx) {
   const { me } = ctx;
   if (!enabled(me)) return null;
@@ -155,7 +175,7 @@ export function todayCard(b, sum, ctx) {
   if (r.line) lines.push(r.line);
   if (r.act) actions.push(r.act);
 
-  return card({ hello: greeting(me.name), lines, actions, extra: invite(me, ctx.onProfile, ctx.onAssistant) });
+  return card({ hello: greeting(me.name), lines, actions, extra: invite(me, ctx.onProfile), key: "hoje" });
 }
 
 // --------------------------------------------------------- Retrospectiva --
@@ -187,19 +207,19 @@ export function retroCard(a, me) {
   const done = weeks.reduce((s, w) => s + w.done, 0);
   if (weeks.length && !lines.length)
     lines.push(done ? `Nas últimas 4 semanas, você concluiu ${plural(done, "tarefa", "tarefas")}.` : "Ainda não há tarefas concluídas nas últimas 4 semanas para analisar.");
-  return lines.length ? card({ lines: lines.slice(0, 3), compact: true }) : null;
+  return lines.length ? card({ key: "retro", lines: lines.slice(0, 3), compact: true }) : null;
 }
 
 // ---------------------------------------------------------------- Tarefas --
 
 export function boardLine(open, today, me) {
   if (!enabled(me)) return null;
-  if (!open.length) return card({ lines: ["Nenhuma tarefa em aberto. Tudo em dia."], compact: true });
+  if (!open.length) return card({ key: "tarefas", lines: ["Nenhuma tarefa em aberto. Tudo em dia."], compact: true });
   const oldest = Math.max(...open.map((t) => daysBetween(localDay(t.created_at), today)));
   const late = open.filter((t) => t.due_date && t.due_date < today).length;
   const idade = oldest >= 2 ? `; a mais antiga foi criada há ${oldest} dias` : "";
   const txt = openLine(open.length, late);
-  return card({ lines: [txt[0].toUpperCase() + txt.slice(1) + idade + "."], compact: true });
+  return card({ key: "tarefas", lines: [txt[0].toUpperCase() + txt.slice(1) + idade + "."], compact: true });
 }
 
 // ------------------------------------------------------------- Relatórios --
