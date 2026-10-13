@@ -37,6 +37,16 @@ ACTION_LABELS = {
     "recurring.replace": "trocou a agenda da rotina",
     "settings.update": "alterou os dias úteis",
     "notifications.update": "alterou os avisos por e-mail",
+    "profile.update": "alterou o nome de exibição",
+    "profile.avatar": "trocou a foto de perfil",
+    "profile.avatar_reset": "removeu a foto de perfil",
+    "assistant.update": "alterou o assistente",
+    "tickets.update": "alterou o endereço dos chamados",
+    "timer.start": "iniciou o cronômetro em",
+    "timer.discard": "descartou o cronômetro de",
+    "template.create": "criou o modelo",
+    "template.update": "editou o modelo",
+    "template.delete": "excluiu o modelo",
     "calendar.create": "criou o link do calendário",
     "calendar.revoke": "revogou o link do calendário",
     "note.create": "anotou na tarefa",
@@ -168,11 +178,11 @@ def _restore_worklog(uid: int, snap: dict) -> None:
     db.execute(
         """UPDATE worklog_tasks
               SET title = %s, description = %s, status = %s, due_date = %s, completed_at = %s,
-                  project_id = %s, priority = %s
+                  project_id = %s, priority = %s, ticket = %s, after_hours = %s
             WHERE id = %s AND user_id = %s""",
         (snap["title"], snap["description"], snap["status"], snap["due_date"],
          snap["completed_at"], _projeto_existente(uid, snap.get("project_id")),
-         snap.get("priority") or 2, snap["id"], uid),
+         snap.get("priority") or 2, snap.get("ticket"), bool(snap.get("after_hours")), snap["id"], uid),
     )
 
 
@@ -253,12 +263,13 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
             check_day_total(uid, day, minutes, status=409)
         db.execute(
             """INSERT INTO worklog_tasks (id, user_id, title, description, status, due_date,
-                                          created_at, completed_at, project_id, priority)
+                                          created_at, completed_at, project_id, priority, ticket, after_hours)
                OVERRIDING SYSTEM VALUE
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (eid, uid, before["title"], before["description"], before["status"],
              before["due_date"], before["created_at"], before["completed_at"],
-             _projeto_existente(uid, before.get("project_id")), before.get("priority") or 2),
+             _projeto_existente(uid, before.get("project_id")), before.get("priority") or 2,
+             before.get("ticket"), bool(before.get("after_hours"))),
         )
         for n in kids.get("notes", []):
             _put_note(uid, eid, n)

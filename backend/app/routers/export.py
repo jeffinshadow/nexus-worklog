@@ -43,7 +43,7 @@ def _download(content: bytes, media: str, name: str) -> Response:
 def _tasks(uid: int) -> list[dict]:
     return db.query_all(
         """SELECT w.id, w.title, w.description, w.status, w.priority, w.due_date, w.created_at, w.completed_at,
-                  p.name AS project,
+                  w.ticket, w.after_hours, p.name AS project,
                   """ + TASK_COUNTS + """
              FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
             WHERE w.user_id = %s ORDER BY w.created_at""", (uid,))
@@ -54,14 +54,15 @@ def time_csv(uid: int | None, filename: str) -> Response:
     cliente; o projeto vai por nome, pois cada pessoa tem os seus)."""
     rows = db.query_all(
         """SELECT e.day, e.minutes, w.id AS task_id, w.title, p.name AS project, e.note, e.actor, e.token_name,
-                  u.email
+                  w.ticket, w.after_hours, u.email
              FROM time_entries e JOIN worklog_tasks w ON w.id = e.task_id
              JOIN users u ON u.id = e.user_id
              LEFT JOIN projects p ON p.id = w.project_id
             WHERE (%(uid)s::bigint IS NULL OR e.user_id = %(uid)s) ORDER BY e.day, u.email, e.id""", {"uid": uid})
-    header = ["data", "minutos", "horas", "tarefa_id", "tarefa", "projeto", "observacao", "origem"]
+    header = ["data", "minutos", "horas", "tarefa_id", "tarefa", "projeto", "observacao", "origem", "chamado", "plantao"]
     data = [[r["day"], r["minutes"], str(round(r["minutes"] / 60, 2)).replace(".", ","), r["task_id"], r["title"],
-             r["project"] or "", r["note"] or "", r["token_name"] or r["actor"]] + ([r["email"]] if uid is None else [])
+             r["project"] or "", r["note"] or "", r["token_name"] or r["actor"], r["ticket"] or "",
+             "sim" if r["after_hours"] else ""] + ([r["email"]] if uid is None else [])
             for r in rows]
     return _download(_csv(data, header + (["usuario"] if uid is None else [])), "text/csv; charset=utf-8", filename)
 
@@ -74,9 +75,10 @@ def export(kind: str, user=Depends(active_user)):
         rows = [[t["id"], t["title"], t["description"] or "", STATUS_PT.get(t["status"], t["status"]), PRIO_PT.get(t["priority"], ""),
                  t["project"] or "", _local(t["created_at"]), t["due_date"] or "", _local(t["completed_at"]),
                  f"{t['check_done']}/{t['check_total']}" if t["check_total"] else "", t["minutes"],
-                 str(round(t["minutes"] / 60, 2)).replace(".", ","), t["notes_count"]] for t in _tasks(uid)]
+                 str(round(t["minutes"] / 60, 2)).replace(".", ","), t["notes_count"],
+                 t["ticket"] or "", "sim" if t["after_hours"] else ""] for t in _tasks(uid)]
         return _download(_csv(rows, ["id", "titulo", "descricao", "status", "prioridade", "projeto", "criada_em", "prazo",
-                                     "concluida_em", "checklist", "minutos", "horas", "anotacoes"]),
+                                     "concluida_em", "checklist", "minutos", "horas", "anotacoes", "chamado", "plantao"]),
                          "text/csv; charset=utf-8", f"nexus-tarefas-{stamp}.csv")
     if kind == "apontamentos.csv":
         return time_csv(uid, f"nexus-apontamentos-{stamp}.csv")

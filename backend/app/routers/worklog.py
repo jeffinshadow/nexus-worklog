@@ -28,6 +28,12 @@ def _check_project(uid: int, project_id) -> None:
         raise HTTPException(status_code=400, detail="projeto não encontrado")
 
 
+def stop_timer_of(user: dict, task_id: int) -> None:
+    """Concluir a tarefa com o cronômetro rodando nela para o cronômetro e aponta o tempo."""
+    from .timer import stop_running  # import tardio: timer usa log_time daqui
+    stop_running(user, only_task=task_id)
+
+
 def _own_task(uid: int, task_id: int) -> dict:
     row = audit.worklog_snapshot(task_id, uid)
     if not row:
@@ -42,12 +48,12 @@ def create(data: WorklogIn, user=Depends(active_user_csrf)):
     row = db.query_one(
         """
         INSERT INTO worklog_tasks (user_id, title, description, status, due_date, completed_at,
-                                   project_id, priority)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                                   project_id, priority, ticket, after_hours)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING id
         """,
         (user["user_id"], data.title, data.description, data.status, data.due_date, completed_at,
-         data.project_id, data.priority),
+         data.project_id, data.priority, data.ticket, data.after_hours),
     )
     audit.record(user, "worklog.create", "worklog", row["id"],
                  after=audit.worklog_snapshot(row["id"], user["user_id"]))
@@ -61,7 +67,8 @@ def detail(task_id: int, user=Depends(active_user)):
     task = db.query_one(
         """
         SELECT w.id, w.title, w.description, w.status, w.due_date, w.created_at, w.completed_at,
-               w.priority, w.project_id, p.name AS project_name, p.color AS project_color
+               w.priority, w.project_id, w.ticket, w.after_hours,
+               p.name AS project_name, p.color AS project_color
           FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
          WHERE w.id = %s AND w.user_id = %s
         """,
@@ -110,6 +117,12 @@ def update(task_id: int, data: WorklogUpdate, user=Depends(active_user_csrf)):
     if data.priority is not None:
         fields.append("priority = %s")
         values.append(data.priority)
+    if "ticket" in sent:
+        fields.append("ticket = %s")
+        values.append(data.ticket)
+    if data.after_hours is not None:
+        fields.append("after_hours = %s")
+        values.append(data.after_hours)
     if data.status is not None:
         fields.append("status = %s")
         values.append(data.status)
@@ -121,6 +134,8 @@ def update(task_id: int, data: WorklogUpdate, user=Depends(active_user_csrf)):
 
     if not fields:
         raise HTTPException(status_code=400, detail="nada para atualizar")
+    if data.status == "done":
+        stop_timer_of(user, task_id)
 
     values += [task_id, user["user_id"]]
     db.execute(
@@ -135,6 +150,7 @@ def update(task_id: int, data: WorklogUpdate, user=Depends(active_user_csrf)):
 @router.post("/{task_id}/finish")
 def finish(task_id: int, user=Depends(active_user_csrf)):
     before = _own_task(user["user_id"], task_id)
+    stop_timer_of(user, task_id)
     db.execute(
         """UPDATE worklog_tasks
               SET status = 'done', completed_at = COALESCE(completed_at, now())

@@ -3,7 +3,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from .. import audit, db
+from .. import audit, db, people
 from ..deps import require_admin, require_admin_csrf
 from ..schemas import InviteIn
 from ..security import generate_temp_password, hash_password, revoke_access
@@ -24,9 +24,8 @@ def _ensure_user(user_id: int) -> dict:
 
 @router.get("/users")
 def list_users(admin=Depends(require_admin)):
-    return db.query_all(
-        "SELECT id, email, role, created_at FROM users ORDER BY role DESC, email"
-    )
+    rows = db.query_all("SELECT id, email, role, created_at FROM users ORDER BY role DESC, email")
+    return [{**r, **people.profile(r["id"])} for r in rows]
 
 
 @router.post("/users", status_code=201)

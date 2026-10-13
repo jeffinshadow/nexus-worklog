@@ -10,7 +10,7 @@ chamam as mesmas funções das rotas REST, então herdam validação, isolamento
 por usuário e histórico (registrado com actor="mcp" e o nome da chave).
 Chave "read" só enxerga as ferramentas de leitura. A IA não exclui tarefas.
 """
-from datetime import date
+from datetime import date, datetime, timezone
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Request
@@ -22,11 +22,13 @@ from .. import db, deps, services
 from ..config import config
 from ..labels import PRIO_PT, STATUS_PT
 from ..labels import dur as _dur
-from ..schemas import ChecklistIn, ChecklistUpdate, NoteIn, TimeIn, ToggleIn, WorklogIn, WorklogUpdate
+from ..schemas import ChecklistIn, ChecklistUpdate, NoteIn, TimeIn, TimerIn, ToggleIn, WorklogIn, WorklogUpdate
 from . import history as history_routes
 from . import projects as project_routes
 from . import search as search_routes
 from . import recurring as recurring_routes
+from . import templates as template_routes
+from . import timer as timer_routes
 from . import worklog as worklog_routes
 from .board import check_board_day
 
@@ -39,7 +41,9 @@ INSTRUCTIONS = (
     "ver o dia (rotinas e tarefas abertas) e get_summary para a daily/retro (ontem e a "
     "semana, com tempo por projeto). Registre o que o usuário contar com "
     "create_task/update_task/complete_task, log_time e add_note; marque rotinas com "
-    "set_recurring. Datas no formato AAAA-MM-DD, no fuso " + config.APP_TZ + ". Rotinas "
+    "set_recurring. Para medir o tempo enquanto o usuário trabalha, use start_timer/stop_timer; "
+    "procedimentos repetidos têm modelos (list_templates, create_from_template). "
+    "Datas no formato AAAA-MM-DD, no fuso " + config.APP_TZ + ". Rotinas "
     "aceitam até 7 dias para trás; marcar uma rotina fora da agenda dela conta como extra. "
     "Tudo fica no histórico do usuário; use undo para corrigir um engano seu."
 )
@@ -67,6 +71,10 @@ def _call(fn, *args, **kwargs):
 
 def _task_line(t: dict, today: date) -> str:
     parts = [f"#{t['id']} {t['title']}", f"[{STATUS_PT.get(t['status'], t['status'])}]"]
+    if t.get("ticket"):
+        parts.append(f"(chamado {t['ticket']})")
+    if t.get("after_hours"):
+        parts.append("(plantão)")
     if t.get("priority") == 1:
         parts.append("(prioridade alta)")
     if t.get("project_name"):
@@ -123,7 +131,7 @@ def _task_args(uid: int, args: dict) -> dict:
 def _find_task(uid: int, task_id: int) -> dict:
     t = db.query_one(
         """SELECT w.id, w.title, w.description, w.status, w.due_date, w.completed_at, w.priority,
-                  p.name AS project_name, """ + services.TASK_COUNTS + """
+                  w.ticket, w.after_hours, p.name AS project_name, """ + services.TASK_COUNTS + """
              FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
             WHERE w.id = %s AND w.user_id = %s""", (task_id, uid))
     if not t:
@@ -138,6 +146,10 @@ def t_get_today(ctx, args):
     b = services.get_board(uid)
     today = b["today"]
     lines = [f"Hoje: {today.isoformat()} ({'dia útil' if b['work_day'] else 'dia NÃO útil'})", ""]
+    if b.get("timer"):
+        tm = b["timer"]
+        mins = int((datetime.now(timezone.utc) - tm["started_at"]).total_seconds() // 60)
+        lines += [f"Cronômetro rodando em #{tm['task_id']} {tm['title']} há {_dur(max(mins, 1))}.", ""]
     rec = [r for r in b["recurring"] if r["due"]]
     lines.append(f"Rotinas de hoje ({sum(r['done_today'] for r in rec)}/{len(rec)} feitas):")
     lines += _recurring_rows(rec) or ["  (nenhuma)"]
@@ -282,6 +294,36 @@ def t_get_summary(ctx, args):
                      + [""] + block(f"Semana até hoje (desde {s['week']['start'].isoformat()}):", s["week"], s["week"]["previous"]))
 
 
+def t_start_timer(ctx, args):
+    res = _call(timer_routes.start, TimerIn(task_id=int(args["task_id"])), user=ctx)
+    prev = res["stopped"]
+    extra = f" (o anterior parou e apontou {_dur(prev['minutes'])} em #{prev['task_id']})" if prev else ""
+    return f"Cronômetro iniciado em #{res['timer']['task_id']} {res['timer']['title']}{extra}."
+
+
+def t_stop_timer(ctx, args):
+    res = _call(timer_routes.stop, user=ctx)
+    st = res["stopped"]
+    return f"Cronômetro parado: {_dur(st['minutes'])} apontados em #{st['task_id']} ({st['day'].isoformat()})."
+
+
+def t_list_templates(ctx, args):
+    rows = template_routes.list_templates(user=ctx)
+    return "\n".join(f"M{t['id']} {t['name']}: “{t['title']}”" + (f" · checklist de {len(t['checklist'])} itens" if t["checklist"] else "")
+                     for t in rows) or "(nenhum modelo; o usuário cria em Configurações > Modelos)"
+
+
+def t_create_from_template(ctx, args):
+    value = str(args.get("template", "")).strip().lstrip("Mm")
+    rows = template_routes.list_templates(user=ctx)
+    t = next((r for r in rows if str(r["id"]) == value), None) or next(
+        (r for r in rows if r["name"].lower() == str(args.get("template", "")).strip().lower()), None)
+    if not t:
+        raise ToolError("modelo não encontrado (veja list_templates)")
+    res = _call(template_routes.use_template, t["id"], user=ctx)
+    return "Criada pelo modelo: " + _task_line(_find_task(ctx["user_id"], res["id"]), services.app_today())
+
+
 def t_set_recurring(ctx, args):
     data = _call(ToggleIn, done=args.get("done", True), day=args.get("day"))
     rid = args.get("recurring_id")
@@ -328,7 +370,9 @@ TOOLS = {
                         "status": {"type": "string", "enum": STATUS, "default": "todo"},
                         "due_date": {**DATE, "type": ["string", "null"], "description": "Previsão de conclusão (AAAA-MM-DD)"},
                         "project": {"type": ["string", "null"], "description": "Nome do projeto/cliente (veja list_projects)"},
-                        "priority": {"type": "string", "enum": ["alta", "normal", "baixa"], "default": "normal"}}}),
+                        "priority": {"type": "string", "enum": ["alta", "normal", "baixa"], "default": "normal"},
+                        "ticket": {"type": ["string", "null"], "maxLength": 40, "description": "Número do chamado (GLPI, TomTicket...)"},
+                        "after_hours": {"type": "boolean", "default": False, "description": "Plantão / fora do horário"}}}),
     "update_task": (t_update_task, True,
                     "Edita uma tarefa. Envie só os campos a mudar; description, due_date ou project = null apagam o campo.",
                     {"type": "object", "required": ["task_id"], "properties": {
@@ -338,7 +382,9 @@ TOOLS = {
                         "status": {"type": "string", "enum": STATUS},
                         "due_date": {**DATE, "type": ["string", "null"]},
                         "project": {"type": ["string", "null"]},
-                        "priority": {"type": "string", "enum": ["alta", "normal", "baixa"]}}}),
+                        "priority": {"type": "string", "enum": ["alta", "normal", "baixa"]},
+                        "ticket": {"type": ["string", "null"], "maxLength": 40},
+                        "after_hours": {"type": "boolean"}}}),
     "get_summary": (t_get_summary, False, "Resumo para a daily/retro: o último dia útil e a semana até hoje (rotinas, tarefas concluídas, tempo por projeto, o que ficou para trás).",
                     {"type": "object", "properties": {}}),
     "get_task": (t_get_task, False, "Tarefa completa: checklist, anotações e tempo apontado.",
@@ -370,11 +416,52 @@ TOOLS = {
                           "recurring_id": {"type": "integer", "description": "id da rotina (R<n> em get_today/list_recurring), não de tarefa"},
                           "done": {"type": "boolean", "default": True},
                           "day": DATE}}),
+    "start_timer": (t_start_timer, True, "Inicia o cronômetro numa tarefa aberta (se outro estiver rodando, ele para e aponta o tempo).",
+                    {"type": "object", "required": ["task_id"], "properties": {"task_id": {"type": "integer"}}}),
+    "stop_timer": (t_stop_timer, True, "Para o cronômetro e aponta o tempo na tarefa.",
+                   {"type": "object", "properties": {}}),
+    "list_templates": (t_list_templates, False, "Lista os modelos de tarefa do usuário (procedimentos com checklist pronto).",
+                       {"type": "object", "properties": {}}),
+    "create_from_template": (t_create_from_template, True, "Cria uma tarefa a partir de um modelo (com o checklist dele).",
+                             {"type": "object", "required": ["template"], "properties": {
+                                 "template": {"type": "string", "description": "Nome do modelo ou M<id> (veja list_templates)"}}}),
     "get_history": (t_get_history, False, "Últimas ações na conta (app, API ou IA), com o que pode ser desfeito.",
                     {"type": "object", "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 20}}}),
     "undo": (t_undo, True, "Desfaz uma ação do histórico (só a mais recente de cada item).",
              {"type": "object", "required": ["history_id"], "properties": {"history_id": {"type": "integer"}}}),
 }
+
+PROMPTS = {
+    "resumo_semanal": {
+        "title": "Resumo da semana",
+        "description": "Resumo da semana de trabalho para mandar a alguém (gestor, time, cliente).",
+        "arguments": [{"name": "para", "description": "Para quem é o resumo (padrão: gestor)", "required": False}],
+        "text": ("Use a ferramenta get_summary do Nexus e escreva um resumo da minha semana para {para}, em português, "
+                 "curto e objetivo: o que foi entregue (agrupe por projeto/cliente), o tempo por projeto, o que ficou "
+                 "em andamento e qualquer impedimento (tarefas bloqueadas, via get_today). Não invente nada que não "
+                 "esteja nos dados; se algo estiver vazio, diga que não houve registro."),
+    },
+    "daily": {
+        "title": "Daily",
+        "description": "Texto da daily: ontem, hoje e impedimentos.",
+        "arguments": [],
+        "text": ("Use get_summary e get_today do Nexus e monte minha daily em três tópicos curtos: Ontem (o que concluí "
+                 "desde o último dia útil), Hoje (o que está em andamento, atrasado ou vence hoje) e Impedimentos "
+                 "(tarefas bloqueadas; se não houver, \"nenhum\"). Só com o que está registrado."),
+    },
+}
+
+
+def _prompt_list() -> list:
+    return [{"name": n, "title": p["title"], "description": p["description"], "arguments": p["arguments"]}
+            for n, p in PROMPTS.items()]
+
+
+def _prompt_get(name: str, args: dict) -> dict:
+    p = PROMPTS[name]
+    text = p["text"].format(para=(args.get("para") or "o meu gestor").strip()[:80])
+    return {"description": p["description"], "messages": [{"role": "user", "content": {"type": "text", "text": text}}]}
+
 
 def _tool_list(ctx) -> list:
     out = []
@@ -407,12 +494,19 @@ def _handle(ctx, msg):
     if method == "initialize":
         asked = params.get("protocolVersion")
         version = asked if asked in SUPPORTED_VERSIONS else SUPPORTED_VERSIONS[0]
-        result = {"protocolVersion": version, "capabilities": {"tools": {"listChanged": False}},
+        result = {"protocolVersion": version,
+                  "capabilities": {"tools": {"listChanged": False}, "prompts": {"listChanged": False}},
                   "serverInfo": SERVER_INFO, "instructions": INSTRUCTIONS}
     elif method == "ping":
         result = {}
     elif method == "tools/list":
         result = {"tools": _tool_list(ctx)}
+    elif method == "prompts/list":
+        result = {"prompts": _prompt_list()}
+    elif method == "prompts/get":
+        if params.get("name") not in PROMPTS:
+            return _rpc_error(rid, -32602, f"prompt desconhecido: {params.get('name')}")
+        result = _prompt_get(params["name"], params.get("arguments") or {})
     elif method == "tools/call":
         name, args = params.get("name"), params.get("arguments") or {}
         spec = TOOLS.get(name)

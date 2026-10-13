@@ -86,6 +86,23 @@ TASK_COUNTS = """
     (SELECT count(*) FROM task_notes n WHERE n.task_id = w.id)::int AS notes_count,
     (SELECT COALESCE(sum(t.minutes), 0) FROM time_entries t WHERE t.task_id = w.id)::int AS minutes"""
 
+# Último movimento de uma tarefa aberta (edição, anotação, item, tempo): o
+# assistente usa para "bloqueada/parada há N dias".
+TOUCHED = """,
+    GREATEST(w.created_at,
+      (SELECT max(a.created_at) FROM audit_log a
+        WHERE a.user_id = w.user_id AND a.entity = 'worklog' AND a.entity_id = w.id),
+      (SELECT max(n.created_at) FROM task_notes n WHERE n.task_id = w.id),
+      (SELECT max(c.created_at) FROM task_checklist c WHERE c.task_id = w.id),
+      (SELECT max(t.created_at) FROM time_entries t WHERE t.task_id = w.id)) AS touched_at"""
+
+
+def running_timer(user_id: int):
+    """O cronômetro rodando (tarefa e início) ou None."""
+    return db.query_one(
+        """SELECT t.task_id, w.title, t.started_at FROM task_timers t
+             JOIN worklog_tasks w ON w.id = t.task_id WHERE t.user_id = %s""", (user_id,))
+
 
 def board_day_range(today: date) -> tuple[date, date]:
     return today - timedelta(days=RETRO_DAYS), today
@@ -142,26 +159,29 @@ def get_board(user_id: int, day: date | None = None, project: int | None = None)
         filtro_proj = " AND w.project_id IS NULL" if project == 0 else " AND w.project_id = %s"
         if project:
             params.append(project)
-    cols = """
+    def cols(extra=""):
+        return """
         SELECT w.id, w.title, w.description, w.status, w.due_date, w.created_at, w.completed_at,
-               w.priority, w.project_id, p.name AS project_name, p.color AS project_color,
-               """ + TASK_COUNTS + """
+               w.priority, w.project_id, w.ticket, w.after_hours,
+               p.name AS project_name, p.color AS project_color,
+               """ + TASK_COUNTS + extra + """
           FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
          WHERE w.user_id = %s"""
     in_progress = db.query_all(
-        cols + " AND w.status <> 'done'" + filtro_proj
+        cols(TOUCHED) + " AND w.status <> 'done'" + filtro_proj
         + """ ORDER BY COALESCE(w.due_date < %s, false) DESC, COALESCE(w.due_date = %s, false) DESC,
                        w.priority, COALESCE(w.due_date, DATE '9999-12-31'), w.created_at""",
         tuple(params) + (today, today),
     )
     done = db.query_all(
-        cols + " AND w.status = 'done'" + filtro_proj + f" ORDER BY w.completed_at DESC NULLS LAST LIMIT {BOARD_DONE_LIMIT}",
+        cols() + " AND w.status = 'done'" + filtro_proj + f" ORDER BY w.completed_at DESC NULLS LAST LIMIT {BOARD_DONE_LIMIT}",
         tuple(params),
     )
     for r in recurring:
         r["due"] = is_due(r, day, mask)
     min_day, _ = board_day_range(today)
     return {
+        "timer": running_timer(user_id),
         "recurring": recurring,
         "in_progress": in_progress,
         "done": done,
@@ -378,7 +398,7 @@ def get_report_range(user_id: int, start: date, end: date, project: dict | None 
     )
     entries = db.query_all(
         """
-        SELECT e.day, e.minutes, e.note, w.title, p.name AS project, p.color AS project_color
+        SELECT e.day, e.minutes, e.note, w.title, w.after_hours, p.name AS project, p.color AS project_color
           FROM time_entries e
           JOIN worklog_tasks w ON w.id = e.task_id
           LEFT JOIN projects p ON p.id = w.project_id
@@ -483,6 +503,7 @@ def get_report_range(user_id: int, start: date, end: date, project: dict | None 
             "recurring_total": total_slots,
             "recurring_extra": total_extra,
             "minutes": sum(e["minutes"] for e in entries),
+            "minutes_after_hours": sum(e["minutes"] for e in entries if e["after_hours"]),
             "pontual_done": len(pontuais),
             "active_days": len(days),
             "time_days": len({e["day"] for e in entries}),  # dias com tempo apontado (base da média)
@@ -514,6 +535,7 @@ def _compact(r: dict) -> dict:
         "recurring_extra": s["recurring_extra"],
         "pontual_done": s["pontual_done"],
         "minutes": s["minutes"],
+        "minutes_after_hours": s["minutes_after_hours"],
         "active_days": s["active_days"],
         "deliveries": [{"id": w["id"], "title": w["title"], "project": w["project"],
                         "project_color": w["project_color"], "minutes": w["minutes"]} for w in r["deliveries"]],
@@ -535,4 +557,5 @@ def get_summary(user_id: int) -> dict:
     week = _compact(get_report_range(user_id, ws, today))
     prev = _compact(get_report_range(user_id, prev_s, prev_e))
     week["previous"] = {k: prev[k] for k in ("recurring_done", "recurring_total", "pontual_done", "minutes", "start", "end")}
-    return {"today": today, "last_day": _compact(get_report_range(user_id, last, today - timedelta(days=1))), "week": week}
+    return {"today": today, "last_day": _compact(get_report_range(user_id, last, today - timedelta(days=1))), "week": week,
+            "today_stats": _compact(get_report_range(user_id, today, today))}  # fechamento do dia

@@ -1,6 +1,7 @@
 import { api } from "./api.js";
 import { h, clear, shortDate } from "./dom.js";
 import { projectBars } from "./summary.js";
+import { retroCard } from "./assistant.js";
 
 const NS = "http://www.w3.org/2000/svg";
 const MONTHS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
@@ -14,7 +15,9 @@ export async function mount(root, opts = {}) {
   const a = data || {};
 
   clear(root);
-  // Retrospectiva: o "hoje" e a semana ficam na tela Hoje.
+  // Retrospectiva: o "hoje" e a semana ficam na tela Hoje. A leitura do
+  // assistente só na própria (o admin vendo outra pessoa não recebe "sua rotina").
+  if (!opts.dashUrl && opts.setAssist) opts.setAssist(retroCard(a, opts.me));
   root.append(
     section("Rotinas · consistência", [
       h("div", { class: "consist-grid" },
@@ -119,7 +122,7 @@ function heatmap(hm) {
   const start = parseISO(days[0].date);
   const cols = Math.ceil(days.length / 7);
   const cell = 24, gap = 3, step = cell + gap;
-  const padL = 26, padT = 16;
+  const padL = 34, padT = 21; // espaço para os rótulos (dia da semana e mês) em 12px
   const w = padL + cols * step + 2;
   const height = padT + 7 * step + 2;
   const s = svg(w, height, "chart-svg heatmap");
@@ -135,13 +138,13 @@ function heatmap(hm) {
   for (let col = 0; col < cols; col++) {
     const dt = new Date(start.getTime() + col * 7 * 86400000);
     if (dt.getMonth() !== prevMonth) {
-      s.appendChild(textEl(padL + col * step, padT - 5, MONTHS[dt.getMonth()], "heat-axis"));
+      s.appendChild(textEl(padL + col * step, padT - 6, MONTHS[dt.getMonth()], "heat-axis"));
       prevMonth = dt.getMonth();
     }
   }
   // Rótulos de dia da semana (linhas 1/3/5 = seg/qua/sex).
   for (const row of [1, 3, 5]) {
-    s.appendChild(textEl(0, padT + row * step + cell - 2, WEEKDAYS[row].toLowerCase().slice(0, 3), "heat-axis"));
+    s.appendChild(textEl(0, padT + row * step + cell - 6, WEEKDAYS[row].toLowerCase().slice(0, 3), "heat-axis"));
   }
 
   days.forEach((d, i) => {

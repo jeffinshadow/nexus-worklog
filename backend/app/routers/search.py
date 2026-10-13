@@ -23,7 +23,7 @@ def _snippet(text: str, q: str, width: int = 70) -> str:
 @router.get("/search")
 def search(q: str = Query(..., min_length=2, max_length=100), user=Depends(active_user)):
     uid = user["user_id"]
-    fq = fold(q.strip()[:100])  # também quando chamada pelo MCP (sem validação de Query)
+    fq = fold(q.strip()[:100]).lstrip("#")  # "#1234" acha o chamado; também pelo MCP (sem validação de Query)
     if len(fq) < 2:
         raise HTTPException(status_code=400, detail="busque ao menos 2 letras")
     like = "%" + fq.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
@@ -35,18 +35,21 @@ def search(q: str = Query(..., min_length=2, max_length=100), user=Depends(activ
         if not t:
             t = tasks[row["id"]] = {k: row[k] for k in (
                 "id", "title", "status", "priority", "due_date", "completed_at", "created_at",
-                "project_name", "project_color")} | {"hits": []}
+                "project_name", "project_color", "ticket", "after_hours")} | {"hits": []}
         return t
 
     base = """SELECT w.id, w.title, w.description, w.status, w.priority, w.due_date, w.completed_at,
-                     w.created_at, p.name AS project_name, p.color AS project_color{extra}
+                     w.created_at, w.ticket, w.after_hours, p.name AS project_name, p.color AS project_color{extra}
                 FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id {join}
                WHERE w.user_id = %(uid)s AND {cond}
                ORDER BY w.created_at DESC LIMIT 200"""
     params = {"uid": uid, "like": like}
 
-    for r in db.query_all(base.format(extra="", join="", cond="(nx_fold(w.title) LIKE %(like)s OR nx_fold(w.description) LIKE %(like)s)"), params):
+    for r in db.query_all(base.format(extra="", join="", cond="(nx_fold(w.title) LIKE %(like)s OR nx_fold(w.description) LIKE %(like)s"
+                                      " OR nx_fold(w.ticket) LIKE %(like)s)"), params):
         t = task(r)
+        if r["ticket"] and fq.lstrip("#") in fold(r["ticket"]):
+            t["hits"].append({"kind": "chamado", "text": "#" + r["ticket"]})
         if fq in fold(r["title"]):
             t["hits"].append({"kind": "título", "text": r["title"]})
         if r["description"] and fq in fold(r["description"]):

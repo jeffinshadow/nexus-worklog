@@ -256,7 +256,9 @@ def _kpis(pdf: _Report, data: dict) -> None:
         tiles.append(("rotinas", f"{pct}%" if pct is not None else "—", sub if s["recurring_total"] else "nenhuma devida", pct))
     tiles.append(("concluídas", str(s["pontual_done"]), "tarefas concluídas", None))
     tiles.append(("tempo apontado", _dur(s["minutes"]) if s["minutes"] else "—",
-                  f"média {_dur(s['minutes'] // max(1, s.get('time_days') or s['active_days']))} por dia com tempo" if s["minutes"] else "nada apontado", None))
+                  (f"{_dur(s['minutes_after_hours'])} em plantão" if s.get("minutes_after_hours") else
+                   f"média {_dur(s['minutes'] // max(1, s.get('time_days') or s['active_days']))} por dia com tempo")
+                  if s["minutes"] else "nada apontado", None))
     if by_project:
         tiles.append(("em aberto", str(s["open"]), f"{s['overdue']} atrasada{'s' if s['overdue'] != 1 else ''}" if s["overdue"] else "nenhuma atrasada", None))
     tiles.append(("dias com atividade", str(s["active_days"]),

@@ -10,14 +10,21 @@ import * as settings from "./settings.js";
 import * as admin from "./admin.js";
 import * as search from "./search.js";
 import { loadBranding } from "./branding.js";
+import { avatar } from "./profile.js";
+import { startIdle } from "./idle.js";
+import { configure as configureAssistant } from "./assistant.js";
+import { session } from "./session.js";
+import { initTimer, stopTimer, timerState } from "./timer.js";
+import { openWorklog } from "./board.js";
+import { modal } from "./ui.js";
 
 let me = null;
 
 const VIEWS = {
   hoje: { title: "Hoje", mount: (el, ctx) => today.mount(el, ctx) },
   tarefas: { title: "Tarefas", mount: (el, ctx) => board.mount(el, ctx) },
-  dashboard: { title: "Retrospectiva", eyebrow: "rotinas · fluxo · tempo · backlog", mount: (el) => dashboard.mount(el) },
-  relatorios: { title: "Relatórios", eyebrow: "PDF · exportar dados", mount: (el) => reports.mount(el) },
+  dashboard: { title: "Retrospectiva", eyebrow: "rotinas · fluxo · tempo · backlog", mount: (el, ctx) => dashboard.mount(el, { me: ctx.me, setAssist: ctx.setAssist }) },
+  relatorios: { title: "Relatórios", eyebrow: "PDF · exportar dados", mount: (el, ctx) => reports.mount(el, { me: ctx.me }) },
   historico: { title: "Histórico", eyebrow: "o que mudou, por quem", mount: (el) => history.mount(el) },
   config: { title: "Configurações", mount: (el, ctx) => settings.mount(el, ctx) },
   admin: { title: "Admin", mount: (el) => admin.mount(el), adminOnly: true },
@@ -50,13 +57,25 @@ async function route() {
   setActions();
 
   const el = document.getElementById("view-" + name);
+  const seq = ++routeSeq;
+  setAssist(null);
+  // A fala do assistente fica acima do título; uma tela antiga que termina de
+  // carregar depois da troca não sobrescreve a da tela atual.
+  const assist = (node) => { if (seq === routeSeq) setAssist(node); };
   try {
-    await view.mount(el, { me, setActions, setEyebrow, go });
+    await view.mount(el, { me, setActions, setEyebrow, setAssist: assist, go });
   } catch (e) {
     clear(el);
     el.append(h("p", { class: "empty", text: "Erro ao carregar. Tente de novo." }));
   }
   window.scrollTo(0, 0);
+}
+
+let routeSeq = 0;
+function setAssist(node) {
+  const slot = document.getElementById("assist-slot");
+  clear(slot);
+  if (node) slot.append(node);
 }
 
 function setEyebrow(text) {
@@ -82,12 +101,21 @@ function mountMore(el) {
   ];
   if (me.role === "admin") items.push(["admin", "admin", "Admin"]);
   el.append(
-    h("p", { class: "muted mono", text: me.email }),
+    h("a", { href: "#/config?aba=conta", class: "more-me" }, avatar(me, "md"),
+      h("span", { class: "who-text" }, h("span", { class: "who-name", text: me.name }), h("span", { class: "who-email", text: me.email }))),
     h("div", { class: "menu-list" },
       ...items.map(([v, ic, label]) => h("a", { href: "#/" + v }, icon(ic), h("span", { text: label }))),
       h("button", { type: "button", class: "nav-btn logout", onClick: logout }, icon("logout"), h("span", { text: "Sair" }))
     )
   );
+}
+
+// Rodapé do menu: foto (ou iniciais), nome e e-mail; leva ao perfil.
+function renderWho() {
+  const who = document.getElementById("who");
+  clear(who);
+  who.append(avatar(me, "sm"), h("span", { class: "who-text" },
+    h("span", { class: "who-name", text: me.name }), h("span", { class: "who-email", text: me.email })));
 }
 
 function showChangePassword() {
@@ -123,7 +151,13 @@ async function boot() {
     return;
   }
   document.getElementById("app").classList.remove("hidden");
-  document.getElementById("who").textContent = me.email;
+  session.me = me;
+  renderWho();
+  configureAssistant(me);
+  initTimer(route);
+  startIdle(me, route);
+  // Perfil ou assistente mudou (Configurações, convite do assistente): atualiza o menu e o lembrete.
+  window.addEventListener("nexus:me", () => { renderWho(); configureAssistant(me); startIdle(me, route); });
   if (me.role === "admin") document.getElementById("nav-admin").classList.remove("hidden");
   document.getElementById("btn-logout").addEventListener("click", logout);
   // Busca na barra lateral; "/" foca a busca de qualquer tela.
@@ -133,13 +167,34 @@ async function boot() {
     const v = sideQ.value.trim();
     if (v.length >= 2) location.hash = "#/busca?q=" + encodeURIComponent(v);
   });
+  // Atalhos de teclado (fora de campos e diálogos). "?" mostra a lista.
+  const SHORTCUTS = {
+    "/": ["Buscar", () => {
+      if (getComputedStyle(sideQ).display !== "none" && sideQ.offsetParent) sideQ.focus();
+      else location.hash = "#/busca";
+    }],
+    n: ["Nova tarefa", () => openWorklog(null, route)],
+    h: ["Ir para Hoje", () => go("hoje")],
+    t: ["Ir para Tarefas", () => go("tarefas")],
+    r: ["Ir para Retrospectiva", () => go("dashboard")],
+    l: ["Ir para Relatórios", () => go("relatorios")],
+    s: ["Parar o cronômetro (e apontar)", () => { if (timerState()) stopTimer(); }],
+    "?": ["Mostrar estes atalhos", showShortcuts],
+  };
+  function showShortcuts() {
+    const dlg = modal(h("h2", { text: "Atalhos de teclado" }),
+      h("dl", { class: "shortcuts" }, ...Object.entries(SHORTCUTS).flatMap(([k, [label]]) => [h("dt", {}, h("kbd", { text: k })), h("dd", { text: label })])),
+      h("p", { class: "dialog-note", text: "Funcionam fora dos campos de texto. Esc fecha qualquer janela." }),
+      h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Fechar", onClick: () => dlg.close() })));
+  }
   document.addEventListener("keydown", (ev) => {
-    if (ev.key !== "/" || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    const sc = SHORTCUTS[ev.key.length === 1 ? ev.key.toLowerCase() : ""] || SHORTCUTS[ev.key];
+    if (!sc) return;
     const tag = (document.activeElement && document.activeElement.tagName) || "";
-    if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag) || document.querySelector("dialog[open]")) return;
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag) || document.activeElement?.isContentEditable || document.querySelector("dialog[open]")) return;
     ev.preventDefault();
-    if (getComputedStyle(sideQ).display !== "none" && sideQ.offsetParent) sideQ.focus();
-    else location.hash = "#/busca";
+    sc[1]();
   });
   window.addEventListener("hashchange", route);
   route();

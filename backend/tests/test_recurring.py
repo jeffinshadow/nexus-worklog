@@ -43,13 +43,17 @@ def test_removida_hoje_some_do_quadro_de_hoje(usuario):
 
 
 def test_dia_nao_util_vira_extra(usuario):
-    """Com só segunda útil, uma marcação num dia que não é segunda conta como extra."""
+    """Com só segunda útil, uma marcação num dia que não é segunda conta como extra.
+
+    Os dias úteis mudam ANTES de criar a rotina: mudar depois encerra a rotina
+    com a agenda antiga (comportamento certo, testado à parte), e o resultado
+    dependeria do dia da semana em que a suíte roda."""
+    usuario.post("/auth/settings", {"work_days": 2})  # só segunda
     tid = _criar(usuario)
     recuar_criacao(tid, 10)
     hoje = dia_hoje(usuario)
-    nao_segunda = next(hoje - timedelta(days=i) for i in range(0, 7) if (hoje - timedelta(days=i)).weekday() != 0)
-    usuario.post("/auth/settings", {"work_days": 2})  # só segunda
-    usuario.post(f"/recurring/{tid}/toggle", {"done": True, "day": nao_segunda.isoformat()})
+    nao_segunda = next(hoje - timedelta(days=i) for i in range(1, 8) if (hoje - timedelta(days=i)).weekday() != 0)
+    assert usuario.post(f"/recurring/{tid}/toggle", {"done": True, "day": nao_segunda.isoformat()}).status_code == 200
     r = get_report_range(uid_de(usuario), nao_segunda, nao_segunda)["summary"]
     assert (r["recurring_extra"], r["recurring_total"]) == (1, 0)  # fora da agenda: extra, não devida
 

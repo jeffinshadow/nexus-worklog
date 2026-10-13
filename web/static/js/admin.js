@@ -43,7 +43,7 @@ async function mountUsers(root) {
   const select = h(
     "select",
     {},
-    ...users.map((u) => h("option", { value: u.id }, `${u.email}${u.role === "admin" ? " (admin)" : ""}`))
+    ...users.map((u) => h("option", { value: u.id }, `${u.display_name ? u.display_name + " · " : ""}${u.email}${u.role === "admin" ? " (admin)" : ""}`))
   );
 
   const resetBtn = h("button", { type: "button", class: "btn btn-danger", text: "Redefinir senha", onClick: onReset });
