@@ -72,10 +72,12 @@ export function card({ key = null, hello, lines = [], actions = [], extra = null
   return el;
 }
 
-// Um aviso dentro da fala principal: sem moldura própria, só um fundo leve e
-// um X discreto para dispensá-lo sem fechar o resto.
+// Um aviso dentro da fala principal: sem moldura própria, só um fundo leve, o
+// símbolo do assistente (é ele falando, não um aviso geral do app) e um X
+// discreto para dispensá-lo sem fechar o resto.
 function noticeItem({ key, lines = [], extra = null }) {
   const el = h("div", { class: "assist-item" + (isClosed(key) ? " hidden" : ""), "data-key": key },
+    h("span", { class: "assist-mark", "aria-hidden": "true" }, icon("spark")),
     h("div", { class: "assist-item-body" }, ...renderLines(lines), extra),
     h("button", { type: "button", class: "icon assist-item-close", title: "Dispensar este aviso por enquanto",
       "aria-label": "Dispensar este aviso", onClick: () => closeCard(key, el) }, icon("close")));
@@ -130,7 +132,7 @@ function notes(open, today, pendentes, hour) {
   return out;
 }
 
-// Fechamento do dia (a partir das 16h, em dia útil): o que saiu hoje e o que falta.
+// Resumo do dia (a partir das 16h, em dia útil): o que saiu hoje e o que falta.
 function closing(sum, pendentes) {
   const s = sum && sum.today_stats;
   if (!s) return null;
@@ -138,7 +140,7 @@ function closing(sum, pendentes) {
   const falta = pendentes.length
     ? `; ainda ${pendentes.length === 1 ? "falta" : "faltam"} ${pendentes.length <= 3 ? pendentes.map((r) => r.label).join(", ") : plural(pendentes.length, "rotina", "rotinas")}`
     : "";
-  return `Encerrando o dia: ${plural(s.pontual_done, "tarefa concluída", "tarefas concluídas", "nenhuma tarefa concluída")}${tempo} hoje${falta}.`;
+  return `Resumo do dia: ${plural(s.pontual_done, "tarefa concluída", "tarefas concluídas", "nenhuma tarefa concluída")}${tempo} hoje${falta}.`;
 }
 
 // Texto da daily: Ontem (desde o último dia útil), Hoje e Impedimentos.

@@ -536,7 +536,10 @@ mark { background: rgba(82,148,226,.28); color: var(--on-surface); border-radius
 /* Avisos dentro da fala principal: sem moldura, só um fundo leve, para tudo
    parecer uma coisa só; cada um com um X discreto. */
 .assist-items { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; }
-.assist-item { position: relative; padding: 10px 40px 10px 14px; border-radius: 12px; background: rgba(255,255,255,.028); }
+.assist-item { position: relative; display: flex; gap: 10px; align-items: flex-start; padding: 10px 40px 10px 12px; border-radius: 12px; background: rgba(255,255,255,.028); }
+.assist-item > .assist-mark { width: 24px; height: 24px; margin-top: -1px; }
+.assist-item > .assist-mark .ico { width: 13px; height: 13px; }
+.assist-item-body { flex: 1; min-width: 0; }
 .assist-item .assist-item-body > p:first-child { margin-top: 0; }
 .assist-item .assist-actions { margin-bottom: 2px; }
 .assist-item-close { position: absolute; top: 4px; right: 4px; width: 30px; height: 30px; opacity: .55; }
