@@ -1,8 +1,9 @@
-// Configurações: projetos, avisos, calendário, IA e API (chaves), conta (dias úteis e senha).
+// Configurações: projetos, avisos, calendário, IA e API (chaves), conta (perfil, assistente, dias úteis e senha).
 import { api } from "./api.js";
 import { h, icon, clear, dateTime, field } from "./dom.js";
 import { codeBox, confirmDialog, errorToast, modal, toast, warnBox } from "./ui.js";
 import { projectsPanel } from "./projects.js";
+import { avatar, squarePhoto } from "./profile.js";
 
 const TABS = [
   ["projetos", "Projetos"],
@@ -44,9 +45,108 @@ export async function mount(root, ctx) {
     else if (active === "avisos") body.append(await notices());
     else if (active === "calendario") body.append(await calendarFeed(() => render()));
     else if (active === "ia") body.append(...aiHelp(), await tokens(() => render()));
-    else body.append(workDays(ctx.me), account(ctx.me));
+    else body.append(profilePanel(ctx.me, render), assistantPanel(ctx.me), workDays(ctx.me), account(ctx.me));
   }
   await render();
+}
+
+// ----------------------------------------------------------------- perfil --
+
+// O app inteiro usa o mesmo objeto `me`: atualiza e avisa (menu, lembrete).
+function meChanged(me, res) {
+  Object.assign(me, res);
+  window.dispatchEvent(new Event("nexus:me"));
+}
+
+function profilePanel(me, rerender) {
+  const name = h("input", { type: "text", maxlength: "60", value: me.display_name || "", placeholder: me.name });
+  const err = h("p", { class: "error-text" });
+  const file = h("input", { type: "file", accept: "image/png,image/jpeg,image/webp", class: "hidden" });
+  const pick = h("button", { type: "button", class: "btn btn-ghost btn-sm", onClick: () => file.click() }, icon("edit"), me.avatar ? "Trocar foto" : "Enviar foto");
+  const remove = me.avatar ? h("button", {
+    type: "button", class: "btn btn-text btn-sm", text: "Remover", onClick: async () => {
+      try { meChanged(me, await api.del("/me/avatar")); toast("Foto removida."); rerender(); }
+      catch (e) { errorToast(e); }
+    },
+  }) : null;
+  file.addEventListener("change", async () => {
+    const f = file.files && file.files[0];
+    if (!f) return;
+    pick.disabled = true;
+    try {
+      const blob = await squarePhoto(f);
+      meChanged(me, await api.upload("/me/avatar", blob));
+      toast("Foto atualizada.");
+      rerender();
+    } catch (e) {
+      errorToast(e, "Não foi possível usar esta foto.");
+    } finally {
+      pick.disabled = false;
+      file.value = "";
+    }
+  });
+  const form = h("form", {}, field("Nome de exibição", name), err,
+    h("button", { type: "submit", class: "btn btn-primary", text: "Salvar nome" }));
+  form.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    err.textContent = "";
+    try {
+      meChanged(me, await api.put("/me/profile", { display_name: name.value.trim() || null }));
+      toast(`Combinado: vou chamar você de ${me.name}.`);
+      rerender();
+    } catch (e) {
+      err.textContent = e.message || "Falha ao salvar.";
+    }
+  });
+  return h("section", { class: "panel" },
+    h("div", { class: "panel-head" }, h("h2", { text: "Perfil" })),
+    h("div", { class: "profile-row" }, avatar(me, "lg"),
+      h("div", {}, h("div", { class: "row-actions" }, pick, remove), file,
+        h("p", { class: "help", text: "PNG, JPEG ou WebP. A foto é recortada em quadrado e reduzida no seu navegador antes do envio; os dados de localização dela não saem daqui." }))),
+    h("p", { class: "help", text: "Aparece no menu, nas saudações e no cabeçalho dos relatórios. " +
+      (me.display_name ? "Em branco, volto a usar o nome tirado do seu e-mail." : `Em branco, uso “${me.name}”, tirado do seu e-mail.`) }),
+    form);
+}
+
+// ------------------------------------------------------------- assistente --
+
+const hhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+const toMin = (v) => { const [a, b] = v.split(":").map(Number); return a * 60 + (b || 0); };
+
+function assistantPanel(me) {
+  const a = me.assistant;
+  const falas = h("input", { type: "checkbox" });
+  falas.checked = a.enabled;
+  const idle = h("input", { type: "checkbox" });
+  idle.checked = a.idle_on;
+  const mins = h("input", { type: "number", min: "5", max: "480", step: "5", value: String(a.idle_minutes), class: "input-sm", "aria-label": "Minutos sem registro" });
+  const from = h("input", { type: "time", value: hhmm(a.idle_start), class: "input-sm", "aria-label": "Início do horário" });
+  const to = h("input", { type: "time", value: hhmm(Math.min(a.idle_end, 1439)), class: "input-sm", "aria-label": "Fim do horário" });
+  const sync = () => { for (const el of [mins, from, to]) el.disabled = !idle.checked; };
+  idle.addEventListener("change", sync);
+  sync();
+  const save = h("button", { type: "button", class: "btn btn-primary", text: "Salvar assistente" });
+  save.addEventListener("click", async () => {
+    const body = { enabled: falas.checked, idle_on: idle.checked, idle_minutes: Number(mins.value),
+      idle_start: toMin(from.value || "08:00"), idle_end: toMin(to.value || "18:00") };
+    if (body.idle_start >= body.idle_end) { toast("O início do horário precisa ser antes do fim.", { error: true }); return; }
+    try {
+      meChanged(me, { assistant: await api.put("/me/assistant", body) });
+      toast("Assistente salvo.");
+    } catch (e) { errorToast(e, "Falha ao salvar."); }
+  });
+  return h("section", { class: "panel" },
+    h("div", { class: "panel-head" }, icon("spark"), h("h2", { text: "Assistente" })),
+    h("div", { class: "notice-row" },
+      h("label", { class: "notice-main" }, falas, h("span", {}, h("strong", { text: "Falas do assistente" }),
+        h("small", { text: "A saudação e o resumo do Hoje, a leitura da Retrospectiva e as notas em Tarefas, Relatórios e Busca. Tudo calculado a partir dos seus próprios registros." })))),
+    h("div", { class: "notice-row" },
+      h("label", { class: "notice-main" }, idle, h("span", {}, h("strong", { text: "Lembrete quando passar um tempo sem registro" }),
+        h("small", { text: "Só com o app aberto, nos seus dias úteis e dentro do horário abaixo. Vale registro de qualquer origem: app, celular ou IA." })))),
+    h("div", { class: "idle-config" },
+      h("label", {}, "Avisar após", mins, "min sem registro"),
+      h("label", {}, "entre", from, "e", to)),
+    h("div", { class: "row-actions" }, save));
 }
 
 // ------------------------------------------------------------- dias úteis --

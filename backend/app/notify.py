@@ -20,6 +20,7 @@ from . import db, mailer
 from .config import config
 from .labels import DIAS, MESES
 from .labels import dur as _dur
+from .people import profile
 from .routers.branding import branding
 from .schemas import PrefsIn
 from .services import rotinas, week_start, get_board, get_report_range, is_due, is_work_day, work_mask
@@ -110,7 +111,7 @@ def build_morning(uid: int, today: date, show: bool) -> Mail:
     atrasadas = [f"{t['title']} (prazo {t['due_date']:%d/%m})" for t in abertas if t["due_date"] and t["due_date"] < today]
     alta = [t["title"] for t in abertas if t["priority"] == 1 and t["title"] not in hoje
             and not (t["due_date"] and t["due_date"] < today)]
-    m = Mail(f"Seu dia · {_day(today)}", f"Bom dia — {_day(today)}",
+    m = Mail(f"Seu dia · {_day(today)}", f"Bom dia, {profile(uid)['name']}",
              f"{len(do_dia)} rotina{'s' if len(do_dia) != 1 else ''} para hoje e {len(abertas)} tarefa{'s' if len(abertas) != 1 else ''} em aberto.")
     m.block("Atrasadas", atrasadas, show)
     m.block("Vencem hoje", hoje, show)
@@ -125,7 +126,7 @@ def build_evening(uid: int, today: date, show: bool) -> Mail:
     faltam = [r["label"] for r in devidas if not r["done_today"]]
     feitas = len(devidas) - len(faltam)
     m = Mail(f"Faltam {len(faltam)} rotina{'s' if len(faltam) != 1 else ''} hoje",
-             "Antes de encerrar o dia",
+             f"{profile(uid)['name']}, antes de encerrar o dia",
              f"Você fez {feitas} de {len(devidas)} rotinas de hoje. Se já fez as outras, é só marcar no app.")
     m.block("Ainda não marcadas", faltam, show)
     return m
@@ -140,7 +141,7 @@ def build_weekly(uid: int, today: date, show: bool) -> Mail:
     intro = (f"Rotinas {s['recurring_done']}/{s['recurring_total']} ({pct}) · "
              f"{s['pontual_done']} tarefa{'s' if s['pontual_done'] != 1 else ''} concluída{'s' if s['pontual_done'] != 1 else ''} · "
              f"{_dur(s['minutes']) if s['minutes'] else 'nada'} apontado · {s['active_days']} dia{'s' if s['active_days'] != 1 else ''} com atividade.")
-    m = Mail(f"Sua semana · {start:%d/%m} a {end:%d/%m}", f"Semana de {start:%d/%m} a {end:%d/%m}", intro)
+    m = Mail(f"Sua semana · {start:%d/%m} a {end:%d/%m}", f"{profile(uid)['name']}, sua semana de {start:%d/%m} a {end:%d/%m}", intro)
     m.block("Tarefas concluídas", [w["title"] + (f" [{w['project']}]" if w["project"] else "") for w in r["deliveries"]], show)
     m.block("Tempo por projeto", [f"{p['name'] or 'Sem projeto'}: {_dur(p['minutes'])}" for p in r["projects"] if p["minutes"]], show)
     m.block("Rotinas que ficaram para trás",

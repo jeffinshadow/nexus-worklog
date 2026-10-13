@@ -86,6 +86,16 @@ TASK_COUNTS = """
     (SELECT count(*) FROM task_notes n WHERE n.task_id = w.id)::int AS notes_count,
     (SELECT COALESCE(sum(t.minutes), 0) FROM time_entries t WHERE t.task_id = w.id)::int AS minutes"""
 
+# Último movimento de uma tarefa aberta (edição, anotação, item, tempo): o
+# assistente usa para "bloqueada/parada há N dias".
+TOUCHED = """,
+    GREATEST(w.created_at,
+      (SELECT max(a.created_at) FROM audit_log a
+        WHERE a.user_id = w.user_id AND a.entity = 'worklog' AND a.entity_id = w.id),
+      (SELECT max(n.created_at) FROM task_notes n WHERE n.task_id = w.id),
+      (SELECT max(c.created_at) FROM task_checklist c WHERE c.task_id = w.id),
+      (SELECT max(t.created_at) FROM time_entries t WHERE t.task_id = w.id)) AS touched_at"""
+
 
 def board_day_range(today: date) -> tuple[date, date]:
     return today - timedelta(days=RETRO_DAYS), today
@@ -142,20 +152,21 @@ def get_board(user_id: int, day: date | None = None, project: int | None = None)
         filtro_proj = " AND w.project_id IS NULL" if project == 0 else " AND w.project_id = %s"
         if project:
             params.append(project)
-    cols = """
+    def cols(extra=""):
+        return """
         SELECT w.id, w.title, w.description, w.status, w.due_date, w.created_at, w.completed_at,
                w.priority, w.project_id, p.name AS project_name, p.color AS project_color,
-               """ + TASK_COUNTS + """
+               """ + TASK_COUNTS + extra + """
           FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
          WHERE w.user_id = %s"""
     in_progress = db.query_all(
-        cols + " AND w.status <> 'done'" + filtro_proj
+        cols(TOUCHED) + " AND w.status <> 'done'" + filtro_proj
         + """ ORDER BY COALESCE(w.due_date < %s, false) DESC, COALESCE(w.due_date = %s, false) DESC,
                        w.priority, COALESCE(w.due_date, DATE '9999-12-31'), w.created_at""",
         tuple(params) + (today, today),
     )
     done = db.query_all(
-        cols + " AND w.status = 'done'" + filtro_proj + f" ORDER BY w.completed_at DESC NULLS LAST LIMIT {BOARD_DONE_LIMIT}",
+        cols() + " AND w.status = 'done'" + filtro_proj + f" ORDER BY w.completed_at DESC NULLS LAST LIMIT {BOARD_DONE_LIMIT}",
         tuple(params),
     )
     for r in recurring:

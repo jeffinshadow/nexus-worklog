@@ -10,14 +10,16 @@ import * as settings from "./settings.js";
 import * as admin from "./admin.js";
 import * as search from "./search.js";
 import { loadBranding } from "./branding.js";
+import { avatar } from "./profile.js";
+import { startIdle } from "./idle.js";
 
 let me = null;
 
 const VIEWS = {
   hoje: { title: "Hoje", mount: (el, ctx) => today.mount(el, ctx) },
   tarefas: { title: "Tarefas", mount: (el, ctx) => board.mount(el, ctx) },
-  dashboard: { title: "Retrospectiva", eyebrow: "rotinas · fluxo · tempo · backlog", mount: (el) => dashboard.mount(el) },
-  relatorios: { title: "Relatórios", eyebrow: "PDF · exportar dados", mount: (el) => reports.mount(el) },
+  dashboard: { title: "Retrospectiva", eyebrow: "rotinas · fluxo · tempo · backlog", mount: (el, ctx) => dashboard.mount(el, { me: ctx.me }) },
+  relatorios: { title: "Relatórios", eyebrow: "PDF · exportar dados", mount: (el, ctx) => reports.mount(el, { me: ctx.me }) },
   historico: { title: "Histórico", eyebrow: "o que mudou, por quem", mount: (el) => history.mount(el) },
   config: { title: "Configurações", mount: (el, ctx) => settings.mount(el, ctx) },
   admin: { title: "Admin", mount: (el) => admin.mount(el), adminOnly: true },
@@ -82,12 +84,21 @@ function mountMore(el) {
   ];
   if (me.role === "admin") items.push(["admin", "admin", "Admin"]);
   el.append(
-    h("p", { class: "muted mono", text: me.email }),
+    h("a", { href: "#/config?aba=conta", class: "more-me" }, avatar(me, "md"),
+      h("span", { class: "who-text" }, h("span", { class: "who-name", text: me.name }), h("span", { class: "who-email", text: me.email }))),
     h("div", { class: "menu-list" },
       ...items.map(([v, ic, label]) => h("a", { href: "#/" + v }, icon(ic), h("span", { text: label }))),
       h("button", { type: "button", class: "nav-btn logout", onClick: logout }, icon("logout"), h("span", { text: "Sair" }))
     )
   );
+}
+
+// Rodapé do menu: foto (ou iniciais), nome e e-mail; leva ao perfil.
+function renderWho() {
+  const who = document.getElementById("who");
+  clear(who);
+  who.append(avatar(me, "sm"), h("span", { class: "who-text" },
+    h("span", { class: "who-name", text: me.name }), h("span", { class: "who-email", text: me.email })));
 }
 
 function showChangePassword() {
@@ -123,7 +134,10 @@ async function boot() {
     return;
   }
   document.getElementById("app").classList.remove("hidden");
-  document.getElementById("who").textContent = me.email;
+  renderWho();
+  startIdle(me, route);
+  // Perfil ou assistente mudou (Configurações, convite do assistente): atualiza o menu e o lembrete.
+  window.addEventListener("nexus:me", () => { renderWho(); startIdle(me, route); });
   if (me.role === "admin") document.getElementById("nav-admin").classList.remove("hidden");
   document.getElementById("btn-logout").addEventListener("click", logout);
   // Busca na barra lateral; "/" foca a busca de qualquer tela.

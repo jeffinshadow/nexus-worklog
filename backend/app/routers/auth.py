@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
-from .. import audit, db
+from .. import audit, db, people
 from ..config import config
 from ..deps import (
     active_user_csrf,
@@ -33,9 +33,12 @@ log = logging.getLogger("uvicorn.error")
 
 
 def _public(row: dict, csrf: str) -> dict:
+    uid = row.get("user_id") or row.get("id")
     return {
-        "id": row.get("user_id") or row.get("id"),
+        "id": uid,
         "email": row["email"],
+        **people.profile(uid),  # display_name, name, avatar
+        "assistant": people.assistant_prefs(uid),
         "role": row["role"],
         "must_change_password": row["must_change_password"],
         "work_days": row["work_days"],

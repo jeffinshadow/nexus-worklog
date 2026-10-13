@@ -4,14 +4,12 @@ import { api } from "./api.js";
 import { h, icon, clear, longDate, localDay, addDays } from "./dom.js";
 import { errorToast, toast } from "./ui.js";
 import { openRecurring, openWorklog, finishTask, taskChips, isOverdue, scheduleLabel, dayLabel } from "./board.js";
-import { openTask, parseDuration } from "./task.js";
+import { openTask } from "./task.js";
 import { fillProjectSelect } from "./projects.js";
 import { summaryPanel } from "./summary.js";
+import { quickRegister } from "./quick.js";
+import { todayCard } from "./assistant.js";
 
-// Duração no fim do registro rápido, depois de um traço: "Troca de toner — 15min",
-// "Loja X - 2h", "Backup — 1:30". Sem o traço, "Reunião 14h" e "Ligar 15:30"
-// ficam como título (hora do dia não vira tempo gasto).
-const QUICK_DUR = /\s+[-–—]\s*(\d+(?:[.,]\d+)?\s*h(?:\s*\d{1,2})?(?:\s*min)?|\d+\s*min|\d+:\d{2})$/i;
 const LAST_PROJECT = "nexus.quick.project";
 
 // opts.day: dia das rotinas (padrão hoje); opts.focusQuick: volta o cursor ao
@@ -94,30 +92,14 @@ export async function mount(root, ctx, opts = {}) {
   quick.addEventListener("keydown", async (ev) => {
     if (ev.key !== "Enter" || !quick.value.trim()) return;
     ev.preventDefault();
-    let title = quick.value.trim();
-    const m = title.match(QUICK_DUR);
-    const minutes = m ? parseDuration(m[1].replace(/\s+/g, "").replace(",", ".")) : null;
-    const comTempo = minutes && minutes <= 1440;
-    if (comTempo) title = title.slice(0, m.index).trim();
     const project_id = proj.value && proj.value !== "__new" ? Number(proj.value) : null;
     quick.disabled = true;
-    let created;
     try {
-      created = await api.post("/worklog", { title, project_id, status: comTempo ? "done" : "todo" });
+      toast(await quickRegister(quick.value, project_id));
     } catch (e) {
       quick.disabled = false;
       errorToast(e, "Erro ao registrar.");
       return;
-    }
-    if (comTempo) {
-      try {
-        await api.post(`/worklog/${created.id}/time`, { minutes });
-        toast(`Registrada e concluída com ${m[1].trim()}.`);
-      } catch (e) {
-        errorToast(e, "Tarefa registrada, mas o tempo não foi apontado.");
-      }
-    } else {
-      toast("Tarefa registrada.");
     }
     mount(root, ctx, { day, focusQuick: true, summary: sum });
   });
@@ -149,5 +131,11 @@ export async function mount(root, ctx, opts = {}) {
   }
 
   if (opts.focusQuick) setTimeout(() => quick.focus(), 0);
-  root.append(h("div", { class: "today-grid" }, recPanel, openPanel, donePanel, sum ? summaryPanel(sum, refresh) : null));
+  // Assistente: a saudação e o que pede atenção (desliga em Configurações > Conta).
+  const meChanged = (res) => { Object.assign(ctx.me, res); window.dispatchEvent(new Event("nexus:me")); refresh(); };
+  const assist = todayCard(b, sum, {
+    me: ctx.me, go: ctx.go, openTask: (id) => openTask(id, refresh),
+    onProfile: meChanged, onAssistant: (res) => meChanged({ assistant: res }),
+  });
+  root.append(h("div", { class: "today-grid" }, assist, recPanel, openPanel, donePanel, sum ? summaryPanel(sum, refresh) : null));
 }

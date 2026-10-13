@@ -13,8 +13,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Nexus">
   <link rel="preload" as="font" type="font/woff2" href="/fonts/GoogleSansFlex.woff2" crossorigin>
-  <link rel="stylesheet" href="/css/tokens.css?v=14">
-  <link rel="stylesheet" href="/css/app.css?v=14">
+  <link rel="stylesheet" href="/css/tokens.css?v=15">
+  <link rel="stylesheet" href="/css/app.css?v=15">
 </head>
 <body>
   <!-- Ícones (traço 1.75, 24px), sem script/style inline (CSP). -->
@@ -97,7 +97,7 @@
       <div class="sidebar-foot">
         <a href="#/config" data-view="config" class="nav-link"><svg class="ico"><use href="#icon-settings"></use></svg><span>Configurações</span></a>
         <div class="who">
-          <span class="who-email mono" id="who"></span>
+          <a href="#/config?aba=conta" class="who-me" id="who" title="Seu perfil"></a>
           <button type="button" class="icon-btn" id="btn-logout" title="Sair" aria-label="Sair"><svg class="ico"><use href="#icon-logout"></use></svg></button>
         </div>
       </div>
@@ -223,7 +223,7 @@
 
   <div class="toasts" id="toasts" aria-live="polite"></div>
 
-  <script type="module" src="/js/app.js?v=14"></script>
-  <script type="module" src="/js/pwa.js?v=14"></script>
+  <script type="module" src="/js/app.js?v=15"></script>
+  <script type="module" src="/js/pwa.js?v=15"></script>
 </body>
 </html>

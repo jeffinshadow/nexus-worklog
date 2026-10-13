@@ -4,6 +4,7 @@ import { api } from "./api.js";
 import { h, icon, clear, localDay } from "./dom.js";
 import { taskChips } from "./board.js";
 import { openTask } from "./task.js";
+import { card, enabled } from "./assistant.js";
 
 function queryFromHash() {
   const qs = location.hash.split("?")[1] || "";
@@ -59,7 +60,9 @@ export async function mount(root, ctx) {
   const refresh = () => mount(root, ctx);
 
   if (!r.tasks.length && !r.recurring.length && !r.projects.length) {
-    root.append(h("p", { class: "empty", text: "Nada encontrado." }));
+    root.append(enabled(ctx.me)
+      ? card({ lines: [`Não encontrei nada com “${q}”. Tente uma palavra só ou um termo mais curto; acentos e maiúsculas não importam.`], compact: true })
+      : h("p", { class: "empty", text: "Nada encontrado." }));
     return;
   }
 

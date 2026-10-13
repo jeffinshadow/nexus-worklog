@@ -87,6 +87,25 @@ class SettingsIn(BaseModel):
     work_days: int = Field(ge=1, le=127)
 
 
+class ProfileIn(BaseModel):
+    # Vazio ou None = volta ao nome derivado do e-mail.
+    display_name: Optional[str] = Field(default=None, max_length=60)
+
+
+class AssistantIn(BaseModel):
+    enabled: bool = True
+    idle_on: bool = False
+    idle_minutes: int = Field(default=30, ge=5, le=480)
+    idle_start: int = Field(default=480, ge=0, le=1439)  # minutos do dia
+    idle_end: int = Field(default=1080, ge=1, le=1440)
+
+    @model_validator(mode="after")
+    def _janela(self):
+        if self.idle_start >= self.idle_end:
+            raise ValueError("o início da janela precisa ser antes do fim")
+        return self
+
+
 class WorklogIn(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     description: Optional[str] = Field(default=None, max_length=300)

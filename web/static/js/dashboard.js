@@ -1,6 +1,7 @@
 import { api } from "./api.js";
 import { h, clear, shortDate } from "./dom.js";
 import { projectBars } from "./summary.js";
+import { retroCard } from "./assistant.js";
 
 const NS = "http://www.w3.org/2000/svg";
 const MONTHS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
@@ -14,7 +15,9 @@ export async function mount(root, opts = {}) {
   const a = data || {};
 
   clear(root);
-  // Retrospectiva: o "hoje" e a semana ficam na tela Hoje.
+  // Retrospectiva: o "hoje" e a semana ficam na tela Hoje. A leitura do
+  // assistente só na própria (o admin vendo outra pessoa não recebe "sua rotina").
+  if (!opts.dashUrl) { const c = retroCard(a, opts.me); if (c) root.append(c); }
   root.append(
     section("Rotinas · consistência", [
       h("div", { class: "consist-grid" },

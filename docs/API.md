@@ -54,15 +54,25 @@ Legenda: **S** = só sessão do app · **W** = exige escopo `write` (chave) ou C
 | --- | --- | --- |
 | `POST /login` | público | `{email, password}` → identidade + `csrf_token`; limite por IP e por e-mail (falhas) |
 | `POST /logout` | S W | |
-| `GET /me` | | `{id, email, role, must_change_password, work_days, tz, csrf_token}` |
+| `GET /me` | | `{id, email, display_name, name, avatar, assistant, role, must_change_password, work_days, tz, csrf_token}` — `name` é o de exibição ou, sem ele, o derivado do e-mail |
 | `POST /change-password` | S W | `{current_password, new_password}`; encerra as outras sessões e revoga chaves e calendário |
 | `POST /settings` | W | `{work_days}` — máscara, domingo = bit 0 (seg–sex = 62). Não reescreve o passado: rotinas "dias úteis" com história são encerradas com os dias antigos e recomeçam hoje; não se desfaz pelo histórico |
+
+## Perfil e assistente — `/api/me` (só pelo app)
+
+| Rota | | Corpo / observação |
+| --- | --- | --- |
+| `PUT /profile` | S W | `{display_name}` (até 60; vazio = volta ao nome do e-mail) |
+| `POST /avatar` · `DELETE /avatar` | S W | corpo bruto PNG, JPEG ou WebP até 256 KB (tipo pelo conteúdo; SVG não). O app recorta e reduz antes |
+| `GET /avatar/{user_id}?v=` | S | a própria foto; o admin vê a de todos |
+| `PUT /assistant` | S W | `{enabled, idle_on, idle_minutes (5–480), idle_start, idle_end}` — janela em minutos do dia |
+| `GET /activity` | S | `{last_activity}`: último registro de qualquer origem (tarefa, rotina, anotação, checklist, tempo) |
 
 ## Hoje e quadro
 
 | Rota | | Observação |
 | --- | --- | --- |
-| `GET /api/board?day=&project=` | | `day` até 7 dias atrás (padrão hoje); `project` filtra as tarefas (`0` = sem projeto). Devolve `recurring` (com `due`, `done_today`, agenda), `in_progress` (tarefas abertas: a fazer, em andamento, bloqueadas), `done`, `day`, `today`, `min_day`, `work_day` |
+| `GET /api/board?day=&project=` | | `day` até 7 dias atrás (padrão hoje); `project` filtra as tarefas (`0` = sem projeto). Devolve `recurring` (com `due`, `done_today`, agenda), `in_progress` (tarefas abertas: a fazer, em andamento, bloqueadas; com `touched_at`, o último movimento), `done`, `day`, `today`, `min_day`, `work_day` |
 | `GET /api/summary` | | `last_day` (do último dia útil até ontem) e `week` (com `previous` = mesmos dias da semana passada): rotinas, tarefas concluídas, minutos, por projeto, rotinas não feitas |
 | `GET /api/dashboard` | | retrospectiva: `heatmap` (4 semanas), `task_adherence` (30 dias, a mais pulada primeiro), `throughput`, `projects` (tempo, 30 dias), `backlog` |
 
@@ -110,6 +120,7 @@ Agenda: `daily` (dias úteis do dono) · `weekly` + `weekdays` (máscara) ·
 | Rota | | Observação |
 | --- | --- | --- |
 | `GET /api/reports/export?start=&end=&project=` | | PDF (até 6 por minuto). Período até 366 dias (fim limitado a hoje). Com `project` e sem datas: o projeto inteiro (até ~3 anos) |
+| `GET /api/reports/preview?start=&end=&project=` | | o que o PDF traria: tarefas concluídas, minutos, rotinas, dias com atividade |
 | `GET /api/search?q=` | | 2–100 caracteres, sem acento: tarefas (com onde casou), rotinas, projetos |
 | `GET /api/export/apontamentos.csv` | | CSV `;` + BOM (Excel BR) |
 | `GET /api/export/tarefas.csv` | | idem |

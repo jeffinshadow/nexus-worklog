@@ -3,6 +3,7 @@
 import { api } from "./api.js";
 import { h, icon, clear, field, addDays, localDay } from "./dom.js";
 import { errorToast } from "./ui.js";
+import { enabled, previewText } from "./assistant.js";
 
 // Períodos a partir do "hoje" no fuso da app (não do relógio do navegador).
 // A semana começa no domingo, como no resto do app.
@@ -35,7 +36,7 @@ export async function mount(root, opts = {}) {
   const btn = h("button", { type: "button", class: "btn btn-primary", onClick: run }, icon("reports"), "Exportar PDF");
 
   const quick = h("div", { class: "quick" }, ...ranges(today).map(([label, a, b]) =>
-    h("button", { type: "button", class: "btn btn-ghost btn-sm", text: label, onClick: () => { startInput.value = a; endInput.value = b; } })));
+    h("button", { type: "button", class: "btn btn-ghost btn-sm", text: label, onClick: () => { startInput.value = a; endInput.value = b; refreshPreview(); } })));
 
   // Com projeto escolhido: "projeto completo" (padrão, sem datas) ou um período.
   let whole = true;
@@ -43,7 +44,7 @@ export async function mount(root, opts = {}) {
   for (const [val, label] of [[true, "Projeto completo"], [false, "Escolher período"]]) {
     scope.append(h("button", {
       type: "button", class: "chip-btn", role: "tab", text: label, "aria-selected": String(val === whole),
-      onClick: () => { whole = val; sync(); },
+      onClick: () => { whole = val; sync(); refreshPreview(); },
     }));
   }
   const dates = h("div", { class: "report-dates" },
@@ -61,14 +62,36 @@ export async function mount(root, opts = {}) {
   }
   projSel.addEventListener("change", sync);
 
+  // Prévia do assistente: o que o PDF vai trazer (só no próprio relatório).
+  const preview = h("p", { class: "assist-note hidden", "aria-live": "polite" });
+  let previewSeq = 0;
+  async function refreshPreview() {
+    if (opts.exportBase || !enabled(opts.me)) return;
+    const proj = projSel.value;
+    const useDates = !proj || !whole;
+    const start = startInput.value, end = endInput.value;
+    if (useDates && (!start || !end || start > end)) { preview.classList.add("hidden"); return; }
+    const qs = [useDates ? `start=${start}&end=${end}` : "", proj ? `project=${proj}` : ""].filter(Boolean).join("&");
+    const seq = ++previewSeq;
+    try {
+      const r = await api.get(`/reports/preview?${qs}`);
+      if (seq !== previewSeq) return; // chegou uma resposta mais nova
+      clear(preview);
+      preview.append(icon("spark"), h("span", { text: previewText(r) }));
+      preview.classList.remove("hidden");
+    } catch { preview.classList.add("hidden"); }
+  }
+  for (const el of [projSel, startInput, endInput]) el.addEventListener("change", refreshPreview);
+
   root.append(h("div", { class: "report-section" },
     h("h3", { text: "Relatório em PDF" }),
     h("p", { class: "sub", text: "Indicadores, ritmo, rotinas, tarefas concluídas, o que está em aberto e o diário com o tempo apontado. Escolhendo um projeto, sai só o que é dele — do período que você quiser ou do projeto inteiro." }),
     projSel.options.length > 1 ? field("Projeto", projSel, "report-project") : null,
     scope, wholeNote, quick,
     h("div", { class: "report-controls" }, dates, btn),
-    err));
+    preview, err));
   sync();
+  refreshPreview();
 
   // Exportação dos dados (só no próprio usuário; o admin exporta PDF).
   if (!opts.exportBase) {

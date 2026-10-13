@@ -83,3 +83,19 @@ export function dateTime(ts) {
 export function localDay(ts) {
   return new Date(ts).toLocaleDateString("sv-SE", { timeZone: TZ });
 }
+
+// Hora, minuto e dia da semana (0 = domingo) agora, no fuso da app: saudação
+// do assistente e janela do lembrete.
+const WD_EN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+export function nowInTz() {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: TZ, hour: "numeric", minute: "numeric", weekday: "short", hourCycle: "h23" })
+    .formatToParts(new Date());
+  const p = Object.fromEntries(parts.map((x) => [x.type, x.value]));
+  return { hour: Number(p.hour), minute: Number(p.minute), weekday: WD_EN.indexOf(p.weekday) };
+}
+
+// Dias de calendário entre duas datas ISO (YYYY-MM-DD): b - a.
+export function daysBetween(a, b) {
+  const t = (iso) => { const [y, m, d] = iso.split("-").map(Number); return Date.UTC(y, m - 1, d); };
+  return Math.round((t(b) - t(a)) / 86400000);
+}

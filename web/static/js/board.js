@@ -5,6 +5,7 @@ import { h, icon, clear, addDays, shortDate } from "./dom.js";
 import { confirmDialog, errorToast, toast, undoLatest } from "./ui.js";
 import { fillProjectSelect, listProjects, projectChip } from "./projects.js";
 import { openTask, duration, parseDuration } from "./task.js";
+import { boardLine } from "./assistant.js";
 
 const WEEKDAYS_SHORT = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 const DONE_PAGE = 10;
@@ -238,7 +239,8 @@ export async function mount(root, opts = {}) {
   // Tarefas (as rotinas ficam na tela Hoje).
   const wip = column("Em aberto");
   const done = column("Concluídas", { collapsible: true, className: "column-done" });
-  root.append(h("div", { class: "columns" }, wip.section, done.section));
+  const assist = h("div");  // a linha do assistente (só no quadro do próprio usuário)
+  root.append(assist, h("div", { class: "columns" }, wip.section, done.section));
 
   // Filtro por projeto (só no quadro do próprio usuário).
   const filter = h("select", { class: "select-sm", "aria-label": "Filtrar por projeto" });
@@ -267,6 +269,7 @@ export async function mount(root, opts = {}) {
   async function refresh() {
     const sep = boardUrl.includes("?") ? "&" : "?";
     const data = await api.get(project !== "" ? `${boardUrl}${sep}project=${project}` : boardUrl);
+    if (!readOnly) { clear(assist); const c = boardLine(data.in_progress, data.today, opts.me); if (c) assist.append(c); }
     renderCards(wip, data.in_progress, false, data.today);
     renderCards(done, data.done, true, data.today);
   }

@@ -4,7 +4,7 @@ from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
-from .. import db
+from .. import db, people
 from ..config import config
 from ..deps import active_user
 from ..security import pdf_limiter
@@ -37,16 +37,9 @@ def project_first_day(user_id: int, project_id: int) -> date:
     return min(row["d"] or app_today(), app_today())
 
 
-def build_pdf_response(user_email: str, user_id: int, start: date | None, end: date | None,
-                       project_id: int | None = None) -> Response:
-    """Valida o periodo, monta os dados e devolve o PDF como download.
-
-    Com projeto, as datas são opcionais: sem início, vale desde a primeira
-    atividade do projeto (relatório do projeto inteiro, sem limite de dias);
-    sem fim, até hoje. Compartilhado com o router admin.
-    """
-    if not pdf_limiter.allow(f"pdf:{user_id}"):
-        raise HTTPException(status_code=429, detail="muitos relatórios em sequência; aguarde um minuto")
+def resolve_range(user_id: int, start: date | None, end: date | None, project_id: int | None):
+    """Valida o período (o mesmo do PDF e da prévia): devolve (início, fim,
+    projeto ou None, projeto inteiro?)."""
     project = None
     if project_id is not None:
         project = db.query_one("SELECT id, name FROM projects WHERE id = %s AND user_id = %s",
@@ -71,14 +64,27 @@ def build_pdf_response(user_email: str, user_id: int, start: date | None, end: d
     if project:
         project["whole"] = whole
         project["truncated"] = truncated
+    return start, end, project, whole
 
+
+def build_pdf_response(user_email: str, user_id: int, start: date | None, end: date | None,
+                       project_id: int | None = None) -> Response:
+    """Valida o periodo, monta os dados e devolve o PDF como download.
+
+    Com projeto, as datas são opcionais: sem início, vale desde a primeira
+    atividade do projeto (relatório do projeto inteiro, sem limite de dias);
+    sem fim, até hoje. Compartilhado com o router admin.
+    """
+    if not pdf_limiter.allow(f"pdf:{user_id}"):
+        raise HTTPException(status_code=429, detail="muitos relatórios em sequência; aguarde um minuto")
+    start, end, project, whole = resolve_range(user_id, start, end, project_id)
     data = get_report_range(user_id, start, end, project)
     brand = branding()
     # Um PDF por vez no servidor (o fpdf2 monta tudo em memória numa VM pequena).
     if not _pdf_slot.acquire(timeout=5):
         raise HTTPException(status_code=429, detail="outro relatório está sendo gerado; tente em instantes")
     try:
-        pdf = build_report_pdf(user_email, start, end, data, brand)
+        pdf = build_report_pdf(people.label(user_id, user_email), start, end, data, brand)
     finally:
         _pdf_slot.release()
 
@@ -102,3 +108,18 @@ def export(
     user=Depends(active_user),
 ):
     return build_pdf_response(user["email"], user["user_id"], start, end, project)
+
+
+@router.get("/preview")
+def preview(
+    start: date | None = Query(None),
+    end: date | None = Query(None),
+    project: int | None = Query(None),
+    user=Depends(active_user),
+):
+    """O que o PDF vai trazer (a frase do assistente antes de exportar)."""
+    start, end, proj, _ = resolve_range(user["user_id"], start, end, project)
+    s = get_report_range(user["user_id"], start, end, proj)["summary"]
+    return {"start": start, "end": end, "pontual_done": s["pontual_done"], "minutes": s["minutes"],
+            "recurring_done": s["recurring_done"], "recurring_total": s["recurring_total"],
+            "active_days": s["active_days"]}
