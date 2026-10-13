@@ -138,7 +138,7 @@ input::placeholder { color: var(--dim); }
 .empty { color: var(--dim); font-size: .9rem; padding: 6px 0; }
 
 /* -------------------------------------------------------------- tarefas -- */
-.columns { display: grid; grid-template-columns: minmax(300px, 1.3fr) minmax(260px, 1fr); gap: var(--gap); align-items: start; }
+.columns { display: grid; grid-template-columns: minmax(300px, 1.3fr) minmax(260px, 1fr); gap: var(--gap); }
 @media (max-width: 860px) { .columns { grid-template-columns: 1fr; } }
 
 .column { background: linear-gradient(180deg, var(--surface-container), #161617); border: 1px solid var(--outline-variant); border-radius: var(--radius-m); padding: 16px; }
@@ -199,7 +199,7 @@ button.column-toggle { display: none; }
 .chip.today { color: var(--warning); border-color: rgba(253,214,99,.4); }
 
 /* ----------------------------------------------------------------- hoje -- */
-.today-grid { display: grid; gap: var(--gap); grid-template-columns: repeat(12, 1fr); align-items: start; }
+.today-grid { display: grid; gap: var(--gap); grid-template-columns: repeat(12, 1fr); }
 .today-grid > .t-rec { grid-column: span 5; }
 .today-grid > .t-open { grid-column: span 7; }
 .today-grid > .t-done { grid-column: span 12; }
@@ -464,7 +464,7 @@ dialog.task-dialog { max-width: 640px; padding: 0; max-height: min(88vh, 900px);
 .search-row .hit { margin: 6px 0 0; font-size: .84rem; color: var(--on-surface-variant); overflow-wrap: anywhere; }
 .hit-kind { font-size: .68rem; color: var(--dim); margin-right: 8px; text-transform: uppercase; letter-spacing: .03em; }
 mark { background: rgba(82,148,226,.28); color: var(--on-surface); border-radius: 3px; padding: 0 2px; }
-#view-busca { display: grid; gap: var(--gap); grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr); align-items: start; }
+#view-busca { display: grid; gap: var(--gap); grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr); }
 #view-busca.hidden { display: none; }
 #view-busca > .search-big, #view-busca > .empty { grid-column: 1 / -1; }
 @media (max-width: 900px) { #view-busca { grid-template-columns: 1fr; } }
