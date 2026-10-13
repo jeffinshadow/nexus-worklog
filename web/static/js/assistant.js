@@ -118,7 +118,7 @@ function why(t, today) {
 }
 
 // Avisos discretos sobre tarefas paradas ou com prazo próximo (no máximo 2).
-function notes(open, today, pendentes, hour) {
+function notes(open, today) {
   const out = [];
   const idle = (t) => daysBetween(localDay(t.touched_at || t.created_at), today);
   for (const t of open) {
@@ -246,7 +246,7 @@ export function todayCard(b, sum, ctx) {
       ? "As rotinas de hoje estão concluídas e não há tarefas em aberto. Tudo em dia."
       : "Nada pendente por aqui. O que surgir, registre no campo de registro rápido.";
   }
-  if (b.work_day) for (const n of notes(open, today, pendentes, t.hour)) items.push({ key: n.key, lines: [n.text] });
+  if (b.work_day) for (const n of notes(open, today)) items.push({ key: n.key, lines: [n.text] });
 
   // Tempo esquecido: concluídas hoje sem nenhum apontamento.
   const semTempo = b.done.filter((x) => x.completed_at && localDay(x.completed_at) === today && !x.minutes);
