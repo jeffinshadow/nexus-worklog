@@ -100,6 +100,7 @@ class AssistantIn(BaseModel):
     idle_end: int = Field(default=1080, ge=1, le=1440)
     reopen_on: bool = True                                 # fala fechada no X volta sozinha
     reopen_minutes: int = Field(default=10, ge=1, le=240)
+    summary_from: int = Field(default=840, ge=0, le=1439)  # resumo do dia sem nada concluído: a partir de (min do dia)
 
     @model_validator(mode="after")
     def _janela(self):

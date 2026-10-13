@@ -33,3 +33,7 @@ ALTER TABLE assistant_prefs ALTER COLUMN idle_on SET DEFAULT true;
 ALTER TABLE assistant_prefs ADD COLUMN IF NOT EXISTS reopen_on BOOLEAN NOT NULL DEFAULT true;
 ALTER TABLE assistant_prefs ADD COLUMN IF NOT EXISTS reopen_minutes SMALLINT NOT NULL DEFAULT 10
     CHECK (reopen_minutes BETWEEN 1 AND 240);
+-- Resumo do dia: aparece com a primeira tarefa ou rotina concluída no dia; sem
+-- nada concluído, a partir deste horário (minutos do dia; padrão 14:00).
+ALTER TABLE assistant_prefs ADD COLUMN IF NOT EXISTS summary_from SMALLINT NOT NULL DEFAULT 840
+    CHECK (summary_from BETWEEN 0 AND 1439);

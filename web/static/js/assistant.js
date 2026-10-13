@@ -132,7 +132,7 @@ function notes(open, today, pendentes, hour) {
   return out;
 }
 
-// Resumo do dia (a partir das 16h, em dia útil): o que saiu hoje e o que falta.
+// Resumo do dia: o que saiu hoje e o que falta (quando aparece: ver todayCard).
 function closing(sum, pendentes) {
   const s = sum && sum.today_stats;
   if (!s) return null;
@@ -255,7 +255,12 @@ export function todayCard(b, sum, ctx) {
       ...semTempo.slice(0, 3).flatMap((x, i) => [i ? ", " : "", h("strong", { text: q(x.title) })]), semTempo.length > 3 ? " e outras." : "."),
       actions: semTempo.slice(0, 2).map((x) => action(`Apontar em ${q(x.title.length > 24 ? x.title.slice(0, 23) + "…" : x.title)}`, () => ctx.openTask(x.id))) }] });
   }
-  const fechamento = b.work_day && t.hour >= 16 ? closing(sum, pendentes) : null;
+  // Resumo do dia: com a primeira tarefa ou rotina concluída hoje; sem nada
+  // concluído, a partir do horário escolhido em Conta (padrão 14:00), em dia útil.
+  const st = sum && sum.today_stats;
+  const algo = st && (st.pontual_done || st.recurring_done || st.recurring_extra);
+  const desde = me.assistant.summary_from ?? 840;
+  const fechamento = algo || (b.work_day && t.hour * 60 + t.minute >= desde) ? closing(sum, pendentes) : null;
   const r = recap(sum, t, ctx.go);
   if (r.line) items.push({ key: "hoje:recap", lines: [{ line: r.line, actions: r.act ? [r.act] : [] }] });
   if (b.work_day) items.push({ key: "hoje:daily", lines: [{ line: "Posso montar o texto da daily: ontem, hoje e impedimentos, pronto para colar no chat da equipe.",

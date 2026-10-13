@@ -51,14 +51,15 @@ def test_chave_de_api_nao_mexe_no_perfil(usuario):
 def test_preferencias_do_assistente(usuario):
     assert usuario.get("/auth/me").json()["assistant"] == {  # lembrete de 30 min ligado por padrão
         "enabled": True, "idle_on": True, "idle_minutes": 30, "idle_start": 480, "idle_end": 1080,
-        "reopen_on": True, "reopen_minutes": 10}
+        "reopen_on": True, "reopen_minutes": 10, "summary_from": 840}
     ok = {"enabled": False, "idle_on": False, "idle_minutes": 45, "idle_start": 540, "idle_end": 1020,
-          "reopen_on": False, "reopen_minutes": 25}
+          "reopen_on": False, "reopen_minutes": 25, "summary_from": 600}
     assert _put(usuario, "/me/assistant", ok).json() == ok
     assert usuario.get("/auth/me").json()["assistant"] == ok
     assert _put(usuario, "/me/assistant", {**ok, "idle_minutes": 2}).status_code == 422
     assert _put(usuario, "/me/assistant", {**ok, "idle_start": 1020, "idle_end": 540}).status_code == 422
     assert _put(usuario, "/me/assistant", {**ok, "reopen_minutes": 0}).status_code == 422
+    assert _put(usuario, "/me/assistant", {**ok, "summary_from": 1440}).status_code == 422
 
 
 def test_ultima_atividade_conta_so_registro(usuario):
