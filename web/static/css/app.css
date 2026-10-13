@@ -97,8 +97,8 @@ input::placeholder { color: var(--dim); }
   padding: 22px 14px 16px; border-right: 1px solid var(--outline-variant);
   background: linear-gradient(180deg, #151517, var(--surface));
 }
-.sidebar > .lockup { padding: 0 12px; --lock-fs: 1.255rem; }  /* texto 25% maior no menu... */
-.sidebar > .lockup .lockup-mark { height: 2.02rem; max-width: 3.52rem; }  /* ...e o símbolo no tamanho normal */
+.sidebar > .lockup { padding: 0 12px; --lock-fs: 1.443rem; }  /* texto do menu: 1.255rem + 15% */
+.sidebar > .lockup .lockup-mark { height: 2.323rem; max-width: 4.048rem; }  /* símbolo: 2.02rem + 15% */
 .nav { display: flex; flex-direction: column; gap: 2px; }
 .nav a, .nav-link {
   display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px;
