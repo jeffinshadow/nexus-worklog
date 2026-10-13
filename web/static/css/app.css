@@ -88,7 +88,8 @@ input::placeholder { color: var(--dim); }
 .lockup-type { display: flex; flex-direction: column; justify-content: center; font-weight: 700; line-height: .92; letter-spacing: -.02em; }
 .lockup-type span:last-child { color: var(--on-surface-variant); }
 .lockup-type span:last-child:empty { display: none; }
-.lockup--center { display: flex; width: fit-content; margin: 0 auto 22px; --lock-fs: 1.3rem; }
+.lockup--center { display: flex; width: fit-content; margin: 0 auto 22px; --lock-fs: 1.443rem; }  /* login e troca de senha: */
+.lockup--center .lockup-mark { height: 2.5rem; max-width: 4.36rem; }  /* o mesmo tamanho do menu */
 
 /* --------------------------------------------------------------- shell -- */
 .app { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: calc(100vh / var(--ui-zoom)); }
