@@ -169,7 +169,7 @@ def export(kind: str, user=Depends(active_user)):
             "tasks": tasks,
             "recurring": recurring,
             "renewals": db.query_all(
-                """SELECT r.label, r.expires_on, r.warn_days, p.name AS project, r.note, r.created_at
+                """SELECT r.label, r.expires_on, r.warn_days, r.renew_months, p.name AS project, r.note, r.created_at
                      FROM renewals r LEFT JOIN projects p ON p.id = r.project_id
                     WHERE r.user_id = %s ORDER BY r.expires_on""", (uid,)),
         }

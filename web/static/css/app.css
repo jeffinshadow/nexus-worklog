@@ -641,3 +641,7 @@ button.nav-link { border: 0; background: transparent; width: 100%; font-family: 
 .handoff-text { width: 100%; font-family: var(--font-label); font-size: .82rem; line-height: 1.55; resize: vertical; }
 .task-title .resolution { margin-top: 6px; color: var(--on-surface-variant); font-size: .9rem; white-space: pre-wrap; }
 .today-grid > .t-venc { grid-column: 1 / -1; }
+.similar { margin: -4px 0 12px; padding: 10px 12px; border: 1px solid var(--outline-variant); border-radius: 12px; background: rgba(129,201,149,.05); }
+.similar-head { margin: 0 0 4px; font-size: .78rem; color: var(--success); font-weight: 600; }
+.similar-item p { margin: 0 0 6px; font-size: .84rem; color: var(--on-surface-variant); white-space: pre-wrap; }
+.similar-item .btn { padding-left: 0; }

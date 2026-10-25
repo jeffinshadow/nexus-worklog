@@ -39,7 +39,8 @@ para leitura, o quadro, a retrospectiva e os relatórios de cada pessoa).
   entende `@projeto #chamado !plantão ^sex !bloq motivo — 45min`.
 - **Vencimentos e base de conhecimento** — certificados, licenças, domínios e
   garantias avisam com antecedência (Hoje, e-mail da manhã, calendário); ao
-  concluir, "como resolveu?" vira texto que a busca encontra da próxima vez.
+  concluir, "como resolveu?" vira texto que a busca encontra — e a tarefa nova
+  com título parecido já mostra "já resolvido antes".
 - **Atribuição** — quem aceita (Configurações › Conta) recebe tarefas de um
   atribuidor pelo app ou pela IA, com aviso por e-mail; a tarefa passa a ser
   dela, e quem atribuiu acompanha o status e recebe um e-mail quando ela é concluída.

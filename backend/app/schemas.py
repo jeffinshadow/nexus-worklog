@@ -254,6 +254,7 @@ class RenewalIn(BaseModel):
     warn_days: int = Field(default=30, ge=1, le=365)  # avisar com quantos dias de antecedência
     project_id: Optional[int] = None
     note: Optional[str] = Field(default=None, max_length=200)
+    renew_months: Optional[int] = Field(default=None, ge=1, le=120)  # repete a cada N meses (Renovei sugere)
 
     @model_validator(mode="after")
     def _label(self):
@@ -266,6 +267,7 @@ class RenewalUpdate(BaseModel):
     warn_days: Optional[int] = Field(default=None, ge=1, le=365)
     project_id: Optional[int] = None
     note: Optional[str] = Field(default=None, max_length=200)
+    renew_months: Optional[int] = Field(default=None, ge=1, le=120)  # null apaga
 
     @model_validator(mode="after")
     def _label(self):

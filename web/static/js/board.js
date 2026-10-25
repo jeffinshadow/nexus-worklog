@@ -150,6 +150,31 @@ export function openWorklog(item, onDone, opts = {}) {
   ticket.value = item && item.ticket ? item.ticket : "";
   after.checked = !!(item && item.after_hours);
 
+  // "Já resolvi isso antes?": ao digitar o título de uma tarefa nova, mostra até 3
+  // concluídas parecidas com o "como resolveu" delas (busca sem IA).
+  const similarBox = document.getElementById("wl-similar");
+  const titleInput = document.getElementById("wl-title");
+  clear(similarBox);
+  similarBox.classList.add("hidden");
+  let simTimer = null, simSeq = 0;
+  titleInput.oninput = item ? null : () => {
+    clearTimeout(simTimer);
+    simTimer = setTimeout(async () => {
+      const q = titleInput.value.trim(), my = ++simSeq;
+      if (q.length < 4) { similarBox.classList.add("hidden"); return; }
+      let list = [];
+      try { list = await api.get("/search/similar?title=" + encodeURIComponent(q)); } catch { /* sugestão: falha não atrapalha */ }
+      if (my !== simSeq) return;
+      clear(similarBox);
+      similarBox.classList.toggle("hidden", !list.length);
+      if (!list.length) return;
+      similarBox.append(h("p", { class: "similar-head", text: "Já resolvido antes:" }),
+        ...list.map((s) => h("div", { class: "similar-item" },
+          h("button", { type: "button", class: "btn btn-text btn-sm", text: s.title, title: "Abrir a tarefa", onClick: () => openTask(s.id) }),
+          h("p", { text: s.resolution.length > 160 ? s.resolution.slice(0, 159) + "…" : s.resolution }))));
+    }, 400);
+  };
+
   // Modelo: preenche o formulário; o checklist dele entra depois de criar.
   let checklist = [];
   const tplWrap = document.getElementById("wl-template-wrap");
@@ -212,6 +237,11 @@ export function openWorklog(item, onDone, opts = {}) {
     if (payload.status === "blocked") {
       payload.blocked_reason = blocked.value.trim() || null;
       if (followUp.value !== followOrig) payload.follow_up_on = followUp.value || null; // data vencida não volta a ser validada
+      // Dia não útil: o lembrete só aparece em dia útil — cobra no dia útil anterior.
+      const mask = (session.me && session.me.work_days) || 62;
+      let fd = payload.follow_up_on;
+      while (fd && !((mask >> new Date(fd + "T12:00:00Z").getUTCDay()) & 1) && fd > now.slice(0, 10)) fd = addDays(fd, -1);
+      if (fd && fd !== payload.follow_up_on) { toast(`Cobrança antecipada para ${shortDate(fd)}, o dia útil anterior.`); payload.follow_up_on = fd; }
     }
     const minutes = !item && timeInput.value.trim() ? parseDuration(timeInput.value) : null;
     if (minutes === null && !item && timeInput.value.trim()) { toast("Tempo inválido. Ex.: 45, 1h30, 2:15.", { error: true }); timeInput.focus(); return; }

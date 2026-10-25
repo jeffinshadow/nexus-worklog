@@ -388,17 +388,18 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
             raise _gone()
     elif a in ("renewal.update", "renewal.renew"):
         if not db.execute(
-                """UPDATE renewals SET label = %s, expires_on = %s, warn_days = %s, project_id = %s, note = %s
+                """UPDATE renewals SET label = %s, expires_on = %s, warn_days = %s, project_id = %s, note = %s,
+                                       renew_months = %s
                     WHERE id = %s AND user_id = %s""",
                 (before["label"], before["expires_on"], before["warn_days"],
-                 _projeto_existente(uid, before.get("project_id")), before.get("note"), eid, uid)):
+                 _projeto_existente(uid, before.get("project_id")), before.get("note"), before.get("renew_months"), eid, uid)):
             raise _gone()
     elif a == "renewal.delete":
         db.execute(
-            """INSERT INTO renewals (id, user_id, label, expires_on, warn_days, project_id, note)
-               OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+            """INSERT INTO renewals (id, user_id, label, expires_on, warn_days, project_id, note, renew_months)
+               OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
             (eid, uid, before["label"], before["expires_on"], before["warn_days"],
-             _projeto_existente(uid, before.get("project_id")), before.get("note")))
+             _projeto_existente(uid, before.get("project_id")), before.get("note"), before.get("renew_months")))
     elif a == "project.create":
         # Com tarefas no projeto, arquiva em vez de apagar (não tira de ninguém).
         if db.query_one("SELECT 1 FROM worklog_tasks WHERE project_id = %s LIMIT 1", (eid,)):

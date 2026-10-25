@@ -13,7 +13,7 @@ from ..services import app_today, is_work_day, work_mask
 
 router = APIRouter(prefix="/api/renewals", tags=["renewals"])
 
-COLS = "r.id, r.label, r.expires_on, r.warn_days, r.project_id, r.note, p.name AS project_name"
+COLS = "r.id, r.label, r.expires_on, r.warn_days, r.project_id, r.note, r.renew_months, p.name AS project_name"
 
 
 def warn_start(expires_on, warn_days: int, mask: int):
@@ -48,7 +48,7 @@ def _check_project(uid: int, project_id) -> None:
 
 
 def _snap(rid: int, uid: int):
-    return db.query_one("SELECT id, label, expires_on, warn_days, project_id, note FROM renewals WHERE id = %s AND user_id = %s",
+    return db.query_one("SELECT id, label, expires_on, warn_days, project_id, note, renew_months FROM renewals WHERE id = %s AND user_id = %s",
                         (rid, uid))
 
 
@@ -62,9 +62,10 @@ def create(data: RenewalIn, user=Depends(active_user_csrf)):
     uid = user["user_id"]
     _check_project(uid, data.project_id)
     row = db.query_one(
-        """INSERT INTO renewals (user_id, label, expires_on, warn_days, project_id, note)
-           VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
-        (uid, data.label.strip(), data.expires_on, data.warn_days, data.project_id, (data.note or "").strip() or None))
+        """INSERT INTO renewals (user_id, label, expires_on, warn_days, project_id, note, renew_months)
+           VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+        (uid, data.label.strip(), data.expires_on, data.warn_days, data.project_id, (data.note or "").strip() or None,
+         data.renew_months))
     audit.record(user, "renewal.create", "renewal", row["id"], after=_snap(row["id"], uid))
     return {"id": row["id"]}
 
@@ -86,6 +87,9 @@ def update(rid: int, data: RenewalUpdate, user=Depends(active_user_csrf)):
         _check_project(uid, data.project_id)
         fields.append("project_id = %s")
         values.append(data.project_id)
+    if "renew_months" in sent:
+        fields.append("renew_months = %s")
+        values.append(data.renew_months)
     if "note" in sent:
         fields.append("note = %s")
         values.append((data.note or "").strip() or None)

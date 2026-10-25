@@ -140,8 +140,8 @@ def build_ics(uid: int, include_recurring: bool, cal_name: str) -> str:
     for t in db.query_all(
         """SELECT id, title, blocked_reason, follow_up_on FROM worklog_tasks
             WHERE user_id = %s AND status = 'blocked' AND follow_up_on IS NOT NULL""", (uid,)):
-        quem = f"{t['blocked_reason']} — " if t["blocked_reason"] else ""
-        event(f"followup-{t['id']}", t["follow_up_on"], f"Cobrar: {quem}{t['title']}",
+        # Sem o motivo (fornecedor, cliente): o feed vai para calendários de terceiros.
+        event(f"followup-{t['id']}", t["follow_up_on"], f"Cobrar: {t['title']}",
               "Tarefa bloqueada com dia combinado para cobrar.",
               [f"URL:{config.APP_URL}/index.html#/tarefas?id={t['id']}"])
 

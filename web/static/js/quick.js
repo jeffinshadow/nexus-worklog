@@ -66,17 +66,18 @@ export async function quickRegister(text, project_id = null) {
   const created = await api.post("/worklog", {
     title: marks.title || title, project_id: marks.project ? marks.project.id : project_id,
     ticket: marks.ticket, after_hours: marks.afterHours, due_date: marks.due,
-    status: comTempo ? "done" : marks.blocked !== null ? "blocked" : "todo",
+    // !bloq vence o "— 30min": fica bloqueada com o motivo e o tempo apontado, sem concluir.
+    status: marks.blocked !== null ? "blocked" : comTempo ? "done" : "todo",
     blocked_reason: marks.blocked || null,
   });
   const extras = [marks.project && marks.project.name, marks.ticket && "#" + marks.ticket, marks.afterHours && "plantão",
     marks.due && "prazo " + marks.due.split("-").reverse().slice(0, 2).join("/"),
-    !comTempo && marks.blocked !== null && (marks.blocked ? "bloqueada: " + marks.blocked : "bloqueada")].filter(Boolean);
+    marks.blocked !== null && (marks.blocked ? "bloqueada: " + marks.blocked : "bloqueada")].filter(Boolean);
   const com = extras.length ? ` (${extras.join(", ")})` : "";
   if (!comTempo) return `Tarefa registrada${com}.`;
   try {
     await api.post(`/worklog/${created.id}/time`, { minutes });
-    return `Registrada e concluída com ${m[1].trim()}${com}.`;
+    return `${marks.blocked !== null ? "Registrada" : "Registrada e concluída"} com ${m[1].trim()}${com}.`;
   } catch {
     return "Tarefa registrada, mas o tempo não foi apontado.";
   }

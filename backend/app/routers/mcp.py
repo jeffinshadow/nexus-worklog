@@ -247,6 +247,8 @@ def t_get_task(ctx, args):
     if t["notes"]:
         lines += ["", "Anotações (mais recentes primeiro):"]
         lines += [f"  {n['created_at'].astimezone(services.app_tz()):%d/%m %H:%M} — {n['body']}" for n in t["notes"][:10]]
+    if t.get("resolution"):
+        lines += ["", "Como resolveu:", t["resolution"]]
     if t["time"]:
         lines += ["", f"Tempo apontado: {_dur(t['minutes'])}"]
         lines += [f"  {e['day']:%d/%m} {_dur(e['minutes'])}" + (f" — {e['note']}" if e["note"] else "") for e in t["time"][:10]]
@@ -499,7 +501,9 @@ TOOLS = {
                         "completed_at": {**WHEN, "description": "Corrige a data de conclusão (tarefa concluída). " + WHEN["description"]},
                         "blocked_reason": {"type": ["string", "null"], "maxLength": 120,
                                            "description": "Com status blocked: o que se está aguardando (fornecedor, cliente, aprovação...)"},
-                        "follow_up_on": {**DATE, "type": ["string", "null"], "description": "Com status blocked: dia combinado para cobrar (AAAA-MM-DD)"}}}),
+                        "follow_up_on": {**DATE, "type": ["string", "null"], "description": "Com status blocked: dia combinado para cobrar (AAAA-MM-DD)"},
+                        "resolution": {"type": ["string", "null"], "maxLength": 1000,
+                                       "description": "Como foi resolvido (tarefa concluída; null apaga)"}}}),
     "get_summary": (t_get_summary, False, "Resumo para a daily/retro: o último dia útil e a semana até hoje (rotinas, tarefas concluídas, tempo por projeto, o que ficou para trás).",
                     {"type": "object", "properties": {}}),
     "get_task": (t_get_task, False, "Tarefa completa: checklist, anotações e tempo apontado.",

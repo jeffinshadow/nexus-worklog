@@ -20,6 +20,35 @@ def _snippet(text: str, q: str, width: int = 70) -> str:
     return ("…" if a else "") + text[a:b].strip() + ("…" if b < len(text) else "")
 
 
+# Palavras que não dizem qual é o problema ("não", "para", "com"...).
+_VAZIAS = {"para", "pelo", "pela", "com", "sem", "nao", "esta", "esse", "essa", "isso", "como", "mais",
+           "muito", "quando", "onde", "porque", "tarefa", "fazer", "verificar", "ver", "ajustar",
+           "dos", "das", "nos", "nas", "uma", "uns", "por", "que", "de novo", "novo", "nova", "outra", "outro"}
+
+
+@router.get("/search/similar")
+def similar(title: str = Query(..., min_length=3, max_length=200), user=Depends(active_user)):
+    """"Já resolvi isso antes?": até 3 tarefas concluídas, com "como resolveu",
+    cujo título tem palavras em comum com `title` (sem acento, 3+ letras: VPN,
+    DNS). Mais palavras em comum primeiro; com 4+ palavras no título, exige 2."""
+    words = [w for w in {fold(x) for x in title.replace("/", " ").split()} if len(w) >= 3 and w not in _VAZIAS][:6]
+    if not words:
+        return []
+    need = 2 if len(words) >= 4 else 1
+    score = " + ".join(f"(nx_fold(w.title) LIKE %(w{i})s)::int" for i in range(len(words)))
+    params = {"uid": user["user_id"], "need": need, **{f"w{i}": f"%{w}%" for i, w in enumerate(words)}}
+    rows = db.query_all(
+        f"""SELECT w.id, w.title, w.resolution, w.completed_at, w.ticket, ({score}) AS score
+              FROM worklog_tasks w
+             WHERE w.user_id = %(uid)s AND w.status = 'done' AND w.resolution IS NOT NULL
+               AND ({score}) >= %(need)s
+             ORDER BY score DESC, w.completed_at DESC NULLS LAST
+             LIMIT 3""", params)
+    # Só os que casam tanto quanto o melhor: "impressora financeiro" não puxa
+    # "Onboarding (Financeiro)" se há uma impressora do financeiro resolvida.
+    return [r for r in rows if r["score"] == rows[0]["score"]] if rows else []
+
+
 @router.get("/search")
 def search(q: str = Query(..., min_length=2, max_length=100), user=Depends(active_user)):
     uid = user["user_id"]

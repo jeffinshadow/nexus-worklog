@@ -78,6 +78,16 @@ def test_passagem_de_turno_app_e_mcp(usuario):
     txt = usuario.get("/summary/handoff").json()["text"]
     assert "Passagem de turno" in txt and "aguardando aprovação da diretoria" in txt
     assert "Impressora do RH (chamado 4821)" in txt and "Reset de senha (plantão)" in txt
+    # Turno de 12 h, não dia civil: concluída às 23h de ontem entra; há 13 h, não.
+    from app import db
+    antiga = usuario.post("/worklog", {"title": "Feita antes do turno"}).json()["id"]
+    usuario.post(f"/worklog/{antiga}/finish")
+    db.execute("UPDATE worklog_tasks SET completed_at = now() - interval '13 hours' WHERE id = %s", (antiga,))
+    noite = usuario.post("/worklog", {"title": "Feita de madrugada"}).json()["id"]
+    usuario.post(f"/worklog/{noite}/finish")
+    db.execute("UPDATE worklog_tasks SET completed_at = now() - interval '6 hours' WHERE id = %s", (noite,))
+    txt = usuario.get("/summary/handoff").json()["text"]
+    assert "Feita de madrugada" in txt and "Feita antes do turno" not in txt
     ia = Bearer(criar_chave(usuario)["token"])
     assert "aguardando aprovação da diretoria" in texto(ia.tool("get_handoff"))
     assert "(aguardando aprovação da diretoria)" in texto(ia.tool("list_tasks"))
@@ -193,7 +203,7 @@ def test_cobrar_em_validacao_calendario_e_manha(usuario):
     # Editar outra coisa sem mandar a data não é barrado.
     assert usuario.patch(f"/worklog/{tid}", {"title": "Peça do servidor R740"}).status_code == 200
     ics = usuario.c.get(usuario.post("/calendar", {}).json()["path"]).text.replace("\r\n ", "")
-    assert "Cobrar: Dell — Peça do servidor R740" in ics
+    assert "Cobrar: Peça do servidor R740" in ics and "Dell" not in ics  # sem o motivo no feed de terceiros
     m = notify.build_morning(uid_de(usuario), hoje, True)
     assert any(h == "Cobrar hoje" and any("Peça do servidor R740 (aguardando Dell)" in i for i in itens) for h, itens in m.blocks)
 
@@ -280,3 +290,24 @@ def test_vencimento_validacoes_e_dia_util(usuario, novo_usuario):
     assert warn_start(seg, 1, 62) == date(2030, 1, 4)
     assert warn_start(seg, 3, 62) == date(2030, 1, 4)
     assert warn_start(seg, 4, 62) == date(2030, 1, 3)
+
+
+def test_ja_resolvi_antes(usuario, novo_usuario):
+    usuario.post("/worklog", {"title": "Impressora do RH não imprime", "status": "done",
+                              "resolution": "Fila travada: reiniciado o spooler"})
+    usuario.post("/worklog", {"title": "Impressora nova no RH", "status": "done"})  # sem resolução: não entra
+    r = usuario.get("/search/similar?title=impressora rh travou de novo").json()
+    assert len(r) == 1 and r[0]["resolution"].startswith("Fila travada")
+    assert usuario.get("/search/similar?title=troca de toner").json() == []
+    usuario.post("/worklog", {"title": "Onboarding do RH", "status": "done", "resolution": "conta criada"})
+    r = usuario.get("/search/similar?title=impressora rh parada").json()
+    assert [x["title"] for x in r] == ["Impressora do RH não imprime"]  # casa 2 palavras; o onboarding só 1
+    assert novo_usuario("outro@example.com").get("/search/similar?title=impressora rh").json() == []
+
+
+def test_vencimento_periodico(usuario):
+    rid = usuario.post("/renewals", {"label": "Certificado", "expires_on": "2030-03-10", "renew_months": 12}).json()["id"]
+    assert usuario.get("/renewals").json()[0]["renew_months"] == 12
+    assert usuario.post("/renewals", {"label": "x", "expires_on": "2030-01-01", "renew_months": 0}).status_code == 422
+    usuario.patch(f"/renewals/{rid}", {"renew_months": None})
+    assert usuario.get("/renewals").json()[0]["renew_months"] is None

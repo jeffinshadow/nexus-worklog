@@ -14,6 +14,9 @@ def summary(user=Depends(active_user)):
     return get_summary(user["user_id"])
 
 
+TURNO = timedelta(hours=12)
+
+
 def _dias(ts) -> int:
     """Dias de calendário no fuso da app (bloqueada ontem às 18h = 1 dia hoje)."""
     return max(0, (app_today() - ts.astimezone(app_tz()).date()).days) if ts else 0
@@ -56,9 +59,11 @@ def handoff_text(user_id: int) -> str:
         linhas.append(item(t) + motivo + (f" ({', '.join(info)})" if info else ""))
     if not travadas:
         linhas.append("- nenhuma")
-    feitas = [t for t in b["done"] if t["completed_at"] and t["completed_at"].astimezone(app_tz()).date() == hoje]
+    # Turno, não dia civil: o plantão das 22h às 6h passa tudo o que fez.
+    desde = datetime.now(timezone.utc) - TURNO
+    feitas = [t for t in b["done"] if t["completed_at"] and t["completed_at"] >= desde]
     plantao = [t for t in feitas if t.get("after_hours")]
-    linhas += ["", f"Concluídas hoje ({len(feitas)}):"]
+    linhas += ["", f"Concluídas no turno, últimas {TURNO.seconds // 3600} h ({len(feitas)}):"]
     linhas += [f"- {t['title']}" + (" (plantão)" if t.get("after_hours") else "") for t in feitas[:15]] or ["- nada"]
     if len(feitas) > 15:
         linhas.append(f"- e mais {len(feitas) - 15}")
@@ -66,7 +71,13 @@ def handoff_text(user_id: int) -> str:
     if pend:
         linhas += ["", "Rotinas de hoje ainda não feitas:"] + [f"- {r['label']}" for r in pend]
     if plantao:
-        linhas += ["", f"Plantão: {len(plantao)} atendimento(s) fora do horário hoje."]
+        linhas += ["", f"Plantão: {len(plantao)} atendimento(s) fora do horário no turno."]
+    from .renewals import list_for
+    venc = [r for r in list_for(user_id) if r["warning"]]
+    if venc:
+        linhas += ["", "Vencimentos no aviso:"] + [
+            f"- {r['label']} — " + ("VENCIDO" if r["days_left"] < 0 else "vence hoje" if r["days_left"] == 0
+                                    else f"vence {r['expires_on']:%d/%m}") for r in venc]
     return "\n".join(linhas)
 
 
