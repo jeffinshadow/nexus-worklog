@@ -2,7 +2,7 @@
 // tela. É o único lugar das rotinas (marcar até 7 dias atrás, editar, achado).
 import { api } from "./api.js";
 import { h, icon, clear, longDate, localDay, addDays } from "./dom.js";
-import { errorToast, toast } from "./ui.js";
+import { errorToast, modal, toast, busy } from "./ui.js";
 import { openRecurring, openWorklog, finishTask, taskChips, isOverdue, scheduleLabel, dayLabel } from "./board.js";
 import { openTask } from "./task.js";
 import { fillProjectSelect } from "./projects.js";
@@ -25,6 +25,7 @@ export async function mount(root, ctx, opts = {}) {
   const today = b.today;
   ctx.setEyebrow(longDate(today) + (b.work_day ? "" : " · dia não útil"));
   ctx.setActions(
+    h("button", { type: "button", class: "btn btn-ghost", title: "Texto pronto com o que fica aberto, bloqueado e feito hoje", onClick: showHandoff }, icon("copy"), "Passagem de turno"),
     h("button", { type: "button", class: "btn btn-primary", onClick: () => openWorklog(null, refresh) }, icon("add"), "Tarefa")
   );
 
@@ -76,7 +77,11 @@ export async function mount(root, ctx, opts = {}) {
     });
     const hint = scheduleLabel(r);
     recPanel.append(h("label", { class: "check-row" + (r.done_today ? " done" : "") + (r.due === false ? " off" : "") }, cb,
-      h("span", { class: "label" }, r.label, hint ? h("small", { text: hint }) : null),
+      h("span", { class: "label" }, r.label, hint ? h("small", { text: hint }) : null,
+        r.note ? h("small", { class: "evidence", text: "evidência: " + r.note }) : null),
+      // Marcada: anota o que foi conferido (vai pro relatório, pra auditoria).
+      r.done_today ? h("button", { type: "button", class: "icon", title: r.note ? "Editar a evidência" : "Anotar a evidência (o que foi conferido)",
+        "aria-label": "Evidência de " + r.label, onClick: (ev) => { ev.preventDefault(); editEvidence(r, b.day, refresh); } }, icon("note")) : null,
       // Achou algo na verificação? Vira tarefa (com anotações e tempo).
       h("button", { type: "button", class: "icon", title: "Registrar um achado como tarefa", "aria-label": "Registrar achado de " + r.label,
         onClick: (ev) => { ev.preventDefault(); openWorklog(null, refresh, { title: `Achado: ${r.label}` }); } }, icon("alert")),
@@ -89,7 +94,7 @@ export async function mount(root, ctx, opts = {}) {
   fillProjectSelect(proj, Number(sessionStorage.getItem(LAST_PROJECT)) || null)
     .then(() => proj.addEventListener("change", () => sessionStorage.setItem(LAST_PROJECT, proj.value)))
     .catch(() => {});
-  const quick = h("input", { type: "text", placeholder: "Registrar e Enter · “— 15min” = concluída", maxlength: "200", "aria-label": "Registrar tarefa rápida" });
+  const quick = h("input", { type: "text", placeholder: "Registrar e Enter · @projeto #chamado !plantão — 15min", maxlength: "200", "aria-label": "Registrar tarefa rápida" });
   quick.addEventListener("keydown", async (ev) => {
     if (ev.key !== "Enter" || !quick.value.trim()) return;
     ev.preventDefault();
@@ -141,4 +146,44 @@ export async function mount(root, ctx, opts = {}) {
   });
   ctx.setAssist(assist);
   root.append(h("div", { class: "today-grid" }, recPanel, openPanel, donePanel, sum ? summaryPanel(sum, refresh) : null));
+}
+
+
+// Evidência da rotina: uma linha curta do que foi conferido ("backup OK, 2,1 TB").
+function editEvidence(r, day, refresh) {
+  const input = h("input", { type: "text", maxlength: "200", value: r.note || "", placeholder: "ex.: backup OK, 2,1 TB, 0 erros" });
+  const err = h("p", { class: "error-text" });
+  const form = h("form", {}, h("h2", { text: "Evidência" }),
+    h("p", { class: "dialog-note", text: `${r.label}: o que foi conferido. Aparece no relatório em PDF e na exportação.` }),
+    h("label", { class: "field" }, "Evidência", input), err,
+    h("div", { class: "dialog-actions" },
+      h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
+      h("button", { type: "submit", class: "btn btn-primary", text: "Salvar" })));
+  form.addEventListener("submit", busy(async () => {
+    try {
+      await api.post(`/recurring/${r.id}/toggle`, { done: true, day, note: input.value.trim() || null });
+      dlg.close();
+      refresh();
+    } catch (e) { err.textContent = e.message || "Não foi possível salvar."; }
+  }));
+  const dlg = modal(form);
+  input.focus();
+}
+
+// Passagem de turno/plantão: texto pronto (calculado no servidor) pra colar no chat.
+async function showHandoff() {
+  let text;
+  try { text = (await api.get("/summary/handoff")).text; } catch (e) { errorToast(e); return; }
+  const area = h("textarea", { rows: "14", readonly: "readonly", class: "handoff-text" });
+  area.value = text;
+  const dlg = modal(h("h2", { text: "Passagem de turno" }),
+    h("p", { class: "dialog-note", text: "O que fica aberto, o que está bloqueado e por quê, o que saiu hoje. Cole no chat da equipe." }),
+    area,
+    h("div", { class: "dialog-actions" },
+      h("button", { type: "button", class: "btn btn-text", text: "Fechar", onClick: () => dlg.close() }),
+      h("button", { type: "button", class: "btn btn-primary", onClick: async () => {
+        try { await navigator.clipboard.writeText(text); toast("Copiado."); dlg.close(); }
+        catch { area.select(); toast("Selecione e copie (Ctrl+C).", { error: true }); }
+      } }, icon("copy"), "Copiar")));
+  area.focus();
 }

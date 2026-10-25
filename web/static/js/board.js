@@ -30,9 +30,18 @@ export function dayLabel(iso, today) {
 
 // Chips de uma tarefa (compartilhado com a tela Hoje): status,
 // prioridade, prazo, projeto e os contadores de checklist/tempo/anotações.
+// "bloqueada · 3 d": há quanto tempo o impedimento existe.
+function blockedDays(t) {
+  if (t.status !== "blocked" || !t.blocked_at) return "";
+  const d = Math.floor((Date.now() - new Date(t.blocked_at).getTime()) / 86400000);
+  return d >= 1 ? ` · ${d} d` : "";
+}
+
 export function taskChips(t, today) {
   // Concluída: a coluna já diz; fica só a data de fim.
-  const chips = t.status === "done" ? [] : [h("span", { class: "chip " + t.status, text: STATUS_LABELS[t.status] })];
+  const chips = t.status === "done" ? [] : [h("span", { class: "chip " + t.status, text: STATUS_LABELS[t.status] + blockedDays(t) })];
+  if (t.status === "blocked" && t.blocked_reason)
+    chips.push(h("span", { class: "chip blocked-reason", title: "Aguardando: " + t.blocked_reason, text: "aguardando " + (t.blocked_reason.length > 40 ? t.blocked_reason.slice(0, 39) + "…" : t.blocked_reason) }));
   if (t.priority === 1 && t.status !== "done") chips.push(h("span", { class: "chip prio-1", text: "alta" }));
   if (t.status === "done") {
     // O dia da conclusão no fuso da app (o timestamp vem em UTC: à noite já seria "amanhã").
@@ -116,7 +125,13 @@ export function openWorklog(item, onDone, opts = {}) {
   const doneOrig = item && item.completed_at ? localDateTime(item.completed_at) : "";
   doneAt.value = doneOrig;
   document.getElementById("wl-created-wrap").classList.toggle("hidden", !!item);
-  const syncDates = () => dates.classList.toggle("hidden", statusSel.value !== "done");
+  const blockedWrap = document.getElementById("wl-blocked-wrap");
+  const blocked = document.getElementById("wl-blocked");
+  blocked.value = item && item.blocked_reason ? item.blocked_reason : "";
+  const syncDates = () => {
+    dates.classList.toggle("hidden", statusSel.value !== "done");
+    blockedWrap.classList.toggle("hidden", statusSel.value !== "blocked");
+  };
   statusSel.onchange = syncDates;
   syncDates();
   ticket.value = item && item.ticket ? item.ticket : "";
@@ -180,6 +195,7 @@ export function openWorklog(item, onDone, opts = {}) {
     if (!payload.title) return;
     if (payload.status === "done" && doneAt.value && doneAt.value !== doneOrig) payload.completed_at = doneAt.value;
     if (!item && createdAt.value) payload.created_at = createdAt.value;
+    if (payload.status === "blocked") payload.blocked_reason = blocked.value.trim() || null;
     const minutes = !item && timeInput.value.trim() ? parseDuration(timeInput.value) : null;
     if (minutes === null && !item && timeInput.value.trim()) { toast("Tempo inválido. Ex.: 45, 1h30, 2:15.", { error: true }); timeInput.focus(); return; }
     const btn = ev.submitter;

@@ -29,9 +29,14 @@ para leitura, o quadro, a retrospectiva e os relatórios de cada pessoa).
   **modelos** de tarefa com checklist pronto. Lançamento **retroativo** (criada e
   concluída em datas passadas, até um limite configurável pelo admin; padrão 60
   dias).
+- **Passagem de turno e impedimentos** — tarefa bloqueada guarda o que se
+  aguarda e há quantos dias; um clique monta o texto da passagem de turno
+  (aberto, bloqueado e por quê, feito hoje, plantão). Rotina marcada aceita uma
+  **evidência** curta ("backup OK, 2,1 TB"), que vai para o PDF. Registro rápido
+  entende `@projeto #chamado !plantão — 45min`.
 - **Atribuição** — quem aceita (Configurações › Conta) recebe tarefas de um
   atribuidor pelo app ou pela IA, com aviso por e-mail; a tarefa passa a ser
-  dela, e quem atribuiu acompanha o status.
+  dela, e quem atribuiu acompanha o status e recebe um e-mail quando ela é concluída.
 - **Relatórios** — PDF por período, por projeto ou do projeto inteiro;
   exportação em CSV (planilha) e JSON (backup).
 - **Retrospectiva** (aderência das rotinas, vazão, tempo por projeto, backlog),

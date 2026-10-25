@@ -82,6 +82,7 @@ async function loadSent(sec) {
     else if (r.late) chips.push(h("span", { class: "chip late", text: "atrasada · " + shortDate(r.due_date) }));
     else if (r.due_date) chips.push(h("span", { class: "chip", text: "prazo " + shortDate(r.due_date) }));
     if (r.priority === 1 && r.status !== "done") chips.push(h("span", { class: "chip prio-1", text: "alta" }));
+    if (r.status === "blocked" && r.blocked_reason) chips.push(h("span", { class: "chip blocked-reason", text: "aguardando " + r.blocked_reason }));
     sec.append(h("div", { class: "list-row" },
       h("div", { class: "t" }, h("span", { text: r.title }),
         h("small", { text: `para ${r.to_name} · ${r.assigned_at ? dateTime(r.assigned_at) : ""}` })),
