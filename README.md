@@ -128,6 +128,12 @@ em profundidade).
 **O banco de produção é preservado**: migrações só adicionam; nunca
 `docker compose down -v`.
 
+**Vigia de saúde** (opcional): `tools/vigia.sh` com o timer do systemd
+(`tools/nexus-vigia.service` e `.timer`, instruções no arquivo) confere a cada 5
+minutos o healthcheck dos containers, reinicia o que estiver *unhealthy* e manda
+um e-mail pelo SMTP do próprio Nexus (`ALERT_EMAIL` ou `ADMIN_EMAIL`), uma vez por
+incidente e outra quando volta. Logs com rotação (10 MB × 5 por serviço).
+
 ## Segurança (resumo)
 
 - **Senhas** Argon2id (perfil OWASP, no máximo 2 cálculos simultâneos — sob
