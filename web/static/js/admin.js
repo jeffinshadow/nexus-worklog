@@ -59,7 +59,7 @@ async function mountUsers(root) {
     const input = h("input", { type: "email", autocomplete: "off", required: "required" });
     const err = h("p", { class: "error-text" });
     const form = h("form", {},
-      h("p", { class: "help", text: `Apaga a conta ${u.email} e tudo o que está nela: tarefas, rotinas, tempo, anotações, chaves de API e histórico. Não dá para desfazer. Tarefas que essa pessoa atribuiu a outras continuam com quem recebeu.` }),
+      h("p", { class: "help", text: `Apaga a conta ${u.email} e tudo o que está nela: tarefas, rotinas, tempo, anotações, chaves de API e histórico. Não dá para desfazer. Tarefas que essa pessoa atribuiu a outras continuam com quem recebeu. O e-mail e as contagens ficam registrados no seu histórico (180 dias).` }),
       field("Digite o e-mail da conta para confirmar", input), err,
       h("div", { class: "dialog-actions" },
         h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),

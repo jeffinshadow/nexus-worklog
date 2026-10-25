@@ -188,8 +188,13 @@ export function openWorklog(item, onDone, opts = {}) {
       if (item) await api.patch(`/worklog/${item.id}`, payload);
       else {
         const created = await api.post("/worklog", payload);
-        for (const label of checklist) await api.post(`/worklog/${created.id}/checklist`, { label });
-        if (minutes) await api.post(`/worklog/${created.id}/time`, { minutes });
+        // A tarefa já existe: se checklist ou tempo falharem, não reenviar (duplicaria).
+        try {
+          for (const label of checklist) await api.post(`/worklog/${created.id}/checklist`, { label });
+          if (minutes) await api.post(`/worklog/${created.id}/time`, { minutes });
+        } catch (e) {
+          toast(`Tarefa criada, mas ${minutes ? "o tempo ou " : ""}o checklist não foi salvo: ${e.message || "tente pelo detalhe"}.`, { error: true });
+        }
       }
       dlg.close();
       onDone && onDone();

@@ -169,6 +169,7 @@ function renderWho() {
 
 function showChangePassword() {
   document.getElementById("view-change-password").classList.remove("hidden");
+  document.getElementById("cp-logout").addEventListener("click", logout);
   document.getElementById("form-change-password").addEventListener("submit", busy(async (ev) => {
     ev.preventDefault();
     const err = document.getElementById("cp-error");

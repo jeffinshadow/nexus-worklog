@@ -13,8 +13,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Nexus">
   <link rel="preload" as="font" type="font/woff2" href="/fonts/GoogleSansFlex.woff2" crossorigin>
-  <link rel="stylesheet" href="/css/tokens.css?v=44">
-  <link rel="stylesheet" href="/css/app.css?v=44">
+  <link rel="stylesheet" href="/css/tokens.css?v=45">
+  <link rel="stylesheet" href="/css/app.css?v=45">
 </head>
 <body>
   <!-- Ícones (traço 1.75, 24px), sem script/style inline (CSP). -->
@@ -68,14 +68,15 @@
       <form id="form-change-password">
         <div class="field">
           <label for="cp-current">Senha atual (temporária)</label>
-          <input id="cp-current" type="password" required autocomplete="current-password">
+          <input id="cp-current" type="password" required autocomplete="current-password" maxlength="128">
         </div>
         <div class="field">
           <label for="cp-new">Nova senha (mínimo 10 caracteres)</label>
-          <input id="cp-new" type="password" required minlength="10" autocomplete="new-password">
+          <input id="cp-new" type="password" required minlength="10" autocomplete="new-password" maxlength="128">
         </div>
         <p class="error-text" id="cp-error"></p>
         <button class="btn btn-primary full" type="submit">Salvar e entrar</button>
+        <button class="btn btn-text full" type="button" id="cp-logout">Sair (entrei na conta errada)</button>
       </form>
     </div>
   </section>
@@ -259,7 +260,7 @@
   <div class="toasts" id="toasts" aria-live="polite"></div>
   <div class="timer-chip timer-mobile hidden" id="timer-mobile" role="status" aria-live="polite"></div>
 
-  <script type="module" src="/js/app.js?v=44"></script>
-  <script type="module" src="/js/pwa.js?v=44"></script>
+  <script type="module" src="/js/app.js?v=45"></script>
+  <script type="module" src="/js/pwa.js?v=45"></script>
 </body>
 </html>

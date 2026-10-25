@@ -50,7 +50,12 @@ export async function mount(root, ctx) {
   async function render() {
     const my = ++seq;
     const out = h("div", { class: "settings-grid" });
-    await fill(out);
+    try {
+      await fill(out);
+    } catch (e) {
+      clear(out);
+      out.append(h("p", { class: "empty", text: e && e.status === 0 ? e.message : "Erro ao carregar. Tente de novo." }));
+    }
     if (my !== seq) return;
     clear(body);
     body.append(...out.childNodes);
@@ -566,7 +571,7 @@ function assignmentsPanel(me) {
 
 // LGPD: a pessoa apaga a conta e tudo o que registrou, com a senha. Sem volta.
 function deleteAccount(isUser) {
-  const pw = h("input", { type: "password", autocomplete: "current-password", required: "required" });
+  const pw = h("input", { type: "password", autocomplete: "current-password", required: "required", maxlength: "128" });
   const err = h("p", { class: "error-text" });
   const form = h("form", {},
     h("p", { class: "help", text: "Apaga a sua conta e tudo o que está nela: tarefas, rotinas, tempo apontado, anotações, chaves de API e histórico. Não dá para desfazer." }),
@@ -589,8 +594,8 @@ function deleteAccount(isUser) {
 // ------------------------------------------------------------------- conta --
 
 function account(me) {
-  const cur = h("input", { type: "password", autocomplete: "current-password", required: "required" });
-  const nova = h("input", { type: "password", autocomplete: "new-password", minlength: "10", required: "required" });
+  const cur = h("input", { type: "password", autocomplete: "current-password", required: "required", maxlength: "128" });
+  const nova = h("input", { type: "password", autocomplete: "new-password", minlength: "10", required: "required", maxlength: "128" });
   const err = h("p", { class: "error-text" });
   const form = h("form", {},
     field("Senha atual", cur),

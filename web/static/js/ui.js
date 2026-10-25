@@ -49,12 +49,18 @@ export function toast(message, opts = {}) {
 // (duplo clique não manda duas vezes). Uso: addEventListener("submit", busy(async (ev) => {...})).
 export function busy(fn) {
   return async (ev) => {
-    const btn = ev && ev.submitter;
-    if (btn) {
-      if (btn.disabled) return;
-      btn.disabled = true;
+    if (ev) ev.preventDefault(); // nunca o envio nativo do formulário
+    const form = ev && ev.target;
+    if (form && form.dataset) {
+      if (form.dataset.busy) return;
+      form.dataset.busy = "1";
     }
-    try { return await fn(ev); } finally { if (btn) btn.disabled = false; }
+    const btns = form && form.querySelectorAll ? [...form.querySelectorAll("[type=submit]")] : [];
+    btns.forEach((b) => { b.disabled = true; });
+    try { return await fn(ev); } finally {
+      if (form && form.dataset) delete form.dataset.busy;
+      btns.forEach((b) => { b.disabled = false; });
+    }
   };
 }
 
