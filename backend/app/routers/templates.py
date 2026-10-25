@@ -2,7 +2,7 @@
 de equipamento, servidor novo) com título, prioridade, projeto e checklist.
 Usar um modelo cria uma tarefa comum, com os itens do checklist.
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from psycopg.types.json import Jsonb
 
 from .. import audit, db
@@ -84,7 +84,7 @@ def use_template(tid: int, user=Depends(active_user_csrf)):
     if project and not db.query_one("SELECT 1 FROM projects WHERE id = %s AND NOT archived", (project,)):
         project = None
     res = create(WorklogIn(title=t["title"], description=t["description"], priority=t["priority"],
-                           project_id=project, after_hours=t["after_hours"]), user=user)
+                           project_id=project, after_hours=t["after_hours"]), Response(), user=user)
     for label in t["checklist"]:
         add_item(res["id"], ChecklistIn(label=label), user=user)
     return {"id": res["id"], "checklist": len(t["checklist"])}

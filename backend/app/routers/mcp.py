@@ -22,7 +22,9 @@ from .. import db, deps, services
 from ..config import config
 from ..labels import PRIO_PT, STATUS_PT
 from ..labels import dur as _dur
-from ..schemas import ChecklistIn, ChecklistUpdate, NoteIn, TimeIn, TimerIn, ToggleIn, WorklogIn, WorklogUpdate
+from ..schemas import (AssignIn, ChecklistIn, ChecklistUpdate, FinishIn, NoteIn, TimeIn, TimerIn, ToggleIn, WorklogIn,
+                       WorklogUpdate)
+from . import assign as assign_routes
 from . import history as history_routes
 from . import projects as project_routes
 from . import search as search_routes
@@ -45,12 +47,15 @@ INSTRUCTIONS = (
     "procedimentos repetidos têm modelos (list_templates, create_from_template). "
     "Datas no formato AAAA-MM-DD, no fuso " + config.APP_TZ + ". Rotinas "
     "aceitam até 7 dias para trás; marcar uma rotina fora da agenda dela conta como extra. "
+    "Para lançar algo que já aconteceu, informe created_at/completed_at (data ou data e hora) "
+    "e um external_ref seu (ex.: o id da sessão) para não duplicar; confira com list_tasks from/to. "
     "Tudo fica no histórico do usuário; use undo para corrigir um engano seu."
 )
 
 STATUS = list(STATUS_PT)
 PRIO = {nome: n for n, nome in PRIO_PT.items()}  # "alta" -> 1
 DATE = {"type": "string", "format": "date", "description": "Data AAAA-MM-DD"}
+WHEN = {"type": "string", "description": "Data (AAAA-MM-DD) ou data e hora (AAAA-MM-DDTHH:MM), fuso " + config.APP_TZ + ". Nunca no futuro; até o limite retroativo da conta"}
 
 
 class ToolError(Exception):
@@ -71,6 +76,10 @@ def _call(fn, *args, **kwargs):
 
 def _task_line(t: dict, today: date) -> str:
     parts = [f"#{t['id']} {t['title']}", f"[{STATUS_PT.get(t['status'], t['status'])}]"]
+    if t.get("assigned_by_name"):
+        parts.append(f"(atribuída por {t['assigned_by_name']})")
+    if t.get("external_ref"):
+        parts.append(f"(ref {t['external_ref']})")
     if t.get("ticket"):
         parts.append(f"(chamado {t['ticket']})")
     if t.get("after_hours"):
@@ -131,7 +140,8 @@ def _task_args(uid: int, args: dict) -> dict:
 def _find_task(uid: int, task_id: int) -> dict:
     t = db.query_one(
         """SELECT w.id, w.title, w.description, w.status, w.due_date, w.completed_at, w.priority,
-                  w.ticket, w.after_hours, p.name AS project_name, """ + services.TASK_COUNTS + """
+                  w.ticket, w.after_hours, w.external_ref, p.name AS project_name,
+                  """ + services.ASSIGNER_NAME + ", " + services.TASK_COUNTS + """
              FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
             WHERE w.id = %s AND w.user_id = %s""", (task_id, uid))
     if not t:
@@ -167,9 +177,19 @@ def t_get_today(ctx, args):
     return "\n".join(lines)
 
 
+def _created(t: dict) -> str:
+    return t["created_at"].astimezone(services.app_tz()).strftime("%Y-%m-%d %H:%M")
+
+
 def t_list_tasks(ctx, args):
     status = args.get("status", "open")
     limit = int(args.get("limit", 50))
+    if args.get("from") or args.get("to") or args.get("by"):
+        rows = _call(worklog_routes.list_tasks, start=_day(args.get("from")), end=_day(args.get("to")),
+                     by=args.get("by") or "created", status=args.get("status", "all"),
+                     limit=max(1, min(limit, 500)), user=ctx)
+        today = services.app_today()
+        return "\n".join(f"criada {_created(t)} · {_task_line(t, today)}" for t in rows) or "(nenhuma tarefa no período)"
     b = services.get_board(ctx["user_id"])
     items = {"open": b["in_progress"], "done": b["done"], "all": b["in_progress"] + b["done"]}.get(status)
     if items is None:
@@ -178,10 +198,20 @@ def t_list_tasks(ctx, args):
     return "\n".join(_task_line(t, b["today"]) for t in items) or "(nenhuma tarefa)"
 
 
+def _day(value):
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(str(value))
+    except ValueError:
+        raise ToolError(f"data inválida: {value} (use AAAA-MM-DD)") from None
+
+
 def t_create_task(ctx, args):
     data = _call(WorklogIn, **_task_args(ctx["user_id"], args))
-    res = _call(worklog_routes.create, data, user=ctx)
-    return "Criada: " + _task_line(_find_task(ctx["user_id"], res["id"]), services.app_today())
+    res = _call(worklog_routes.create, data, Response(), user=ctx)
+    verbo = "Já existia (external_ref repetido), nada duplicado" if res.get("existing") else "Criada"
+    return f"{verbo}: " + _task_line(_find_task(ctx["user_id"], res["id"]), services.app_today())
 
 
 def t_update_task(ctx, args):
@@ -196,7 +226,8 @@ def t_update_task(ctx, args):
 
 def t_complete_task(ctx, args):
     task_id = int(args["task_id"])
-    _call(worklog_routes.finish, task_id, user=ctx)
+    data = _call(FinishIn, completed_at=args.get("completed_at"))
+    _call(worklog_routes.finish, task_id, data, user=ctx)
     return "Concluída: " + _task_line(_find_task(ctx["user_id"], task_id), services.app_today())
 
 
@@ -333,6 +364,50 @@ def t_set_recurring(ctx, args):
     return f"Rotina R{rid} {'marcada' if res['done'] else 'desmarcada'} em {res['day'].isoformat()}."
 
 
+# Atribuição (só para quem tem o papel Atribuidor de tarefas).
+def _assignable(ctx) -> list:
+    return [p for p in _call(assign_routes.list_people, user=ctx) if p["accepts"] and p["id"] != ctx["user_id"]]
+
+
+def _person(ctx, value) -> dict:
+    """Pessoa que aceita tarefas, por U<id>, id, e-mail ou nome (sem diferenciar maiúsculas)."""
+    gente = _assignable(ctx)
+    v = str(value).strip().lower().removeprefix("u")
+    v = v if v.isdigit() else str(value).strip().lower()
+    achados = [p for p in gente if str(p["id"]) == v or p["email"].lower() == v or p["name"].lower() == v]
+    if len(achados) != 1:
+        nomes = ", ".join(f"{p['name']} <{p['email']}>" for p in gente) or "(ninguém aceitou ainda)"
+        raise ToolError(f"pessoa “{value}” não encontrada (ou ambígua) entre quem aceita tarefas: {nomes}")
+    return achados[0]
+
+
+def t_list_assignable(ctx, args):
+    gente = _assignable(ctx)
+    return "\n".join(f"U{p['id']} {p['name']} <{p['email']}>" for p in gente) or "(ninguém aceitou receber tarefas ainda)"
+
+
+def t_assign_task(ctx, args):
+    args = dict(args)
+    alvo = _person(ctx, args.pop("to", ""))
+    if "priority" in args:
+        args["priority"] = _prio(args["priority"])
+    data = _call(AssignIn, user_id=alvo["id"], **args)
+    res = _call(assign_routes.assign, data, user=ctx)
+    aviso = " (e-mail enviado)" if res["emailed"] else ""
+    return f"Atribuída a {res['to']}: #{res['id']} {data.title}{aviso}"
+
+
+def t_list_assigned(ctx, args):
+    rows = _call(assign_routes.sent, user=ctx)
+    linhas = []
+    for r in rows:
+        st = STATUS_PT.get(r["status"], r["status"])
+        fim = f", concluída em {r['completed_at'].astimezone(services.app_tz()).date().isoformat()}" if r["completed_at"] else ""
+        atraso = " (ATRASADA)" if r["late"] else ""
+        linhas.append(f"#{r['id']} {r['title']} → {r['to_name']} [{st}]{fim}{atraso}")
+    return "\n".join(linhas) or "(você ainda não atribuiu tarefas)"
+
+
 def t_get_history(ctx, args):
     rows = history_routes.list_history(limit=int(args.get("limit", 20)), entity=None, entity_id=None, user=ctx)
     out = []
@@ -359,11 +434,18 @@ TOOLS = {
     "get_today": (t_get_today, False,
                   "Resumo de hoje: rotinas (feitas ou não), tarefas abertas com prazos/atrasos e o que foi concluído hoje.",
                   {"type": "object", "properties": {}}),
-    "list_tasks": (t_list_tasks, False, "Lista tarefas pontuais do usuário.",
+    "list_tasks": (t_list_tasks, False,
+                   "Lista tarefas pontuais do usuário. Com from/to (e by), filtra por período de criação ou de "
+                   "conclusão e mostra a data de criação e o external_ref: use para conferir duplicidade.",
                    {"type": "object", "properties": {
-                       "status": {"type": "string", "enum": ["open", "done", "all"], "default": "open"},
-                       "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}}}),
-    "create_task": (t_create_task, True, "Cria uma tarefa.",
+                       "status": {"type": "string", "enum": ["open", "done", "all"], "default": "open",
+                                  "description": "Padrão open; com período, padrão all"},
+                       "limit": {"type": "integer", "minimum": 1, "maximum": 500, "default": 50},
+                       "from": {**DATE, "description": "Primeiro dia do período (inclusive)"},
+                       "to": {**DATE, "description": "Último dia do período (inclusive)"},
+                       "by": {"type": "string", "enum": ["created", "completed"], "default": "created",
+                              "description": "O período vale para a criação ou para a conclusão"}}}),
+    "create_task": (t_create_task, True, "Cria uma tarefa (também retroativa, com created_at/completed_at).",
                     {"type": "object", "required": ["title"], "properties": {
                         "title": {"type": "string", "maxLength": 200},
                         "description": {"type": ["string", "null"], "maxLength": 300},
@@ -372,7 +454,11 @@ TOOLS = {
                         "project": {"type": ["string", "null"], "description": "Nome do projeto/cliente (veja list_projects)"},
                         "priority": {"type": "string", "enum": ["alta", "normal", "baixa"], "default": "normal"},
                         "ticket": {"type": ["string", "null"], "maxLength": 40, "description": "Número do chamado (GLPI, TomTicket...)"},
-                        "after_hours": {"type": "boolean", "default": False, "description": "Plantão / fora do horário"}}}),
+                        "after_hours": {"type": "boolean", "default": False, "description": "Plantão / fora do horário"},
+                        "created_at": {**WHEN, "description": "Quando a tarefa começou (retroativo; padrão: agora). " + WHEN["description"]},
+                        "completed_at": {**WHEN, "description": "Quando foi concluída (implica status done; padrão: agora). " + WHEN["description"]},
+                        "external_ref": {"type": "string", "maxLength": 120,
+                                         "description": "Chave sua para não duplicar: repetida, devolve a tarefa que já existe"}}}),
     "update_task": (t_update_task, True,
                     "Edita uma tarefa. Envie só os campos a mudar; description, due_date ou project = null apagam o campo.",
                     {"type": "object", "required": ["task_id"], "properties": {
@@ -384,7 +470,8 @@ TOOLS = {
                         "project": {"type": ["string", "null"]},
                         "priority": {"type": "string", "enum": ["alta", "normal", "baixa"]},
                         "ticket": {"type": ["string", "null"], "maxLength": 40},
-                        "after_hours": {"type": "boolean"}}}),
+                        "after_hours": {"type": "boolean"},
+                        "completed_at": {**WHEN, "description": "Corrige a data de conclusão (tarefa concluída). " + WHEN["description"]}}}),
     "get_summary": (t_get_summary, False, "Resumo para a daily/retro: o último dia útil e a semana até hoje (rotinas, tarefas concluídas, tempo por projeto, o que ficou para trás).",
                     {"type": "object", "properties": {}}),
     "get_task": (t_get_task, False, "Tarefa completa: checklist, anotações e tempo apontado.",
@@ -407,8 +494,10 @@ TOOLS = {
                      "day": DATE, "note": {"type": "string", "maxLength": 200}}}),
     "list_projects": (t_list_projects, False, "Lista os projetos/clientes do usuário.",
                       {"type": "object", "properties": {}}),
-    "complete_task": (t_complete_task, True, "Marca uma tarefa como concluída agora.",
-                      {"type": "object", "required": ["task_id"], "properties": {"task_id": {"type": "integer"}}}),
+    "complete_task": (t_complete_task, True, "Marca uma tarefa como concluída (agora, ou na data informada).",
+                      {"type": "object", "required": ["task_id"], "properties": {
+                          "task_id": {"type": "integer"},
+                          "completed_at": {**WHEN, "description": "Quando foi concluída (padrão: agora). " + WHEN["description"]}}}),
     "list_recurring": (t_list_recurring, False, "Rotinas de um dia (padrão: hoje; até 7 dias atrás) e se foram feitas.",
                        {"type": "object", "properties": {"day": DATE}}),
     "set_recurring": (t_set_recurring, True, "Marca (done=true) ou desmarca uma rotina num dia (padrão hoje; até 7 dias atrás).",
@@ -425,6 +514,21 @@ TOOLS = {
     "create_from_template": (t_create_from_template, True, "Cria uma tarefa a partir de um modelo (com o checklist dele).",
                              {"type": "object", "required": ["template"], "properties": {
                                  "template": {"type": "string", "description": "Nome do modelo ou M<id> (veja list_templates)"}}}),
+    "list_assignable": (t_list_assignable, False, "Atribuidor: pessoas que aceitam receber tarefas atribuídas.",
+                        {"type": "object", "properties": {}}),
+    "assign_task": (t_assign_task, True,
+                    "Atribuidor: manda uma tarefa para outra pessoa (que aceitou receber). Ela vira dona da "
+                    "tarefa e recebe um e-mail.",
+                    {"type": "object", "required": ["to", "title"], "properties": {
+                        "to": {"type": "string", "description": "Pessoa: U<id>, e-mail ou nome (veja list_assignable)"},
+                        "title": {"type": "string", "maxLength": 200},
+                        "description": {"type": ["string", "null"], "maxLength": 300},
+                        "due_date": {**DATE, "type": ["string", "null"], "description": "Prazo (AAAA-MM-DD)"},
+                        "priority": {"type": "string", "enum": ["alta", "normal", "baixa"], "default": "normal"},
+                        "ticket": {"type": ["string", "null"], "maxLength": 40},
+                        "after_hours": {"type": "boolean", "default": False}}}),
+    "list_assigned": (t_list_assigned, False, "Atribuidor: tarefas que você atribuiu, com o status atual.",
+                      {"type": "object", "properties": {}}),
     "get_history": (t_get_history, False, "Últimas ações na conta (app, API ou IA), com o que pode ser desfeito.",
                     {"type": "object", "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 20}}}),
     "undo": (t_undo, True, "Desfaz uma ação do histórico (só a mais recente de cada item).",
@@ -463,10 +567,17 @@ def _prompt_get(name: str, args: dict) -> dict:
     return {"description": p["description"], "messages": [{"role": "user", "content": {"type": "text", "text": text}}]}
 
 
+ASSIGNER_TOOLS = {"list_assignable", "assign_task", "list_assigned"}
+
+
+def _allowed(ctx, name: str) -> bool:
+    return name not in ASSIGNER_TOOLS or "assigner" in (ctx.get("roles") or [])
+
+
 def _tool_list(ctx) -> list:
     out = []
     for name, (_, writes, desc, schema) in TOOLS.items():
-        if writes and ctx.get("scope") != "write":
+        if (writes and ctx.get("scope") != "write") or not _allowed(ctx, name):
             continue
         out.append({
             "name": name,
@@ -509,7 +620,7 @@ def _handle(ctx, msg):
         result = _prompt_get(params["name"], params.get("arguments") or {})
     elif method == "tools/call":
         name, args = params.get("name"), params.get("arguments") or {}
-        spec = TOOLS.get(name)
+        spec = TOOLS.get(name) if _allowed(ctx, name) else None
         if not spec:
             return _rpc_error(rid, -32602, f"ferramenta desconhecida: {name}")
         fn, writes = spec[0], spec[1]

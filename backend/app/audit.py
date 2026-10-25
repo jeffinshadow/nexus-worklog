@@ -46,7 +46,7 @@ def record(ctx: dict, action: str, entity: str, entity_id, before=None, after=No
 
 # Snapshots usados no antes/depois (e restaurados pelo desfazer).
 _WORKLOG_COLS = ("id, title, description, status, due_date, created_at, completed_at, "
-                 "project_id, priority, ticket, after_hours")
+                 "project_id, priority, ticket, after_hours, external_ref, assigned_by, assigned_at")
 _RECURRING_COLS = ("id, label, position, active, created_at, deactivated_at, "
                    "freq, weekdays, month_day, interval_days")
 

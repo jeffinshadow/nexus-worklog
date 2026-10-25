@@ -193,10 +193,10 @@ def test_admin_exporta_horas_da_equipe(admin, usuario, novo_usuario):
         pid = u.post("/projects", {"name": "Loja X"}).json()["id"]
         tid = u.post("/worklog", {"title": "Cabear", "project_id": pid}).json()["id"]
         u.post(f"/worklog/{tid}/time", {"minutes": m})
-    csv = admin.get("/admin/export/apontamentos.csv").content.decode("utf-8-sig").splitlines()
+    csv = admin.get("/viewer/export/apontamentos.csv").content.decode("utf-8-sig").splitlines()
     assert csv[0].endswith(";usuario") and len(csv) == 3
     assert {l.split(";")[-1] for l in csv[1:]} == {usuario.me["email"], "outro@example.com"}
-    assert usuario.get("/admin/export/apontamentos.csv").status_code == 403
+    assert usuario.get("/viewer/export/apontamentos.csv").status_code == 403
 
 
 # ================================================================ rodada 2 --

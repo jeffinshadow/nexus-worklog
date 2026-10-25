@@ -6,6 +6,7 @@ from fastapi import HTTPException, Request, Response
 
 from . import db
 from .config import config
+from .roles import ROLES_SQL
 from .security import token_hash, token_limiter
 
 
@@ -55,7 +56,7 @@ def _load_session(request: Request) -> dict:
         """
         SELECT s.id AS sid, s.csrf_token, s.expires_at,
                u.id AS user_id, u.email, u.role, u.must_change_password,
-               u.work_days
+               u.work_days, """ + ROLES_SQL + """
           FROM sessions s
           JOIN users u ON u.id = s.user_id
          WHERE s.token_hash = %s
@@ -80,7 +81,7 @@ def _load_token(raw: str) -> dict:
         """
         SELECT t.id AS token_id, t.name AS token_name, t.scope, t.last_used_at,
                u.id AS user_id, u.email, u.role, u.must_change_password,
-               u.work_days
+               u.work_days, """ + ROLES_SQL + """
           FROM api_tokens t
           JOIN users u ON u.id = t.user_id
          WHERE t.token_hash = %s
@@ -188,13 +189,17 @@ def web_active_csrf(request: Request) -> dict:
     return session
 
 
+def _require_role(session: dict, role: str, detail: str) -> None:
+    if role not in (session.get("roles") or []):
+        raise HTTPException(status_code=403, detail=detail)
+
+
 def require_admin(request: Request) -> dict:
     """Autorizacao de admin verificada SEMPRE no backend. Chave de API nunca
     acessa o admin, mesmo a de um admin."""
     session = active_user(request)
     _require_web(session)
-    if session["role"] != "admin":
-        raise HTTPException(status_code=403, detail="acesso restrito ao admin")
+    _require_role(session, "admin", "acesso restrito ao admin")
     return session
 
 
@@ -204,3 +209,34 @@ def require_admin_csrf(request: Request) -> dict:
     _check_csrf(request, session)
     return session
 
+
+def require_viewer(request: Request) -> dict:
+    """Visualizador de tarefas: registros e relatórios de todos. Só pelo app."""
+    session = active_user(request)
+    _require_web(session)
+    _require_role(session, "viewer", "acesso restrito ao visualizador de tarefas")
+    return session
+
+
+def require_assigner(request: Request) -> dict:
+    """Atribuidor de tarefas: pelo app ou por chave de API (leitura)."""
+    session = active_user(request)
+    _require_role(session, "assigner", "acesso restrito ao atribuidor de tarefas")
+    return session
+
+
+def require_assigner_csrf(request: Request) -> dict:
+    """Atribuir: sessão + CSRF, ou chave de API com escopo de escrita."""
+    session = require_assigner(request)
+    _check_csrf(request, session)
+    _require_write(session)
+    return session
+
+
+def require_people_list(request: Request) -> dict:
+    """Quem consentiu em receber tarefas: Admin ou Atribuidor."""
+    session = active_user(request)
+    roles = session.get("roles") or []
+    if "assigner" in roles or ("admin" in roles and session.get("actor") == "web"):  # admin só pelo app
+        return session
+    raise HTTPException(status_code=403, detail="acesso restrito ao admin ou ao atribuidor de tarefas")

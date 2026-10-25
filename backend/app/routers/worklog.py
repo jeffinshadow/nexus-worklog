@@ -1,11 +1,14 @@
-from datetime import datetime, timezone
+import re
+from datetime import date, datetime, time, timedelta, timezone
+from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from psycopg.errors import UniqueViolation
 
 from .. import audit, db
 from ..deps import active_user, active_user_csrf
-from ..schemas import ChecklistIn, ChecklistUpdate, NoteIn, TimeIn, WorklogIn, WorklogUpdate
-from ..services import app_today
+from ..schemas import ChecklistIn, ChecklistUpdate, FinishIn, NoteIn, TimeIn, WorklogIn, WorklogUpdate
+from ..services import ASSIGNER_NAME, app_today, app_tz, task_retro_days
 
 router = APIRouter(prefix="/api/worklog", tags=["worklog"])
 items = APIRouter(prefix="/api", tags=["worklog"])  # rotas por id de anotação/item/tempo
@@ -28,6 +31,63 @@ def _check_project(uid: int, project_id) -> None:
         raise HTTPException(status_code=400, detail="projeto não encontrado")
 
 
+# ------------------------------------------------- lançamento retroativo --
+# Só a data (sem hora): criação às 9h, conclusão às 18h do dia, no fuso da app.
+# Conclusão "hoje" sem hora = agora; no mesmo dia da criação, nunca antes dela.
+DAY_START, DAY_END = time(9), time(18)
+_DATE_ONLY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _parse_when(raw: str, label: str) -> tuple[datetime, bool]:
+    """Texto -> (instante com fuso, veio só a data)."""
+    raw = raw.strip()
+    try:
+        if _DATE_ONLY.match(raw):
+            return datetime.combine(date.fromisoformat(raw), time(), app_tz()), True
+        when = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"{label}: use AAAA-MM-DD ou AAAA-MM-DDTHH:MM") from None
+    return (when if when.tzinfo else when.replace(tzinfo=app_tz())), False
+
+
+def _check_window(when: datetime, label: str, now: datetime) -> None:
+    if when > now + timedelta(minutes=1):  # 1 min de folga para relógio de quem chama
+        raise HTTPException(status_code=400, detail=f"{label} no futuro")
+    limit = task_retro_days()
+    if (app_today() - when.astimezone(app_tz()).date()).days > limit:
+        raise HTTPException(status_code=400, detail=f"{label}: até {limit} dias atrás")
+
+
+def resolve_created(raw: Optional[str], now: datetime) -> datetime:
+    if not raw:
+        return now
+    when, only_date = _parse_when(raw, "data de criação")
+    if only_date:
+        if when.date() > app_today():
+            raise HTTPException(status_code=400, detail="data de criação no futuro")
+        when = min(datetime.combine(when.date(), DAY_START, app_tz()), now)
+    _check_window(when, "data de criação", now)
+    return when
+
+
+def resolve_completed(raw: Optional[str], created: datetime, now: datetime) -> datetime:
+    """Instante da conclusão: nunca no futuro, dentro do limite e não antes da criação."""
+    if not raw:
+        return max(now, created)
+    when, only_date = _parse_when(raw, "data de conclusão")
+    if only_date:
+        day = when.date()
+        if day > app_today():
+            raise HTTPException(status_code=400, detail="data de conclusão no futuro")
+        when = now if day == app_today() else datetime.combine(day, DAY_END, app_tz())
+        if when < created and day == created.astimezone(app_tz()).date():
+            when = created
+    _check_window(when, "data de conclusão", now)
+    if when < created:
+        raise HTTPException(status_code=400, detail="data de conclusão anterior à criação da tarefa")
+    return when
+
+
 def stop_timer_of(user: dict, task_id: int) -> None:
     """Concluir a tarefa com o cronômetro rodando nela para o cronômetro e aponta o tempo."""
     from .timer import stop_running  # import tardio: timer usa log_time daqui
@@ -41,23 +101,76 @@ def _own_task(uid: int, task_id: int) -> dict:
     return row
 
 
+def _by_ref(uid: int, ref: str):
+    return db.query_one("SELECT id FROM worklog_tasks WHERE user_id = %s AND external_ref = %s", (uid, ref))
+
+
 @router.post("", status_code=201)
-def create(data: WorklogIn, user=Depends(active_user_csrf)):
-    _check_project(user["user_id"], data.project_id)
-    completed_at = datetime.now(timezone.utc) if data.status == "done" else None
-    row = db.query_one(
-        """
-        INSERT INTO worklog_tasks (user_id, title, description, status, due_date, completed_at,
-                                   project_id, priority, ticket, after_hours)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        RETURNING id
-        """,
-        (user["user_id"], data.title, data.description, data.status, data.due_date, completed_at,
-         data.project_id, data.priority, data.ticket, data.after_hours),
-    )
+def create(data: WorklogIn, response: Response, user=Depends(active_user_csrf)):
+    """Cria a tarefa. Com external_ref já usado pela pessoa, devolve a que
+    existe (200, existing=true) em vez de duplicar."""
+    uid = user["user_id"]
+    if data.external_ref and (found := _by_ref(uid, data.external_ref)):
+        response.status_code = 200
+        return {"id": found["id"], "existing": True}
+    _check_project(uid, data.project_id)
+    now = datetime.now(timezone.utc)
+    created_at = resolve_created(data.created_at, now)
+    completed_at = resolve_completed(data.completed_at, created_at, now) if data.status == "done" else None
+    try:
+        row = db.query_one(
+            """
+            INSERT INTO worklog_tasks (user_id, title, description, status, due_date, created_at, completed_at,
+                                       project_id, priority, ticket, after_hours, external_ref)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (uid, data.title, data.description, data.status, data.due_date, created_at, completed_at,
+             data.project_id, data.priority, data.ticket, data.after_hours, data.external_ref),
+        )
+    except UniqueViolation:  # duas chamadas iguais ao mesmo tempo: a segunda devolve a primeira
+        response.status_code = 200
+        return {"id": _by_ref(uid, data.external_ref)["id"], "existing": True}
     audit.record(user, "worklog.create", "worklog", row["id"],
-                 after=audit.worklog_snapshot(row["id"], user["user_id"]))
+                 after=audit.worklog_snapshot(row["id"], uid))
     return {"id": row["id"]}
+
+
+@router.get("")
+def list_tasks(
+    start: Optional[date] = Query(default=None, alias="from"),
+    end: Optional[date] = Query(default=None, alias="to"),
+    by: Literal["created", "completed"] = "created",
+    status: Literal["open", "done", "all"] = "all",
+    limit: int = Query(default=200, ge=1, le=500),
+    user=Depends(active_user),
+):
+    """Tarefas por período (dias inclusivos, fuso da app), pela criação ou
+    pela conclusão: para conferir o que já foi lançado sem baixar tudo."""
+    col = "w.completed_at" if by == "completed" else "w.created_at"
+    cond, params = ["w.user_id = %(uid)s"], {"uid": user["user_id"], "tz": app_tz().key, "lim": limit}
+    if start:
+        cond.append(f"({col} AT TIME ZONE %(tz)s)::date >= %(start)s")
+        params["start"] = start
+    if end:
+        cond.append(f"({col} AT TIME ZONE %(tz)s)::date <= %(end)s")
+        params["end"] = end
+    if by == "completed":
+        cond.append("w.completed_at IS NOT NULL")
+    if status == "open":
+        cond.append("w.status <> 'done'")
+    elif status == "done":
+        cond.append("w.status = 'done'")
+    return db.query_all(
+        f"""SELECT w.id, w.title, w.description, w.status, w.due_date, w.created_at, w.completed_at,
+                   w.priority, w.project_id, w.ticket, w.after_hours, w.external_ref, w.assigned_by,
+                   p.name AS project_name, {ASSIGNER_NAME}
+              FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
+             WHERE {' AND '.join(cond)}
+             ORDER BY {col} DESC NULLS LAST, w.id DESC
+             LIMIT %(lim)s""",
+        params,
+    )
 
 
 @router.get("/{task_id}")
@@ -67,8 +180,8 @@ def detail(task_id: int, user=Depends(active_user)):
     task = db.query_one(
         """
         SELECT w.id, w.title, w.description, w.status, w.due_date, w.created_at, w.completed_at,
-               w.priority, w.project_id, w.ticket, w.after_hours,
-               p.name AS project_name, p.color AS project_color
+               w.priority, w.project_id, w.ticket, w.after_hours, w.external_ref, w.assigned_by, w.assigned_at,
+               p.name AS project_name, p.color AS project_color, """ + ASSIGNER_NAME + """
           FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
          WHERE w.id = %s AND w.user_id = %s
         """,
@@ -123,14 +236,17 @@ def update(task_id: int, data: WorklogUpdate, user=Depends(active_user_csrf)):
     if data.after_hours is not None:
         fields.append("after_hours = %s")
         values.append(data.after_hours)
+    final_status = data.status or before["status"]
+    if data.completed_at and final_status != "done":
+        raise HTTPException(status_code=400, detail="data de conclusão só em tarefa concluída")
     if data.status is not None:
         fields.append("status = %s")
         values.append(data.status)
-        if data.status == "done" and before["completed_at"] is None:
-            fields.append("completed_at = %s")
-            values.append(datetime.now(timezone.utc))
-        elif data.status != "done":
+        if data.status != "done":
             fields.append("completed_at = NULL")
+    if final_status == "done" and (data.completed_at or before["completed_at"] is None):
+        fields.append("completed_at = %s")
+        values.append(resolve_completed(data.completed_at, before["created_at"], datetime.now(timezone.utc)))
 
     if not fields:
         raise HTTPException(status_code=400, detail="nada para atualizar")
@@ -148,14 +264,17 @@ def update(task_id: int, data: WorklogUpdate, user=Depends(active_user_csrf)):
 
 
 @router.post("/{task_id}/finish")
-def finish(task_id: int, user=Depends(active_user_csrf)):
+def finish(task_id: int, data: Optional[FinishIn] = None, user=Depends(active_user_csrf)):
+    """Conclui agora, ou na data informada (retroativo). Já concluída e sem
+    data: mantém a conclusão que tinha."""
     before = _own_task(user["user_id"], task_id)
+    raw = data.completed_at if data else None
+    when = before["completed_at"] if (before["completed_at"] and not raw) else \
+        resolve_completed(raw, before["created_at"], datetime.now(timezone.utc))
     stop_timer_of(user, task_id)
     db.execute(
-        """UPDATE worklog_tasks
-              SET status = 'done', completed_at = COALESCE(completed_at, now())
-            WHERE id = %s AND user_id = %s""",
-        (task_id, user["user_id"]),
+        "UPDATE worklog_tasks SET status = 'done', completed_at = %s WHERE id = %s AND user_id = %s",
+        (when, task_id, user["user_id"]),
     )
     audit.record(user, "worklog.finish", "worklog", task_id, before=before,
                  after=audit.worklog_snapshot(task_id, user["user_id"]))

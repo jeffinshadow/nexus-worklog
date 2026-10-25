@@ -1,16 +1,14 @@
-from datetime import date
-from typing import Optional
+"""Admin: contas (convite, senha), permissões e configurações gerais.
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+Ver os registros e relatórios das pessoas saiu daqui: é do Visualizador de
+tarefas (routers/viewer.py).
+"""
+from fastapi import APIRouter, Depends, HTTPException
 
-from .. import audit, db, people
+from .. import audit, db, people, roles
 from ..deps import require_admin, require_admin_csrf
-from ..schemas import InviteIn
+from ..schemas import AppSettingsIn, InviteIn, RolesIn
 from ..security import generate_temp_password, hash_password, revoke_access
-from ..services import app_today, get_board, get_dashboard
-from .board import check_board_day
-from .reports import build_pdf_response
-from .export import time_csv
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -24,14 +22,17 @@ def _ensure_user(user_id: int) -> dict:
 
 @router.get("/users")
 def list_users(admin=Depends(require_admin)):
-    rows = db.query_all("SELECT id, email, role, created_at FROM users ORDER BY role DESC, email")
+    rows = db.query_all(
+        f"""SELECT u.id, u.email, u.role, u.created_at, u.accepts_assignments_at, {roles.ROLES_SQL}
+              FROM users u ORDER BY lower(u.email)""")
     return [{**r, **people.profile(r["id"])} for r in rows]
 
 
 @router.post("/users", status_code=201)
 def invite_user(data: InviteIn, admin=Depends(require_admin_csrf)):
     """Cria a conta de um convidado com senha temporaria (mostrada uma unica vez
-    ao admin). O convidado troca a senha no primeiro login, como no reset."""
+    ao admin). O convidado troca a senha no primeiro login, como no reset.
+    Nasce com o papel Usuário; os outros se dão em Permissões."""
     email = data.email.lower()
     if db.query_one("SELECT 1 FROM users WHERE email = %s", (email,)):
         raise HTTPException(status_code=409, detail="email ja cadastrado")
@@ -42,50 +43,43 @@ def invite_user(data: InviteIn, admin=Depends(require_admin_csrf)):
         (email, hash_password(temp)),
     )
     novo = db.query_one("SELECT id FROM users WHERE email = %s", (email,))
+    roles.grant(novo["id"], ["user"])
     audit.record({**admin, "actor": "admin"}, "user.invite", "user", novo["id"],
                  after={"email": email, "by": admin["email"]}, user_id=novo["id"])
     return {"email": email, "temp_password": temp}
 
 
-@router.get("/users/{user_id}/board")
-def user_board(
-    user_id: int,
-    day: Optional[date] = Query(default=None),
-    admin=Depends(require_admin),
-):
-    _ensure_user(user_id)
-    return get_board(user_id, check_board_day(day))
-
-
-@router.get("/users/{user_id}/dashboard")
-def user_dashboard(user_id: int, admin=Depends(require_admin)):
-    _ensure_user(user_id)
-    return get_dashboard(user_id)
-
-
-@router.get("/users/{user_id}/projects")
-def user_projects(user_id: int, admin=Depends(require_admin)):
-    """Projetos do usuário (para o admin tirar o relatório de um cliente dele)."""
-    _ensure_user(user_id)
-    return db.query_all("SELECT id, name, archived FROM projects WHERE user_id = %s ORDER BY archived, lower(name)", (user_id,))
-
-
-@router.get("/users/{user_id}/reports/export")
-def user_report_export(
-    user_id: int,
-    start: date | None = Query(None),
-    end: date | None = Query(None),
-    project: int | None = Query(None),
-    admin=Depends(require_admin),
-):
+@router.put("/users/{user_id}/roles")
+def set_roles(user_id: int, data: RolesIn, admin=Depends(require_admin_csrf)):
+    """Papéis da conta. O admin não tira o próprio papel de admin (não se
+    tranca para fora) e o sistema nunca fica sem nenhum admin."""
     target = _ensure_user(user_id)
-    return build_pdf_response(target["email"], user_id, start, end, project)
+    before = roles.of(user_id)
+    novos = sorted(set(data.roles))
+    if user_id == admin["user_id"] and "admin" not in novos:
+        raise HTTPException(status_code=400, detail="você não pode tirar o seu próprio papel de admin")
+    if "admin" in before and "admin" not in novos and roles.admins_count() <= 1:
+        raise HTTPException(status_code=400, detail="o sistema precisa de pelo menos um admin")
+    roles.replace(user_id, novos)
+    if set(before) != set(novos):
+        audit.record({**admin, "actor": "admin"}, "user.roles", "user", user_id,
+                     before={"roles": before}, after={"roles": novos, "by": admin["email"], "email": target["email"]},
+                     user_id=user_id)
+    return {"id": user_id, "roles": novos}
 
 
-@router.get("/export/apontamentos.csv")
-def team_time_csv(admin=Depends(require_admin)):
-    """Apontamentos de todos os usuários (some por cliente/projeto na planilha)."""
-    return time_csv(None, f"nexus-apontamentos-equipe-{app_today().isoformat()}.csv")
+@router.get("/settings")
+def get_settings(admin=Depends(require_admin)):
+    return db.query_one("SELECT retro_days FROM app_settings WHERE id = 1")
+
+
+@router.put("/settings")
+def put_settings(data: AppSettingsIn, admin=Depends(require_admin_csrf)):
+    before = get_settings(admin)
+    db.execute("UPDATE app_settings SET retro_days = %s, updated_at = now() WHERE id = 1", (data.retro_days,))
+    audit.record({**admin, "actor": "admin"}, "app.settings", "app_settings", 1,
+                 before=before, after=data.model_dump())
+    return get_settings(admin)
 
 
 @router.post("/users/{user_id}/reset-password")
