@@ -86,8 +86,8 @@ Internet ──► cloudflared (host) ──► web (nginx) ──► backend (F
 - **web** — nginx: frontend estático, proxy de `/api/` e `/mcp`, CSP estrita.
 - **cloudflared** — no host (systemd), fora do compose: a única exposição.
 
-Frontend: HTML/CSS/JS puro (módulos ES), tema escuro, fontes Google Sans
-Flex/Code self-hosted (OFL). PDF com fpdf2 e as mesmas fontes.
+Frontend: HTML/CSS/JS puro (módulos ES), tema escuro, fonte Google Sans
+Flex self-hosted (OFL). PDF com fpdf2 e a mesma fonte.
 
 ## Setup
 
@@ -147,6 +147,11 @@ em profundidade).
 - **nginx**: CSP sem inline, HSTS, `nosniff`, `DENY` em frames; o link do
   calendário não vai para o log. Logo enviado validado pelo conteúdo e servido
   em sandbox.
+- **Seus dados (LGPD)**: cada pessoa exporta tudo em JSON ou CSV (Relatórios) e
+  exclui a própria conta em Configurações › Conta (com a senha); o admin também
+  exclui uma conta (Admin › Usuários, confirmando o e-mail). Tarefas, rotinas,
+  tempo, anotações, chaves e histórico vão junto; ficam só o e-mail e as contagens
+  no histórico de quem excluiu (180 dias). O último admin não sai.
 - **Sem rastreamento**: só o cookie de sessão; e-mails sem pixel nem links
   redirecionados; CSV exportado neutraliza fórmulas.
 
