@@ -89,7 +89,7 @@ async function route() {
   // Link direto para uma tarefa (#/tarefas?id=N: e-mail de atribuição, calendário).
   const taskId = Number(new URLSearchParams(location.hash.split("?")[1] || "").get("id"));
   if (name === "tarefas" && taskId > 0 && seq === routeSeq) {
-    history.replaceState(null, "", "#/tarefas");
+    window.history.replaceState(null, "", "#/tarefas"); // "history" aqui é a tela de Histórico
     openTask(taskId, route);
   }
 }
