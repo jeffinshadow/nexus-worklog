@@ -60,7 +60,7 @@ export async function stopTimer(after = onChange) {
   try {
     const r = await api.post("/timer/stop");
     setTimer(null);
-    toast(`Apontado: ${duration(r.stopped.minutes)}.`);
+    toast(r.stopped ? `Apontado: ${duration(r.stopped.minutes)}.` : "Cronômetro parado. O dia dele já tinha 24h apontadas, nada foi somado.");
     if (after) after();
   } catch (e) { errorToast(e, "Não foi possível parar o cronômetro."); }
 }
