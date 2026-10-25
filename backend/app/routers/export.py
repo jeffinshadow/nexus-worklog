@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from .. import db
 from ..deps import active_user
 from ..labels import PRIO_PT, STATUS_PT
-from ..services import TASK_COUNTS, app_today, app_tz
+from ..services import TASK_COUNTS, app_today, app_tz, get_report_range
 
 router = APIRouter(prefix="/api", tags=["export"])
 
@@ -93,6 +93,22 @@ def plantao_csv(start: Optional[date] = Query(None), end: Optional[date] = Query
     data.append(["total", "", "", "", "", total, str(round(total / 60, 2)).replace(".", ","), ""])
     return _download(_csv(data, ["data", "tarefa_id", "tarefa", "chamado", "projeto", "minutos", "horas", "observacao"]),
                      "text/csv; charset=utf-8", f"nexus-plantao-{start.isoformat()}-a-{end.isoformat()}.csv")
+
+
+@router.get("/export/rotinas.csv")
+def rotinas_csv(start: Optional[date] = Query(None), end: Optional[date] = Query(None), user=Depends(active_user)):
+    """Trilha de auditoria das rotinas (padrão: o mês atual): uma linha por rotina
+    em cada dia — prevista ou extra, feita ou não e a evidência anotada."""
+    today = app_today()
+    start = start or today.replace(day=1)
+    end = end or today
+    if end < start or (end - start).days > 366:
+        raise HTTPException(status_code=400, detail="período inválido (até 1 ano)")
+    rep = get_report_range(user["user_id"], start, end)
+    data = [[d["date"], r["label"], "extra" if r["extra"] else "prevista", "sim" if r["done"] else "não", r.get("note") or ""]
+            for d in rep["days"] for r in d["recurring"]]
+    return _download(_csv(data, ["data", "rotina", "agenda", "feita", "evidencia"]),
+                     "text/csv; charset=utf-8", f"nexus-rotinas-{start.isoformat()}-a-{end.isoformat()}.csv")
 
 
 @router.get("/export/{kind}")

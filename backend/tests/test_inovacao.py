@@ -141,3 +141,29 @@ def test_csv_de_plantao(usuario):
     assert not any("Sem plantão" in l for l in csv)
     assert csv[-1].startswith("total;") and ";90;1,5;" in csv[-1]
     assert usuario.get("/export/plantao.csv?start=2026-02-01&end=2026-01-01").status_code == 400
+
+
+def test_cobrar_em_e_desfazer_exclusao(usuario):
+    tid = usuario.post("/worklog", {"title": "Link da filial", "status": "blocked", "blocked_reason": "operadora",
+                                    "follow_up_on": "2030-01-10"}).json()["id"]
+    assert usuario.get(f"/worklog/{tid}").json()["follow_up_on"] == "2030-01-10"
+    assert "cobrar dia 10/01" in usuario.get("/summary/handoff").json()["text"]
+    # Excluir e desfazer devolve o impedimento inteiro.
+    usuario.delete(f"/worklog/{tid}")
+    h = [x for x in hist(usuario, entity="worklog", entity_id=tid) if x["action"] == "worklog.delete"][0]
+    usuario.post(f"/history/{h['id']}/undo")
+    t = usuario.get(f"/worklog/{tid}").json()
+    assert t["blocked_reason"] == "operadora" and t["blocked_at"] and t["follow_up_on"] == "2030-01-10"
+    usuario.patch(f"/worklog/{tid}", {"status": "in_progress"})
+    assert usuario.get(f"/worklog/{tid}").json()["follow_up_on"] is None
+
+
+def test_csv_de_rotinas_auditoria(usuario):
+    rid = usuario.post("/recurring", {"label": "Antivírus", "freq": "weekly", "weekdays": 127}).json()["id"]
+    usuario.post(f"/recurring/{rid}/toggle", {"done": True, "note": "0 ameaças"})
+    linhas = usuario.get("/export/rotinas.csv").content.decode("utf-8-sig").splitlines()
+    assert linhas[0] == "data;rotina;agenda;feita;evidencia"
+    assert any(";Antivírus;prevista;sim;0 ameaças" in l for l in linhas)
+    # Apagar a evidência aparece certo no histórico.
+    usuario.post(f"/recurring/{rid}/toggle", {"done": True, "note": ""})
+    assert hist(usuario, entity="recurring", entity_id=rid)[0]["summary"].startswith("apagou a evidência")

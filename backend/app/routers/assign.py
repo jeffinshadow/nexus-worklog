@@ -115,8 +115,8 @@ def notify_assigner(task_id: int) -> None:
     quem = people.profile(row["user_id"])["name"]
     m = Mail(f"Concluída: {row['title']}", f"{quem} concluiu a tarefa que você atribuiu",
              "Ela aparece como concluída em Atribuir tarefas, no Nexus.")
-    m.reason = "Você recebe este e-mail porque atribuiu esta tarefa pelo Nexus."
-    m.settings_tab = "conta"
+    m.reason = "Você recebe este e-mail porque atribuiu esta tarefa pelo Nexus (um aviso por tarefa)."
+    m.settings_tab = None
     m.link = "/index.html#/atribuir"
     m.blocks = [("Tarefa", [row["title"], f"Concluída em {row['completed_at'].astimezone(app_tz()).strftime('%d/%m/%Y %H:%M')}"])]
     _spawn(to["email"], m)

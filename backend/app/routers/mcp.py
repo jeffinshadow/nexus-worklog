@@ -83,6 +83,8 @@ def _task_line(t: dict, today: date) -> str:
         parts.append(f"(ref {t['external_ref']})")
     if t.get("status") == "blocked" and t.get("blocked_reason"):
         parts.append(f"(aguardando {t['blocked_reason']})")
+    if t.get("status") == "blocked" and t.get("follow_up_on"):
+        parts.append(f"(cobrar em {t['follow_up_on'].isoformat()})")
     if t.get("ticket"):
         parts.append(f"(chamado {t['ticket']})")
     if t.get("after_hours"):
@@ -143,7 +145,7 @@ def _task_args(uid: int, args: dict) -> dict:
 def _find_task(uid: int, task_id: int) -> dict:
     t = db.query_one(
         """SELECT w.id, w.title, w.description, w.status, w.due_date, w.completed_at, w.priority,
-                  w.ticket, w.after_hours, w.external_ref, w.blocked_reason, p.name AS project_name,
+                  w.ticket, w.after_hours, w.external_ref, w.blocked_reason, w.follow_up_on, p.name AS project_name,
                   """ + services.ASSIGNER_NAME + ", " + services.TASK_COUNTS + """
              FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
             WHERE w.id = %s AND w.user_id = %s""", (task_id, uid))
@@ -484,7 +486,8 @@ TOOLS = {
                         "after_hours": {"type": "boolean"},
                         "completed_at": {**WHEN, "description": "Corrige a data de conclusão (tarefa concluída). " + WHEN["description"]},
                         "blocked_reason": {"type": ["string", "null"], "maxLength": 120,
-                                           "description": "Com status blocked: o que se está aguardando (fornecedor, cliente, aprovação...)"}}}),
+                                           "description": "Com status blocked: o que se está aguardando (fornecedor, cliente, aprovação...)"},
+                        "follow_up_on": {**DATE, "type": ["string", "null"], "description": "Com status blocked: dia combinado para cobrar (AAAA-MM-DD)"}}}),
     "get_summary": (t_get_summary, False, "Resumo para a daily/retro: o último dia útil e a semana até hoje (rotinas, tarefas concluídas, tempo por projeto, o que ficou para trás).",
                     {"type": "object", "properties": {}}),
     "get_task": (t_get_task, False, "Tarefa completa: checklist, anotações e tempo apontado.",

@@ -125,7 +125,9 @@ function notes(open, today) {
     if (out.length >= 2) break;
     const d = idle(t);
     const nota = (text) => out.push({ key: `hoje:tarefa:${t.id}`, text, task: t });
-    if (t.status === "blocked" && d >= 3) nota(t.blocked_reason
+    if (t.status === "blocked" && t.follow_up_on && t.follow_up_on <= today)
+      nota(`Hoje é dia de cobrar ${t.blocked_reason ? t.blocked_reason + " sobre " : ""}${q(t.title)}.`);
+    else if (t.status === "blocked" && !t.follow_up_on && d >= 3) nota(t.blocked_reason
       ? `${q(t.title)} aguarda ${t.blocked_reason} há ${d} dias sem movimento. Vale cobrar.`
       : `${q(t.title)} está bloqueada e sem movimento há ${d} dias. Vale confirmar se ainda depende de alguém.`);
     else if (t.status === "in_progress" && d >= 7) nota(`${q(t.title)} está em andamento sem movimento há ${d} dias.`);
@@ -250,9 +252,16 @@ export function todayCard(b, sum, ctx) {
   }
   // Impedimento parado: "Cobrei" anota a cobrança na tarefa (conta como movimento; o aviso some por 3 dias).
   if (b.work_day) for (const n of notes(open, today)) items.push({ key: n.key, lines: n.task.status === "blocked" && ctx.onChanged
-    ? [{ line: n.text, actions: [action("Cobrei", async () => {
-        await api.post(`/worklog/${n.task.id}/notes`, { body: n.task.blocked_reason ? `Cobrei: ${n.task.blocked_reason}` : "Cobrei o andamento" });
-        ctx.onChanged();
+    ? [{ line: n.text, actions: [action("Cobrei", async (ev) => {
+        const btn = ev.currentTarget;
+        btn.disabled = true; // clique duplo gravaria duas anotações
+        try {
+          await api.post(`/worklog/${n.task.id}/notes`, { body: n.task.blocked_reason ? `Cobrei: ${n.task.blocked_reason}` : "Cobrei o andamento" });
+          // Com dia combinado, a próxima cobrança fica pra daqui a 2 dias.
+          if (n.task.follow_up_on) await api.patch(`/worklog/${n.task.id}`, { follow_up_on: addDays(today, 2) });
+          toast("Cobrança anotada na tarefa.");
+          ctx.onChanged();
+        } catch (e) { btn.disabled = false; errorToast(e, "Não foi possível anotar."); }
       })] }]
     : [n.text] });
 

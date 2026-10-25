@@ -13,8 +13,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Nexus">
   <link rel="preload" as="font" type="font/woff2" href="/fonts/GoogleSansFlex.woff2" crossorigin>
-  <link rel="stylesheet" href="/css/tokens.css?v=49">
-  <link rel="stylesheet" href="/css/app.css?v=49">
+  <link rel="stylesheet" href="/css/tokens.css?v=50">
+  <link rel="stylesheet" href="/css/app.css?v=50">
 </head>
 <body>
   <!-- Ícones (traço 1.75, 24px), sem script/style inline (CSP). -->
@@ -237,9 +237,15 @@
           <label class="weekday-option"><input id="wl-after" type="checkbox"><span>Plantão / fora do horário</span></label>
         </div>
       </div>
-      <div class="field hidden" id="wl-blocked-wrap">
-        <label for="wl-blocked">Aguardando o quê? (opcional)</label>
-        <input id="wl-blocked" type="text" maxlength="120" placeholder="ex.: retorno do fornecedor, aprovação da diretoria">
+      <div class="field-row hidden" id="wl-blocked-wrap">
+        <div class="field">
+          <label for="wl-blocked">Aguardando o quê? (opcional)</label>
+          <input id="wl-blocked" type="text" maxlength="120" placeholder="ex.: retorno do fornecedor, aprovação da diretoria">
+        </div>
+        <div class="field">
+          <label for="wl-followup">Cobrar em (opcional)</label>
+          <input id="wl-followup" type="date">
+        </div>
       </div>
       <div class="field-row hidden" id="wl-dates">
         <div class="field" id="wl-created-wrap">
@@ -267,7 +273,7 @@
   <div class="toasts" id="toasts" aria-live="polite"></div>
   <div class="timer-chip timer-mobile hidden" id="timer-mobile" role="status" aria-live="polite"></div>
 
-  <script type="module" src="/js/app.js?v=49"></script>
-  <script type="module" src="/js/pwa.js?v=49"></script>
+  <script type="module" src="/js/app.js?v=50"></script>
+  <script type="module" src="/js/pwa.js?v=50"></script>
 </body>
 </html>

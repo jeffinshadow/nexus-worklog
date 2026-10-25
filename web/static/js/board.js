@@ -40,6 +40,9 @@ function blockedDays(t) {
 export function taskChips(t, today) {
   // Concluída: a coluna já diz; fica só a data de fim.
   const chips = t.status === "done" ? [] : [h("span", { class: "chip " + t.status, text: STATUS_LABELS[t.status] + blockedDays(t) })];
+  if (t.status === "blocked" && t.follow_up_on)
+    chips.push(h("span", { class: "chip " + (t.follow_up_on <= today ? "late" : "blocked-reason"), title: "Dia combinado para cobrar",
+      text: (t.follow_up_on <= today ? "cobrar hoje" : "cobrar " + shortDate(t.follow_up_on)) }));
   if (t.status === "blocked" && t.blocked_reason)
     chips.push(h("span", { class: "chip blocked-reason", title: "Aguardando: " + t.blocked_reason, text: "aguardando " + (t.blocked_reason.length > 40 ? t.blocked_reason.slice(0, 39) + "…" : t.blocked_reason) }));
   if (t.priority === 1 && t.status !== "done") chips.push(h("span", { class: "chip prio-1", text: "alta" }));
@@ -128,6 +131,8 @@ export function openWorklog(item, onDone, opts = {}) {
   const blockedWrap = document.getElementById("wl-blocked-wrap");
   const blocked = document.getElementById("wl-blocked");
   blocked.value = item && item.blocked_reason ? item.blocked_reason : "";
+  const followUp = document.getElementById("wl-followup");
+  followUp.value = item && item.follow_up_on ? item.follow_up_on : "";
   const syncDates = () => {
     dates.classList.toggle("hidden", statusSel.value !== "done");
     blockedWrap.classList.toggle("hidden", statusSel.value !== "blocked");
@@ -195,7 +200,10 @@ export function openWorklog(item, onDone, opts = {}) {
     if (!payload.title) return;
     if (payload.status === "done" && doneAt.value && doneAt.value !== doneOrig) payload.completed_at = doneAt.value;
     if (!item && createdAt.value) payload.created_at = createdAt.value;
-    if (payload.status === "blocked") payload.blocked_reason = blocked.value.trim() || null;
+    if (payload.status === "blocked") {
+      payload.blocked_reason = blocked.value.trim() || null;
+      payload.follow_up_on = followUp.value || null;
+    }
     const minutes = !item && timeInput.value.trim() ? parseDuration(timeInput.value) : null;
     if (minutes === null && !item && timeInput.value.trim()) { toast("Tempo inválido. Ex.: 45, 1h30, 2:15.", { error: true }); timeInput.focus(); return; }
     const btn = ev.submitter;

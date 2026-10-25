@@ -173,7 +173,7 @@ def get_board(user_id: int, day: date | None = None, project: int | None = None)
     def cols(extra=""):
         return """
         SELECT w.id, w.title, w.description, w.status, w.due_date, w.created_at, w.completed_at,
-               w.priority, w.project_id, w.ticket, w.after_hours, w.assigned_by, w.blocked_reason, w.blocked_at,
+               w.priority, w.project_id, w.ticket, w.after_hours, w.assigned_by, w.blocked_reason, w.blocked_at, w.follow_up_on,
                p.name AS project_name, p.color AS project_color, """ + ASSIGNER_NAME + """,
                """ + TASK_COUNTS + extra + """
           FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id

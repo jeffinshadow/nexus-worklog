@@ -180,7 +180,7 @@ function editEvidence(r, day, refresh) {
 async function showHandoff() {
   let text;
   try { text = (await api.get("/summary/handoff")).text; } catch (e) { errorToast(e); return; }
-  const area = h("textarea", { rows: "14", readonly: "readonly", class: "handoff-text" });
+  const area = h("textarea", { rows: "14", readonly: "readonly", class: "handoff-text", "aria-label": "Texto da passagem de turno" });
   area.value = text;
   const dlg = modal(h("h2", { text: "Passagem de turno" }),
     h("p", { class: "dialog-note", text: "O que fica aberto, o que está bloqueado e por quê, o que saiu hoje. Cole no chat da equipe." }),

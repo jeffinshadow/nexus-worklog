@@ -48,13 +48,18 @@ def handoff_text(user_id: int) -> str:
     for t in travadas:
         motivo = f" — aguardando {t['blocked_reason']}" if t.get("blocked_reason") else ""
         dias = _dias(t.get("blocked_at"))
-        linhas.append(item(t) + motivo + (f" (há {dias} d)" if dias else ""))
+        info = [f"há {dias} d"] if dias else []
+        if t.get("follow_up_on"):
+            info.append(f"cobrar dia {t['follow_up_on'].strftime('%d/%m')}")
+        linhas.append(item(t) + motivo + (f" ({', '.join(info)})" if info else ""))
     if not travadas:
         linhas.append("- nenhuma")
     feitas = [t for t in b["done"] if t["completed_at"] and t["completed_at"].astimezone(app_tz()).date() == hoje]
     plantao = [t for t in feitas if t.get("after_hours")]
     linhas += ["", f"Concluídas hoje ({len(feitas)}):"]
     linhas += [f"- {t['title']}" + (" (plantão)" if t.get("after_hours") else "") for t in feitas[:15]] or ["- nada"]
+    if len(feitas) > 15:
+        linhas.append(f"- e mais {len(feitas) - 15}")
     pend = [r for r in b["recurring"] if r.get("due") and not r["done_today"]]
     if pend:
         linhas += ["", "Rotinas de hoje ainda não feitas:"] + [f"- {r['label']}" for r in pend]

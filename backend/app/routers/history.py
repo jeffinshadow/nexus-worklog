@@ -106,7 +106,7 @@ def _label(row) -> str:
     if row["action"] == "recurring.toggle" and row["after"]:
         text = ("marcou" if row["after"]["done"] else "desmarcou") + " a rotina"
         if row["after"]["done"] and row["before"] and row["before"].get("done") and row["after"].get("note") != row["before"].get("note"):
-            text = "anotou a evidência da rotina"
+            text = "anotou a evidência da rotina" if row["after"].get("note") else "apagou a evidência da rotina"
         name = f"{name} em {row['after']['day']}" if name else row["after"]["day"]
     return f"{text} “{name}”" if name else text
 
@@ -212,12 +212,12 @@ def _restore_worklog(uid: int, snap: dict) -> None:
         """UPDATE worklog_tasks
               SET title = %s, description = %s, status = %s, due_date = %s, completed_at = %s,
                   project_id = %s, priority = %s, ticket = %s, after_hours = %s,
-                  blocked_reason = %s, blocked_at = %s
+                  blocked_reason = %s, blocked_at = %s, follow_up_on = %s
             WHERE id = %s AND user_id = %s""",
         (snap["title"], snap["description"], snap["status"], snap["due_date"],
          snap["completed_at"], _projeto_existente(uid, snap.get("project_id")),
          snap.get("priority") or 2, snap.get("ticket"), bool(snap.get("after_hours")),
-         snap.get("blocked_reason"), snap.get("blocked_at"), snap["id"], uid),
+         snap.get("blocked_reason"), snap.get("blocked_at"), snap.get("follow_up_on"), snap["id"], uid),
     )
 
 
@@ -299,14 +299,17 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
         db.execute(
             """INSERT INTO worklog_tasks (id, user_id, title, description, status, due_date,
                                           created_at, completed_at, project_id, priority, ticket, after_hours,
-                                          external_ref, assigned_by, assigned_at)
+                                          external_ref, assigned_by, assigned_at,
+                                          blocked_reason, blocked_at, assigner_notified_at, follow_up_on)
                OVERRIDING SYSTEM VALUE
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (eid, uid, before["title"], before["description"], before["status"],
              before["due_date"], before["created_at"], before["completed_at"],
              _projeto_existente(uid, before.get("project_id")), before.get("priority") or 2,
              before.get("ticket"), bool(before.get("after_hours")), _ref_livre(uid, before.get("external_ref")),
-             _usuario_existente(before.get("assigned_by")), before.get("assigned_at")),
+             _usuario_existente(before.get("assigned_by")), before.get("assigned_at"),
+             before.get("blocked_reason"), before.get("blocked_at"), before.get("assigner_notified_at"),
+             before.get("follow_up_on")),
         )
         for n in kids.get("notes", []):
             _put_note(uid, eid, n)

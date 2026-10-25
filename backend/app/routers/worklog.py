@@ -127,14 +127,15 @@ def create(data: WorklogIn, response: Response, user=Depends(active_user_csrf)):
             """
             INSERT INTO worklog_tasks (user_id, title, description, status, due_date, created_at, completed_at,
                                        project_id, priority, ticket, after_hours, external_ref,
-                                       blocked_reason, blocked_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                       blocked_reason, blocked_at, follow_up_on)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
             (uid, data.title, data.description, data.status, data.due_date, created_at, completed_at,
              data.project_id, data.priority, data.ticket, data.after_hours, data.external_ref,
              _reason(data.blocked_reason) if data.status == "blocked" else None,
-             now if data.status == "blocked" else None),
+             now if data.status == "blocked" else None,
+             data.follow_up_on if data.status == "blocked" else None),
         )
     except UniqueViolation:  # duas chamadas iguais ao mesmo tempo: a segunda devolve a primeira
         response.status_code = 200
@@ -189,7 +190,7 @@ def detail(task_id: int, user=Depends(active_user)):
         """
         SELECT w.id, w.title, w.description, w.status, w.due_date, w.created_at, w.completed_at,
                w.priority, w.project_id, w.ticket, w.after_hours, w.external_ref, w.assigned_by, w.assigned_at,
-               w.blocked_reason, w.blocked_at,
+               w.blocked_reason, w.blocked_at, w.follow_up_on,
                p.name AS project_name, p.color AS project_color, """ + ASSIGNER_NAME + """
           FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
          WHERE w.id = %s AND w.user_id = %s
@@ -260,9 +261,13 @@ def update(task_id: int, data: WorklogUpdate, user=Depends(active_user_csrf)):
         if "blocked_reason" in sent or before["status"] != "blocked":
             fields.append("blocked_reason = %s")
             values.append(_reason(data.blocked_reason))
+        if "follow_up_on" in sent or before["status"] != "blocked":
+            fields.append("follow_up_on = %s")
+            values.append(data.follow_up_on)
     elif before["status"] == "blocked":
         fields.append("blocked_at = NULL")
         fields.append("blocked_reason = NULL")
+        fields.append("follow_up_on = NULL")
     if final_status == "done" and (data.completed_at or before["completed_at"] is None):
         fields.append("completed_at = %s")
         values.append(resolve_completed(data.completed_at, before["created_at"], datetime.now(timezone.utc)))

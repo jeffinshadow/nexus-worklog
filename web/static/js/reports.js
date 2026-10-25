@@ -107,7 +107,10 @@ export async function mount(root, opts = {}) {
       h("p", { class: "sub", text: "Seus dados em formato aberto, para planilha, faturamento ou backup." }),
       dl("/export/apontamentos.csv", "Apontamentos (CSV)", "um registro por apontamento de tempo: dia, horas, tarefa, projeto e observação"),
       dl("/export/tarefas.csv", "Tarefas (CSV)", "todas as tarefas com status, prioridade, projeto, prazo, checklist e horas"),
-      dl(() => `/export/plantao.csv?start=${startInput.value}&end=${endInput.value}`, "Plantão do período (CSV)", "só o que foi fora do horário, com as horas por dia e o total — pra fechar sobreaviso ou banco de horas (usa as datas acima)"),
+      dl(() => "/export/plantao.csv?" + new URLSearchParams(Object.entries({ start: startInput.value, end: endInput.value }).filter(([, v]) => v)),
+        "Plantão do período (CSV)", "só o que foi fora do horário, de todos os projetos, com as horas por dia e o total — pra fechar sobreaviso ou banco de horas (usa as datas acima; sem datas, o mês atual)"),
+      dl(() => "/export/rotinas.csv?" + new URLSearchParams(Object.entries({ start: startInput.value, end: endInput.value }).filter(([, v]) => v)),
+        "Rotinas e evidências (CSV)", "trilha de auditoria: cada rotina em cada dia, se foi feita e o que foi conferido (usa as datas acima; sem datas, o mês atual)"),
       dl("/export/tudo.json", "Tudo (JSON)", "tarefas com anotações, checklist e tempo, rotinas com os dias feitos e projetos")));
   }
 
