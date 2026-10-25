@@ -125,7 +125,9 @@ function notes(open, today) {
     if (out.length >= 2) break;
     const d = idle(t);
     const nota = (text) => out.push({ key: `hoje:tarefa:${t.id}`, text, task: t });
-    if (t.status === "blocked" && d >= 3) nota(`${q(t.title)} está bloqueada e sem movimento há ${d} dias. Vale confirmar se ainda depende de alguém.`);
+    if (t.status === "blocked" && d >= 3) nota(t.blocked_reason
+      ? `${q(t.title)} aguarda ${t.blocked_reason} há ${d} dias sem movimento. Vale cobrar.`
+      : `${q(t.title)} está bloqueada e sem movimento há ${d} dias. Vale confirmar se ainda depende de alguém.`);
     else if (t.status === "in_progress" && d >= 7) nota(`${q(t.title)} está em andamento sem movimento há ${d} dias.`);
     else if (t.due_date && daysBetween(today, t.due_date) === 1) nota(`${q(t.title)} vence amanhã.`);
   }
@@ -157,7 +159,7 @@ export function dailyText(b, sum) {
   lines.push(...(hoje.length ? hoje.map((t) => `- ${t.title}${t.ticket ? ` (#${t.ticket})` : ""}${t.due_date && t.due_date < today ? " — atrasada" : t.due_date === today ? " — vence hoje" : ""}`) : ["- sem tarefas em aberto"]));
   lines.push("", "Impedimentos:");
   const bloq = b.in_progress.filter((t) => t.status === "blocked");
-  lines.push(...(bloq.length ? bloq.map((t) => `- ${t.title}${t.ticket ? ` (#${t.ticket})` : ""}`) : ["- nenhum"]));
+  lines.push(...(bloq.length ? bloq.map((t) => `- ${t.title}${t.ticket ? ` (#${t.ticket})` : ""}${t.blocked_reason ? ` — aguardando ${t.blocked_reason}` : ""}`) : ["- nenhum"]));
   return lines.join("\n");
 }
 
@@ -246,7 +248,13 @@ export function todayCard(b, sum, ctx) {
       ? "As rotinas de hoje estão concluídas e não há tarefas em aberto. Tudo em dia."
       : "Nada pendente por aqui. O que surgir, registre no campo de registro rápido.";
   }
-  if (b.work_day) for (const n of notes(open, today)) items.push({ key: n.key, lines: [n.text] });
+  // Impedimento parado: "Cobrei" anota a cobrança na tarefa (conta como movimento; o aviso some por 3 dias).
+  if (b.work_day) for (const n of notes(open, today)) items.push({ key: n.key, lines: n.task.status === "blocked" && ctx.onChanged
+    ? [{ line: n.text, actions: [action("Cobrei", async () => {
+        await api.post(`/worklog/${n.task.id}/notes`, { body: n.task.blocked_reason ? `Cobrei: ${n.task.blocked_reason}` : "Cobrei o andamento" });
+        ctx.onChanged();
+      })] }]
+    : [n.text] });
 
   // Tempo esquecido: concluídas hoje sem nenhum apontamento.
   const semTempo = b.done.filter((x) => x.completed_at && localDay(x.completed_at) === today && !x.minutes);

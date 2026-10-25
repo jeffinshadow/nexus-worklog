@@ -98,7 +98,7 @@ export async function mount(root, opts = {}) {
     const dl = (path, label, help) => {
       const b = h("button", { type: "button", class: "btn btn-ghost", onClick: async () => {
         b.disabled = true;
-        try { await api.download(path); } catch (e) { errorToast(e, "Falha ao exportar."); } finally { b.disabled = false; }
+        try { await api.download(typeof path === "function" ? path() : path); } catch (e) { errorToast(e, "Falha ao exportar."); } finally { b.disabled = false; }
       } }, icon("download"), label);
       return h("div", { class: "export-row" }, b, h("span", { class: "help", text: help }));
     };
@@ -107,6 +107,7 @@ export async function mount(root, opts = {}) {
       h("p", { class: "sub", text: "Seus dados em formato aberto, para planilha, faturamento ou backup." }),
       dl("/export/apontamentos.csv", "Apontamentos (CSV)", "um registro por apontamento de tempo: dia, horas, tarefa, projeto e observação"),
       dl("/export/tarefas.csv", "Tarefas (CSV)", "todas as tarefas com status, prioridade, projeto, prazo, checklist e horas"),
+      dl(() => `/export/plantao.csv?start=${startInput.value}&end=${endInput.value}`, "Plantão do período (CSV)", "só o que foi fora do horário, com as horas por dia e o total — pra fechar sobreaviso ou banco de horas (usa as datas acima)"),
       dl("/export/tudo.json", "Tudo (JSON)", "tarefas com anotações, checklist e tempo, rotinas com os dias feitos e projetos")));
   }
 

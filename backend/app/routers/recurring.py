@@ -13,14 +13,14 @@ router = APIRouter(prefix="/api/recurring", tags=["recurring"])
 def create(data: RecurringIn, user=Depends(active_user_csrf)):
     row = db.query_one(
         """
-        INSERT INTO recurring_tasks (user_id, label, position, freq, weekdays, month_day, interval_days)
+        INSERT INTO recurring_tasks (user_id, label, position, freq, weekdays, month_day, interval_days, require_note)
         VALUES (%(uid)s, %(label)s,
                 (SELECT COALESCE(MAX(position), 0) + 1
                    FROM recurring_tasks WHERE user_id = %(uid)s),
-                %(freq)s, %(weekdays)s, %(month_day)s, %(interval_days)s)
-        RETURNING id, label, position, active, freq, weekdays, month_day, interval_days
+                %(freq)s, %(weekdays)s, %(month_day)s, %(interval_days)s, %(require_note)s)
+        RETURNING id, label, position, active, freq, weekdays, month_day, interval_days, require_note
         """,
-        {"uid": user["user_id"], "label": data.label,
+        {"uid": user["user_id"], "label": data.label, "require_note": data.require_note,
          **(data.agenda() if data.freq else {"freq": "daily", "weekdays": None, "month_day": None, "interval_days": None})},
     )
     audit.record(user, "recurring.create", "recurring", row["id"],
@@ -39,10 +39,11 @@ def replace_routine(user: dict, before: dict, new: dict, freeze: dict | None = N
     db.execute(f"UPDATE recurring_tasks SET {', '.join(sets)} WHERE id = %s AND user_id = %s",
                tuple((freeze or {}).values()) + (old_id, uid))
     row = db.query_one(
-        """INSERT INTO recurring_tasks (user_id, label, position, freq, weekdays, month_day, interval_days)
-           VALUES (%(uid)s, %(label)s, %(position)s, %(freq)s, %(weekdays)s, %(month_day)s, %(interval_days)s)
+        """INSERT INTO recurring_tasks (user_id, label, position, freq, weekdays, month_day, interval_days, require_note)
+           VALUES (%(uid)s, %(label)s, %(position)s, %(freq)s, %(weekdays)s, %(month_day)s, %(interval_days)s, %(require_note)s)
            RETURNING id""",
-        {"uid": uid, "position": before["position"], "weekdays": None, "month_day": None, "interval_days": None, **new})
+        {"uid": uid, "position": before["position"], "weekdays": None, "month_day": None, "interval_days": None,
+         "require_note": bool(before.get("require_note")), **new})
     db.execute("UPDATE recurring_completions SET task_id = %s WHERE task_id = %s AND user_id = %s AND completed_date = %s",
                (row["id"], old_id, uid, app_today()))
     audit.record(user, "recurring.replace", "recurring", row["id"], before=before,
@@ -60,20 +61,24 @@ def update(task_id: int, data: RecurringUpdate, user=Depends(active_user_csrf)):
     if not before or not before["active"]:
         raise HTTPException(status_code=404, detail="não encontrado")
     agenda = data.agenda() if data.freq is not None else {}
-    if data.label is None and not agenda:
+    if data.label is None and not agenda and data.require_note is None:
         raise HTTPException(status_code=400, detail="nada para atualizar")
     today = app_today()
     muda_agenda = any(before[k] != v for k, v in agenda.items())
     tem_passado = before["created_at"].astimezone(app_tz()).date() < today
 
     if muda_agenda and tem_passado:
-        new_id = replace_routine(user, before, {"label": data.label or before["label"], **agenda})
+        new_id = replace_routine(user, before, {"label": data.label or before["label"], **agenda,
+                                                **({"require_note": data.require_note} if data.require_note is not None else {})})
         return {"ok": True, "id": new_id, "replaced": task_id}
 
     fields, values = [], []
     if data.label is not None:
         fields.append("label = %s")
         values.append(data.label)
+    if data.require_note is not None:
+        fields.append("require_note = %s")
+        values.append(data.require_note)
     for col, val in agenda.items():  # rotina criada hoje: ainda sem passado
         fields.append(f"{col} = %s")
         values.append(val)
@@ -123,21 +128,24 @@ def toggle(task_id: int, data: ToggleIn, user=Depends(active_user_csrf)):
     )
     was, old_note = prev is not None, (prev or {}).get("note")
     note = " ".join((data.note or "").split()) or None
+    keep = "note" not in data.model_fields_set  # sem o campo: mantém; vazio ou null: apaga
+    if data.done and not (note or (keep and old_note)) and db.query_one(
+            "SELECT 1 FROM recurring_tasks WHERE id = %s AND require_note", (task_id,)):
+        raise HTTPException(status_code=400, detail="esta rotina exige a evidência do que foi conferido")
     if data.done:
-        # Remarcar sem nota mantém a evidência que já havia; com nota, troca.
         db.execute(
             """INSERT INTO recurring_completions (task_id, user_id, completed_date, note)
                VALUES (%s, %s, %s, %s)
                ON CONFLICT (task_id, completed_date) DO UPDATE
-                  SET note = COALESCE(EXCLUDED.note, recurring_completions.note)""",
-            (task_id, user["user_id"], today, note),
+                  SET note = CASE WHEN %s THEN recurring_completions.note ELSE EXCLUDED.note END""",
+            (task_id, user["user_id"], today, note, keep),
         )
     else:
         db.execute(
             "DELETE FROM recurring_completions WHERE task_id = %s AND user_id = %s AND completed_date = %s",
             (task_id, user["user_id"], today),
         )
-    new_note = (note or old_note) if data.done else None
+    new_note = (old_note if keep else note) if data.done else None
     if was != data.done or (data.done and new_note != old_note):
         audit.record(user, "recurring.toggle", "recurring", task_id,
                      before={"day": today, "done": was, "note": old_note},

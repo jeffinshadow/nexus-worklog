@@ -91,6 +91,7 @@ Legenda: **S** = só sessão do app · **W** = exige escopo `write` (chave) ou C
 | --- | --- | --- |
 | `GET /api/board?day=&project=` | | `day` até 7 dias atrás (padrão hoje); `project` filtra as tarefas (`0` = sem projeto). Devolve `recurring` (com `due`, `done_today`, agenda), `in_progress` (tarefas abertas: a fazer, em andamento, bloqueadas; com `touched_at`, o último movimento), `timer`, `done`, `day`, `today`, `min_day`, `work_day` |
 | `GET /api/summary` | | `last_day` (do último dia útil até ontem), `week` (com `previous` = mesmos dias da semana passada) e `today_stats` (o dia de hoje): rotinas, tarefas concluídas, minutos, por projeto, rotinas não feitas |
+| `GET /api/export/plantao.csv?start=&end=` | | atendimentos de plantão do período (padrão: o mês), com horas por dia e total |
 | `GET /api/summary/handoff` | | `{text}` — passagem de turno: em aberto, bloqueadas com o motivo e há quantos dias, concluídas hoje (plantão marcado), rotinas pendentes |
 | `GET /api/dashboard` | | retrospectiva: `heatmap` (4 semanas), `task_adherence` (30 dias, a mais pulada primeiro), `throughput`, `projects` (tempo, 30 dias), `backlog` |
 
@@ -101,7 +102,7 @@ Legenda: **S** = só sessão do app · **W** = exige escopo `write` (chave) ou C
 | `POST /` | W | `{label, freq?, weekdays?, month_day?, interval_days?}` |
 | `PATCH /{id}` | W | `{label?, freq?…}` — mudar a agenda exige `freq` + o parâmetro dela; se a rotina já tem passado, ela é encerrada hoje e uma nova (devolvida em `id`) começa hoje — uma ação só no histórico |
 | `DELETE /{id}` | W | remove daqui para a frente (o passado fica) |
-| `POST /{id}/toggle` | W | `{done, day?, note?}` — `day` até 7 dias atrás e só quando a rotina existia; `note` (até 200) = evidência do que foi conferido (vai pro PDF e pro JSON; remarcar sem `note` mantém a anterior) |
+| `POST /{id}/toggle` | W | `{done, day?, note?}` — `day` até 7 dias atrás e só quando a rotina existia; `note` (até 200) = evidência do que foi conferido (vai pro PDF e pro JSON; remarcar sem `note` mantém a anterior; `note` vazio apaga). Rotina com `require_note` só é marcada com evidência (400) |
 
 Agenda: `daily` (dias úteis do dono) · `weekly` + `weekdays` (máscara) ·
 `monthly` + `month_day` (1–31; 31 = último dia) · `interval` + `interval_days`

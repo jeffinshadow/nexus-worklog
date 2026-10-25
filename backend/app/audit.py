@@ -49,7 +49,7 @@ _WORKLOG_COLS = ("id, title, description, status, due_date, created_at, complete
                  "project_id, priority, ticket, after_hours, external_ref, assigned_by, assigned_at, "
                  "blocked_reason, blocked_at")
 _RECURRING_COLS = ("id, label, position, active, created_at, deactivated_at, "
-                   "freq, weekdays, month_day, interval_days")
+                   "freq, weekdays, month_day, interval_days, require_note")
 
 
 def worklog_snapshot(task_id: int, user_id: int):

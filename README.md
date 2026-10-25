@@ -32,7 +32,9 @@ para leitura, o quadro, a retrospectiva e os relatórios de cada pessoa).
 - **Passagem de turno e impedimentos** — tarefa bloqueada guarda o que se
   aguarda e há quantos dias; um clique monta o texto da passagem de turno
   (aberto, bloqueado e por quê, feito hoje, plantão). Rotina marcada aceita uma
-  **evidência** curta ("backup OK, 2,1 TB"), que vai para o PDF. Registro rápido
+  **evidência** curta ("backup OK, 2,1 TB"), que vai para o PDF — e pode ser
+  exigida por rotina. Impedimento parado há dias vira lembrete com "Cobrei"; o
+  plantão do mês sai num CSV com as horas. Registro rápido
   entende `@projeto #chamado !plantão — 45min`.
 - **Atribuição** — quem aceita (Configurações › Conta) recebe tarefas de um
   atribuidor pelo app ou pela IA, com aviso por e-mail; a tarefa passa a ser

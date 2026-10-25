@@ -67,6 +67,12 @@ export async function mount(root, ctx, opts = {}) {
     const cb = h("input", { type: "checkbox", "aria-label": r.label });
     cb.checked = r.done_today;
     cb.addEventListener("change", async () => {
+      // Rotina que exige evidência: marcar abre o campo antes de salvar.
+      if (cb.checked && r.require_note && !r.note) {
+        cb.checked = false;
+        editEvidence(r, b.day, refresh);
+        return;
+      }
       try {
         await api.post(`/recurring/${r.id}/toggle`, { done: cb.checked, day: b.day }); // o dia da tela, não o do relógio
         refresh();
@@ -75,7 +81,7 @@ export async function mount(root, ctx, opts = {}) {
         errorToast(e, "Erro ao salvar.");
       }
     });
-    const hint = scheduleLabel(r);
+    const hint = [scheduleLabel(r), r.require_note && !r.done_today ? "exige evidência" : ""].filter(Boolean).join(" · ");
     recPanel.append(h("label", { class: "check-row" + (r.done_today ? " done" : "") + (r.due === false ? " off" : "") }, cb,
       h("span", { class: "label" }, r.label, hint ? h("small", { text: hint }) : null,
         r.note ? h("small", { class: "evidence", text: "evidência: " + r.note }) : null),
@@ -141,7 +147,7 @@ export async function mount(root, ctx, opts = {}) {
   // Assistente: a saudação e o que pede atenção (desliga em Configurações > Conta).
   const meChanged = (res) => { Object.assign(ctx.me, res); window.dispatchEvent(new Event("nexus:me")); refresh(); };
   const assist = todayCard(b, sum, {
-    me: ctx.me, go: ctx.go, openTask: (id) => openTask(id, refresh),
+    me: ctx.me, go: ctx.go, openTask: (id) => openTask(id, refresh), onChanged: refresh,
     onProfile: meChanged,
   });
   ctx.setAssist(assist);
@@ -154,7 +160,7 @@ function editEvidence(r, day, refresh) {
   const input = h("input", { type: "text", maxlength: "200", value: r.note || "", placeholder: "ex.: backup OK, 2,1 TB, 0 erros" });
   const err = h("p", { class: "error-text" });
   const form = h("form", {}, h("h2", { text: "Evidência" }),
-    h("p", { class: "dialog-note", text: `${r.label}: o que foi conferido. Aparece no relatório em PDF e na exportação.` }),
+    h("p", { class: "dialog-note", text: `${r.label}: o que foi conferido. Aparece no relatório em PDF e na exportação.${r.require_note ? " Esta rotina só é marcada com a evidência." : ""}` }),
     h("label", { class: "field" }, "Evidência", input), err,
     h("div", { class: "dialog-actions" },
       h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),

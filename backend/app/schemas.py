@@ -95,12 +95,14 @@ class _Agenda(BaseModel):
 
 class RecurringIn(_Agenda):
     label: str = Field(min_length=1, max_length=200)
+    require_note: bool = False  # marcar exige evidência (auditoria)
 
 
 class RecurringUpdate(_Agenda):
     """Nome e agenda. Remover = DELETE; voltar atrás = desfazer pelo histórico
     (reativar por aqui reescreveria a vigência e apagaria o passado)."""
     label: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    require_note: Optional[bool] = None
 
 
 class ToggleIn(BaseModel):

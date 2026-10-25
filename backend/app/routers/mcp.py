@@ -359,7 +359,8 @@ def t_create_from_template(ctx, args):
 
 
 def t_set_recurring(ctx, args):
-    data = _call(ToggleIn, done=args.get("done", True), day=args.get("day"), note=args.get("note"))
+    extra = {"note": args["note"]} if "note" in args else {}  # sem note: mantém a evidência
+    data = _call(ToggleIn, done=args.get("done", True), day=args.get("day"), **extra)
     rid = args.get("recurring_id")
     if rid is None:
         raise ToolError("informe recurring_id (veja list_recurring)")
@@ -465,6 +466,8 @@ TOOLS = {
                         "after_hours": {"type": "boolean", "default": False, "description": "Plantão / fora do horário"},
                         "created_at": {**WHEN, "description": "Quando a tarefa começou (retroativo; padrão: agora). " + WHEN["description"]},
                         "completed_at": {**WHEN, "description": "Quando foi concluída (implica status done; padrão: agora). " + WHEN["description"]},
+                        "blocked_reason": {"type": ["string", "null"], "maxLength": 120,
+                                           "description": "Com status blocked: o que se está aguardando"},
                         "external_ref": {"type": "string", "maxLength": 120,
                                          "description": "Chave sua para não duplicar: repetida, devolve a tarefa que já existe"}}}),
     "update_task": (t_update_task, True,

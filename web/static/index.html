@@ -13,8 +13,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Nexus">
   <link rel="preload" as="font" type="font/woff2" href="/fonts/GoogleSansFlex.woff2" crossorigin>
-  <link rel="stylesheet" href="/css/tokens.css?v=48">
-  <link rel="stylesheet" href="/css/app.css?v=48">
+  <link rel="stylesheet" href="/css/tokens.css?v=49">
+  <link rel="stylesheet" href="/css/app.css?v=49">
 </head>
 <body>
   <!-- Ícones (traço 1.75, 24px), sem script/style inline (CSP). -->
@@ -172,6 +172,9 @@
         <label for="rec-interval">A cada quantos dias (contando de quando foi criada)</label>
         <input id="rec-interval" type="number" min="2" max="365" value="15">
       </div>
+      <div class="field field-check">
+        <label class="weekday-option"><input id="rec-require-note" type="checkbox"><span>Exigir evidência ao marcar (o que foi conferido, pra auditoria)</span></label>
+      </div>
       <div class="dialog-actions">
         <button type="button" class="btn btn-danger hidden" id="rec-delete">Excluir</button>
         <div class="spacer"></div>
@@ -264,7 +267,7 @@
   <div class="toasts" id="toasts" aria-live="polite"></div>
   <div class="timer-chip timer-mobile hidden" id="timer-mobile" role="status" aria-live="polite"></div>
 
-  <script type="module" src="/js/app.js?v=48"></script>
-  <script type="module" src="/js/pwa.js?v=48"></script>
+  <script type="module" src="/js/app.js?v=49"></script>
+  <script type="module" src="/js/pwa.js?v=49"></script>
 </body>
 </html>

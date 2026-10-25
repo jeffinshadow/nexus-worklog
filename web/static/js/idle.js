@@ -69,7 +69,7 @@ function snooze() {
 function show(idleMs) {
   const head = idleMs === null ? "Ainda não há registros hoje."
     : `Nenhum registro há ${duration(Math.max(me.assistant.idle_minutes, Math.round(idleMs / 60000)))}.`;
-  const input = h("input", { type: "text", maxlength: "200", placeholder: "O que você está fazendo? · “— 15min” = concluída", "aria-label": "Registrar o que está fazendo" });
+  const input = h("input", { type: "text", maxlength: "200", placeholder: "O que você está fazendo? · @projeto #chamado — 15min", "aria-label": "Registrar o que está fazendo" });
   const send = async () => {
     if (!input.value.trim()) { input.focus(); return; }
     input.disabled = true;

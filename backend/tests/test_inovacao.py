@@ -34,6 +34,9 @@ def test_evidencia_na_rotina_e_desfazer(usuario):
     usuario.post(f"/history/{h['id']}/undo")
     assert _da_rotina(usuario, rid)["note"] == "backup OK, 2,1 TB"
     assert usuario.post(f"/recurring/{rid}/toggle", {"done": True, "note": "x" * 201}).status_code == 422
+    # Mandar vazio apaga a evidência (corrigir um engano).
+    usuario.post(f"/recurring/{rid}/toggle", {"done": True, "note": ""})
+    assert _da_rotina(usuario, rid)["note"] is None
 
 
 def test_evidencia_no_relatorio_e_export(usuario):
@@ -98,6 +101,9 @@ def test_aviso_a_quem_atribuiu(admin, usuario, novo_usuario, monkeypatch):
     caixa.clear()
     usuario.post(f"/worklog/{tid}/finish")
     assert caixa == [("chefe@example.com", "Concluída: Inventário")]
+    # Editar a tarefa já concluída não manda de novo.
+    usuario.patch(f"/worklog/{tid}", {"title": "Inventário do CPD"})
+    assert len(caixa) == 1
     # Reabrir e concluir de novo não manda outra vez.
     usuario.patch(f"/worklog/{tid}", {"status": "todo"})
     usuario.patch(f"/worklog/{tid}", {"status": "done"})
@@ -106,3 +112,32 @@ def test_aviso_a_quem_atribuiu(admin, usuario, novo_usuario, monkeypatch):
     t2 = usuario.post("/worklog", {"title": "Minha"}).json()["id"]
     usuario.post(f"/worklog/{t2}/finish")
     assert len(caixa) == 1
+
+
+def test_rotina_exige_evidencia(usuario):
+    rid = usuario.post("/recurring", {"label": "Revisão de acessos", "require_note": True}).json()["id"]
+    r = usuario.post(f"/recurring/{rid}/toggle", {"done": True})
+    assert r.status_code == 400 and "evidência" in r.json()["detail"]
+    assert usuario.post(f"/recurring/{rid}/toggle", {"done": True, "note": "  "}).status_code == 400
+    assert usuario.post(f"/recurring/{rid}/toggle", {"done": True, "note": "3 contas revogadas"}).status_code == 200
+    assert _da_rotina(usuario, rid)["require_note"] is True
+    # Desligar a exigência pelo PATCH (rotina criada hoje: muda no lugar) e desfazer.
+    usuario.patch(f"/recurring/{rid}", {"require_note": False})
+    assert _da_rotina(usuario, rid)["require_note"] is False
+    h = [x for x in hist(usuario, entity="recurring", entity_id=rid) if x["action"] == "recurring.update"][0]
+    usuario.post(f"/history/{h['id']}/undo")
+    assert _da_rotina(usuario, rid)["require_note"] is True
+
+
+def test_csv_de_plantao(usuario):
+    t = usuario.post("/worklog", {"title": "Queda do link", "after_hours": True, "ticket": "77"}).json()["id"]
+    usuario.post(f"/worklog/{t}/time", {"minutes": 90, "note": "madrugada"})
+    usuario.post(f"/worklog/{t}/finish")
+    sem = usuario.post("/worklog", {"title": "Sem plantão"}).json()["id"]
+    usuario.post(f"/worklog/{sem}/time", {"minutes": 30})
+    csv = usuario.get("/export/plantao.csv").content.decode("utf-8-sig").splitlines()
+    assert csv[0].startswith("data;tarefa_id;tarefa")
+    assert any("Queda do link;77" in l and ";90;1,5;madrugada" in l for l in csv)
+    assert not any("Sem plantão" in l for l in csv)
+    assert csv[-1].startswith("total;") and ";90;1,5;" in csv[-1]
+    assert usuario.get("/export/plantao.csv?start=2026-02-01&end=2026-01-01").status_code == 400

@@ -9,22 +9,21 @@ import { listProjects } from "./projects.js";
 // "!plantão". Ex.: "Troca de switch @Matriz #4821 !plantão — 45min".
 const FOLD = (s) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 async function parseMarks(text) {
-  let title = text, ticket = null, afterHours = false, project = null, unknown = null;
+  let title = text, ticket = null, afterHours = false, project = null;
   for (;;) {
     let m;
     if ((m = title.match(/\s+!plant[aã]o$/i))) { afterHours = true; title = title.slice(0, m.index); continue; }
     if ((m = title.match(/\s+#([\w./-]{1,40})$/))) { ticket = m[1]; title = title.slice(0, m.index); continue; }
+    // "@Projeto" só vale se for um projeto seu; "Ligar para @Fulano" fica no título.
     const at = title.lastIndexOf(" @");
-    if (at > 0 && !project && !unknown) {
+    if (at > 0 && !project) {
       const name = title.slice(at + 2);
       const found = (await listProjects()).find((p) => !p.archived && FOLD(p.name) === FOLD(name));
-      if (found) project = found; else unknown = name;
-      title = title.slice(0, at);
-      continue;
+      if (found) { project = found; title = title.slice(0, at); continue; }
     }
     break;
   }
-  return { title: title.trim(), ticket, afterHours, project, unknown };
+  return { title: title.trim(), ticket, afterHours, project };
 }
 
 // Duração no fim do registro rápido, depois de um traço: "Troca de toner — 15min",
@@ -41,7 +40,6 @@ export async function quickRegister(text, project_id = null) {
   const comTempo = minutes && minutes <= 1440;
   if (comTempo) title = title.slice(0, m.index).trim();
   const marks = await parseMarks(title);
-  if (marks.unknown) throw Object.assign(new Error(`Projeto “${marks.unknown}” não existe. Crie em Configurações > Projetos ou tire o @.`), { status: 400 });
   const created = await api.post("/worklog", {
     title: marks.title || title, project_id: marks.project ? marks.project.id : project_id,
     ticket: marks.ticket, after_hours: marks.afterHours, status: comTempo ? "done" : "todo",

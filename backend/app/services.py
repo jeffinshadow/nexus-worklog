@@ -124,7 +124,7 @@ def board_day_range(today: date) -> tuple[date, date]:
 # fazer). Inativa sem data (legado anterior à 002) fica de fora. UMA regra para
 # quadro, marcação, indicadores, relatório e resumos: o filtro é em Python.
 _ROTINAS_SQL = """
-    SELECT r.id, r.label, r.position, r.freq, r.weekdays, r.month_day, r.interval_days,
+    SELECT r.id, r.label, r.position, r.freq, r.weekdays, r.month_day, r.interval_days, r.require_note,
            (r.created_at AT TIME ZONE %(tz)s)::date AS start_d,
            CASE WHEN r.deactivated_at IS NULL THEN DATE '9999-12-31'  -- ativa: sem fim
                 WHEN EXISTS (SELECT 1 FROM recurring_completions x WHERE x.task_id = r.id

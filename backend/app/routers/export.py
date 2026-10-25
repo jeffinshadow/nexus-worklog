@@ -3,9 +3,10 @@ tudo em JSON. O admin reusa time_csv para as horas da equipe."""
 import csv
 import io
 import json
-from datetime import datetime
+from datetime import date, datetime, timedelta
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from .. import db
 from ..deps import active_user
@@ -43,7 +44,7 @@ def _download(content: bytes, media: str, name: str) -> Response:
 def _tasks(uid: int) -> list[dict]:
     return db.query_all(
         """SELECT w.id, w.title, w.description, w.status, w.priority, w.due_date, w.created_at, w.completed_at,
-                  w.ticket, w.after_hours, p.name AS project,
+                  w.ticket, w.after_hours, w.blocked_reason, w.blocked_at, p.name AS project,
                   """ + TASK_COUNTS + """
              FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
             WHERE w.user_id = %s ORDER BY w.created_at""", (uid,))
@@ -67,6 +68,33 @@ def time_csv(uid: int | None, filename: str) -> Response:
     return _download(_csv(data, header + (["usuario"] if uid is None else [])), "text/csv; charset=utf-8", filename)
 
 
+@router.get("/export/plantao.csv")
+def plantao_csv(start: Optional[date] = Query(None), end: Optional[date] = Query(None), user=Depends(active_user)):
+    """Plantão do período (padrão: o mês atual): cada atendimento fora do horário,
+    com o tempo apontado por dia — pra fechar sobreaviso/banco de horas."""
+    today = app_today()
+    start = start or today.replace(day=1)
+    end = end or today
+    if end < start or (end - start).days > 366:
+        raise HTTPException(status_code=400, detail="período inválido (até 1 ano)")
+    rows = db.query_all(
+        """SELECT COALESCE(e.day, (w.completed_at AT TIME ZONE %(tz)s)::date) AS dia, w.id, w.title, w.ticket,
+                  p.name AS project, COALESCE(e.minutes, 0) AS minutes, e.note
+             FROM worklog_tasks w
+             LEFT JOIN time_entries e ON e.task_id = w.id
+             LEFT JOIN projects p ON p.id = w.project_id
+            WHERE w.user_id = %(uid)s AND w.after_hours
+              AND COALESCE(e.day, (w.completed_at AT TIME ZONE %(tz)s)::date) BETWEEN %(s)s AND %(e)s
+            ORDER BY dia, w.id""",
+        {"uid": user["user_id"], "tz": app_tz().key, "s": start, "e": end})
+    total = sum(r["minutes"] for r in rows)
+    data = [[r["dia"], r["id"], r["title"], r["ticket"] or "", r["project"] or "", r["minutes"],
+             str(round(r["minutes"] / 60, 2)).replace(".", ","), r["note"] or ""] for r in rows]
+    data.append(["total", "", "", "", "", total, str(round(total / 60, 2)).replace(".", ","), ""])
+    return _download(_csv(data, ["data", "tarefa_id", "tarefa", "chamado", "projeto", "minutos", "horas", "observacao"]),
+                     "text/csv; charset=utf-8", f"nexus-plantao-{start.isoformat()}-a-{end.isoformat()}.csv")
+
+
 @router.get("/export/{kind}")
 def export(kind: str, user=Depends(active_user)):
     uid = user["user_id"]
@@ -76,9 +104,10 @@ def export(kind: str, user=Depends(active_user)):
                  t["project"] or "", _local(t["created_at"]), t["due_date"] or "", _local(t["completed_at"]),
                  f"{t['check_done']}/{t['check_total']}" if t["check_total"] else "", t["minutes"],
                  str(round(t["minutes"] / 60, 2)).replace(".", ","), t["notes_count"],
-                 t["ticket"] or "", "sim" if t["after_hours"] else ""] for t in _tasks(uid)]
+                 t["ticket"] or "", "sim" if t["after_hours"] else "", t["blocked_reason"] or ""] for t in _tasks(uid)]
         return _download(_csv(rows, ["id", "titulo", "descricao", "status", "prioridade", "projeto", "criada_em", "prazo",
-                                     "concluida_em", "checklist", "minutos", "horas", "anotacoes", "chamado", "plantao"]),
+                                     "concluida_em", "checklist", "minutos", "horas", "anotacoes", "chamado", "plantao",
+                                     "aguardando"]),
                          "text/csv; charset=utf-8", f"nexus-tarefas-{stamp}.csv")
     if kind == "apontamentos.csv":
         return time_csv(uid, f"nexus-apontamentos-{stamp}.csv")

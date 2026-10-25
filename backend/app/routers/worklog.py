@@ -279,7 +279,7 @@ def update(task_id: int, data: WorklogUpdate, user=Depends(active_user_csrf)):
     )
     audit.record(user, "worklog.update", "worklog", task_id, before=before,
                  after=audit.worklog_snapshot(task_id, user["user_id"]))
-    if final_status == "done":
+    if final_status == "done" and before["status"] != "done":
         notify_assigner(task_id)
     return {"ok": True}
 
