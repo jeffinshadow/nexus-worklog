@@ -29,12 +29,25 @@ services:
         condition: service_healthy
     networks: [internal]
     # Nao exposto a internet: so o nginx (rede interna) fala com a API.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   web:
     build: ./web
     restart: unless-stopped
-    depends_on: [backend]
+    depends_on:
+      backend:
+        condition: service_healthy
     networks: [internal]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     # Publicado SO no loopback do host: quem alcanca o nginx e o cloudflared
     # instalado na propria maquina (servico systemd), nunca a internet direto.
     ports: ["127.0.0.1:${WEB_PORT:-80}:80"]
