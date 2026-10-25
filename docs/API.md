@@ -144,7 +144,7 @@ Agenda: `daily` (dias úteis do dono) · `weekly` + `weekdays` (máscara) ·
 | `GET /api/export/apontamentos.csv` | | CSV `;` + BOM (Excel BR) |
 | `GET /api/export/tarefas.csv` | | idem |
 | `GET /api/export/plantao.csv?start=&end=` | | atendimentos de plantão do período (padrão: o mês), com horas por dia e total |
-| `GET /api/export/rotinas.csv?start=&end=` | | trilha de auditoria: cada rotina em cada dia, prevista/extra, feita e a evidência |
+| `GET /api/export/rotinas.csv?start=&end=` | | trilha de auditoria: cada rotina em cada dia do período (até hoje), prevista/extra, feita (sim/não/pendente) e a evidência — dia sem nada feito também aparece |
 | `GET /api/export/tudo.json` | | tarefas com anotações/checklist/tempo, rotinas com dias feitos, projetos |
 
 ## Histórico — `/api/history`

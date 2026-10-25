@@ -116,10 +116,13 @@ def build_morning(uid: int, today: date, show: bool) -> Mail:
     atrasadas = [f"{t['title']} (prazo {t['due_date']:%d/%m})" for t in abertas if t["due_date"] and t["due_date"] < today]
     alta = [t["title"] for t in abertas if t["priority"] == 1 and t["title"] not in hoje
             and not (t["due_date"] and t["due_date"] < today)]
+    cobrar = [f"{t['title']}" + (f" (aguardando {t['blocked_reason']})" if t.get("blocked_reason") else "")
+              for t in abertas if t["status"] == "blocked" and t.get("follow_up_on") and t["follow_up_on"] <= today]
     m = Mail(f"Seu dia · {_day(today)}", f"Bom dia, {profile(uid)['name']}",
              f"{len(do_dia)} rotina{'s' if len(do_dia) != 1 else ''} para hoje e {len(abertas)} tarefa{'s' if len(abertas) != 1 else ''} em aberto.")
     m.block("Atrasadas", atrasadas, show)
     m.block("Vencem hoje", hoje, show)
+    m.block("Cobrar hoje", cobrar, show)
     m.block("Rotinas de hoje", do_dia, show)
     m.block("Prioridade alta", alta, show)
     return m

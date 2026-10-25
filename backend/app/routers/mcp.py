@@ -470,6 +470,7 @@ TOOLS = {
                         "completed_at": {**WHEN, "description": "Quando foi concluída (implica status done; padrão: agora). " + WHEN["description"]},
                         "blocked_reason": {"type": ["string", "null"], "maxLength": 120,
                                            "description": "Com status blocked: o que se está aguardando"},
+                        "follow_up_on": {**DATE, "type": ["string", "null"], "description": "Com status blocked: dia combinado para cobrar"},
                         "external_ref": {"type": "string", "maxLength": 120,
                                          "description": "Chave sua para não duplicar: repetida, devolve a tarefa que já existe"}}}),
     "update_task": (t_update_task, True,

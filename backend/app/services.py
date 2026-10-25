@@ -530,6 +530,15 @@ def get_report_range(user_id: int, start: date, end: date, project: dict | None 
 
 # ------------------------------------------------------------------ resumos --
 
+def next_work_day(today: date, mask: int) -> date:
+    """Próximo dia útil depois de hoje (até uma semana; senão, amanhã)."""
+    for i in range(1, 8):
+        d = today + timedelta(days=i)
+        if is_work_day(d, mask):
+            return d
+    return today + timedelta(days=1)
+
+
 def last_work_day(today: date, mask: int) -> date:
     """Último dia útil antes de hoje (até uma semana para trás; senão, ontem)."""
     for i in range(1, 8):

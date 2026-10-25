@@ -100,7 +100,7 @@ export async function mount(root, ctx, opts = {}) {
   fillProjectSelect(proj, Number(sessionStorage.getItem(LAST_PROJECT)) || null)
     .then(() => proj.addEventListener("change", () => sessionStorage.setItem(LAST_PROJECT, proj.value)))
     .catch(() => {});
-  const quick = h("input", { type: "text", placeholder: "Registrar e Enter · @projeto #chamado !plantão — 15min", maxlength: "200", "aria-label": "Registrar tarefa rápida" });
+  const quick = h("input", { type: "text", placeholder: "Registrar e Enter · @projeto #chamado !plantão ^sex !bloq motivo — 15min", maxlength: "200", "aria-label": "Registrar tarefa rápida" });
   quick.addEventListener("keydown", async (ev) => {
     if (ev.key !== "Enter" || !quick.value.trim()) return;
     ev.preventDefault();

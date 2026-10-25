@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from .. import db
 from ..deps import active_user
 from ..labels import PRIO_PT, STATUS_PT
-from ..services import TASK_COUNTS, app_today, app_tz, get_report_range
+from ..services import TASK_COUNTS, app_today, app_tz, is_due, rotinas, work_mask
 
 router = APIRouter(prefix="/api", tags=["export"])
 
@@ -74,7 +74,7 @@ def plantao_csv(start: Optional[date] = Query(None), end: Optional[date] = Query
     com o tempo apontado por dia — pra fechar sobreaviso/banco de horas."""
     today = app_today()
     start = start or today.replace(day=1)
-    end = end or today
+    end = min(end or today, today)
     if end < start or (end - start).days > 366:
         raise HTTPException(status_code=400, detail="período inválido (até 1 ano)")
     rows = db.query_all(
@@ -101,12 +101,25 @@ def rotinas_csv(start: Optional[date] = Query(None), end: Optional[date] = Query
     em cada dia — prevista ou extra, feita ou não e a evidência anotada."""
     today = app_today()
     start = start or today.replace(day=1)
-    end = end or today
+    end = min(end or today, today)
     if end < start or (end - start).days > 366:
         raise HTTPException(status_code=400, detail="período inválido (até 1 ano)")
-    rep = get_report_range(user["user_id"], start, end)
-    data = [[d["date"], r["label"], "extra" if r["extra"] else "prevista", "sim" if r["done"] else "não", r.get("note") or ""]
-            for d in rep["days"] for r in d["recurring"]]
+    uid = user["user_id"]
+    mask = work_mask(uid)
+    feitas = {(c["task_id"], c["completed_date"]): c["note"] for c in db.query_all(
+        "SELECT task_id, completed_date, note FROM recurring_completions WHERE user_id = %s AND completed_date BETWEEN %s AND %s",
+        (uid, start, end))}
+    data, d = [], start
+    tasks = rotinas(uid)
+    while d <= end:  # todo dia do período: o dia em que nada foi feito também aparece (é a falta)
+        for t in tasks:
+            if not (t["start_d"] <= d <= t["end_d"]):
+                continue
+            devida, feita = is_due(t, d, mask), (t["id"], d) in feitas
+            if devida or feita:
+                situacao = "sim" if feita else ("pendente" if d == today else "não")
+                data.append([d, t["label"], "prevista" if devida else "extra", situacao, feitas.get((t["id"], d)) or ""])
+        d += timedelta(days=1)
     return _download(_csv(data, ["data", "rotina", "agenda", "feita", "evidencia"]),
                      "text/csv; charset=utf-8", f"nexus-rotinas-{start.isoformat()}-a-{end.isoformat()}.csv")
 

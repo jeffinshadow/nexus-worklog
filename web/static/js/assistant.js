@@ -2,7 +2,7 @@
 // pessoa, já carregados pela tela (nenhuma IA é chamada, nada é rastreado).
 // Uma fala por tela, só quando há algo útil; desliga em Configurações > Conta.
 import { api } from "./api.js";
-import { h, icon, nowInTz, localDay, daysBetween, shortDate, addDays } from "./dom.js";
+import { h, icon, nowInTz, localDay, daysBetween, shortDate, addDays, addWorkDays } from "./dom.js";
 import { duration } from "./task.js";
 import { errorToast, modal, toast } from "./ui.js";
 
@@ -256,9 +256,10 @@ export function todayCard(b, sum, ctx) {
         const btn = ev.currentTarget;
         btn.disabled = true; // clique duplo gravaria duas anotações
         try {
+          // Com dia combinado, a próxima cobrança vai pra daqui a 2 dias úteis (antes da
+          // anotação: se falhar, nada foi gravado e dá pra tentar de novo).
+          if (n.task.follow_up_on) await api.patch(`/worklog/${n.task.id}`, { follow_up_on: addWorkDays(today, 2, (ME && ME.work_days) || 62) });
           await api.post(`/worklog/${n.task.id}/notes`, { body: n.task.blocked_reason ? `Cobrei: ${n.task.blocked_reason}` : "Cobrei o andamento" });
-          // Com dia combinado, a próxima cobrança fica pra daqui a 2 dias.
-          if (n.task.follow_up_on) await api.patch(`/worklog/${n.task.id}`, { follow_up_on: addDays(today, 2) });
           toast("Cobrança anotada na tarefa.");
           ctx.onChanged();
         } catch (e) { btn.disabled = false; errorToast(e, "Não foi possível anotar."); }

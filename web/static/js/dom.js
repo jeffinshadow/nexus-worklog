@@ -99,6 +99,17 @@ export function nowInTz() {
   return { hour: Number(p.hour), minute: Number(p.minute), weekday: WD_EN.indexOf(p.weekday) };
 }
 
+// N dias úteis depois de `iso` (máscara de dias úteis, domingo = bit 0).
+export function addWorkDays(iso, n, mask = 62) {
+  let d = iso;
+  while (n > 0) {
+    d = addDays(d, 1);
+    const wd = new Date(d + "T12:00:00Z").getUTCDay();
+    if ((mask >> wd) & 1) n--;
+  }
+  return d;
+}
+
 // Dias de calendário entre duas datas ISO (YYYY-MM-DD): b - a.
 export function daysBetween(a, b) {
   const t = (iso) => { const [y, m, d] = iso.split("-").map(Number); return Date.UTC(y, m - 1, d); };

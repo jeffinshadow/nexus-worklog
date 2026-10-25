@@ -33,9 +33,10 @@ para leitura, o quadro, a retrospectiva e os relatórios de cada pessoa).
   aguarda e há quantos dias; um clique monta o texto da passagem de turno
   (aberto, bloqueado e por quê, feito hoje, plantão). Rotina marcada aceita uma
   **evidência** curta ("backup OK, 2,1 TB"), que vai para o PDF — e pode ser
-  exigida por rotina. Impedimento parado há dias vira lembrete com "Cobrei"; o
-  plantão do mês sai num CSV com as horas. Registro rápido
-  entende `@projeto #chamado !plantão — 45min`.
+  exigida por rotina. Impedimento parado há dias vira lembrete com "Cobrei", ou
+  com um dia combinado para cobrar (no Hoje, no calendário e no e-mail da manhã).
+  CSV de plantão (horas do mês) e CSV de rotinas e evidências (auditoria). Registro rápido
+  entende `@projeto #chamado !plantão ^sex !bloq motivo — 45min`.
 - **Atribuição** — quem aceita (Configurações › Conta) recebe tarefas de um
   atribuidor pelo app ou pela IA, com aviso por e-mail; a tarefa passa a ser
   dela, e quem atribuiu acompanha o status e recebe um e-mail quando ela é concluída.

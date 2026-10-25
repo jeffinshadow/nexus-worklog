@@ -167,3 +167,32 @@ def test_csv_de_rotinas_auditoria(usuario):
     # Apagar a evidência aparece certo no histórico.
     usuario.post(f"/recurring/{rid}/toggle", {"done": True, "note": ""})
     assert hist(usuario, entity="recurring", entity_id=rid)[0]["summary"].startswith("apagou a evidência")
+
+
+def test_rotinas_csv_mostra_a_falta(usuario):
+    rid = usuario.post("/recurring", {"label": "Patch semanal", "freq": "weekly", "weekdays": 127}).json()["id"]
+    recuar_criacao(rid, 3)
+    hoje = dia_hoje(usuario)
+    ontem = (hoje - timedelta(days=1)).isoformat()
+    linhas = usuario.get(f"/export/rotinas.csv?start={(hoje - timedelta(days=2)).isoformat()}&end=2099-01-01").content.decode("utf-8-sig").splitlines()
+    # Ninguém marcou nada nesses dias: a falta aparece, e o futuro não.
+    assert f"{ontem};Patch semanal;prevista;não;" in linhas
+    assert any(l.startswith(hoje.isoformat()) and ";pendente;" in l for l in linhas)
+    assert not any(l.startswith("2099") for l in linhas)
+
+
+def test_cobrar_em_validacao_calendario_e_manha(usuario):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from app import notify
+    hoje = dia_hoje(usuario)
+    ontem = (hoje - timedelta(days=1)).isoformat()
+    assert usuario.post("/worklog", {"title": "x", "status": "blocked", "follow_up_on": ontem}).status_code == 422
+    tid = usuario.post("/worklog", {"title": "Peça do servidor", "status": "blocked", "blocked_reason": "Dell",
+                                    "follow_up_on": hoje.isoformat()}).json()["id"]
+    # Editar outra coisa sem mandar a data não é barrado.
+    assert usuario.patch(f"/worklog/{tid}", {"title": "Peça do servidor R740"}).status_code == 200
+    ics = usuario.c.get(usuario.post("/calendar", {}).json()["path"]).text.replace("\r\n ", "")
+    assert "Cobrar: Dell — Peça do servidor R740" in ics
+    m = notify.build_morning(uid_de(usuario), hoje, True)
+    assert any(h == "Cobrar hoje" and any("Peça do servidor R740 (aguardando Dell)" in i for i in itens) for h, itens in m.blocks)

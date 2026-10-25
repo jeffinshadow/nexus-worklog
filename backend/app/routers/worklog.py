@@ -1,3 +1,4 @@
+import logging
 import re
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Literal, Optional
@@ -100,6 +101,14 @@ def _own_task(uid: int, task_id: int) -> dict:
     if not row:
         raise HTTPException(status_code=404, detail="não encontrado")
     return row
+
+
+def safe_notify(task_id: int) -> None:
+    """O aviso a quem atribuiu nunca derruba a conclusão (já gravada)."""
+    try:
+        notify_assigner(task_id)
+    except Exception:  # noqa: BLE001
+        logging.getLogger("uvicorn.error").exception("aviso de conclusão da tarefa %s falhou", task_id)
 
 
 def _reason(text):
@@ -285,7 +294,7 @@ def update(task_id: int, data: WorklogUpdate, user=Depends(active_user_csrf)):
     audit.record(user, "worklog.update", "worklog", task_id, before=before,
                  after=audit.worklog_snapshot(task_id, user["user_id"]))
     if final_status == "done" and before["status"] != "done":
-        notify_assigner(task_id)
+        safe_notify(task_id)
     return {"ok": True}
 
 
@@ -304,7 +313,7 @@ def finish(task_id: int, data: Optional[FinishIn] = None, user=Depends(active_us
     )
     audit.record(user, "worklog.finish", "worklog", task_id, before=before,
                  after=audit.worklog_snapshot(task_id, user["user_id"]))
-    notify_assigner(task_id)
+    safe_notify(task_id)
     return {"ok": True}
 
 

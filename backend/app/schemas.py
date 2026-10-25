@@ -152,6 +152,15 @@ class AssistantIn(BaseModel):
         return self
 
 
+def _not_past(v):
+    """Dia para cobrar: hoje ou depois (passado é engano de digitação)."""
+    if v is not None:
+        from .services import app_today  # import tardio: services importa o banco
+        if v < app_today():
+            raise ValueError("o dia para cobrar não pode estar no passado")
+    return v
+
+
 def _ticket(v):
     """Número do chamado: sem espaços e sem o "#" que as pessoas costumam digitar."""
     if v is None:
@@ -188,6 +197,7 @@ class WorklogIn(BaseModel):
     @model_validator(mode="after")
     def _norm(self):
         self.ticket = _ticket(self.ticket)
+        self.follow_up_on = _not_past(self.follow_up_on)
         if self.external_ref is not None:
             self.external_ref = self.external_ref.strip() or None
         # Data de conclusão sem status: a tarefa já nasce concluída.
@@ -217,6 +227,8 @@ class WorklogUpdate(BaseModel):
         # Pydantic, e o PATCH apagaria o chamado de quem só mudou o status.
         if "ticket" in self.model_fields_set:
             self.ticket = _ticket(self.ticket)
+        if "follow_up_on" in self.model_fields_set:
+            self.follow_up_on = _not_past(self.follow_up_on)
         return self
 
 

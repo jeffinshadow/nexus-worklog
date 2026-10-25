@@ -136,6 +136,15 @@ def build_ics(uid: int, include_recurring: bool, cal_name: str) -> str:
             extra.append("PRIORITY:1")
         event(f"task-{t['id']}", t["due_date"], summary, desc, extra)
 
+    # Impedimento com dia combinado para cobrar ("o fornecedor retorna na quinta").
+    for t in db.query_all(
+        """SELECT id, title, blocked_reason, follow_up_on FROM worklog_tasks
+            WHERE user_id = %s AND status = 'blocked' AND follow_up_on IS NOT NULL""", (uid,)):
+        quem = f"{t['blocked_reason']} — " if t["blocked_reason"] else ""
+        event(f"followup-{t['id']}", t["follow_up_on"], f"Cobrar: {quem}{t['title']}",
+              "Tarefa bloqueada com dia combinado para cobrar.",
+              [f"URL:{config.APP_URL}/index.html#/tarefas?id={t['id']}"])
+
     if include_recurring:
         for r in db.query_all(
             """SELECT id, label, freq, weekdays, month_day, interval_days,

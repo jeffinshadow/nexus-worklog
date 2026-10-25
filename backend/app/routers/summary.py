@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 
 from .. import people
 from ..deps import active_user
-from ..services import app_today, app_tz, get_board, get_summary
+from ..services import app_today, app_tz, get_board, get_summary, next_work_day, work_mask
 
 router = APIRouter(prefix="/api/summary", tags=["summary"])
 
@@ -15,7 +15,8 @@ def summary(user=Depends(active_user)):
 
 
 def _dias(ts) -> int:
-    return max(0, (datetime.now(timezone.utc) - ts).days) if ts else 0
+    """Dias de calendário no fuso da app (bloqueada ontem às 18h = 1 dia hoje)."""
+    return max(0, (app_today() - ts.astimezone(app_tz()).date()).days) if ts else 0
 
 
 def handoff_text(user_id: int) -> str:
@@ -24,7 +25,7 @@ def handoff_text(user_id: int) -> str:
     chat da equipe. Calculado do quadro, sem IA."""
     b = get_board(user_id)
     hoje = b["today"]
-    amanha = hoje + timedelta(days=1)
+    amanha = next_work_day(hoje, work_mask(user_id))  # na sexta, a segunda
     agora = datetime.now(app_tz()).strftime("%d/%m %H:%M")
     linhas = [f"Passagem de turno — {people.profile(user_id)['name']}, {agora}", ""]
 
@@ -35,7 +36,8 @@ def handoff_text(user_id: int) -> str:
         if t.get("project_name"):
             extra.append(t["project_name"])
         if t.get("due_date") and t["due_date"] <= amanha:
-            extra.append("ATRASADA" if t["due_date"] < hoje else ("vence hoje" if t["due_date"] == hoje else "vence amanhã"))
+            extra.append("ATRASADA" if t["due_date"] < hoje else ("vence hoje" if t["due_date"] == hoje
+                         else f"vence {t['due_date'].strftime('%d/%m')}"))
         return f"- {t['title']}" + (f" ({', '.join(extra)})" if extra else "")
 
     abertas = [t for t in b["in_progress"] if t["status"] != "blocked"]

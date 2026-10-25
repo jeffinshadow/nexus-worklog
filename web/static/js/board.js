@@ -1,7 +1,7 @@
 // Quadro de tarefas: rotinas (com seletor de dia), tarefas abertas e
 // concluídas. Também exporta os diálogos de criar/editar, usados pela tela Hoje.
 import { api } from "./api.js";
-import { h, icon, clear, addDays, shortDate, localDay, localDateTime } from "./dom.js";
+import { h, icon, clear, addDays, shortDate, localDay, localDateTime, daysBetween } from "./dom.js";
 import { confirmDialog, errorToast, toast, undoLatest, busy } from "./ui.js";
 import { fillProjectSelect, listProjects, projectChip } from "./projects.js";
 import { openTask, duration, parseDuration } from "./task.js";
@@ -31,18 +31,20 @@ export function dayLabel(iso, today) {
 // Chips de uma tarefa (compartilhado com a tela Hoje): status,
 // prioridade, prazo, projeto e os contadores de checklist/tempo/anotações.
 // "bloqueada · 3 d": há quanto tempo o impedimento existe.
-function blockedDays(t) {
-  if (t.status !== "blocked" || !t.blocked_at) return "";
-  const d = Math.floor((Date.now() - new Date(t.blocked_at).getTime()) / 86400000);
+// Dias de calendário no fuso da app (bloqueada ontem às 18h = 1 d hoje), como no servidor.
+function blockedDays(t, today) {
+  if (t.status !== "blocked" || !t.blocked_at || !today) return "";
+  const d = daysBetween(localDay(t.blocked_at), today);
   return d >= 1 ? ` · ${d} d` : "";
 }
 
 export function taskChips(t, today) {
   // Concluída: a coluna já diz; fica só a data de fim.
-  const chips = t.status === "done" ? [] : [h("span", { class: "chip " + t.status, text: STATUS_LABELS[t.status] + blockedDays(t) })];
+  const chips = t.status === "done" ? [] : [h("span", { class: "chip " + t.status, text: STATUS_LABELS[t.status] + blockedDays(t, today) })];
   if (t.status === "blocked" && t.follow_up_on)
     chips.push(h("span", { class: "chip " + (t.follow_up_on <= today ? "late" : "blocked-reason"), title: "Dia combinado para cobrar",
-      text: (t.follow_up_on <= today ? "cobrar hoje" : "cobrar " + shortDate(t.follow_up_on)) }));
+      text: t.follow_up_on < today ? "cobrança atrasada · " + shortDate(t.follow_up_on)
+        : t.follow_up_on === today ? "cobrar hoje" : "cobrar " + shortDate(t.follow_up_on) }));
   if (t.status === "blocked" && t.blocked_reason)
     chips.push(h("span", { class: "chip blocked-reason", title: "Aguardando: " + t.blocked_reason, text: "aguardando " + (t.blocked_reason.length > 40 ? t.blocked_reason.slice(0, 39) + "…" : t.blocked_reason) }));
   if (t.priority === 1 && t.status !== "done") chips.push(h("span", { class: "chip prio-1", text: "alta" }));
@@ -132,7 +134,9 @@ export function openWorklog(item, onDone, opts = {}) {
   const blocked = document.getElementById("wl-blocked");
   blocked.value = item && item.blocked_reason ? item.blocked_reason : "";
   const followUp = document.getElementById("wl-followup");
-  followUp.value = item && item.follow_up_on ? item.follow_up_on : "";
+  const followOrig = item && item.follow_up_on ? item.follow_up_on : "";
+  followUp.value = followOrig;
+  followUp.min = now.slice(0, 10); // dia para cobrar: hoje ou depois
   const syncDates = () => {
     dates.classList.toggle("hidden", statusSel.value !== "done");
     blockedWrap.classList.toggle("hidden", statusSel.value !== "blocked");
@@ -202,7 +206,7 @@ export function openWorklog(item, onDone, opts = {}) {
     if (!item && createdAt.value) payload.created_at = createdAt.value;
     if (payload.status === "blocked") {
       payload.blocked_reason = blocked.value.trim() || null;
-      payload.follow_up_on = followUp.value || null;
+      if (followUp.value !== followOrig) payload.follow_up_on = followUp.value || null; // data vencida não volta a ser validada
     }
     const minutes = !item && timeInput.value.trim() ? parseDuration(timeInput.value) : null;
     if (minutes === null && !item && timeInput.value.trim()) { toast("Tempo inválido. Ex.: 45, 1h30, 2:15.", { error: true }); timeInput.focus(); return; }
