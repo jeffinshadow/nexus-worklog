@@ -12,6 +12,8 @@ acumuláveis, dados em **Admin › Permissões**: **Usuário** (o próprio regis
 tarefas a quem aceitou receber) e **Visualizador de tarefas** (consulta, só
 para leitura, o quadro, a retrospectiva e os relatórios de cada pessoa).
 
+**Manual de uso, tela por tela:** [shadow.tec.br/nexus-manual](https://shadow.tec.br/nexus-manual.html).
+
 ## O que faz
 
 - **Hoje** — o dia em um olhar, com um **assistente**: saudação, o que está
@@ -62,10 +64,10 @@ para leitura, o quadro, a retrospectiva e os relatórios de cada pessoa).
 Capturas de uma conta de demonstração, com dados fictícios.
 
 ![Tela Hoje com o assistente, as rotinas e as tarefas em aberto](docs/screenshots/01-hoje.webp)
-*Hoje — o assistente resume o dia e o anterior e sugere por onde começar, com avisos de prazo, tarefa bloqueada e tempo esquecido. Abaixo, as rotinas e o registro rápido.*
+*Hoje — o assistente resume o dia e o anterior e sugere por onde começar, com avisos de prazo, tarefa bloqueada e tempo esquecido. Abaixo, os vencimentos no aviso, as rotinas e o registro rápido; no topo, a passagem de turno.*
 
 ![Quadro de tarefas com chamados, plantão e o cronômetro no menu](docs/screenshots/02-tarefas.webp)
-*Tarefas — o número do chamado vira link, o plantão aparece em roxo e o cronômetro roda no menu.*
+*Tarefas — o número do chamado vira link, o plantão aparece em roxo, a bloqueada mostra o que aguarda e quando cobrar, e o cronômetro roda no menu.*
 
 ![Detalhe de uma tarefa com checklist, tempo e anotações](docs/screenshots/03-tarefa.webp)
 *Detalhe da tarefa — checklist, apontamentos de tempo e anotações num lugar só.*
@@ -75,6 +77,12 @@ Capturas de uma conta de demonstração, com dados fictícios.
 
 ![Nova tarefa preenchida a partir de um modelo](docs/screenshots/05-modelo.webp)
 *Modelos — escolhe o modelo no “+ Tarefa” e o checklist vem junto.*
+
+![Passagem de turno com o que fica aberto, o bloqueado e por quê, o concluído nas últimas 12 h e os vencimentos](docs/screenshots/09-passagem.webp)
+*Passagem de turno — um clique monta o texto pra quem assume.*
+
+![Vencimentos com certificado, licença e domínio](docs/screenshots/08-vencimentos.webp)
+*Vencimentos — quantos dias faltam; “Virar tarefa” cria a renovação e “Renovei” informa a nova data.*
 
 <p>
   <img src="docs/screenshots/06-celular.webp" width="300" alt="Tela Hoje no celular">
