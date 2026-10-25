@@ -50,7 +50,7 @@ def _load_session(request: Request) -> dict:
     invalida/expirada."""
     token = request.cookies.get(config.SESSION_COOKIE)
     if not token:
-        raise HTTPException(status_code=401, detail="nao autenticado")
+        raise HTTPException(status_code=401, detail="não autenticado")
 
     row = db.query_one(
         """
@@ -64,14 +64,14 @@ def _load_session(request: Request) -> dict:
         (token_hash(token),),
     )
     if not row:
-        raise HTTPException(status_code=401, detail="sessao invalida")
+        raise HTTPException(status_code=401, detail="sessão inválida")
 
     now = datetime.now(timezone.utc)
     # Prazo fixo (SESSION_TTL_DAYS, o mesmo do cookie): sem renovação, o login
     # é pedido de novo ao vencer.
     if row["expires_at"] <= now:
         db.execute("DELETE FROM sessions WHERE id = %s", (row["sid"],))
-        raise HTTPException(status_code=401, detail="sessao expirada")
+        raise HTTPException(status_code=401, detail="sessão expirada")
     return row
 
 
@@ -128,7 +128,7 @@ def _check_csrf(request: Request, session: dict) -> None:
         return
     sent = request.headers.get("X-CSRF-Token")
     if not sent or not hmac.compare_digest(sent, session["csrf_token"]):
-        raise HTTPException(status_code=403, detail="token CSRF invalido")
+        raise HTTPException(status_code=403, detail="token CSRF inválido")
 
 
 # ---- Dependencies -----------------------------------------------------------
@@ -164,7 +164,7 @@ def active_user(request: Request) -> dict:
     """Sessao (ou chave) valida e senha ja definida. Rotas de leitura de dados."""
     session = _authenticate(request)
     if session["must_change_password"]:
-        raise HTTPException(status_code=403, detail="troca de senha obrigatoria")
+        raise HTTPException(status_code=403, detail="troca de senha obrigatória")
     return session
 
 

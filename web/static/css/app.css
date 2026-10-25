@@ -525,7 +525,7 @@ mark { background: rgba(82,148,226,.28); color: var(--on-surface); border-radius
 
 /* ------------------------------------------------------ perfil e assistente -- */
 .avatar { flex: none; display: inline-grid; place-items: center; border-radius: 50%; object-fit: cover;
-  background: hsl(var(--av-h, 212) 30% 30%); color: #fff; font-weight: 600; letter-spacing: .02em; border: 1px solid var(--line-2); }
+  background: hsl(var(--av-h, 212) 30% 30%); color: var(--avatar-fg); font-weight: 600; letter-spacing: .02em; border: 1px solid var(--line-2); }
 .avatar-sm { width: 34px; height: 34px; font-size: .78rem; }
 .avatar-md { width: 44px; height: 44px; font-size: .95rem; }
 .avatar-lg { width: 76px; height: 76px; font-size: 1.5rem; }

@@ -52,7 +52,7 @@ def update_project(project_id: int, data: ProjectUpdate, user=Depends(active_use
     uid = user["user_id"]
     before = db.query_one("SELECT id, name, color, archived FROM projects WHERE id = %s AND user_id = %s", (project_id, uid))
     if not before:
-        raise HTTPException(status_code=404, detail="nao encontrado")
+        raise HTTPException(status_code=404, detail="não encontrado")
     new = {
         "name": data.name.strip() if data.name is not None else before["name"],
         "color": data.color or before["color"],
@@ -76,7 +76,7 @@ def delete_project(project_id: int, user=Depends(active_user_csrf)):
         (project_id, user["user_id"]),
     )
     if not row:
-        raise HTTPException(status_code=404, detail="nao encontrado")
+        raise HTTPException(status_code=404, detail="não encontrado")
     # As tarefas ficam sem projeto (FK SET NULL); guardamos quais eram para o desfazer.
     row["task_ids"] = [r["id"] for r in db.query_all(
         "SELECT id FROM worklog_tasks WHERE user_id = %s AND project_id IS NULL AND id = ANY(%s)",

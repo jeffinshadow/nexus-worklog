@@ -26,7 +26,7 @@ def _ensure_user(user_id: int) -> dict:
         (user_id,),
     )
     if not row:
-        raise HTTPException(status_code=404, detail="usuario nao encontrado")
+        raise HTTPException(status_code=404, detail="usuário não encontrado")
     return row
 
 

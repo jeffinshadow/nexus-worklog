@@ -67,6 +67,6 @@ def revoke_token(token_id: int, user=Depends(web_active_csrf)):
         (token_id, user["user_id"]),
     )
     if not row:
-        raise HTTPException(status_code=404, detail="nao encontrado")
+        raise HTTPException(status_code=404, detail="não encontrado")
     audit.record(user, "token.revoke", "token", token_id, after={"name": row["name"]})
     return {"ok": True}

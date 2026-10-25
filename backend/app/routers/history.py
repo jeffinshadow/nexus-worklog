@@ -264,7 +264,7 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
         "SELECT * FROM audit_log WHERE id = %s AND user_id = %s", (history_id, uid)
     )
     if not row:
-        raise HTTPException(status_code=404, detail="nao encontrado")
+        raise HTTPException(status_code=404, detail="não encontrado")
     if row["action"] not in UNDOABLE:
         raise HTTPException(status_code=400, detail="esta ação não pode ser desfeita")
     if row["undone_at"] is not None:

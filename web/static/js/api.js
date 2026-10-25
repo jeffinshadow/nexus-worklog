@@ -16,7 +16,7 @@ function messageFor(status, data) {
 
 // Uma ida ao servidor: CSRF nas mutacoes, 401 -> login (voltando à mesma tela),
 // erro -> Error(mensagem). Sem resposta em `timeout` ms, desiste.
-async function send(method, path, { body, type, timeout = 20000, publicCall = false } = {}) {
+async function send(method, path, { body, type, timeout = 20000, publicCall = false, retried = false } = {}) {
   const headers = {};
   if (type) headers["Content-Type"] = type;
   if (method !== "GET" && CSRF) headers["X-CSRF-Token"] = CSRF;
@@ -35,6 +35,17 @@ async function send(method, path, { body, type, timeout = 20000, publicCall = fa
   }
   if (!res.ok) {
     const data = await res.json().catch(() => null);
+    // Login de novo em outra aba troca a sessão (e o CSRF): pega o novo e tenta uma vez.
+    if (res.status === 403 && /CSRF/.test((data && data.detail) || "") && !retried) {
+      const me = await send("GET", "/auth/me").then((r) => r.json()).catch(() => null);
+      if (me && me.csrf_token) {
+        CSRF = me.csrf_token;
+        return send(method, path, { body, type, timeout, publicCall, retried: true });
+      }
+    }
+    if (res.status === 403 && /CSRF/.test((data && data.detail) || "")) {
+      throw Object.assign(new Error("Sua sessão mudou em outra aba. Recarregue a página."), { status: 403, data });
+    }
     throw Object.assign(new Error(messageFor(res.status, data)), { status: res.status, data });
   }
   return res;

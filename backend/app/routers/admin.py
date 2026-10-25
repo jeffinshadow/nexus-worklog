@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 def _ensure_user(user_id: int) -> dict:
     row = db.query_one("SELECT id, email FROM users WHERE id = %s", (user_id,))
     if not row:
-        raise HTTPException(status_code=404, detail="usuario nao encontrado")
+        raise HTTPException(status_code=404, detail="usuário não encontrado")
     return row
 
 
@@ -35,7 +35,7 @@ def invite_user(data: InviteIn, admin=Depends(require_admin_csrf)):
     Nasce com o papel Usuário; os outros se dão em Permissões."""
     email = data.email.lower()
     if db.query_one("SELECT 1 FROM users WHERE email = %s", (email,)):
-        raise HTTPException(status_code=409, detail="email ja cadastrado")
+        raise HTTPException(status_code=409, detail="e-mail já cadastrado")
     temp = generate_temp_password()
     db.execute(
         """INSERT INTO users (email, password_hash, role, must_change_password)

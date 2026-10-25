@@ -24,6 +24,7 @@
   --surface-accent: #17202b;
   --accent-purple: #C58AF9;
   --accent-cyan: #5EC8D8;
+  --avatar-fg: #fff;
 
   /* Escala da interface: no desktop tudo sai em 90% (como o zoom do navegador
      em 90%), mantendo as proporções. Medidas da tela (vh/vw) e a área útil
