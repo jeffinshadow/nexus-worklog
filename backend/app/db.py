@@ -3,11 +3,14 @@ from psycopg_pool import ConnectionPool
 
 from .config import config
 
+# Nenhuma consulta passa de 15 s e ninguém espera mais de 10 s por uma
+# conexão do pool (PoolTimeout vira 503 em main.py, como o Busy).
 pool = ConnectionPool(
     config.DATABASE_URL,
     min_size=1,
     max_size=10,
-    kwargs={"row_factory": dict_row},
+    timeout=10,
+    kwargs={"row_factory": dict_row, "options": "-c statement_timeout=15000"},
     open=False,
 )
 

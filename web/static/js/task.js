@@ -2,7 +2,7 @@
 // Abre por cima do quadro/Hoje; ao fechar, quem abriu recarrega (onChange).
 import { api } from "./api.js";
 import { h, icon, clear, addDays, shortDate, dateTime, field } from "./dom.js";
-import { errorToast, modal, toast, undoLatest } from "./ui.js";
+import { errorToast, modal, toast, undoLatest, busy } from "./ui.js";
 import { openWorklog, finishTask, taskChips } from "./board.js";
 import { timerButton } from "./timer.js";
 
@@ -129,7 +129,7 @@ export async function openTask(taskId, onChange) {
     const note = h("input", { type: "text", maxlength: "200", placeholder: "o que foi feito (opcional)", "aria-label": "Observação" });
     const form = h("form", { class: "time-form" }, dur, day, note,
       h("button", { type: "submit", class: "btn btn-ghost btn-sm" }, icon("add"), "Apontar"));
-    form.addEventListener("submit", async (ev) => {
+    form.addEventListener("submit", busy(async (ev) => {
       ev.preventDefault();
       const minutes = parseDuration(dur.value);
       if (!minutes || minutes > 1440) { toast("Duração inválida. Ex.: 45, 1h30, 2:15.", { error: true }); dur.focus(); return; }
@@ -138,7 +138,7 @@ export async function openTask(taskId, onChange) {
         toast(`Apontado ${duration(minutes)}.`);
         touch();
       } catch (e) { errorToast(e); }
-    });
+    }));
     sec.append(form);
     for (const e of t.time) {
       sec.append(h("div", { class: "mini-row" },
@@ -203,7 +203,7 @@ function saveAsTemplate(t) {
       h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
       h("button", { type: "submit", class: "btn btn-primary", text: "Salvar modelo" })));
   const dlg = modal(form);
-  form.addEventListener("submit", async (ev) => {
+  form.addEventListener("submit", busy(async (ev) => {
     ev.preventDefault();
     try {
       await api.post("/templates", { name: name.value.trim(), title: t.title, description: t.description || null,
@@ -212,6 +212,6 @@ function saveAsTemplate(t) {
       dlg.close();
       toast(`Modelo “${name.value.trim()}” salvo. Use em “+ Tarefa”.`);
     } catch (e) { err.textContent = e.message || "Não foi possível salvar."; }
-  });
+  }));
   setTimeout(() => name.select(), 0);
 }

@@ -58,7 +58,7 @@ def update(task_id: int, data: RecurringUpdate, user=Depends(active_user_csrf)):
     uid = user["user_id"]
     before = audit.recurring_snapshot(task_id, uid)
     if not before or not before["active"]:
-        raise HTTPException(status_code=404, detail="nao encontrado")
+        raise HTTPException(status_code=404, detail="não encontrado")
     agenda = data.agenda() if data.freq is not None else {}
     if data.label is None and not agenda:
         raise HTTPException(status_code=400, detail="nada para atualizar")
@@ -97,7 +97,7 @@ def deactivate(task_id: int, user=Depends(active_user_csrf)):
         (task_id, user["user_id"]),
     )
     if not updated:
-        raise HTTPException(status_code=404, detail="nao encontrado")
+        raise HTTPException(status_code=404, detail="não encontrado")
     audit.record(user, "recurring.deactivate", "recurring", task_id, before=before,
                  after=audit.recurring_snapshot(task_id, user["user_id"]))
     return {"ok": True}
@@ -110,7 +110,7 @@ def toggle(task_id: int, data: ToggleIn, user=Depends(active_user_csrf)):
         (task_id, user["user_id"]),
     )
     if not owns:
-        raise HTTPException(status_code=404, detail="nao encontrado")
+        raise HTTPException(status_code=404, detail="não encontrado")
 
     # Marcação retroativa: hoje ou até RETRO_DAYS dias atrás (mesma janela do
     # quadro), e só em dia em que a rotina estava vigente.

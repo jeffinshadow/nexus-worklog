@@ -48,11 +48,23 @@ export async function mount(root) {
     h("p", { class: "readonly-note", text: "visão somente leitura da pessoa selecionada" }),
     content);
 
-  function renderCurrent() {
+  // Troca rápida de pessoa ou aba: monta fora da tela e só a última resposta entra.
+  let seq = 0;
+  async function renderCurrent() {
+    const my = ++seq;
     const uid = select.value;
-    if (active === "board") board.mount(content, { readOnly: true, boardUrl: `/viewer/users/${uid}/board` });
-    else if (active === "dashboard") dashboard.mount(content, { dashUrl: `/viewer/users/${uid}/dashboard` });
-    else reports.mount(content, { exportBase: `/viewer/users/${uid}/reports/export`, projectsUrl: `/viewer/users/${uid}/projects` });
+    const box = h("div", {});
+    try {
+      if (active === "board") await board.mount(box, { readOnly: true, boardUrl: `/viewer/users/${uid}/board` });
+      else if (active === "dashboard") await dashboard.mount(box, { dashUrl: `/viewer/users/${uid}/dashboard` });
+      else await reports.mount(box, { exportBase: `/viewer/users/${uid}/reports/export`, projectsUrl: `/viewer/users/${uid}/projects` });
+    } catch (e) {
+      clear(box);
+      box.append(h("p", { class: "empty", text: e && e.status === 0 ? e.message : "Erro ao carregar. Tente de novo." }));
+    }
+    if (my !== seq) return;
+    clear(content);
+    content.append(box);
   }
   select.addEventListener("change", renderCurrent);
   renderCurrent();

@@ -1,5 +1,6 @@
 // Identidade visual configurável pelo admin: logo + duas linhas do lockup.
 // Aplica em todo .lockup da página (menu, login, troca de senha).
+import { api } from "./api.js";
 const PADRAO = { line1: "nexus", line2: "worklog", logo: null };
 const DRAGAO = "/img/dragon-mark.svg";
 
@@ -19,9 +20,7 @@ export function applyBranding(b) {
 
 export async function loadBranding() {
   try {
-    const r = await fetch("/api/branding", { credentials: "same-origin" });
-    if (!r.ok) return applyBranding(PADRAO);
-    return applyBranding(await r.json());
+    return applyBranding(await api.getPublic("/branding"));
   } catch {
     return applyBranding(PADRAO);
   }

@@ -34,6 +34,7 @@ ACTION_LABELS = {
     "assign.send": "atribuiu a tarefa",
     "assignments.consent": "alterou o aceite de tarefas atribuídas",
     "user.roles": "alterou as permissões",
+    "user.delete": "excluiu a conta",
     "app.settings": "alterou as configurações gerais",
     "recurring.create": "criou a rotina",
     "recurring.update": "editou a rotina",
@@ -91,6 +92,8 @@ def _label(row) -> str:
         return f"{ACTION_LABELS[row['action']]} “{snap.get('title', '')}” ({dur(snap.get('minutes'))})"
     if row["action"] == "worklog.assign" and snap.get("by"):
         return f"recebeu a tarefa “{name}”, atribuída por {snap['by']}"
+    if row["action"] == "user.delete" and row["before"]:
+        return f"excluiu a conta {row['before'].get('email', '')} e todos os dados dela"
     if row["action"] == "assign.send":
         return f"atribuiu a tarefa “{name}” a {snap.get('to', '')}"
     if row["action"] == "assignments.consent" and row["after"]:
@@ -261,7 +264,7 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
         "SELECT * FROM audit_log WHERE id = %s AND user_id = %s", (history_id, uid)
     )
     if not row:
-        raise HTTPException(status_code=404, detail="nao encontrado")
+        raise HTTPException(status_code=404, detail="não encontrado")
     if row["action"] not in UNDOABLE:
         raise HTTPException(status_code=400, detail="esta ação não pode ser desfeita")
     if row["undone_at"] is not None:

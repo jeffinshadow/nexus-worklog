@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from .. import audit, db, people, roles
 from ..deps import require_admin, require_admin_csrf
-from ..schemas import AppSettingsIn, InviteIn, RolesIn
+from ..schemas import AppSettingsIn, DeleteUserIn, InviteIn, RolesIn
 from ..security import generate_temp_password, hash_password, revoke_access
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 def _ensure_user(user_id: int) -> dict:
     row = db.query_one("SELECT id, email FROM users WHERE id = %s", (user_id,))
     if not row:
-        raise HTTPException(status_code=404, detail="usuario nao encontrado")
+        raise HTTPException(status_code=404, detail="usuário não encontrado")
     return row
 
 
@@ -35,7 +35,7 @@ def invite_user(data: InviteIn, admin=Depends(require_admin_csrf)):
     Nasce com o papel Usuário; os outros se dão em Permissões."""
     email = data.email.lower()
     if db.query_one("SELECT 1 FROM users WHERE email = %s", (email,)):
-        raise HTTPException(status_code=409, detail="email ja cadastrado")
+        raise HTTPException(status_code=409, detail="e-mail já cadastrado")
     temp = generate_temp_password()
     db.execute(
         """INSERT INTO users (email, password_hash, role, must_change_password)
@@ -68,15 +68,46 @@ def set_roles(user_id: int, data: RolesIn, admin=Depends(require_admin_csrf)):
     return {"id": user_id, "roles": novos}
 
 
+@router.post("/users/{user_id}/delete")
+def delete_user(user_id: int, data: DeleteUserIn, admin=Depends(require_admin_csrf)):
+    """Exclui a conta e TODOS os dados dela (tarefas, rotinas, tempo, chaves,
+    histórico: ON DELETE CASCADE). Sem volta: o admin confirma digitando o
+    e-mail. Tarefas que essa pessoa atribuiu ficam com quem recebeu."""
+    if user_id == admin["user_id"]:
+        raise HTTPException(status_code=400, detail="para a sua própria conta, use Configurações > Conta")
+    target = _ensure_user(user_id)
+    if data.confirm_email.strip().lower() != target["email"]:
+        raise HTTPException(status_code=400, detail="confirme digitando o e-mail da conta")
+    if "admin" in roles.of(user_id) and roles.admins_count() <= 1:
+        raise HTTPException(status_code=400, detail="o sistema precisa de pelo menos um admin")
+    counts = account_counts(user_id)
+    if not roles.delete_account(user_id):
+        raise HTTPException(status_code=400, detail="o sistema precisa de pelo menos um admin")
+    # Fica no histórico de quem excluiu (o do excluído some junto com a conta).
+    audit.record({**admin, "actor": "admin"}, "user.delete", "user", user_id,
+                 before={"email": target["email"], **counts})
+    return {"ok": True, "email": target["email"], **counts}
+
+
+def account_counts(user_id: int) -> dict:
+    return db.query_one(
+        """SELECT (SELECT count(*) FROM worklog_tasks WHERE user_id = %(u)s)::int AS tasks,
+                  (SELECT count(*) FROM recurring_tasks WHERE user_id = %(u)s)::int AS routines,
+                  (SELECT count(*) FROM time_entries WHERE user_id = %(u)s)::int AS time_entries""",
+        {"u": user_id})
+
+
 @router.get("/settings")
 def get_settings(admin=Depends(require_admin)):
-    return db.query_one("SELECT retro_days FROM app_settings WHERE id = 1")
+    return db.query_one("SELECT retro_days, support_contact FROM app_settings WHERE id = 1")
 
 
 @router.put("/settings")
 def put_settings(data: AppSettingsIn, admin=Depends(require_admin_csrf)):
     before = get_settings(admin)
-    db.execute("UPDATE app_settings SET retro_days = %s, updated_at = now() WHERE id = 1", (data.retro_days,))
+    contact = " ".join((data.support_contact or "").split()) or None
+    db.execute("UPDATE app_settings SET retro_days = %s, support_contact = %s, updated_at = now() WHERE id = 1",
+               (data.retro_days, contact))
     audit.record({**admin, "actor": "admin"}, "app.settings", "app_settings", 1,
                  before=before, after=data.model_dump())
     return get_settings(admin)

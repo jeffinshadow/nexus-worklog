@@ -3,16 +3,19 @@ import logging
 import pathlib
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
-from pydantic import EmailStr, TypeAdapter, ValidationError
+from psycopg import errors as pg_errors
+from psycopg_pool import PoolTimeout
+from pydantic import BaseModel, EmailStr, Field, TypeAdapter, ValidationError
 
 from . import db, notify, roles
 from .config import config
 from .routers import (admin, assign, auth, board, branding, calendar, dashboard, export, history, mcp, me,
                       notifications, projects, recurring, reports, search, summary, templates, timer, tokens, viewer,
                       worklog)
-from .security import Busy, hash_password
+from .deps import web_active
+from .security import Busy, client_error_limiter, hash_password
 
 SQL_DIR = pathlib.Path(__file__).resolve().parent.parent / "sql"
 
@@ -68,8 +71,32 @@ app = FastAPI(
 
 
 @app.exception_handler(Busy)
-async def _busy(request: Request, exc: Busy):
+@app.exception_handler(PoolTimeout)
+@app.exception_handler(pg_errors.QueryCanceled)  # statement_timeout (db.py)
+async def _busy(request: Request, exc: Exception):
     return JSONResponse({"detail": "servidor ocupado, tente de novo em instantes"}, status_code=503)
+
+
+@app.get("/api/health")
+def health():
+    """Para o healthcheck do compose e monitoramento: app e banco respondendo."""
+    db.query_one("SELECT 1 AS ok")
+    return {"ok": True}
+
+
+class ClientErrorIn(BaseModel):
+    message: str = Field(max_length=300)
+    where: str = Field(default="", max_length=200)
+
+
+@app.post("/api/client-errors", status_code=204)
+def client_error(data: ClientErrorIn, user=Depends(web_active)):
+    """Erro de JavaScript do navegador vai para o log do backend (sem terceiros,
+    sem banco). Só sessão do app (chave de API não), poucos por pessoa; sem CSRF: só escreve no log."""
+    if client_error_limiter.allow(f"ce:{user['user_id']}"):
+        clean = lambda t: " ".join(t.split())[:300]  # noqa: E731 — uma linha por erro no log
+        logging.getLogger("uvicorn.error").warning("erro no navegador (usuário %s) em %s: %s",
+                                                   user["user_id"], clean(data.where), clean(data.message))
 
 for module in (auth, recurring, worklog, board, dashboard, reports, admin, history, tokens, mcp, branding, projects,
                summary, search, export, calendar, notifications, me, timer, templates, viewer, assign):

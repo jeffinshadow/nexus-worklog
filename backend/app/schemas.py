@@ -20,6 +20,15 @@ class RolesIn(BaseModel):
 
 class AppSettingsIn(BaseModel):
     retro_days: int = Field(ge=1, le=366)  # tarefas: criar/concluir até N dias atrás
+    support_contact: Optional[str] = Field(default=None, max_length=200)  # "Ajuda": a quem recorrer
+
+
+class DeleteUserIn(BaseModel):
+    confirm_email: str = Field(max_length=320)  # o admin digita o e-mail da conta
+
+
+class DeleteMeIn(BaseModel):
+    password: str = Field(max_length=128)
 
 
 class ConsentIn(BaseModel):

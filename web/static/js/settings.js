@@ -1,7 +1,7 @@
 // Configurações: projetos, modelos, avisos, calendário, IA e API (chaves), conta (perfil, assistente, chamados, dias úteis e senha).
 import { api } from "./api.js";
 import { h, icon, clear, dateTime, field } from "./dom.js";
-import { codeBox, confirmDialog, errorToast, modal, toast, warnBox } from "./ui.js";
+import { codeBox, confirmDialog, errorToast, modal, toast, warnBox, busy } from "./ui.js";
 import { fillProjectSelect, projectsPanel } from "./projects.js";
 import { avatar, squarePhoto } from "./profile.js";
 
@@ -38,21 +38,37 @@ export async function mount(root, ctx) {
       onClick: () => {
         active = key;
         for (const b of seg.children) b.setAttribute("aria-selected", b.textContent === label ? "true" : "false");
+        window.history.replaceState(null, "", "#/config?aba=" + key); // recarregar volta à mesma aba
         render();
       },
     }));
   }
   root.append(seg, body);
 
+  // Troca rápida de aba: só a última resposta entra na tela.
+  let seq = 0;
   async function render() {
+    const my = ++seq;
+    const out = h("div", { class: "settings-grid" });
+    try {
+      await fill(out);
+    } catch (e) {
+      clear(out);
+      out.append(h("p", { class: "empty", text: e && e.status === 0 ? e.message : "Erro ao carregar. Tente de novo." }));
+    }
+    if (my !== seq) return;
     clear(body);
+    body.append(...out.childNodes);
+  }
+
+  async function fill(body) {
     if (active === "projetos") body.append(await projectsPanel(() => render()));
     else if (active === "modelos") body.append(await templatesPanel(() => render()));
     else if (active === "avisos") body.append(await notices());
     else if (active === "calendario") body.append(await calendarFeed(() => render()));
     else if (active === "ia") body.append(...aiHelp(), await tokens(() => render()));
-    else if (isUser) body.append(profilePanel(ctx.me, render), assignmentsPanel(ctx.me), assistantPanel(ctx.me), ticketsPanel(ctx.me), workDays(ctx.me), shortcutsPanel(), account(ctx.me));
-    else body.append(profilePanel(ctx.me, render), account(ctx.me));
+    else if (isUser) body.append(profilePanel(ctx.me, render), assignmentsPanel(ctx.me), assistantPanel(ctx.me), ticketsPanel(ctx.me), workDays(ctx.me), shortcutsPanel(), account(ctx.me), deleteAccount(isUser));
+    else body.append(profilePanel(ctx.me, render), account(ctx.me), deleteAccount(isUser));
   }
   await render();
 }
@@ -94,7 +110,7 @@ function profilePanel(me, rerender) {
   });
   const form = h("form", {}, field("Nome de exibição", name), err,
     h("button", { type: "submit", class: "btn btn-primary", text: "Salvar nome" }));
-  form.addEventListener("submit", async (ev) => {
+  form.addEventListener("submit", busy(async (ev) => {
     ev.preventDefault();
     err.textContent = "";
     try {
@@ -104,7 +120,7 @@ function profilePanel(me, rerender) {
     } catch (e) {
       err.textContent = e.message || "Falha ao salvar.";
     }
-  });
+  }));
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Perfil" })),
     h("div", { class: "profile-row" }, avatar(me, "lg"),
@@ -221,7 +237,7 @@ function editTemplate(t, rerender) {
       h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
       h("button", { type: "submit", class: "btn btn-primary", text: "Salvar modelo" })));
   const dlg = modal(form);
-  form.addEventListener("submit", async (ev) => {
+  form.addEventListener("submit", busy(async (ev) => {
     ev.preventDefault();
     const body = { name: name.value.trim(), title: title.value.trim(), description: desc.value.trim() || null,
       priority: Number(prio.value), project_id: proj.value && proj.value !== "__new" ? Number(proj.value) : null,
@@ -230,7 +246,7 @@ function editTemplate(t, rerender) {
       if (t) await api.put(`/templates/${t.id}`, body); else await api.post("/templates", body);
       dlg.close(); toast("Modelo salvo."); rerender();
     } catch (e) { err.textContent = e.message || "Falha ao salvar."; }
-  });
+  }));
   setTimeout(() => (t ? title : name).focus(), 0);
 }
 
@@ -426,7 +442,7 @@ async function tokens(rerender) {
       field("Permissão", scope),
       field("Validade", expires)),
     err, create);
-  form.addEventListener("submit", async (ev) => {
+  form.addEventListener("submit", busy(async (ev) => {
     ev.preventDefault();
     err.textContent = "";
     create.disabled = true;
@@ -441,7 +457,7 @@ async function tokens(rerender) {
       err.textContent = e.message || "Falha ao criar.";
       create.disabled = false;
     }
-  });
+  }));
 
   const rows = list.length ? list.map((t) => {
     const meta = [
@@ -551,17 +567,41 @@ function assignmentsPanel(me) {
     since);
 }
 
+// --------------------------------------------------------- excluir a conta --
+
+// LGPD: a pessoa apaga a conta e tudo o que registrou, com a senha. Sem volta.
+function deleteAccount(isUser) {
+  const pw = h("input", { type: "password", autocomplete: "current-password", required: "required", maxlength: "128" });
+  const err = h("p", { class: "error-text" });
+  const form = h("form", {},
+    h("p", { class: "help", text: "Apaga a sua conta e tudo o que está nela: tarefas, rotinas, tempo apontado, anotações, chaves de API e histórico. Não dá para desfazer." }),
+    isUser ? h("p", { class: "dialog-note" }, "Quer guardar uma cópia? Baixe antes em ", h("a", { href: "#/relatorios", text: "Relatórios" }), " (JSON ou CSV).") : null,
+    field("Sua senha, para confirmar", pw), err,
+    h("button", { type: "submit", class: "btn btn-danger", text: "Excluir minha conta" }));
+  form.addEventListener("submit", busy(async (ev) => {
+    ev.preventDefault();
+    err.textContent = "";
+    const ok = await confirmDialog({ title: "Excluir a sua conta?", text: "Tudo o que você registrou será apagado agora, sem volta.", confirm: "Excluir para sempre", danger: true });
+    if (!ok) return;
+    try {
+      await api.post("/me/delete", { password: pw.value });
+      location.href = "/login.html";
+    } catch (e) { err.textContent = e.message || "Não foi possível excluir."; }
+  }));
+  return h("section", { class: "panel" }, h("div", { class: "panel-head" }, icon("trash"), h("h2", { text: "Excluir a conta" })), form);
+}
+
 // ------------------------------------------------------------------- conta --
 
 function account(me) {
-  const cur = h("input", { type: "password", autocomplete: "current-password", required: "required" });
-  const nova = h("input", { type: "password", autocomplete: "new-password", minlength: "10", required: "required" });
+  const cur = h("input", { type: "password", autocomplete: "current-password", required: "required", maxlength: "128" });
+  const nova = h("input", { type: "password", autocomplete: "new-password", minlength: "10", required: "required", maxlength: "128" });
   const err = h("p", { class: "error-text" });
   const form = h("form", {},
     field("Senha atual", cur),
     field("Nova senha (mínimo 10 caracteres)", nova),
     err, h("button", { type: "submit", class: "btn btn-primary", text: "Trocar senha" }));
-  form.addEventListener("submit", async (ev) => {
+  form.addEventListener("submit", busy(async (ev) => {
     ev.preventDefault();
     err.textContent = "";
     try {
@@ -571,7 +611,7 @@ function account(me) {
     } catch (e) {
       err.textContent = e.message || "Falha ao trocar.";
     }
-  });
+  }));
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Conta" })),
     h("p", { class: "help mono", text: [me.email, ...(me.roles || []).filter((r) => r !== "user").map((r) => ROLE_SHORT[r])].join(" · ") }),

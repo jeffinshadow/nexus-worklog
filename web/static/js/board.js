@@ -2,7 +2,7 @@
 // concluídas. Também exporta os diálogos de criar/editar, usados pela tela Hoje.
 import { api } from "./api.js";
 import { h, icon, clear, addDays, shortDate, localDay, localDateTime } from "./dom.js";
-import { confirmDialog, errorToast, toast, undoLatest } from "./ui.js";
+import { confirmDialog, errorToast, toast, undoLatest, busy } from "./ui.js";
 import { fillProjectSelect, listProjects, projectChip } from "./projects.js";
 import { openTask, duration, parseDuration } from "./task.js";
 import { boardLine } from "./assistant.js";
@@ -182,17 +182,26 @@ export function openWorklog(item, onDone, opts = {}) {
     if (!item && createdAt.value) payload.created_at = createdAt.value;
     const minutes = !item && timeInput.value.trim() ? parseDuration(timeInput.value) : null;
     if (minutes === null && !item && timeInput.value.trim()) { toast("Tempo inválido. Ex.: 45, 1h30, 2:15.", { error: true }); timeInput.focus(); return; }
+    const btn = ev.submitter;
+    if (btn) btn.disabled = true; // duplo clique criava a tarefa duas vezes
     try {
       if (item) await api.patch(`/worklog/${item.id}`, payload);
       else {
         const created = await api.post("/worklog", payload);
-        for (const label of checklist) await api.post(`/worklog/${created.id}/checklist`, { label });
-        if (minutes) await api.post(`/worklog/${created.id}/time`, { minutes });
+        // A tarefa já existe: se checklist ou tempo falharem, não reenviar (duplicaria).
+        try {
+          for (const label of checklist) await api.post(`/worklog/${created.id}/checklist`, { label });
+          if (minutes) await api.post(`/worklog/${created.id}/time`, { minutes });
+        } catch (e) {
+          toast(`Tarefa criada, mas ${minutes ? "o tempo ou " : ""}o checklist não foi salvo: ${e.message || "tente pelo detalhe"}.`, { error: true });
+        }
       }
       dlg.close();
       onDone && onDone();
     } catch (e) {
       errorToast(e, "Erro ao salvar.");
+    } finally {
+      if (btn) btn.disabled = false;
     }
   };
   dlg.showModal();
@@ -223,7 +232,7 @@ export function openRecurring(item, onDone) {
     : null;
 
   document.getElementById("rec-cancel").onclick = () => dlg.close();
-  document.getElementById("form-recurring").onsubmit = async (ev) => {
+  document.getElementById("form-recurring").onsubmit = busy(async (ev) => {
     ev.preventDefault();
     const label = input.value.trim();
     if (!label) return;
@@ -237,7 +246,7 @@ export function openRecurring(item, onDone) {
     } catch (e) {
       errorToast(e, "Erro ao salvar.");
     }
-  };
+  });
   dlg.showModal();
   input.focus();
 }

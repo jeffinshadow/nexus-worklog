@@ -20,19 +20,22 @@ Authorization: Bearer nxs_...
 - Sem cookie e sem CSRF. Escopo `write` (lê e altera) ou `read` (escrita → 403).
 - Validade de 1 a 365 dias ou sem validade; revogável. 240 req/min por pessoa, somando as chaves (429).
 - Trocar a própria senha (ou o reset pelo admin) revoga todas as chaves e o link do calendário.
-- Uma chave **nunca** acessa `/api/admin/*`, `/api/tokens`, `/api/calendar`,
-  `/api/notifications` nem troca senha. Tudo o que ela fizer vai para o
+- Uma chave **nunca** acessa `/api/admin/*`, `/api/viewer/*`, `/api/tokens`, `/api/calendar`,
+  `/api/notifications` nem troca senha ou exclui a conta. Atribuir tarefas por chave
+  (`/api/assign`, MCP `assign_task`) exige o papel de atribuidor e escopo `write`. Tudo o que ela fizer vai para o
   histórico com o nome dela.
 
 ### Sessão do app — o que o frontend usa
 
-- Cookie `session` `HttpOnly; Secure; SameSite=Strict`, prazo fixo de
+- Cookie `__Host-session` (`session` sem HTTPS, em desenvolvimento) `HttpOnly; Secure; SameSite=Strict`, prazo fixo de
   `SESSION_TTL_DAYS` (padrão 7); depois disso, novo login.
 - O login e `GET /api/auth/me` devolvem `csrf_token`; **toda mutação** exige o
   header `X-CSRF-Token` (senão 403).
 
-**Papéis:** `user` e `admin`. Todo dado é filtrado por `user_id`; `/api/admin/*`
-exige admin com sessão do app.
+**Papéis** (acumuláveis, em `roles` no `/api/auth/me`): `user` (o próprio registro),
+`admin` (contas, permissões, configurações), `assigner` (atribui tarefas) e `viewer`
+(registros e relatórios de todos). Todo dado é filtrado por `user_id`; `/api/admin/*`
+e `/api/viewer/*` exigem o papel com sessão do app.
 
 | Código | Quando |
 | --- | --- |
@@ -44,7 +47,7 @@ exige admin com sessão do app.
 | 422 | corpo inválido |
 | 413 / 415 | logo grande demais / tipo de arquivo não aceito |
 | 429 | limite de tentativas/requisições (login, troca de senha, chave, PDF, teste de e-mail, feed ICS) |
-| 502 / 503 | envio de e-mail falhou / e-mail não configurado |
+| 502 / 503 | envio de e-mail falhou / e-mail não configurado ou servidor ocupado (pool ou consulta acima do limite) |
 
 Legenda: **S** = só sessão do app · **W** = exige escopo `write` (chave) ou CSRF (sessão).
 
@@ -54,7 +57,7 @@ Legenda: **S** = só sessão do app · **W** = exige escopo `write` (chave) ou C
 | --- | --- | --- |
 | `POST /login` | público | `{email, password}` → identidade + `csrf_token`; limite por IP e por e-mail (falhas) |
 | `POST /logout` | S W | |
-| `GET /me` | | `{id, email, display_name, name, avatar, assistant, role, must_change_password, work_days, tz, csrf_token}` — `name` é o de exibição ou, sem ele, o derivado do e-mail |
+| `GET /me` | | `{id, email, display_name, name, avatar, assistant, role, roles, retro_days, support_contact, accepts_assignments_at, ticket_url, must_change_password, work_days, tz, csrf_token}` — `name` é o de exibição ou, sem ele, o derivado do e-mail; `role` só espelha `admin` (compatibilidade) |
 | `POST /change-password` | S W | `{current_password, new_password}`; encerra as outras sessões e revoga chaves e calendário |
 | `POST /settings` | W | `{work_days}` — máscara, domingo = bit 0 (seg–sex = 62). Não reescreve o passado: rotinas "dias úteis" com história são encerradas com os dias antigos e recomeçam hoje; não se desfaz pelo histórico |
 
@@ -68,6 +71,8 @@ Legenda: **S** = só sessão do app · **W** = exige escopo `write` (chave) ou C
 | `PUT /assistant` | S W | `{enabled, idle_on, idle_minutes (5–480), idle_start, idle_end}` — janela em minutos do dia |
 | `GET /activity` | S | `{last_activity, timer}`: último registro de qualquer origem (tarefa, rotina, anotação, checklist, tempo, cronômetro) e o cronômetro rodando |
 | `PUT /tickets` | S W | `{ticket_url}` — endereço do sistema de chamados; `{id}` vira o número (sem `{id}`, vai no fim) |
+| `PUT /assignments` | S W | `{accept}` — aceitar receber tarefas de um atribuidor (desligar não mexe nas recebidas) |
+| `POST /delete` | S W | `{password}` — exclui a conta e todos os dados dela; o último admin não sai |
 
 ## Cronômetro e modelos
 
@@ -105,10 +110,11 @@ Agenda: `daily` (dias úteis do dono) · `weekly` + `weekdays` (máscara) ·
 
 | Rota | | Corpo / observação |
 | --- | --- | --- |
-| `POST /` | W | `{title, description?, status?, due_date?, project_id?, priority?, ticket?, after_hours?}` (prioridade 1 alta, 2 normal, 3 baixa; `ticket` = número do chamado, sem o "#"; `after_hours` = plantão) |
+| `GET /` | | `?from=&to=` (dias, inclusive) `&by=created\|completed&status=open\|done\|all&limit=` (até 500): tarefas por período, com `external_ref` |
+| `POST /` | W | `{title, description?, status?, due_date?, project_id?, priority?, ticket?, after_hours?, created_at?, completed_at?, external_ref?}` (prioridade 1 alta, 2 normal, 3 baixa; `ticket` = número do chamado, sem o "#"; `after_hours` = plantão). Datas retroativas: `AAAA-MM-DD` (criação às 9h, conclusão às 18h) ou data e hora, fuso da app; nunca no futuro, nunca conclusão antes da criação, até `retro_days` (padrão 60). `completed_at` sem `status` = já concluída. `external_ref` repetido devolve a existente (200, `existing: true`) |
 | `GET /{id}` | | tarefa + `checklist`, `notes`, `time`, `minutes`, `today` |
-| `PATCH /{id}` | W | campos a mudar; `description`/`due_date`/`project_id`/`ticket` = `null` apaga |
-| `POST /{id}/finish` | W | conclui (com o cronômetro rodando nela, ele para e aponta) |
+| `PATCH /{id}` | W | campos a mudar; `description`/`due_date`/`project_id`/`ticket` = `null` apaga; `completed_at` corrige a data de uma concluída |
+| `POST /{id}/finish` | W | conclui agora, ou `{completed_at}` (mesmas regras); com o cronômetro rodando nela, ele para e aponta |
 | `DELETE /{id}` | W | exclui junto anotações, checklist e tempo (o desfazer devolve tudo) |
 | `POST /{id}/notes` | W | `{body}` (até 2000) |
 | `DELETE /api/notes/{id}` | W | |
@@ -166,26 +172,51 @@ Agenda: `daily` (dias úteis do dono) · `weekly` + `weekdays` (máscara) ·
 | `POST /api/admin/branding/logo` | admin W | corpo = a imagem (PNG, WebP ou SVG seguro, até 256 KB) |
 | `DELETE /api/admin/branding/logo` | admin W | volta ao dragão |
 
-## Admin — `/api/admin`
+## Admin — `/api/admin` (só pelo app, papel admin)
 
 | Rota | | Observação |
 | --- | --- | --- |
-| `GET /users` | | lista |
-| `POST /users` | W | `{email}` → senha temporária (troca no 1º acesso) |
-| `GET /users/{id}/board` · `/dashboard` · `/projects` · `/reports/export` | | visão só leitura do usuário |
+| `GET /users` | | contas, com `roles` e `accepts_assignments_at` |
+| `POST /users` | W | `{email}` → senha temporária (troca no 1º acesso); nasce com o papel `user` |
+| `PUT /users/{id}/roles` | W | `{roles: [...]}` (ao menos um); não tira o próprio admin nem deixa o sistema sem admin |
 | `POST /users/{id}/reset-password` | W | senha temporária; encerra sessões e revoga chaves e calendário |
+| `POST /users/{id}/delete` | W | `{confirm_email}` — exclui a conta e todos os dados (não a própria, nunca o último admin); e-mail e contagens ficam no histórico de quem excluiu |
+| `GET /settings` · `PUT /settings` | W | `{retro_days (1–366), support_contact?}` |
+
+## Visualizador — `/api/viewer` (só pelo app, papel viewer)
+
+| Rota | | Observação |
+| --- | --- | --- |
+| `GET /users` | | contas com registro próprio (papel `user`) |
+| `GET /users/{id}/board` · `/dashboard` · `/projects` · `/reports/export` | | visão só leitura da pessoa |
 | `GET /export/apontamentos.csv` | | horas de todos, com coluna `usuario` |
+
+## Atribuição — `/api/assign`
+
+| Rota | | Observação |
+| --- | --- | --- |
+| `GET /people` | | admin (app) ou atribuidor: contas com registro e se aceitam (`accepts`, desde quando) |
+| `POST /` | W | atribuidor: `{user_id, title, description?, due_date?, priority?, ticket?, after_hours?}` → a tarefa nasce na conta de quem aceitou, com e-mail; não a si mesmo |
+| `GET /sent` | | atribuidor: tarefas que atribuiu, com status atual |
+
+## Operação
+
+| Rota | | Observação |
+| --- | --- | --- |
+| `GET /api/health` | público | `{ok: true}` com o banco respondendo (healthcheck do compose e do deploy) |
+| `POST /api/client-errors` | S | `{message, where}` — erro de JavaScript do navegador vai só para o log; 10 a cada 5 min por pessoa; 204 |
 
 ## MCP — `POST /mcp`
 
 JSON-RPC 2.0 sobre HTTP, **uma mensagem por requisição** (sem lote, sem SSE),
 `Authorization: Bearer nxs_…`. Versões: 2025-11-25, 2025-06-18, 2025-03-26.
 
-Leitura: `get_today`, `get_summary`, `list_tasks`, `get_task`, `search`,
+Leitura: `get_today`, `get_summary`, `list_tasks` (com `from`/`to`/`by` por período), `get_task`, `search`,
 `list_projects`, `list_recurring`, `list_templates`, `get_history`.
-Escrita (chave `write`): `create_task`, `update_task` (ambas com `ticket` e `after_hours`), `complete_task`,
+Escrita (chave `write`): `create_task` (com `created_at`, `completed_at`, `external_ref`), `update_task` (com `completed_at`), `complete_task` (com `completed_at`),
 `add_note`, `add_checklist_item`, `set_checklist_item`, `log_time`, `start_timer`, `stop_timer`,
 `create_from_template`, `set_recurring` (`recurring_id`), `undo` (só ações da própria chave). A IA não exclui o que o usuário fez.
+Só com o papel de atribuidor: `list_assignable`, `list_assigned` e `assign_task` (`to` = U<id>, e-mail ou nome).
 
 Prompts (`prompts/list`, `prompts/get`): `resumo_semanal` (argumento `para`: gestor, time, cliente) e `daily`.
 No Claude Code viram `/mcp__nexus__resumo_semanal` e `/mcp__nexus__daily`.

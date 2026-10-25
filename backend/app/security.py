@@ -136,6 +136,8 @@ login_limiter = RateLimiter(max_hits=10, window_seconds=300)
 login_email_limiter = RateLimiter(max_hits=100, window_seconds=300)
 # PDF: gerar e pesado (CPU, um processo so). Ate 6 por usuario por minuto.
 pdf_limiter = RateLimiter(max_hits=6, window_seconds=60)
+# Erros do navegador mandados ao log: poucos por pessoa (não vira canal de spam no log).
+client_error_limiter = RateLimiter(max_hits=10, window_seconds=300)
 
 # Chaves de API: ate 240 requisicoes por pessoa por minuto (IA em laço).
 token_limiter = RateLimiter(max_hits=240, window_seconds=60)

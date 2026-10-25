@@ -6,7 +6,7 @@
 # Caixa em http://127.0.0.1:8025 (túnel SSH). Nunca usar em produção.
 services:
   mailpit:
-    image: axllent/mailpit:latest
+    image: axllent/mailpit:v1.31.5
     restart: unless-stopped
     networks: [internal]
     ports: ["127.0.0.1:8025:8025"]

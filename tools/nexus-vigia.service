@@ -1,0 +1,11 @@
+# Instalar (no host, ajuste WorkingDirectory e User):
+#   sudo cp tools/nexus-vigia.service tools/nexus-vigia.timer /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now nexus-vigia.timer
+[Unit]
+Description=Nexus Worklog: reinicia serviço unhealthy e avisa por e-mail
+
+[Service]
+Type=oneshot
+User=shadowtec
+WorkingDirectory=/srv/docker/shadow-nexus-worklog
+ExecStart=/srv/docker/shadow-nexus-worklog/tools/vigia.sh

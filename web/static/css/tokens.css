@@ -12,6 +12,20 @@
 }
 
 :root {
+  /* Tons de superfície e acentos usados em app.css (antes soltos como hex). */
+  --surface-side: #151517;
+  --surface-fade: #161617;
+  --surface-deep: #0E0E0F;
+  --ink-code: #D4D4D8;
+  --warning-ink: #E9DDB4;
+  --surface-pop: #18181A;
+  --surface-toast: #232326;
+  --surface-raise: #19191b;
+  --surface-accent: #17202b;
+  --accent-purple: #C58AF9;
+  --accent-cyan: #5EC8D8;
+  --avatar-fg: #fff;
+
   /* Escala da interface: no desktop tudo sai em 90% (como o zoom do navegador
      em 90%), mantendo as proporções. Medidas da tela (vh/vw) e a área útil
      dividem por este fator para continuarem no tamanho real. */

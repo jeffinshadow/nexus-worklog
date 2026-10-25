@@ -43,6 +43,7 @@ def _public(row: dict, csrf: str) -> dict:
         "role": row["role"],
         "roles": roles.of(uid),
         "retro_days": task_retro_days(),  # limite de datas retroativas em tarefas
+        "support_contact": (db.query_one("SELECT support_contact FROM app_settings WHERE id = 1") or {}).get("support_contact"),
         "must_change_password": row["must_change_password"],
         "work_days": row["work_days"],
         "tz": config.APP_TZ,  # o front formata datas/horas no fuso da app

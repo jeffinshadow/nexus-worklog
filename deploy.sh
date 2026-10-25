@@ -62,7 +62,7 @@ fi
 
 # Garante que segredos placeholder não passem despercebidos.
 # Ignora comentários (linhas iniciadas por #) e linhas em branco.
-if grep -vE '^[[:space:]]*(#|$)' .env | grep -qE 'CHANGE_?ME|your_?secret|placeholder'; then
+if grep -vE '^[[:space:]]*(#|$)' .env | grep -qE 'CHANGE_?ME|your_?secret|placeholder|seu-dominio'; then
   err ".env ainda contém valores placeholder. Preencha antes de subir."
   exit 1
 fi
@@ -108,7 +108,7 @@ docker compose up -d --build
 log "Conferindo se a aplicação respondeu..."
 ok=false
 for _ in $(seq 1 30); do
-  if docker compose exec -T web wget -q -O /dev/null http://127.0.0.1/api/branding 2>/dev/null; then
+  if docker compose exec -T web wget -q -O /dev/null http://127.0.0.1/api/health 2>/dev/null; then
     ok=true; break
   fi
   sleep 2

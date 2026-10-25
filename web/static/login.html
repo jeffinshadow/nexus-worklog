@@ -13,8 +13,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Nexus">
   <link rel="preload" as="font" type="font/woff2" href="/fonts/GoogleSansFlex.woff2" crossorigin>
-  <link rel="stylesheet" href="/css/tokens.css?v=42">
-  <link rel="stylesheet" href="/css/app.css?v=42">
+  <link rel="stylesheet" href="/css/tokens.css?v=47">
+  <link rel="stylesheet" href="/css/app.css?v=47">
 </head>
 <body>
   <div class="auth-wrap">
@@ -29,11 +29,11 @@
       <form id="form-login" autocomplete="on">
         <div class="field">
           <label for="login-email">E-mail</label>
-          <input id="login-email" name="email" type="email" required autocomplete="username">
+          <input id="login-email" name="email" type="email" required autocomplete="username" maxlength="254">
         </div>
         <div class="field">
           <label for="login-password">Senha</label>
-          <input id="login-password" name="password" type="password" required autocomplete="current-password">
+          <input id="login-password" name="password" type="password" required autocomplete="current-password" maxlength="128">
         </div>
         <p class="error-text" id="login-error"></p>
         <button class="btn btn-primary full" type="submit">Entrar</button>
@@ -44,7 +44,7 @@
     </div>
   </div>
 
-  <script type="module" src="/js/login.js?v=42"></script>
-  <script type="module" src="/js/pwa.js?v=42"></script>
+  <script type="module" src="/js/login.js?v=47"></script>
+  <script type="module" src="/js/pwa.js?v=47"></script>
 </body>
 </html>
