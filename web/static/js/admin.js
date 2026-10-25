@@ -1,6 +1,6 @@
 import { api } from "./api.js";
 import { h, icon, clear, field } from "./dom.js";
-import { codeBox, confirmDialog, errorToast, modal, toast } from "./ui.js";
+import { codeBox, confirmDialog, errorToast, modal, toast, busy } from "./ui.js";
 import { applyBranding } from "./branding.js";
 import { avatar } from "./profile.js";
 import { consentsPanel } from "./atribuir.js";
@@ -64,7 +64,7 @@ async function mountUsers(root) {
       h("div", { class: "dialog-actions" },
         h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
         h("button", { type: "submit", class: "btn btn-danger", text: "Excluir para sempre" })));
-    form.addEventListener("submit", async (ev) => {
+    form.addEventListener("submit", busy(async (ev) => {
       ev.preventDefault();
       err.textContent = "";
       try {
@@ -73,7 +73,7 @@ async function mountUsers(root) {
         toast(`Conta ${res.email} excluída (${res.tasks} tarefas, ${res.routines} rotinas).`);
         mountUsers(root);
       } catch (e) { err.textContent = e.message || "Não foi possível excluir."; }
-    });
+    }));
     const dlg = modal(h("h2", { text: "Excluir conta?" }), form);
     input.focus();
   }
@@ -116,7 +116,7 @@ async function mountUsers(root) {
         submit
       )
     );
-    form.addEventListener("submit", async (ev) => {
+    form.addEventListener("submit", busy(async (ev) => {
       ev.preventDefault();
       err.textContent = "";
       submit.disabled = true;
@@ -132,7 +132,7 @@ async function mountUsers(root) {
           e.message || "Falha ao criar a conta.";
         submit.disabled = false;
       }
-    });
+    }));
     const dlg = modal(h("h2", { text: "Novo usuário" }), form);
     input.focus();
   }
@@ -194,7 +194,7 @@ async function mountGeneral(root, me) {
     h("p", { class: "dialog-note", text: "Vale para criar ou concluir tarefas com data passada, pelo app, pela API e pela IA. As rotinas seguem com 7 dias." }),
     field("Contato de suporte (aparece em Ajuda)", contact),
     err, h("button", { type: "submit", class: "btn btn-primary", text: "Salvar" }));
-  form.addEventListener("submit", async (ev) => {
+  form.addEventListener("submit", busy(async (ev) => {
     ev.preventDefault();
     err.textContent = "";
     try {
@@ -203,7 +203,7 @@ async function mountGeneral(root, me) {
       me.support_contact = res.support_contact;
       toast("Configurações salvas.");
     } catch (e) { err.textContent = e.message || "Falha ao salvar."; }
-  });
+  }));
   root.append(h("div", { class: "settings-grid" }, h("section", { class: "panel" },
     h("div", { class: "panel-head" }, icon("calendar"), h("h2", { text: "Geral" })), form)));
 }

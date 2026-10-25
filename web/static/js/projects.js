@@ -2,7 +2,7 @@
 // gestão em Configurações. A cor vem da API e entra via CSSOM (CSP ok).
 import { api } from "./api.js";
 import { h, icon, clear, field } from "./dom.js";
-import { confirmDialog, errorToast, toast, undoLatest } from "./ui.js";
+import { confirmDialog, errorToast, toast, undoLatest, busy } from "./ui.js";
 
 const PALETA = ["#5294E2", "#81C995", "#FDD663", "#C58AF9", "#F28B82", "#78D9EC", "#F6AE6B", "#A1A1A8"];
 
@@ -83,7 +83,7 @@ export async function projectsPanel(rerender) {
   const form = h("form", { class: "inline-form" },
     field("Novo projeto ou cliente", name),
     h("button", { type: "submit", class: "btn btn-primary" }, icon("add"), "Criar"));
-  form.addEventListener("submit", async (ev) => {
+  form.addEventListener("submit", busy(async (ev) => {
     ev.preventDefault();
     err.textContent = "";
     try {
@@ -93,7 +93,7 @@ export async function projectsPanel(rerender) {
     } catch (e) {
       err.textContent = e.message || "Falha ao criar.";
     }
-  });
+  }));
 
   const save = async (p, patch, msg) => {
     try {

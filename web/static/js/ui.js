@@ -45,6 +45,19 @@ export function toast(message, opts = {}) {
   setTimeout(() => el.remove(), opts.action ? 7000 : 3500);
 }
 
+// Formulário: o botão de envio fica desabilitado até o handler terminar
+// (duplo clique não manda duas vezes). Uso: addEventListener("submit", busy(async (ev) => {...})).
+export function busy(fn) {
+  return async (ev) => {
+    const btn = ev && ev.submitter;
+    if (btn) {
+      if (btn.disabled) return;
+      btn.disabled = true;
+    }
+    try { return await fn(ev); } finally { if (btn) btn.disabled = false; }
+  };
+}
+
 // Só mensagens da API (que têm status) vão para a tela; erro de JavaScript
 // (em inglês, técnico) vira a mensagem genérica.
 export function errorToast(e, fallback = "Algo deu errado.") {

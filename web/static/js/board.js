@@ -2,7 +2,7 @@
 // concluídas. Também exporta os diálogos de criar/editar, usados pela tela Hoje.
 import { api } from "./api.js";
 import { h, icon, clear, addDays, shortDate, localDay, localDateTime } from "./dom.js";
-import { confirmDialog, errorToast, toast, undoLatest } from "./ui.js";
+import { confirmDialog, errorToast, toast, undoLatest, busy } from "./ui.js";
 import { fillProjectSelect, listProjects, projectChip } from "./projects.js";
 import { openTask, duration, parseDuration } from "./task.js";
 import { boardLine } from "./assistant.js";
@@ -227,7 +227,7 @@ export function openRecurring(item, onDone) {
     : null;
 
   document.getElementById("rec-cancel").onclick = () => dlg.close();
-  document.getElementById("form-recurring").onsubmit = async (ev) => {
+  document.getElementById("form-recurring").onsubmit = busy(async (ev) => {
     ev.preventDefault();
     const label = input.value.trim();
     if (!label) return;
@@ -241,7 +241,7 @@ export function openRecurring(item, onDone) {
     } catch (e) {
       errorToast(e, "Erro ao salvar.");
     }
-  };
+  });
   dlg.showModal();
   input.focus();
 }

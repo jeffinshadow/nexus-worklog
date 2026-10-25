@@ -19,7 +19,7 @@ import { session } from "./session.js";
 import { initTimer, stopTimer, timerState } from "./timer.js";
 import { openWorklog } from "./board.js";
 import { openTask } from "./task.js";
-import { modal } from "./ui.js";
+import { modal, busy } from "./ui.js";
 
 let me = null;
 
@@ -169,7 +169,7 @@ function renderWho() {
 
 function showChangePassword() {
   document.getElementById("view-change-password").classList.remove("hidden");
-  document.getElementById("form-change-password").addEventListener("submit", async (ev) => {
+  document.getElementById("form-change-password").addEventListener("submit", busy(async (ev) => {
     ev.preventDefault();
     const err = document.getElementById("cp-error");
     err.textContent = "";
@@ -182,15 +182,18 @@ function showChangePassword() {
     } catch (e) {
       err.textContent = e.message || "Erro ao trocar a senha.";
     }
-  });
+  }));
 }
 
 async function boot() {
   loadBranding();
   try {
     me = await api.get("/auth/me");
-  } catch {
-    toLogin();
+  } catch (e) {
+    // Só sessão inválida vai ao login; sem rede ou servidor fora, avisa e deixa tentar de novo.
+    if (e.status === 401 || e.message === "nao autenticado") { toLogin(); return; }
+    document.body.append(h("div", { class: "auth-wrap" }, h("p", { class: "empty", text: e.message || "Não foi possível abrir o Nexus." }),
+      h("button", { type: "button", class: "btn btn-primary", text: "Tentar de novo", onClick: () => location.reload() })));
     return;
   }
   api.setCsrf(me.csrf_token);
