@@ -9,7 +9,7 @@ from fastapi.responses import Response
 
 from .. import audit, db, people
 from ..deps import web_active, web_active_csrf
-from ..schemas import AssistantIn, ProfileIn, TicketUrlIn
+from ..schemas import AssistantIn, ConsentIn, ProfileIn, TicketUrlIn
 from ..services import running_timer
 
 router = APIRouter(prefix="/api/me", tags=["me"])
@@ -65,8 +65,8 @@ def delete_avatar(user=Depends(web_active_csrf)):
 
 @router.get("/avatar/{user_id}")
 def get_avatar(user_id: int, user=Depends(web_active)):
-    # A própria foto; o admin vê a de todos (lista de usuários).
-    if user_id != user["user_id"] and user["role"] != "admin":
+    # A própria foto; admin, visualizador e atribuidor veem a de todos (listas de pessoas).
+    if user_id != user["user_id"] and not set(user["roles"]) & {"admin", "viewer", "assigner"}:
         raise HTTPException(status_code=404, detail="sem foto")
     r = db.query_one("SELECT image, mime FROM user_avatars WHERE user_id = %s", (user_id,))
     if not r:
@@ -117,3 +117,20 @@ def put_ticket_url(data: TicketUrlIn, user=Depends(web_active_csrf)):
     db.execute("UPDATE users SET ticket_url = %s WHERE id = %s", (url, user["user_id"]))
     audit.record(user, "tickets.update", "user", user["user_id"], after={"ticket_url": url})
     return {"ticket_url": url}
+
+
+@router.put("/assignments")
+def put_assignments(data: ConsentIn, user=Depends(web_active_csrf)):
+    """Consentimento para receber tarefas de um atribuidor (só pelo app).
+    Desligar não mexe nas tarefas já recebidas."""
+    uid = user["user_id"]
+    before = db.query_one("SELECT accepts_assignments_at FROM users WHERE id = %s", (uid,))["accepts_assignments_at"]
+    if data.accept and before is None:
+        db.execute("UPDATE users SET accepts_assignments_at = now() WHERE id = %s", (uid,))
+    elif not data.accept and before is not None:
+        db.execute("UPDATE users SET accepts_assignments_at = NULL WHERE id = %s", (uid,))
+    after = db.query_one("SELECT accepts_assignments_at FROM users WHERE id = %s", (uid,))["accepts_assignments_at"]
+    if (before is None) != (after is None):
+        audit.record(user, "assignments.consent", "user", uid,
+                     before={"accept": before is not None}, after={"accept": after is not None})
+    return {"accepts_assignments_at": after}

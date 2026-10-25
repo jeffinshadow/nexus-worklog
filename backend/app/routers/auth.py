@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
-from .. import audit, db, people
+from .. import audit, db, people, roles
 from ..config import config
 from ..deps import (
     active_user_csrf,
@@ -14,7 +14,7 @@ from ..deps import (
     set_session_cookie,
 )
 from ..schemas import ChangePasswordIn, LoginIn, SettingsIn
-from ..services import app_today, app_tz
+from ..services import app_today, app_tz, task_retro_days
 from .recurring import replace_routine
 from ..security import (
     burn_password_check,
@@ -38,9 +38,11 @@ def _public(row: dict, csrf: str) -> dict:
         "id": uid,
         "email": row["email"],
         **people.profile(uid),  # display_name, name, avatar
-        "ticket_url": (db.query_one("SELECT ticket_url FROM users WHERE id = %s", (uid,)) or {}).get("ticket_url"),
+        **(db.query_one("SELECT ticket_url, accepts_assignments_at FROM users WHERE id = %s", (uid,)) or {}),
         "assistant": people.assistant_prefs(uid),
         "role": row["role"],
+        "roles": roles.of(uid),
+        "retro_days": task_retro_days(),  # limite de datas retroativas em tarefas
         "must_change_password": row["must_change_password"],
         "work_days": row["work_days"],
         "tz": config.APP_TZ,  # o front formata datas/horas no fuso da app

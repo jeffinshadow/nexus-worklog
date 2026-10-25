@@ -49,6 +49,11 @@ def _day(d: date) -> str:
 class Mail:
     """Conteúdo de um aviso: título, blocos (título + itens) e números."""
 
+    # Por que a pessoa recebe e onde desliga (a atribuição de tarefa troca).
+    reason = "Você recebe este aviso porque o ativou em Configurações > Avisos."
+    settings_tab = "avisos"
+    link = "/"
+
     def __init__(self, subject: str, title: str, intro: str):
         self.subject, self.title, self.intro = subject, title, intro
         self.blocks: list[tuple[str, list[str]]] = []
@@ -72,9 +77,9 @@ class Mail:
             out.append(heading)
             out += [f"  - {i}" for i in items]
             out.append("")
-        out += [f"Abrir o Nexus: {config.APP_URL}/", "",
-                "Você recebe este aviso porque o ativou em Configurações > Avisos.",
-                f"Para desligar: {config.APP_URL}/index.html#/config?aba=avisos"]
+        out += [f"Abrir o Nexus: {config.APP_URL}{self.link}", "",
+                self.reason,
+                f"Para desligar: {config.APP_URL}/index.html#/config?aba={self.settings_tab}"]
         return "\n".join(out)
 
     def html(self) -> str:
@@ -96,10 +101,10 @@ class Mail:
 <p style="margin:0 0 6px;font:600 20px/1.3 Arial,sans-serif;color:#18181b">{e(self.title)}</p>
 <p style="margin:0;font:14px/1.5 Arial,sans-serif;color:#52525b">{e(self.intro)}</p>
 {''.join(parts)}
-<p style="margin:26px 0 0"><a href="{e(config.APP_URL)}/" style="display:inline-block;background:#5294E2;color:#0b0d10;text-decoration:none;font:600 14px/1 Arial,sans-serif;padding:12px 20px;border-radius:999px">Abrir o Nexus</a></p>
+<p style="margin:26px 0 0"><a href="{e(config.APP_URL + self.link)}" style="display:inline-block;background:#5294E2;color:#0b0d10;text-decoration:none;font:600 14px/1 Arial,sans-serif;padding:12px 20px;border-radius:999px">Abrir o Nexus</a></p>
 </td></tr></table>
-<p style="max-width:560px;margin:14px auto 0;font:12px/1.5 Arial,sans-serif;color:#86868e">Você recebe este aviso porque o ativou em Configurações &gt; Avisos.
-<a href="{e(config.APP_URL)}/index.html#/config?aba=avisos" style="color:#86868e">Mudar ou desligar</a>.</p>
+<p style="max-width:560px;margin:14px auto 0;font:12px/1.5 Arial,sans-serif;color:#86868e">{e(self.reason)}
+<a href="{e(config.APP_URL)}/index.html#/config?aba={e(self.settings_tab)}" style="color:#86868e">Mudar ou desligar</a>.</p>
 </td></tr></table></body></html>"""
 
 

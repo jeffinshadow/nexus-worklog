@@ -19,7 +19,7 @@ from ..deps import active_user, active_user_csrf
 router = APIRouter(prefix="/api/history", tags=["history"])
 
 UNDOABLE = {
-    "worklog.create", "worklog.update", "worklog.finish", "worklog.delete",
+    "worklog.create", "worklog.assign", "worklog.update", "worklog.finish", "worklog.delete",
     "recurring.create", "recurring.update", "recurring.deactivate", "recurring.toggle", "recurring.replace",
     "note.create", "note.delete", "checklist.create", "checklist.update", "checklist.delete",
     "time.create", "time.delete", "project.create", "project.update", "project.delete",
@@ -30,6 +30,11 @@ ACTION_LABELS = {
     "worklog.update": "editou a tarefa",
     "worklog.finish": "concluiu a tarefa",
     "worklog.delete": "excluiu a tarefa",
+    "worklog.assign": "recebeu a tarefa",
+    "assign.send": "atribuiu a tarefa",
+    "assignments.consent": "alterou o aceite de tarefas atribuídas",
+    "user.roles": "alterou as permissões",
+    "app.settings": "alterou as configurações gerais",
     "recurring.create": "criou a rotina",
     "recurring.update": "editou a rotina",
     "recurring.deactivate": "removeu a rotina",
@@ -84,6 +89,16 @@ def _label(row) -> str:
         return f"{ACTION_LABELS[row['action']]} “{item}” em “{snap.get('title', '')}”"
     if row["action"] in ("time.create", "time.delete"):
         return f"{ACTION_LABELS[row['action']]} “{snap.get('title', '')}” ({dur(snap.get('minutes'))})"
+    if row["action"] == "worklog.assign" and snap.get("by"):
+        return f"recebeu a tarefa “{name}”, atribuída por {snap['by']}"
+    if row["action"] == "assign.send":
+        return f"atribuiu a tarefa “{name}” a {snap.get('to', '')}"
+    if row["action"] == "assignments.consent" and row["after"]:
+        return "passou a aceitar tarefas atribuídas" if row["after"].get("accept") else "deixou de aceitar tarefas atribuídas"
+    if row["action"] == "user.roles" and row["after"]:
+        from ..roles import LABELS
+        papeis = ", ".join(LABELS.get(r, r) for r in row["after"].get("roles", [])) or "nenhum"
+        return f"alterou as permissões ({papeis})"
     text = ACTION_LABELS.get(row["action"], row["action"])
     if row["action"] == "recurring.toggle" and row["after"]:
         text = ("marcou" if row["after"]["done"] else "desmarcou") + " a rotina"
@@ -174,6 +189,19 @@ def _projeto_existente(uid: int, project_id):
     return project_id if ok else None
 
 
+def _ref_livre(uid: int, ref):
+    """A chave externa volta com a tarefa, se ninguém a usou nesse meio-tempo."""
+    if not ref:
+        return None
+    return None if db.query_one("SELECT 1 FROM worklog_tasks WHERE user_id = %s AND external_ref = %s", (uid, ref)) else ref
+
+
+def _usuario_existente(user_id):
+    if user_id is None:
+        return None
+    return user_id if db.query_one("SELECT 1 FROM users WHERE id = %s", (user_id,)) else None
+
+
 def _restore_worklog(uid: int, snap: dict) -> None:
     db.execute(
         """UPDATE worklog_tasks
@@ -242,7 +270,7 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
         raise HTTPException(status_code=409, detail="houve alterações depois desta; desfaça as mais recentes primeiro")
 
     a, before, after, eid = row["action"], row["before"], row["after"], row["entity_id"]
-    if a == "worklog.create":
+    if a in ("worklog.create", "worklog.assign"):
         if db.query_one(
             """SELECT 1 FROM task_notes WHERE task_id = %(t)s UNION ALL
                SELECT 1 FROM task_checklist WHERE task_id = %(t)s UNION ALL
@@ -263,13 +291,15 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
             check_day_total(uid, day, minutes, status=409)
         db.execute(
             """INSERT INTO worklog_tasks (id, user_id, title, description, status, due_date,
-                                          created_at, completed_at, project_id, priority, ticket, after_hours)
+                                          created_at, completed_at, project_id, priority, ticket, after_hours,
+                                          external_ref, assigned_by, assigned_at)
                OVERRIDING SYSTEM VALUE
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (eid, uid, before["title"], before["description"], before["status"],
              before["due_date"], before["created_at"], before["completed_at"],
              _projeto_existente(uid, before.get("project_id")), before.get("priority") or 2,
-             before.get("ticket"), bool(before.get("after_hours"))),
+             before.get("ticket"), bool(before.get("after_hours")), _ref_livre(uid, before.get("external_ref")),
+             _usuario_existente(before.get("assigned_by")), before.get("assigned_at")),
         )
         for n in kids.get("notes", []):
             _put_note(uid, eid, n)

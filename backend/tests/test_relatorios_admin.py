@@ -18,9 +18,9 @@ def test_periodo_invertido_e_longo_demais(usuario):
 def test_admin_ve_dados_de_outro_em_leitura(admin, usuario):
     usuario.post("/worklog", {"title": "Do colega"})
     uid = usuario.me["id"]
-    b = admin.get(f"/admin/users/{uid}/board").json()
+    b = admin.get(f"/viewer/users/{uid}/board").json()
     assert any(t["title"] == "Do colega" for t in b["in_progress"])
-    assert admin.get(f"/admin/users/{uid}/dashboard").status_code == 200
+    assert admin.get(f"/viewer/users/{uid}/dashboard").status_code == 200
 
 
 def test_reset_de_senha_pelo_admin(admin, usuario):

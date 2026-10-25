@@ -13,7 +13,7 @@ ADMIN_PW_INICIAL = os.environ["ADMIN_INITIAL_PASSWORD"]
 ADMIN_PW = "Admin-Definitiva-Teste-1"
 SENHA_PADRAO = "Senha-Do-Usuario-1"
 
-TABELAS = ["app_branding", "user_avatars", "assistant_prefs", "task_timers", "task_templates",
+TABELAS = ["app_settings", "user_roles", "app_branding", "user_avatars", "assistant_prefs", "task_timers", "task_templates",
            "audit_log", "api_tokens", "notification_log", "notification_prefs", "calendar_feeds",
            "time_entries", "task_checklist", "task_notes",
            "recurring_completions", "recurring_tasks", "projects",
@@ -35,6 +35,8 @@ def _banco_limpo():
     db.execute(f"TRUNCATE {', '.join(alvo)} RESTART IDENTITY CASCADE")
     if "app_branding" in existentes:
         db.execute("INSERT INTO app_branding (id) VALUES (1) ON CONFLICT (id) DO NOTHING")
+    if "app_settings" in existentes:
+        db.execute("INSERT INTO app_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING")
     main.seed_admin()
     for limiter in (security.login_limiter, security.login_email_limiter,
                     security.pdf_limiter):
@@ -70,6 +72,9 @@ class Api:
 
     def patch(self, path, json=None, headers=None):
         return self.c.patch("/api" + path, json=json, headers=self._h(headers))
+
+    def put(self, path, json=None, headers=None):
+        return self.c.put("/api" + path, json=json, headers=self._h(headers))
 
     def delete(self, path, headers=None):
         return self.c.delete("/api" + path, headers=self._h(headers))

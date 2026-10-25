@@ -14,6 +14,36 @@ class InviteIn(BaseModel):
     email: EmailStr
 
 
+class RolesIn(BaseModel):
+    roles: list[Literal["user", "admin", "assigner", "viewer"]] = Field(min_length=1, max_length=4)
+
+
+class AppSettingsIn(BaseModel):
+    retro_days: int = Field(ge=1, le=366)  # tarefas: criar/concluir até N dias atrás
+
+
+class ConsentIn(BaseModel):
+    accept: bool  # aceitar receber tarefas de um atribuidor
+
+
+class AssignIn(BaseModel):
+    user_id: int
+    title: str = Field(min_length=1, max_length=200)
+    description: Optional[str] = Field(default=None, max_length=300)
+    due_date: Optional[date] = None
+    priority: int = Field(default=2, ge=1, le=3)
+    ticket: Optional[str] = Field(default=None, max_length=41)
+    after_hours: bool = False
+
+    @model_validator(mode="after")
+    def _norm(self):
+        self.ticket = _ticket(self.ticket)
+        self.title = self.title.strip()
+        if not self.title:
+            raise ValueError("título em branco")
+        return self
+
+
 class LoginIn(BaseModel):
     email: EmailStr
     password: str = Field(max_length=128)  # senha gigante = Argon2 caro à toa
@@ -121,6 +151,11 @@ def _ticket(v):
 
 Ticket = Field(default=None, max_length=41)
 
+# Data retroativa: "AAAA-MM-DD" ou data e hora ISO ("2026-09-29T14:30", com ou
+# sem fuso; sem fuso = fuso da app). As regras (futuro, limite, ordem) ficam
+# em routers/worklog.py, que conhece a criação da tarefa.
+When = Field(default=None, min_length=10, max_length=40)
+
 
 class WorklogIn(BaseModel):
     title: str = Field(min_length=1, max_length=200)
@@ -131,10 +166,20 @@ class WorklogIn(BaseModel):
     priority: int = Field(default=2, ge=1, le=3)  # 1 alta, 2 normal, 3 baixa
     ticket: Optional[str] = Ticket          # número no sistema de chamados
     after_hours: bool = False               # plantão / fora do horário
+    created_at: Optional[str] = When        # lançamento retroativo (padrão: agora)
+    completed_at: Optional[str] = When      # com status done (padrão: agora)
+    external_ref: Optional[str] = Field(default=None, min_length=1, max_length=120)  # idempotência
 
     @model_validator(mode="after")
     def _norm(self):
         self.ticket = _ticket(self.ticket)
+        if self.external_ref is not None:
+            self.external_ref = self.external_ref.strip() or None
+        # Data de conclusão sem status: a tarefa já nasce concluída.
+        if self.completed_at and "status" not in self.model_fields_set:
+            self.status = "done"
+        if self.completed_at and self.status != "done":
+            raise ValueError("completed_at só vale com status done")
         return self
 
 
@@ -147,6 +192,7 @@ class WorklogUpdate(BaseModel):
     priority: Optional[int] = Field(default=None, ge=1, le=3)
     ticket: Optional[str] = Ticket     # null ou vazio = tirar o chamado
     after_hours: Optional[bool] = None
+    completed_at: Optional[str] = When  # corrigir a data de uma tarefa concluída
 
     @model_validator(mode="after")
     def _norm(self):
@@ -155,6 +201,10 @@ class WorklogUpdate(BaseModel):
         if "ticket" in self.model_fields_set:
             self.ticket = _ticket(self.ticket)
         return self
+
+
+class FinishIn(BaseModel):
+    completed_at: Optional[str] = When  # ausente = agora
 
 
 class TemplateIn(BaseModel):

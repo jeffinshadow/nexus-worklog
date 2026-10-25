@@ -38,6 +38,13 @@ DEFAULT_WORK_DAYS = 62
 RETRO_DAYS = 7
 
 
+def task_retro_days() -> int:
+    """Até quantos dias para trás uma tarefa pode ser criada ou concluída
+    (configurável pelo admin; a linha id=1 sempre existe: sql/010)."""
+    row = db.query_one("SELECT retro_days FROM app_settings WHERE id = 1")
+    return row["retro_days"] if row else 60
+
+
 def work_mask(user_id: int) -> int:
     row = db.query_one("SELECT work_days FROM users WHERE id = %s", (user_id,))
     return row["work_days"] if row else DEFAULT_WORK_DAYS
@@ -85,6 +92,9 @@ TASK_COUNTS = """
     (SELECT count(*) FROM task_checklist c WHERE c.task_id = w.id AND c.done)::int AS check_done,
     (SELECT count(*) FROM task_notes n WHERE n.task_id = w.id)::int AS notes_count,
     (SELECT COALESCE(sum(t.minutes), 0) FROM time_entries t WHERE t.task_id = w.id)::int AS minutes"""
+
+# Quem atribuiu a tarefa (nome de exibição ou e-mail); NULL se foi a própria pessoa.
+ASSIGNER_NAME = """(SELECT COALESCE(a.display_name, a.email) FROM users a WHERE a.id = w.assigned_by) AS assigned_by_name"""
 
 # Último movimento de uma tarefa aberta (edição, anotação, item, tempo): o
 # assistente usa para "bloqueada/parada há N dias".
@@ -162,8 +172,8 @@ def get_board(user_id: int, day: date | None = None, project: int | None = None)
     def cols(extra=""):
         return """
         SELECT w.id, w.title, w.description, w.status, w.due_date, w.created_at, w.completed_at,
-               w.priority, w.project_id, w.ticket, w.after_hours,
-               p.name AS project_name, p.color AS project_color,
+               w.priority, w.project_id, w.ticket, w.after_hours, w.assigned_by,
+               p.name AS project_name, p.color AS project_color, """ + ASSIGNER_NAME + """,
                """ + TASK_COUNTS + extra + """
           FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
          WHERE w.user_id = %s"""

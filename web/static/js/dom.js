@@ -84,6 +84,11 @@ export function localDay(ts) {
   return new Date(ts).toLocaleDateString("sv-SE", { timeZone: TZ });
 }
 
+// "YYYY-MM-DDTHH:MM" de um timestamp no fuso da app (valor de <input type=datetime-local>).
+export function localDateTime(ts) {
+  return new Date(ts).toLocaleString("sv-SE", { timeZone: TZ, hour12: false }).slice(0, 16).replace(" ", "T");
+}
+
 // Hora, minuto e dia da semana (0 = domingo) agora, no fuso da app: saudação
 // do assistente e janela do lembrete.
 const WD_EN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];

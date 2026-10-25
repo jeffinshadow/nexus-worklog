@@ -2,22 +2,29 @@ import { api } from "./api.js";
 import { h, icon, clear, field } from "./dom.js";
 import { codeBox, confirmDialog, errorToast, modal, toast } from "./ui.js";
 import { applyBranding } from "./branding.js";
-import * as board from "./board.js";
-import * as dashboard from "./dashboard.js";
-import * as reports from "./reports.js";
+import { avatar } from "./profile.js";
+import { consentsPanel } from "./atribuir.js";
 
-const SUBVIEWS = [
-  { key: "board", label: "Tarefas" },
-  { key: "dashboard", label: "Dashboard" },
-  { key: "reports", label: "Relatórios" },
+const ROLES = [
+  ["user", "Usuário", "tem o próprio registro (Hoje, Tarefas, Rotinas) e pode receber tarefas"],
+  ["admin", "Admin", "contas, permissões e configurações gerais"],
+  ["assigner", "Atribuidor de tarefas", "manda tarefas para quem aceitou receber"],
+  ["viewer", "Visualizador de tarefas", "vê os registros e tira relatórios de todos"],
 ];
 
-// Admin: usuários (visão somente leitura + convite/reset) e identidade visual.
-export async function mount(root) {
+// Admin: contas (convite, senha), permissões, quem aceita tarefas, configurações
+// gerais e identidade visual. Ver registros e relatórios é do Visualizador (Equipe).
+export async function mount(root, ctx) {
   clear(root);
   const seg = h("div", { class: "seg", role: "tablist" });
   const body = h("div");
-  const abas = [["usuarios", "Usuários", mountUsers], ["identidade", "Identidade visual", mountBranding]];
+  const abas = [
+    ["usuarios", "Usuários", (el) => mountUsers(el)],
+    ["permissoes", "Permissões", (el) => mountRoles(el, ctx.me)],
+    ["aceites", "Tarefas atribuídas", async (el) => { clear(el); el.append(h("div", { class: "settings-grid" }, consentsPanel(await api.get("/assign/people")))); }],
+    ["geral", "Geral", (el) => mountGeneral(el, ctx.me)],
+    ["identidade", "Identidade visual", (el) => mountBranding(el)],
+  ];
   for (const [key, label, fn] of abas) {
     seg.append(h("button", {
       type: "button", class: "chip-btn", role: "tab", "aria-selected": key === "usuarios" ? "true" : "false", text: label,
@@ -31,74 +38,23 @@ export async function mount(root) {
   await mountUsers(body);
 }
 
+const roleNames = (roles) => ROLES.filter(([k]) => roles.includes(k)).map(([, n]) => n).join(" · ") || "sem papel";
+
 async function mountUsers(root) {
   clear(root);
   const users = await api.get("/admin/users");
-  if (!users.length) {
-    root.append(h("p", { class: "empty", text: "Nenhum usuário." }));
-    return;
-  }
   const emailById = new Map(users.map((u) => [String(u.id), u.email]));
-
-  const select = h(
-    "select",
-    {},
-    ...users.map((u) => h("option", { value: u.id }, `${u.display_name ? u.display_name + " · " : ""}${u.email}${u.role === "admin" ? " (admin)" : ""}`))
-  );
-
-  const resetBtn = h("button", { type: "button", class: "btn btn-danger", text: "Redefinir senha", onClick: onReset });
   const inviteBtn = h("button", { type: "button", class: "btn btn-primary", onClick: onInvite }, icon("add"), "Novo usuário");
-
-  let active = "board";
-  const subtabs = h(
-    "div",
-    { class: "seg seg-sm", role: "tablist" },
-    ...SUBVIEWS.map((s) =>
-      h("button", {
-        type: "button", class: "chip-btn", role: "tab",
-        text: s.label,
-        "aria-selected": s.key === active ? "true" : "false",
-        onClick: () => {
-          active = s.key;
-          for (const b of subtabs.children)
-            b.setAttribute("aria-selected", b.textContent === s.label ? "true" : "false");
-          renderCurrent();
-        },
-      })
-    )
-  );
-
-  const content = h("div", {});
-  root.append(
-    h(
-      "div",
-      { class: "admin-bar" },
-      field("Usuário", select),
-      resetBtn,
-      inviteBtn,
-      h("button", { type: "button", class: "btn btn-ghost", title: "Horas de todos, com usuário e projeto (some por cliente na planilha)", onClick: async (ev) => {
-        const b = ev.currentTarget;
-        b.disabled = true;
-        try { await api.download("/admin/export/apontamentos.csv"); } catch (e) { errorToast(e, "Falha ao exportar."); } finally { b.disabled = false; }
-      } }, icon("download"), "Horas da equipe (CSV)")
-    ),
-    subtabs,
-    h("p", { class: "readonly-note", text: "visão somente leitura do usuário selecionado" }),
-    content
-  );
-
-  function renderCurrent() {
-    const uid = select.value;
-    if (active === "board")
-      board.mount(content, { readOnly: true, boardUrl: `/admin/users/${uid}/board` });
-    else if (active === "dashboard")
-      dashboard.mount(content, { dashUrl: `/admin/users/${uid}/dashboard` });
-    else reports.mount(content, { exportBase: `/admin/users/${uid}/reports/export`, projectsUrl: `/admin/users/${uid}/projects` });
-  }
+  const list = h("section", { class: "panel" },
+    h("div", { class: "panel-head" }, h("h2", { text: "Contas" }), h("div", { class: "spacer" }), inviteBtn),
+    ...users.map((u) => h("div", { class: "list-row" }, avatar(u, "sm"),
+      h("div", { class: "t" }, h("span", { text: u.display_name ? `${u.display_name} · ${u.email}` : u.email }),
+        h("small", { text: roleNames(u.roles) })),
+      h("button", { type: "button", class: "btn btn-text btn-sm", text: "Redefinir senha", onClick: () => onReset(String(u.id)) }))));
+  root.append(h("div", { class: "settings-grid" }, list));
 
   // ---- Redefinir senha (senha temporária, troca forçada no próximo login) ----
-  async function onReset() {
-    const uid = select.value;
+  async function onReset(uid) {
     const email = emailById.get(uid) || "";
     const ok = await confirmDialog({
       title: "Redefinir senha?",
@@ -164,10 +120,64 @@ async function mountUsers(root) {
       h("p", { class: "dialog-note", text: "Repasse agora — não será exibida novamente. O usuário deverá trocá-la no próximo login." }),
       h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Pronto", onClick: () => dlg.close() })));
   }
+}
 
 
-  select.addEventListener("change", renderCurrent);
-  renderCurrent();
+// ---- Permissões: papéis acumuláveis por conta ----
+async function mountRoles(root, me) {
+  clear(root);
+  const users = await api.get("/admin/users");
+  const sec = h("section", { class: "panel" },
+    h("div", { class: "panel-head" }, icon("admin"), h("h2", { text: "Permissões" })),
+    h("p", { class: "help", text: "Cada conta pode ter qualquer combinação de papéis. Marque e salve a linha." }),
+    h("dl", { class: "roles-legend" }, ...ROLES.flatMap(([, n, d]) => [h("dt", { text: n }), h("dd", { text: d })])));
+  for (const u of users) {
+    const boxes = ROLES.map(([k, n]) => {
+      const cb = h("input", { type: "checkbox", value: k, "aria-label": `${n} para ${u.email}` });
+      cb.checked = u.roles.includes(k);
+      if (k === "admin" && u.id === me.id) { cb.disabled = true; cb.title = "Você não pode tirar o seu próprio admin"; }
+      return [cb, h("label", { class: "weekday-option" }, cb, h("span", { text: n }))];
+    });
+    const save = h("button", { type: "button", class: "btn btn-ghost btn-sm", text: "Salvar" });
+    save.addEventListener("click", async () => {
+      const roles = boxes.filter(([cb]) => cb.checked).map(([cb]) => cb.value);
+      if (!roles.length) { toast("Marque pelo menos um papel.", { error: true }); return; }
+      save.disabled = true;
+      try {
+        await api.put(`/admin/users/${u.id}/roles`, { roles });
+        u.roles = roles;
+        toast(`Permissões de ${u.display_name || u.email} salvas.`);
+      } catch (e) { errorToast(e); }
+      finally { save.disabled = false; }
+    });
+    sec.append(h("div", { class: "role-row" }, avatar(u, "sm"),
+      h("div", { class: "t" }, h("span", { text: u.display_name || u.email }), u.display_name ? h("small", { text: u.email }) : null),
+      h("div", { class: "role-boxes" }, ...boxes.map(([, l]) => l)), save));
+  }
+  root.append(h("div", { class: "settings-grid" }, sec));
+}
+
+// ---- Geral: limite de datas retroativas em tarefas ----
+async function mountGeneral(root, me) {
+  clear(root);
+  const cfg = await api.get("/admin/settings");
+  const days = h("input", { type: "number", min: "1", max: "366", value: String(cfg.retro_days), required: "required" });
+  const err = h("p", { class: "error-text" });
+  const form = h("form", {},
+    field("Dias para trás", days),
+    h("p", { class: "dialog-note", text: "Vale para criar ou concluir tarefas com data passada, pelo app, pela API e pela IA. As rotinas seguem com 7 dias." }),
+    err, h("button", { type: "submit", class: "btn btn-primary", text: "Salvar" }));
+  form.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    err.textContent = "";
+    try {
+      const res = await api.put("/admin/settings", { retro_days: Number(days.value) });
+      me.retro_days = res.retro_days;
+      toast(`Limite retroativo: ${res.retro_days} dias.`);
+    } catch (e) { err.textContent = e.message || "Falha ao salvar."; }
+  });
+  root.append(h("div", { class: "settings-grid" }, h("section", { class: "panel" },
+    h("div", { class: "panel-head" }, icon("calendar"), h("h2", { text: "Lançamento retroativo" })), form)));
 }
 
 
