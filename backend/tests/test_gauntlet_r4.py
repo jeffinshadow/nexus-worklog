@@ -64,6 +64,8 @@ def test_health_e_erros_do_navegador(usuario, caplog):
     from fastapi.testclient import TestClient
     from app.main import app
     assert TestClient(app).post("/api/client-errors", json={"message": "x"}).status_code == 401
+    chave = Bearer(criar_chave(usuario)["token"])
+    assert chave.post("/client-errors", {"message": "x"}).status_code == 403  # só pelo app
 
 
 def test_links_diretos_para_a_tarefa(admin, usuario, novo_usuario, monkeypatch):

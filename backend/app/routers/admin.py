@@ -81,7 +81,8 @@ def delete_user(user_id: int, data: DeleteUserIn, admin=Depends(require_admin_cs
     if "admin" in roles.of(user_id) and roles.admins_count() <= 1:
         raise HTTPException(status_code=400, detail="o sistema precisa de pelo menos um admin")
     counts = account_counts(user_id)
-    db.execute("DELETE FROM users WHERE id = %s", (user_id,))
+    if not roles.delete_account(user_id):
+        raise HTTPException(status_code=400, detail="o sistema precisa de pelo menos um admin")
     # Fica no histórico de quem excluiu (o do excluído some junto com a conta).
     audit.record({**admin, "actor": "admin"}, "user.delete", "user", user_id,
                  before={"email": target["email"], **counts})

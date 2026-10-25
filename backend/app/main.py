@@ -14,7 +14,7 @@ from .config import config
 from .routers import (admin, assign, auth, board, branding, calendar, dashboard, export, history, mcp, me,
                       notifications, projects, recurring, reports, search, summary, templates, timer, tokens, viewer,
                       worklog)
-from .deps import active_user
+from .deps import web_active
 from .security import Busy, client_error_limiter, hash_password
 
 SQL_DIR = pathlib.Path(__file__).resolve().parent.parent / "sql"
@@ -90,9 +90,9 @@ class ClientErrorIn(BaseModel):
 
 
 @app.post("/api/client-errors", status_code=204)
-def client_error(data: ClientErrorIn, user=Depends(active_user)):
+def client_error(data: ClientErrorIn, user=Depends(web_active)):
     """Erro de JavaScript do navegador vai para o log do backend (sem terceiros,
-    sem banco). Só logado, poucos por pessoa; sem CSRF: só escreve no log."""
+    sem banco). Só sessão do app (chave de API não), poucos por pessoa; sem CSRF: só escreve no log."""
     if client_error_limiter.allow(f"ce:{user['user_id']}"):
         clean = lambda t: " ".join(t.split())[:300]  # noqa: E731 — uma linha por erro no log
         logging.getLogger("uvicorn.error").warning("erro no navegador (usuário %s) em %s: %s",

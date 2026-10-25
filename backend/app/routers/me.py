@@ -152,7 +152,8 @@ def delete_me(data: DeleteMeIn, response: Response, user=Depends(web_active_csrf
         raise HTTPException(status_code=400, detail="senha incorreta")
     if "admin" in user["roles"] and roles.admins_count() <= 1:
         raise HTTPException(status_code=400, detail="você é o único admin: dê o papel de admin a outra pessoa antes")
-    db.execute("DELETE FROM users WHERE id = %s", (uid,))
+    if not roles.delete_account(uid):
+        raise HTTPException(status_code=400, detail="você é o único admin: dê o papel de admin a outra pessoa antes")
     logging.getLogger("uvicorn.error").info("conta %s excluída pela própria pessoa", uid)
     clear_session_cookie(response)
     return {"ok": True}

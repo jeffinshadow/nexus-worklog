@@ -42,3 +42,13 @@ def _mirror(user_id: int) -> None:
 
 def admins_count() -> int:
     return db.query_one("SELECT count(*)::int AS n FROM user_roles WHERE role = 'admin'")["n"]
+
+
+def delete_account(user_id: int) -> bool:
+    """Exclui a conta numa instrução só: um admin só sai se sobrar outro
+    (duas exclusões ao mesmo tempo não deixam o sistema sem admin)."""
+    return bool(db.execute(
+        """DELETE FROM users WHERE id = %(u)s
+              AND (NOT EXISTS (SELECT 1 FROM user_roles WHERE user_id = %(u)s AND role = 'admin')
+                   OR (SELECT count(*) FROM user_roles WHERE role = 'admin' AND user_id <> %(u)s) >= 1)""",
+        {"u": user_id}))
