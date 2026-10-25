@@ -159,11 +159,12 @@ def get_board(user_id: int, day: date | None = None, project: int | None = None)
     today = app_today()
     day = day or today
     mask = work_mask(user_id)
-    feitas = {r["task_id"] for r in db.query_all(
-        "SELECT task_id FROM recurring_completions WHERE user_id = %s AND completed_date = %s", (user_id, day))}
+    feitas = {r["task_id"]: r["note"] for r in db.query_all(
+        "SELECT task_id, note FROM recurring_completions WHERE user_id = %s AND completed_date = %s", (user_id, day))}
     recurring = [r for r in rotinas(user_id) if r["start_d"] <= day <= r["end_d"]]
     for r in recurring:
         r["done_today"] = r["id"] in feitas
+        r["note"] = feitas.get(r["id"])  # evidência da marcação nesse dia
     filtro_proj, params = "", [user_id]
     if project is not None:
         filtro_proj = " AND w.project_id IS NULL" if project == 0 else " AND w.project_id = %s"
@@ -172,7 +173,7 @@ def get_board(user_id: int, day: date | None = None, project: int | None = None)
     def cols(extra=""):
         return """
         SELECT w.id, w.title, w.description, w.status, w.due_date, w.created_at, w.completed_at,
-               w.priority, w.project_id, w.ticket, w.after_hours, w.assigned_by,
+               w.priority, w.project_id, w.ticket, w.after_hours, w.assigned_by, w.blocked_reason, w.blocked_at,
                p.name AS project_name, p.color AS project_color, """ + ASSIGNER_NAME + """,
                """ + TASK_COUNTS + extra + """
           FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
@@ -206,7 +207,7 @@ def _recurring_tasks_and_completions(user_id: int, since: date, until: date):
     tasks = rotinas(user_id)
     completions = db.query_all(
         """
-        SELECT task_id, completed_date
+        SELECT task_id, completed_date, note
           FROM recurring_completions
          WHERE user_id = %s AND completed_date BETWEEN %s AND %s
         """,
@@ -427,8 +428,11 @@ def get_report_range(user_id: int, start: date, end: date, project: dict | None 
     )
 
     done_by_date: dict[date, set[int]] = {}
+    notes: dict[tuple, str] = {}  # (dia, rotina) -> evidência
     for c in completions:
         done_by_date.setdefault(c["completed_date"], set()).add(c["task_id"])
+        if c.get("note"):
+            notes[(c["completed_date"], c["task_id"])] = c["note"]
     pont_by_date: dict[date, list] = {}
     for w in pontuais:
         pont_by_date.setdefault(w["done_date"], []).append(w)
@@ -456,10 +460,10 @@ def get_report_range(user_id: int, start: date, end: date, project: dict | None 
             if is_due(t, d, mask):
                 st["due"] += 1
                 st["done"] += feito
-                rec.append({"label": t["label"], "done": feito, "extra": False})
+                rec.append({"label": t["label"], "done": feito, "extra": False, "note": notes.get((d, t["id"]))})
             elif feito:
                 st["extra"] += 1
-                extras.append({"label": t["label"], "done": True, "extra": True})
+                extras.append({"label": t["label"], "done": True, "extra": True, "note": notes.get((d, t["id"]))})
         n_done = sum(1 for r in rec if r["done"])
         pont = pont_by_date.get(d, [])
         tempo = time_by_date.get(d, [])

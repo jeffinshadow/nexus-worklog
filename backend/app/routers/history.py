@@ -105,6 +105,8 @@ def _label(row) -> str:
     text = ACTION_LABELS.get(row["action"], row["action"])
     if row["action"] == "recurring.toggle" and row["after"]:
         text = ("marcou" if row["after"]["done"] else "desmarcou") + " a rotina"
+        if row["after"]["done"] and row["before"] and row["before"].get("done") and row["after"].get("note") != row["before"].get("note"):
+            text = "anotou a evidência da rotina"
         name = f"{name} em {row['after']['day']}" if name else row["after"]["day"]
     return f"{text} “{name}”" if name else text
 
@@ -209,11 +211,13 @@ def _restore_worklog(uid: int, snap: dict) -> None:
     db.execute(
         """UPDATE worklog_tasks
               SET title = %s, description = %s, status = %s, due_date = %s, completed_at = %s,
-                  project_id = %s, priority = %s, ticket = %s, after_hours = %s
+                  project_id = %s, priority = %s, ticket = %s, after_hours = %s,
+                  blocked_reason = %s, blocked_at = %s
             WHERE id = %s AND user_id = %s""",
         (snap["title"], snap["description"], snap["status"], snap["due_date"],
          snap["completed_at"], _projeto_existente(uid, snap.get("project_id")),
-         snap.get("priority") or 2, snap.get("ticket"), bool(snap.get("after_hours")), snap["id"], uid),
+         snap.get("priority") or 2, snap.get("ticket"), bool(snap.get("after_hours")),
+         snap.get("blocked_reason"), snap.get("blocked_at"), snap["id"], uid),
     )
 
 
@@ -340,9 +344,10 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
             raise HTTPException(status_code=409, detail="essa marcação já saiu da janela de edição (7 dias)")
         if before["done"]:
             db.execute(
-                """INSERT INTO recurring_completions (task_id, user_id, completed_date)
-                   VALUES (%s, %s, %s) ON CONFLICT (task_id, completed_date) DO NOTHING""",
-                (eid, uid, day))
+                """INSERT INTO recurring_completions (task_id, user_id, completed_date, note)
+                   VALUES (%s, %s, %s, %s)
+                   ON CONFLICT (task_id, completed_date) DO UPDATE SET note = EXCLUDED.note""",
+                (eid, uid, day, before.get("note")))
         else:
             db.execute(
                 "DELETE FROM recurring_completions WHERE task_id = %s AND user_id = %s AND completed_date = %s",

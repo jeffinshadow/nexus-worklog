@@ -1,0 +1,108 @@
+"""Inovação (lote 1): evidência na rotina, impedimento, passagem de turno e aviso a quem atribuiu."""
+from datetime import timedelta
+
+from app import mailer
+from app.routers import assign as assign_mod
+from conftest import Bearer, criar_chave, dia_hoje, hist, recuar_criacao, texto, uid_de
+
+
+def _rotina(u, label="Conferir backup"):
+    return u.post("/recurring", {"label": label}).json()["id"]
+
+
+def _da_rotina(u, rid, day=None):
+    q = f"?day={day}" if day else ""
+    return [r for r in u.get(f"/board{q}").json()["recurring"] if r["id"] == rid][0]
+
+
+def test_evidencia_na_rotina_e_desfazer(usuario):
+    rid = _rotina(usuario)
+    r = usuario.post(f"/recurring/{rid}/toggle", {"done": True, "note": "  backup OK,   2,1 TB "})
+    assert r.status_code == 200 and r.json()["note"] == "backup OK, 2,1 TB"
+    assert _da_rotina(usuario, rid)["note"] == "backup OK, 2,1 TB"
+    # Remarcar sem nota mantém; com nota, troca (e o histórico guarda o antes).
+    usuario.post(f"/recurring/{rid}/toggle", {"done": True})
+    assert _da_rotina(usuario, rid)["note"] == "backup OK, 2,1 TB"
+    usuario.post(f"/recurring/{rid}/toggle", {"done": True, "note": "backup OK, 2,3 TB"})
+    h = [x for x in hist(usuario, entity="recurring", entity_id=rid)][0]
+    assert "evidência" in h["summary"] and h["can_undo"]
+    assert usuario.post(f"/history/{h['id']}/undo").status_code == 200
+    assert _da_rotina(usuario, rid)["note"] == "backup OK, 2,1 TB"
+    # Desmarcar e desfazer devolve a evidência.
+    usuario.post(f"/recurring/{rid}/toggle", {"done": False})
+    h = [x for x in hist(usuario, entity="recurring", entity_id=rid)][0]
+    usuario.post(f"/history/{h['id']}/undo")
+    assert _da_rotina(usuario, rid)["note"] == "backup OK, 2,1 TB"
+    assert usuario.post(f"/recurring/{rid}/toggle", {"done": True, "note": "x" * 201}).status_code == 422
+
+
+def test_evidencia_no_relatorio_e_export(usuario):
+    rid = _rotina(usuario, "Revisar alertas")
+    recuar_criacao(rid, 3)
+    ontem = (dia_hoje(usuario) - timedelta(days=1)).isoformat()
+    usuario.post(f"/recurring/{rid}/toggle", {"done": True, "day": ontem, "note": "3 alertas, nenhum crítico"})
+    pdf = usuario.get(f"/reports/export?start={ontem}&end={ontem}")
+    assert pdf.status_code == 200 and pdf.content[:4] == b"%PDF"
+    js = usuario.get("/export/tudo.json").json()
+    rec = [r for r in js["recurring"] if r["label"] == "Revisar alertas"][0]
+    assert rec["evidence"][0]["note"] == "3 alertas, nenhum crítico"
+
+
+def test_impedimento_com_motivo(usuario):
+    tid = usuario.post("/worklog", {"title": "Trocar link", "status": "blocked", "blocked_reason": "operadora"}).json()["id"]
+    t = usuario.get(f"/worklog/{tid}").json()
+    assert t["blocked_reason"] == "operadora" and t["blocked_at"]
+    usuario.patch(f"/worklog/{tid}", {"blocked_reason": "visita técnica da operadora"})
+    assert usuario.get(f"/worklog/{tid}").json()["blocked_reason"] == "visita técnica da operadora"
+    usuario.patch(f"/worklog/{tid}", {"status": "in_progress"})
+    t = usuario.get(f"/worklog/{tid}").json()
+    assert t["blocked_reason"] is None and t["blocked_at"] is None
+    # Desfazer volta o bloqueio com o motivo.
+    h = [x for x in hist(usuario, entity="worklog", entity_id=tid) if x["action"] == "worklog.update"][0]
+    usuario.post(f"/history/{h['id']}/undo")
+    assert usuario.get(f"/worklog/{tid}").json()["blocked_reason"] == "visita técnica da operadora"
+    # Motivo fora de bloqueio é ignorado na criação.
+    t2 = usuario.post("/worklog", {"title": "x", "blocked_reason": "nada"}).json()["id"]
+    assert usuario.get(f"/worklog/{t2}").json()["blocked_reason"] is None
+
+
+def test_passagem_de_turno_app_e_mcp(usuario):
+    usuario.post("/worklog", {"title": "Firewall da filial", "status": "blocked", "blocked_reason": "aprovação da diretoria"})
+    usuario.post("/worklog", {"title": "Impressora do RH", "ticket": "4821"})
+    fim = usuario.post("/worklog", {"title": "Reset de senha"}).json()["id"]
+    usuario.patch(f"/worklog/{fim}", {"after_hours": True})
+    usuario.post(f"/worklog/{fim}/finish")
+    txt = usuario.get("/summary/handoff").json()["text"]
+    assert "Passagem de turno" in txt and "aguardando aprovação da diretoria" in txt
+    assert "Impressora do RH (chamado 4821)" in txt and "Reset de senha (plantão)" in txt
+    ia = Bearer(criar_chave(usuario)["token"])
+    assert "aguardando aprovação da diretoria" in texto(ia.tool("get_handoff"))
+    assert "(aguardando aprovação da diretoria)" in texto(ia.tool("list_tasks"))
+
+
+def test_mcp_evidencia(usuario):
+    rid = _rotina(usuario)
+    ia = Bearer(criar_chave(usuario)["token"])
+    res = ia.tool("set_recurring", recurring_id=rid, note="ok, 12 jobs")
+    assert not res["isError"] and "Evidência: ok, 12 jobs" in texto(res)
+
+
+def test_aviso_a_quem_atribuiu(admin, usuario, novo_usuario, monkeypatch):
+    caixa = []
+    monkeypatch.setattr(mailer, "configured", lambda: True)
+    monkeypatch.setattr(assign_mod, "_spawn", lambda to, mail: caixa.append((to, mail.subject)))
+    chefe = novo_usuario("chefe@example.com")
+    admin.put(f"/admin/users/{uid_de(chefe)}/roles", {"roles": ["user", "assigner"]})
+    usuario.put("/me/assignments", {"accept": True})
+    tid = chefe.post("/assign", {"user_id": uid_de(usuario), "title": "Inventário"}).json()["id"]
+    caixa.clear()
+    usuario.post(f"/worklog/{tid}/finish")
+    assert caixa == [("chefe@example.com", "Concluída: Inventário")]
+    # Reabrir e concluir de novo não manda outra vez.
+    usuario.patch(f"/worklog/{tid}", {"status": "todo"})
+    usuario.patch(f"/worklog/{tid}", {"status": "done"})
+    assert len(caixa) == 1
+    # Tarefa própria (não atribuída) não avisa ninguém.
+    t2 = usuario.post("/worklog", {"title": "Minha"}).json()["id"]
+    usuario.post(f"/worklog/{t2}/finish")
+    assert len(caixa) == 1

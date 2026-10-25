@@ -28,6 +28,7 @@ from . import assign as assign_routes
 from . import history as history_routes
 from . import projects as project_routes
 from . import search as search_routes
+from . import summary as summary_routes
 from . import recurring as recurring_routes
 from . import templates as template_routes
 from . import timer as timer_routes
@@ -43,7 +44,7 @@ INSTRUCTIONS = (
     "ver o dia (rotinas e tarefas abertas) e get_summary para a daily/retro (ontem e a "
     "semana, com tempo por projeto). Registre o que o usuário contar com "
     "create_task/update_task/complete_task, log_time e add_note; marque rotinas com "
-    "set_recurring. Para medir o tempo enquanto o usuário trabalha, use start_timer/stop_timer; "
+    "set_recurring (com note = evidência); get_handoff dá a passagem de turno. Para medir o tempo enquanto o usuário trabalha, use start_timer/stop_timer; "
     "procedimentos repetidos têm modelos (list_templates, create_from_template). "
     "Datas no formato AAAA-MM-DD, no fuso " + config.APP_TZ + ". Rotinas "
     "aceitam até 7 dias para trás; marcar uma rotina fora da agenda dela conta como extra. "
@@ -80,6 +81,8 @@ def _task_line(t: dict, today: date) -> str:
         parts.append(f"(atribuída por {t['assigned_by_name']})")
     if t.get("external_ref"):
         parts.append(f"(ref {t['external_ref']})")
+    if t.get("status") == "blocked" and t.get("blocked_reason"):
+        parts.append(f"(aguardando {t['blocked_reason']})")
     if t.get("ticket"):
         parts.append(f"(chamado {t['ticket']})")
     if t.get("after_hours"):
@@ -140,7 +143,7 @@ def _task_args(uid: int, args: dict) -> dict:
 def _find_task(uid: int, task_id: int) -> dict:
     t = db.query_one(
         """SELECT w.id, w.title, w.description, w.status, w.due_date, w.completed_at, w.priority,
-                  w.ticket, w.after_hours, w.external_ref, p.name AS project_name,
+                  w.ticket, w.after_hours, w.external_ref, w.blocked_reason, p.name AS project_name,
                   """ + services.ASSIGNER_NAME + ", " + services.TASK_COUNTS + """
              FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
             WHERE w.id = %s AND w.user_id = %s""", (task_id, uid))
@@ -356,12 +359,13 @@ def t_create_from_template(ctx, args):
 
 
 def t_set_recurring(ctx, args):
-    data = _call(ToggleIn, done=args.get("done", True), day=args.get("day"))
+    data = _call(ToggleIn, done=args.get("done", True), day=args.get("day"), note=args.get("note"))
     rid = args.get("recurring_id")
     if rid is None:
         raise ToolError("informe recurring_id (veja list_recurring)")
     res = _call(recurring_routes.toggle, int(rid), data, user=ctx)
-    return f"Rotina R{rid} {'marcada' if res['done'] else 'desmarcada'} em {res['day'].isoformat()}."
+    nota = f" Evidência: {res['note']}." if res.get("note") else ""
+    return f"Rotina R{rid} {'marcada' if res['done'] else 'desmarcada'} em {res['day'].isoformat()}.{nota}"
 
 
 # Atribuição (só para quem tem o papel Atribuidor de tarefas).
@@ -406,6 +410,10 @@ def t_list_assigned(ctx, args):
         atraso = " (ATRASADA)" if r["late"] else ""
         linhas.append(f"#{r['id']} {r['title']} → {r['to_name']} [{st}]{fim}{atraso}")
     return "\n".join(linhas) or "(você ainda não atribuiu tarefas)"
+
+
+def t_get_handoff(ctx, args):
+    return summary_routes.handoff_text(ctx["user_id"])
 
 
 def t_get_history(ctx, args):
@@ -471,7 +479,9 @@ TOOLS = {
                         "priority": {"type": "string", "enum": ["alta", "normal", "baixa"]},
                         "ticket": {"type": ["string", "null"], "maxLength": 40},
                         "after_hours": {"type": "boolean"},
-                        "completed_at": {**WHEN, "description": "Corrige a data de conclusão (tarefa concluída). " + WHEN["description"]}}}),
+                        "completed_at": {**WHEN, "description": "Corrige a data de conclusão (tarefa concluída). " + WHEN["description"]},
+                        "blocked_reason": {"type": ["string", "null"], "maxLength": 120,
+                                           "description": "Com status blocked: o que se está aguardando (fornecedor, cliente, aprovação...)"}}}),
     "get_summary": (t_get_summary, False, "Resumo para a daily/retro: o último dia útil e a semana até hoje (rotinas, tarefas concluídas, tempo por projeto, o que ficou para trás).",
                     {"type": "object", "properties": {}}),
     "get_task": (t_get_task, False, "Tarefa completa: checklist, anotações e tempo apontado.",
@@ -504,7 +514,8 @@ TOOLS = {
                       {"type": "object", "required": ["recurring_id"], "properties": {
                           "recurring_id": {"type": "integer", "description": "id da rotina (R<n> em get_today/list_recurring), não de tarefa"},
                           "done": {"type": "boolean", "default": True},
-                          "day": DATE}}),
+                          "day": DATE,
+                          "note": {"type": "string", "maxLength": 200, "description": "Evidência curta da verificação (ex.: backup OK, 2,1 TB)"}}}),
     "start_timer": (t_start_timer, True, "Inicia o cronômetro numa tarefa aberta (se outro estiver rodando, ele para e aponta o tempo).",
                     {"type": "object", "required": ["task_id"], "properties": {"task_id": {"type": "integer"}}}),
     "stop_timer": (t_stop_timer, True, "Para o cronômetro e aponta o tempo na tarefa.",
@@ -514,6 +525,10 @@ TOOLS = {
     "create_from_template": (t_create_from_template, True, "Cria uma tarefa a partir de um modelo (com o checklist dele).",
                              {"type": "object", "required": ["template"], "properties": {
                                  "template": {"type": "string", "description": "Nome do modelo ou M<id> (veja list_templates)"}}}),
+    "get_handoff": (t_get_handoff, False,
+                    "Passagem de turno/plantão: em aberto, bloqueadas com o motivo e há quantos dias, concluídas hoje e "
+                    "rotinas pendentes, em texto pronto pra colar no chat da equipe.",
+                    {"type": "object", "properties": {}}),
     "list_assignable": (t_list_assignable, False, "Atribuidor: pessoas que aceitam receber tarefas atribuídas.",
                         {"type": "object", "properties": {}}),
     "assign_task": (t_assign_task, True,

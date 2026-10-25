@@ -15,7 +15,7 @@ from ..config import config
 from ..deps import require_assigner, require_assigner_csrf, require_people_list
 from ..labels import PRIO_PT
 from ..schemas import AssignIn
-from ..services import app_today
+from ..services import app_today, app_tz
 
 router = APIRouter(prefix="/api/assign", tags=["assign"])
 log = logging.getLogger("uvicorn.error")
@@ -97,11 +97,36 @@ def assign(data: AssignIn, user=Depends(require_assigner_csrf)):
     return {"id": tid, "to": to_name, "emailed": emailed}
 
 
+def notify_assigner(task_id: int) -> None:
+    """Tarefa atribuída acabou de ser concluída: avisa quem atribuiu, uma vez só
+    (assigner_notified_at). Sem SMTP, só marca. Quem atribuiu também vê na lista."""
+    row = db.query_one(
+        """UPDATE worklog_tasks SET assigner_notified_at = now()
+            WHERE id = %s AND status = 'done' AND assigned_by IS NOT NULL AND assigner_notified_at IS NULL
+        RETURNING title, user_id, assigned_by, completed_at""",
+        (task_id,),
+    )
+    if not row or not mailer.configured():
+        return
+    to = db.query_one("SELECT email FROM users WHERE id = %s", (row["assigned_by"],))
+    if not to:
+        return
+    from ..notify import Mail
+    quem = people.profile(row["user_id"])["name"]
+    m = Mail(f"Concluída: {row['title']}", f"{quem} concluiu a tarefa que você atribuiu",
+             "Ela aparece como concluída em Atribuir tarefas, no Nexus.")
+    m.reason = "Você recebe este e-mail porque atribuiu esta tarefa pelo Nexus."
+    m.settings_tab = "conta"
+    m.link = "/index.html#/atribuir"
+    m.blocks = [("Tarefa", [row["title"], f"Concluída em {row['completed_at'].astimezone(app_tz()).strftime('%d/%m/%Y %H:%M')}"])]
+    _spawn(to["email"], m)
+
+
 @router.get("/sent")
 def sent(user=Depends(require_assigner)):
     """Tarefas que esta pessoa atribuiu, com o status atual (as mais recentes)."""
     rows = db.query_all(
-        """SELECT w.id, w.title, w.status, w.due_date, w.assigned_at, w.completed_at, w.priority,
+        """SELECT w.id, w.title, w.status, w.due_date, w.assigned_at, w.completed_at, w.priority, w.blocked_reason,
                   w.user_id AS to_id, u.email AS to_email
              FROM worklog_tasks w JOIN users u ON u.id = w.user_id
             WHERE w.assigned_by = %s

@@ -96,11 +96,14 @@ def export(kind: str, user=Depends(active_user)):
         recurring = db.query_all(
             """SELECT id, label, active, freq, weekdays, month_day, interval_days, created_at, deactivated_at
                  FROM recurring_tasks WHERE user_id = %s ORDER BY position, id""", (uid,))
-        done = {}
-        for c in db.query_all("SELECT task_id, completed_date FROM recurring_completions WHERE user_id = %s ORDER BY completed_date", (uid,)):
+        done, evid = {}, {}
+        for c in db.query_all("SELECT task_id, completed_date, note FROM recurring_completions WHERE user_id = %s ORDER BY completed_date", (uid,)):
             done.setdefault(c["task_id"], []).append(c["completed_date"])
+            if c["note"]:
+                evid.setdefault(c["task_id"], []).append({"date": c["completed_date"], "note": c["note"]})
         for r in recurring:
             r["completed_dates"] = done.get(r["id"], [])
+            r["evidence"] = evid.get(r["id"], [])  # o que foi anotado ao marcar
         payload = {
             "exported_at": datetime.now(app_tz()),
             "user": db.query_one("SELECT email, work_days, created_at FROM users WHERE id = %s", (uid,)),

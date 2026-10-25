@@ -117,23 +117,29 @@ def toggle(task_id: int, data: ToggleIn, user=Depends(active_user_csrf)):
     today = check_board_day(data.day) or app_today()
     if not recurring_vigente(task_id, user["user_id"], today):
         raise HTTPException(status_code=400, detail="a rotina não existia nesse dia")
-    was = db.query_one(
-        "SELECT 1 FROM recurring_completions WHERE task_id = %s AND user_id = %s AND completed_date = %s",
+    prev = db.query_one(
+        "SELECT note FROM recurring_completions WHERE task_id = %s AND user_id = %s AND completed_date = %s",
         (task_id, user["user_id"], today),
-    ) is not None
+    )
+    was, old_note = prev is not None, (prev or {}).get("note")
+    note = " ".join((data.note or "").split()) or None
     if data.done:
+        # Remarcar sem nota mantém a evidência que já havia; com nota, troca.
         db.execute(
-            """INSERT INTO recurring_completions (task_id, user_id, completed_date)
-               VALUES (%s, %s, %s)
-               ON CONFLICT (task_id, completed_date) DO NOTHING""",
-            (task_id, user["user_id"], today),
+            """INSERT INTO recurring_completions (task_id, user_id, completed_date, note)
+               VALUES (%s, %s, %s, %s)
+               ON CONFLICT (task_id, completed_date) DO UPDATE
+                  SET note = COALESCE(EXCLUDED.note, recurring_completions.note)""",
+            (task_id, user["user_id"], today, note),
         )
     else:
         db.execute(
             "DELETE FROM recurring_completions WHERE task_id = %s AND user_id = %s AND completed_date = %s",
             (task_id, user["user_id"], today),
         )
-    if was != data.done:
+    new_note = (note or old_note) if data.done else None
+    if was != data.done or (data.done and new_note != old_note):
         audit.record(user, "recurring.toggle", "recurring", task_id,
-                     before={"day": today, "done": was}, after={"day": today, "done": data.done})
-    return {"ok": True, "done": data.done, "day": today}
+                     before={"day": today, "done": was, "note": old_note},
+                     after={"day": today, "done": data.done, "note": new_note})
+    return {"ok": True, "done": data.done, "day": today, "note": new_note}

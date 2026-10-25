@@ -107,6 +107,8 @@ class ToggleIn(BaseModel):
     done: bool
     # Dia da marcação; ausente = hoje. Vale até RETRO_DAYS dias para trás.
     day: Optional[date] = None
+    # Evidência curta da verificação ("backup OK, 2,1 TB"); só com done=true.
+    note: Optional[str] = Field(default=None, max_length=200)
 
 
 class TokenIn(BaseModel):
@@ -178,6 +180,7 @@ class WorklogIn(BaseModel):
     created_at: Optional[str] = When        # lançamento retroativo (padrão: agora)
     completed_at: Optional[str] = When      # com status done (padrão: agora)
     external_ref: Optional[str] = Field(default=None, min_length=1, max_length=120)  # idempotência
+    blocked_reason: Optional[str] = Field(default=None, max_length=120)  # o que se aguarda (status blocked)
 
     @model_validator(mode="after")
     def _norm(self):
@@ -202,6 +205,7 @@ class WorklogUpdate(BaseModel):
     ticket: Optional[str] = Ticket     # null ou vazio = tirar o chamado
     after_hours: Optional[bool] = None
     completed_at: Optional[str] = When  # corrigir a data de uma tarefa concluída
+    blocked_reason: Optional[str] = Field(default=None, max_length=120)  # o que se aguarda (status blocked)
 
     @model_validator(mode="after")
     def _norm(self):
