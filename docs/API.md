@@ -228,7 +228,7 @@ JSON-RPC 2.0 sobre HTTP, **uma mensagem por requisição** (sem lote, sem SSE),
 
 Leitura: `get_today`, `get_summary`, `get_handoff` (passagem de turno: abertas, bloqueadas, concluídas nas últimas 12 h, vencimentos no aviso), `list_renewals` (vencimentos), `find_similar` (já resolvi isso antes?), `list_tasks` (com `from`/`to`/`by` por período), `get_task`, `search`,
 `list_projects`, `list_recurring`, `list_templates`, `get_history`.
-Escrita (chave `write`): `create_task` (com `created_at`, `completed_at`, `external_ref`), `update_task` (com `completed_at`, `blocked_reason`, `follow_up_on`, `resolution`), `complete_task` (com `completed_at` e `resolution`),
+Escrita (chave `write`): `create_task` (com `created_at`, `completed_at`, `external_ref`, `blocked_reason`, `follow_up_on`, `resolution`), `update_task` (com `completed_at`, `blocked_reason`, `follow_up_on`, `resolution`), `complete_task` (com `completed_at` e `resolution`),
 `add_note`, `add_checklist_item`, `set_checklist_item`, `log_time`, `start_timer`, `stop_timer`,
 `create_from_template`, `set_recurring` (`recurring_id`, `note` = evidência), `undo` (só ações da própria chave). A IA não exclui o que o usuário fez.
 Só com o papel de atribuidor: `list_assignable`, `list_assigned` e `assign_task` (`to` = U<id>, e-mail ou nome).

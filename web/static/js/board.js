@@ -136,7 +136,8 @@ export function openWorklog(item, onDone, opts = {}) {
   const followUp = document.getElementById("wl-followup");
   const followOrig = item && item.follow_up_on ? item.follow_up_on : "";
   followUp.value = followOrig;
-  followUp.min = now.slice(0, 10); // dia para cobrar: hoje ou depois
+  // Dia para cobrar: hoje ou depois — mas uma cobrança já atrasada pode ficar como está.
+  followUp.min = followOrig && followOrig < now.slice(0, 10) ? followOrig : now.slice(0, 10);
   const resolution = document.getElementById("wl-resolution");
   const resolOrig = item && item.resolution ? item.resolution : "";
   resolution.value = resolOrig;
@@ -144,6 +145,7 @@ export function openWorklog(item, onDone, opts = {}) {
     dates.classList.toggle("hidden", statusSel.value !== "done");
     document.getElementById("wl-resolution-wrap").classList.toggle("hidden", statusSel.value !== "done");
     blockedWrap.classList.toggle("hidden", statusSel.value !== "blocked");
+    followUp.disabled = statusSel.value !== "blocked"; // escondido e desabilitado: o navegador não valida
   };
   statusSel.onchange = syncDates;
   syncDates();

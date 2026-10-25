@@ -30,10 +30,10 @@ function row(r, onChange, compact = false) {
       btn.disabled = true; // clique duplo criaria duas
       const title = `Renovar: ${r.label}`.slice(0, 200);
       try {
-        const abertas = await api.get("/worklog?status=open&limit=500");
-        if (abertas.some((t) => t.title === title)) { toast("Já existe a tarefa de renovação em Tarefas."); return; }
-        await api.post("/worklog", { title, due_date: r.expires_on, project_id: r.project_id || null });
-        toast("Tarefa de renovação criada em Tarefas.");
+        // external_ref: o servidor devolve a que já existe para este vencimento (sem duplicar).
+        const res = await api.post("/worklog", { title, due_date: r.expires_on, project_id: r.project_id || null,
+          external_ref: `renewal:${r.id}:${r.expires_on}` });
+        toast(res.existing ? "Essa tarefa de renovação já existe em Tarefas." : "Tarefa de renovação criada em Tarefas.");
         btn.textContent = "Tarefa criada";
       } catch (e) { btn.disabled = false; errorToast(e); }
     } }, "Virar tarefa"),

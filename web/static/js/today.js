@@ -27,7 +27,7 @@ export async function mount(root, ctx, opts = {}) {
   const today = b.today;
   ctx.setEyebrow(longDate(today) + (b.work_day ? "" : " · dia não útil"));
   ctx.setActions(
-    h("button", { type: "button", class: "btn btn-ghost", title: "Texto pronto com o que fica aberto, bloqueado e feito hoje", onClick: showHandoff }, icon("copy"), "Passagem de turno"),
+    h("button", { type: "button", class: "btn btn-ghost", title: "Texto pronto com o que fica aberto, bloqueado e o que foi concluído nas últimas 12 h", onClick: showHandoff }, icon("copy"), "Passagem de turno"),
     h("button", { type: "button", class: "btn btn-primary", onClick: () => openWorklog(null, refresh) }, icon("add"), "Tarefa")
   );
 
@@ -102,7 +102,7 @@ export async function mount(root, ctx, opts = {}) {
   fillProjectSelect(proj, Number(sessionStorage.getItem(LAST_PROJECT)) || null)
     .then(() => proj.addEventListener("change", () => sessionStorage.setItem(LAST_PROJECT, proj.value)))
     .catch(() => {});
-  const quick = h("input", { type: "text", placeholder: "Registrar e Enter · @projeto #chamado !plantão ^sex !bloq motivo — 15min", maxlength: "200", "aria-label": "Registrar tarefa rápida" });
+  const quick = h("input", { type: "text", placeholder: "Registrar e Enter · @projeto #chamado !alta ^amanhã !bloq motivo — 15min", maxlength: "200", "aria-label": "Registrar tarefa rápida" });
   // "Já resolvido antes" também aqui (por onde entra a maioria das tarefas):
   // o título sem os marcadores, depois de uma pausa na digitação.
   const hint = h("div", { class: "similar hidden", "aria-live": "polite" });
@@ -126,6 +126,7 @@ export async function mount(root, ctx, opts = {}) {
   quick.addEventListener("keydown", async (ev) => {
     if (ev.key !== "Enter" || !quick.value.trim()) return;
     ev.preventDefault();
+    clearTimeout(hintTimer); hintSeq++; // a sugestão pendente não serve mais
     const project_id = proj.value && proj.value !== "__new" ? Number(proj.value) : null;
     quick.disabled = true;
     try {
@@ -206,7 +207,7 @@ async function showHandoff() {
   const area = h("textarea", { rows: "14", readonly: "readonly", class: "handoff-text", "aria-label": "Texto da passagem de turno" });
   area.value = text;
   const dlg = modal(h("h2", { text: "Passagem de turno" }),
-    h("p", { class: "dialog-note", text: "O que fica aberto, o que está bloqueado e por quê, o que saiu hoje. Cole no chat da equipe." }),
+    h("p", { class: "dialog-note", text: "O que fica aberto, o que está bloqueado e por quê, o que foi concluído nas últimas 12 h. Cole no chat da equipe." }),
     area,
     h("div", { class: "dialog-actions" },
       h("button", { type: "button", class: "btn btn-text", text: "Fechar", onClick: () => dlg.close() }),

@@ -31,12 +31,12 @@ para leitura, o quadro, a retrospectiva e os relatórios de cada pessoa).
   dias).
 - **Passagem de turno e impedimentos** — tarefa bloqueada guarda o que se
   aguarda e há quantos dias; um clique monta o texto da passagem de turno
-  (aberto, bloqueado e por quê, feito hoje, plantão). Rotina marcada aceita uma
+  (aberto, bloqueado e por quê, concluído nas últimas 12 h, plantão). Rotina marcada aceita uma
   **evidência** curta ("backup OK, 2,1 TB"), que vai para o PDF — e pode ser
   exigida por rotina. Impedimento parado há dias vira lembrete com "Cobrei", ou
   com um dia combinado para cobrar (no Hoje, no calendário e no e-mail da manhã).
   CSV de plantão (horas do mês) e CSV de rotinas e evidências (auditoria). Registro rápido
-  entende `@projeto #chamado !plantão ^sex !bloq motivo — 45min`.
+  entende `@projeto #chamado !plantão !alta ^amanhã !bloq motivo — 45min`; o detalhe da tarefa copia um resumo pronto para o chamado ou o cliente.
 - **Vencimentos e base de conhecimento** — certificados, licenças, domínios e
   garantias avisam com antecedência (Hoje, e-mail da manhã, calendário); ao
   concluir, "como resolveu?" vira texto que a busca encontra — e a tarefa nova

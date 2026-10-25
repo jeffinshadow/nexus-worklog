@@ -25,8 +25,15 @@ def stop_running(user: dict, only_task: int | None = None):
         return None
     minutes = max(1, round((datetime.now(timezone.utc) - t["started_at"]).total_seconds() / 60))
     day = t["started_at"].astimezone(app_tz()).date()
-    entry = log_time(t["task_id"], TimeIn(minutes=min(minutes, 1440), day=day, note="cronômetro"), user=user)
+    # Cronômetro esquecido por dias não pode travar concluir/parar/trocar: aponta só
+    # o que ainda cabe nas 24h daquele dia (dia cheio = descarta, sem erro).
+    used = db.query_one("SELECT COALESCE(sum(minutes), 0)::int AS m FROM time_entries WHERE user_id = %s AND day = %s",
+                        (user["user_id"], day))["m"]
+    minutes = min(minutes, 1440 - used)
     db.execute("DELETE FROM task_timers WHERE user_id = %s", (user["user_id"],))
+    if minutes < 1:
+        return None
+    entry = log_time(t["task_id"], TimeIn(minutes=minutes, day=day, note="cronômetro"), user=user)
     return {**entry, "task_id": t["task_id"]}
 
 
@@ -59,10 +66,10 @@ def start(data: TimerIn, user=Depends(active_user_csrf)):
 
 @router.post("/stop")
 def stop(user=Depends(active_user_csrf)):
-    stopped = stop_running(user)
-    if not stopped:
+    if not running_timer(user["user_id"]):
         raise HTTPException(status_code=409, detail="nenhum cronômetro rodando")
-    return {"timer": None, "stopped": stopped}
+    # stopped = None: o dia daquele cronômetro já tinha 24h apontadas (nada a somar).
+    return {"timer": None, "stopped": stop_running(user)}
 
 
 @router.delete("")
