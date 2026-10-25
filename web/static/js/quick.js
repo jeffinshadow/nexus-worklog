@@ -20,7 +20,8 @@ function dueFrom(token) {
   let y = Number(today.slice(0, 4));
   let iso = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
   if (iso < today) iso = `${y + 1}${iso.slice(4)}`;
-  return iso;
+  const ok = new Date(iso + "T12:00:00Z").toISOString().slice(0, 10) === iso; // 31/02 não existe: fica no título
+  return ok ? iso : null;
 }
 
 // Marcadores no fim do registro, em qualquer ordem: "@Projeto", "#chamado",
@@ -31,8 +32,8 @@ async function parseMarks(text) {
   let title = text, ticket = null, afterHours = false, project = null, due = null, blocked = null;
   for (;;) {
     let m;
-    const bi = title.toLowerCase().lastIndexOf(" !bloq");
-    if (bi > 0 && blocked === null) { blocked = title.slice(bi + 6).trim(); title = title.slice(0, bi); continue; }
+    const bm = blocked === null && title.match(/\s!bloq(?:\s+(.*))?$/i); // "!bloq" sozinho ou "!bloq motivo" (não "!bloqueio")
+    if (bm) { blocked = (bm[1] || "").trim().slice(0, 120); title = title.slice(0, bm.index); continue; }
     if ((m = title.match(/\s+\^(seg|ter|qua|qui|sex|s[aá]b|dom|\d{1,2}\/\d{1,2})$/i)) && !due && (due = dueFrom(m[1]))) { title = title.slice(0, m.index); continue; }
     if ((m = title.match(/\s+!plant[aã]o$/i))) { afterHours = true; title = title.slice(0, m.index); continue; }
     if ((m = title.match(/\s+#([\w./-]{1,40})$/))) { ticket = m[1]; title = title.slice(0, m.index); continue; }
@@ -70,7 +71,7 @@ export async function quickRegister(text, project_id = null) {
   });
   const extras = [marks.project && marks.project.name, marks.ticket && "#" + marks.ticket, marks.afterHours && "plantão",
     marks.due && "prazo " + marks.due.split("-").reverse().slice(0, 2).join("/"),
-    marks.blocked !== null && (marks.blocked ? "bloqueada: " + marks.blocked : "bloqueada")].filter(Boolean);
+    !comTempo && marks.blocked !== null && (marks.blocked ? "bloqueada: " + marks.blocked : "bloqueada")].filter(Boolean);
   const com = extras.length ? ` (${extras.join(", ")})` : "";
   if (!comTempo) return `Tarefa registrada${com}.`;
   try {

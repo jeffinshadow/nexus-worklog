@@ -145,6 +145,12 @@ def build_ics(uid: int, include_recurring: bool, cal_name: str) -> str:
               "Tarefa bloqueada com dia combinado para cobrar.",
               [f"URL:{config.APP_URL}/index.html#/tarefas?id={t['id']}"])
 
+    # Vencimentos: no dia de vencer e no dia de começar a avisar.
+    for r in db.query_all("SELECT id, label, expires_on, warn_days FROM renewals WHERE user_id = %s", (uid,)):
+        event(f"renewal-{r['id']}", r["expires_on"], f"Vence: {r['label']}", "Vencimento cadastrado no Nexus.")
+        event(f"renewal-warn-{r['id']}", r["expires_on"] - timedelta(days=r["warn_days"]),
+              f"Renovar: {r['label']} (vence {r['expires_on']:%d/%m})", f"Aviso de {r['warn_days']} dias antes.")
+
     if include_recurring:
         for r in db.query_all(
             """SELECT id, label, freq, weekdays, month_day, interval_days,

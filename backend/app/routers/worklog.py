@@ -199,7 +199,7 @@ def detail(task_id: int, user=Depends(active_user)):
         """
         SELECT w.id, w.title, w.description, w.status, w.due_date, w.created_at, w.completed_at,
                w.priority, w.project_id, w.ticket, w.after_hours, w.external_ref, w.assigned_by, w.assigned_at,
-               w.blocked_reason, w.blocked_at, w.follow_up_on,
+               w.blocked_reason, w.blocked_at, w.follow_up_on, w.resolution,
                p.name AS project_name, p.color AS project_color, """ + ASSIGNER_NAME + """
           FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
          WHERE w.id = %s AND w.user_id = %s
@@ -255,6 +255,9 @@ def update(task_id: int, data: WorklogUpdate, user=Depends(active_user_csrf)):
     if data.after_hours is not None:
         fields.append("after_hours = %s")
         values.append(data.after_hours)
+    if "resolution" in sent:
+        fields.append("resolution = %s")
+        values.append((data.resolution or "").strip() or None)
     final_status = data.status or before["status"]
     if data.completed_at and final_status != "done":
         raise HTTPException(status_code=400, detail="data de conclusão só em tarefa concluída")
@@ -307,9 +310,13 @@ def finish(task_id: int, data: Optional[FinishIn] = None, user=Depends(active_us
     when = before["completed_at"] if (before["completed_at"] and not raw) else \
         resolve_completed(raw, before["created_at"], datetime.now(timezone.utc))
     stop_timer_of(user, task_id)
+    resolution = " ".join(((data.resolution if data else None) or "").split()) or None
     db.execute(
-        "UPDATE worklog_tasks SET status = 'done', completed_at = %s WHERE id = %s AND user_id = %s",
-        (when, task_id, user["user_id"]),
+        """UPDATE worklog_tasks SET status = 'done', completed_at = %s,
+                  blocked_reason = NULL, blocked_at = NULL, follow_up_on = NULL,
+                  resolution = COALESCE(%s, resolution)
+            WHERE id = %s AND user_id = %s""",
+        (when, resolution, task_id, user["user_id"]),
     )
     audit.record(user, "worklog.finish", "worklog", task_id, before=before,
                  after=audit.worklog_snapshot(task_id, user["user_id"]))

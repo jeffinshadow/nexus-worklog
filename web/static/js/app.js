@@ -141,6 +141,7 @@ function showHelp() {
   const dlg = modal(h("h2", { text: "Ajuda" }),
     h("p", { class: "help", text: "Tarefas, rotinas e tempo ficam em Hoje e Tarefas; a Retrospectiva e os Relatórios mostram o período. Tudo que muda fica no Histórico, com desfazer." }),
     has("user") ? h("p", { class: "help", text: "Atalhos: n nova tarefa, / buscar, h t r l trocam de tela, s para o cronômetro, ? mostra todos." }) : null,
+    has("user") ? h("p", { class: "help", text: "Registro rápido (no Hoje), marcadores no fim: @Projeto #chamado !plantão ^sex ou ^25/10 (prazo) e !bloq motivo (por último); “— 45min” já conclui com o tempo." }) : null,
     h("p", { class: "help" }, "Guia completo: ", h("a", { href: "https://github.com/jeffinshadow/shadow-nexus-worklog#readme", target: "_blank", rel: "noopener noreferrer", text: "README do Nexus" }), "."),
     me.support_contact ? h("p", { class: "help" }, "Suporte: ", h("strong", { text: me.support_contact })) : h("p", { class: "dialog-note", text: "Dúvidas ou problemas: fale com quem administra o Nexus na sua equipe." }),
     h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Fechar", onClick: () => dlg.close() })));

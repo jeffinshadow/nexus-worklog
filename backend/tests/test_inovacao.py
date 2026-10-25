@@ -196,3 +196,61 @@ def test_cobrar_em_validacao_calendario_e_manha(usuario):
     assert "Cobrar: Dell — Peça do servidor R740" in ics
     m = notify.build_morning(uid_de(usuario), hoje, True)
     assert any(h == "Cobrar hoje" and any("Peça do servidor R740 (aguardando Dell)" in i for i in itens) for h, itens in m.blocks)
+
+
+def test_concluir_limpa_impedimento(usuario):
+    tid = usuario.post("/worklog", {"title": "Firmware", "status": "blocked", "blocked_reason": "janela",
+                                    "follow_up_on": "2030-01-01"}).json()["id"]
+    usuario.post(f"/worklog/{tid}/finish")
+    t = usuario.get(f"/worklog/{tid}").json()
+    assert t["status"] == "done" and t["blocked_reason"] is None and t["blocked_at"] is None and t["follow_up_on"] is None
+
+
+def test_como_resolveu_na_busca_e_desfazer(usuario):
+    tid = usuario.post("/worklog", {"title": "Outlook não abre"}).json()["id"]
+    usuario.post(f"/worklog/{tid}/finish", {"resolution": "Perfil corrompido: recriado com o scanpst"})
+    assert usuario.get(f"/worklog/{tid}").json()["resolution"].startswith("Perfil corrompido")
+    hits = usuario.get("/search?q=scanpst").json()
+    tarefa = [t for t in hits["tasks"] if t["id"] == tid][0]
+    assert any(h["kind"] == "como resolveu" for h in tarefa["hits"])
+    usuario.patch(f"/worklog/{tid}", {"resolution": None})
+    assert usuario.get(f"/worklog/{tid}").json()["resolution"] is None
+    h = [x for x in hist(usuario, entity="worklog", entity_id=tid) if x["action"] == "worklog.update"][0]
+    usuario.post(f"/history/{h['id']}/undo")
+    assert usuario.get(f"/worklog/{tid}").json()["resolution"].startswith("Perfil corrompido")
+    ia = Bearer(criar_chave(usuario)["token"])
+    t2 = usuario.post("/worklog", {"title": "VPN caindo"}).json()["id"]
+    assert not ia.tool("complete_task", task_id=t2, resolution="MTU 1400 no túnel")["isError"]
+    assert usuario.get(f"/worklog/{t2}").json()["resolution"] == "MTU 1400 no túnel"
+
+
+def test_vencimentos(usuario, novo_usuario):
+    from app import notify
+    hoje = dia_hoje(usuario)
+    r = usuario.post("/renewals", {"label": "Certificado *.empresa.com", "expires_on": (hoje + timedelta(days=10)).isoformat()})
+    assert r.status_code == 201
+    rid = r.json()["id"]
+    longe = usuario.post("/renewals", {"label": "Domínio", "expires_on": (hoje + timedelta(days=200)).isoformat()}).json()["id"]
+    lista = usuario.get("/renewals").json()
+    assert [x["id"] for x in lista] == [rid, longe] and lista[0]["warning"] and not lista[1]["warning"]
+    # Isolado por pessoa.
+    assert novo_usuario("outro@example.com").get("/renewals").json() == []
+    # E-mail da manhã e calendário.
+    m = notify.build_morning(uid_de(usuario), hoje, True)
+    assert any(h == "Vencimentos" and any("Certificado *.empresa.com — vence em 10 d" in i for i in itens) for h, itens in m.blocks)
+    ics = usuario.c.get(usuario.post("/calendar", {}).json()["path"]).text.replace("\r\n ", "")
+    assert "Vence: Certificado *.empresa.com" in ics and "Renovar: Certificado" in ics
+    # Renovar (nova data) e desfazer.
+    nova = (hoje + timedelta(days=375)).isoformat()
+    usuario.patch(f"/renewals/{rid}", {"expires_on": nova})
+    h = [x for x in hist(usuario, entity="renewal", entity_id=rid)][0]
+    assert h["summary"].startswith("renovou") and h["can_undo"]
+    usuario.post(f"/history/{h['id']}/undo")
+    assert usuario.get("/renewals").json()[0]["days_left"] == 10
+    # Excluir e desfazer; MCP lista.
+    usuario.delete(f"/renewals/{rid}")
+    h = [x for x in hist(usuario, entity="renewal", entity_id=rid)][0]
+    usuario.post(f"/history/{h['id']}/undo")
+    assert len(usuario.get("/renewals").json()) == 2
+    assert "[AVISO]" in texto(Bearer(criar_chave(usuario)["token"]).tool("list_renewals"))
+    assert usuario.post("/renewals", {"label": "", "expires_on": hoje.isoformat()}).status_code == 422

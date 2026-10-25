@@ -137,8 +137,12 @@ export function openWorklog(item, onDone, opts = {}) {
   const followOrig = item && item.follow_up_on ? item.follow_up_on : "";
   followUp.value = followOrig;
   followUp.min = now.slice(0, 10); // dia para cobrar: hoje ou depois
+  const resolution = document.getElementById("wl-resolution");
+  const resolOrig = item && item.resolution ? item.resolution : "";
+  resolution.value = resolOrig;
   const syncDates = () => {
     dates.classList.toggle("hidden", statusSel.value !== "done");
+    document.getElementById("wl-resolution-wrap").classList.toggle("hidden", statusSel.value !== "done");
     blockedWrap.classList.toggle("hidden", statusSel.value !== "blocked");
   };
   statusSel.onchange = syncDates;
@@ -204,6 +208,7 @@ export function openWorklog(item, onDone, opts = {}) {
     if (!payload.title) return;
     if (payload.status === "done" && doneAt.value && doneAt.value !== doneOrig) payload.completed_at = doneAt.value;
     if (!item && createdAt.value) payload.created_at = createdAt.value;
+    if (payload.status === "done" && resolution.value.trim() !== resolOrig) payload.resolution = resolution.value.trim() || null;
     if (payload.status === "blocked") {
       payload.blocked_reason = blocked.value.trim() || null;
       if (followUp.value !== followOrig) payload.follow_up_on = followUp.value || null; // data vencida não volta a ser validada

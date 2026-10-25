@@ -56,6 +56,7 @@ export async function openTask(taskId, onChange) {
       h("div", { class: "task-title" },
         h("h2", { text: t.title }),
         t.description ? h("p", { text: t.description }) : null,
+        t.resolution ? h("p", { class: "resolution" }, h("strong", { text: "Como resolveu: " }), t.resolution) : null,
         h("div", { class: "card-meta" }, ...chips)),
       h("div", { class: "task-tools" },
         timerButton(t, after),

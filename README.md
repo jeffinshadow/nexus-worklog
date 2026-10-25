@@ -37,6 +37,9 @@ para leitura, o quadro, a retrospectiva e os relatórios de cada pessoa).
   com um dia combinado para cobrar (no Hoje, no calendário e no e-mail da manhã).
   CSV de plantão (horas do mês) e CSV de rotinas e evidências (auditoria). Registro rápido
   entende `@projeto #chamado !plantão ^sex !bloq motivo — 45min`.
+- **Vencimentos e base de conhecimento** — certificados, licenças, domínios e
+  garantias avisam com antecedência (Hoje, e-mail da manhã, calendário); ao
+  concluir, "como resolveu?" vira texto que a busca encontra da próxima vez.
 - **Atribuição** — quem aceita (Configurações › Conta) recebe tarefas de um
   atribuidor pelo app ou pela IA, com aviso por e-mail; a tarefa passa a ser
   dela, e quem atribuiu acompanha o status e recebe um e-mail quando ela é concluída.

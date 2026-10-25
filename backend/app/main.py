@@ -12,8 +12,8 @@ from pydantic import BaseModel, EmailStr, Field, TypeAdapter, ValidationError
 from . import db, notify, roles
 from .config import config
 from .routers import (admin, assign, auth, board, branding, calendar, dashboard, export, history, mcp, me,
-                      notifications, projects, recurring, reports, search, summary, templates, timer, tokens, viewer,
-                      worklog)
+                      notifications, projects, recurring, renewals, reports, search, summary, templates, timer, tokens,
+                      viewer, worklog)
 from .deps import web_active
 from .security import Busy, client_error_limiter, hash_password
 
@@ -99,6 +99,6 @@ def client_error(data: ClientErrorIn, user=Depends(web_active)):
                                                    user["user_id"], clean(data.where), clean(data.message))
 
 for module in (auth, recurring, worklog, board, dashboard, reports, admin, history, tokens, mcp, branding, projects,
-               summary, search, export, calendar, notifications, me, timer, templates, viewer, assign):
+               summary, search, export, calendar, notifications, me, timer, templates, viewer, assign, renewals):
     app.include_router(module.router)
 app.include_router(worklog.items)  # /api/notes, /api/checklist, /api/time

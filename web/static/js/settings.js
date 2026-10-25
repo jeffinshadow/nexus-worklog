@@ -4,10 +4,12 @@ import { h, icon, clear, dateTime, field } from "./dom.js";
 import { codeBox, confirmDialog, errorToast, modal, toast, warnBox, busy } from "./ui.js";
 import { fillProjectSelect, projectsPanel } from "./projects.js";
 import { avatar, squarePhoto } from "./profile.js";
+import { renewalsPanel } from "./renewals.js";
 
 const TABS = [
   ["projetos", "Projetos"],
   ["modelos", "Modelos"],
+  ["vencimentos", "Vencimentos"],
   ["avisos", "Avisos"],
   ["calendario", "Calendário"],
   ["ia", "IA e API"],
@@ -64,6 +66,7 @@ export async function mount(root, ctx) {
   async function fill(body) {
     if (active === "projetos") body.append(await projectsPanel(() => render()));
     else if (active === "modelos") body.append(await templatesPanel(() => render()));
+    else if (active === "vencimentos") body.append(await renewalsPanel(() => render()));
     else if (active === "avisos") body.append(await notices());
     else if (active === "calendario") body.append(await calendarFeed(() => render()));
     else if (active === "ia") body.append(...aiHelp(), await tokens(() => render()));

@@ -13,8 +13,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Nexus">
   <link rel="preload" as="font" type="font/woff2" href="/fonts/GoogleSansFlex.woff2" crossorigin>
-  <link rel="stylesheet" href="/css/tokens.css?v=51">
-  <link rel="stylesheet" href="/css/app.css?v=51">
+  <link rel="stylesheet" href="/css/tokens.css?v=52">
+  <link rel="stylesheet" href="/css/app.css?v=52">
 </head>
 <body>
   <!-- Ícones (traço 1.75, 24px), sem script/style inline (CSP). -->
@@ -247,6 +247,10 @@
           <input id="wl-followup" type="date">
         </div>
       </div>
+      <div class="field hidden" id="wl-resolution-wrap">
+        <label for="wl-resolution">Como resolveu? (opcional — entra na busca)</label>
+        <textarea id="wl-resolution" rows="2" maxlength="1000" placeholder="ex.: perfil corrompido, recriado com o scanpst"></textarea>
+      </div>
       <div class="field-row hidden" id="wl-dates">
         <div class="field" id="wl-created-wrap">
           <label for="wl-created-at">Começou em (opcional)</label>
@@ -273,7 +277,7 @@
   <div class="toasts" id="toasts" aria-live="polite"></div>
   <div class="timer-chip timer-mobile hidden" id="timer-mobile" role="status" aria-live="polite"></div>
 
-  <script type="module" src="/js/app.js?v=51"></script>
-  <script type="module" src="/js/pwa.js?v=51"></script>
+  <script type="module" src="/js/app.js?v=52"></script>
+  <script type="module" src="/js/pwa.js?v=52"></script>
 </body>
 </html>

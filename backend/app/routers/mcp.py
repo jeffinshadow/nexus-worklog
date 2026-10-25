@@ -27,6 +27,7 @@ from ..schemas import (AssignIn, ChecklistIn, ChecklistUpdate, FinishIn, NoteIn,
 from . import assign as assign_routes
 from . import history as history_routes
 from . import projects as project_routes
+from . import renewals as renewal_routes
 from . import search as search_routes
 from . import summary as summary_routes
 from . import recurring as recurring_routes
@@ -231,7 +232,7 @@ def t_update_task(ctx, args):
 
 def t_complete_task(ctx, args):
     task_id = int(args["task_id"])
-    data = _call(FinishIn, completed_at=args.get("completed_at"))
+    data = _call(FinishIn, completed_at=args.get("completed_at"), resolution=args.get("resolution"))
     _call(worklog_routes.finish, task_id, data, user=ctx)
     return "Concluída: " + _task_line(_find_task(ctx["user_id"], task_id), services.app_today())
 
@@ -415,6 +416,15 @@ def t_list_assigned(ctx, args):
     return "\n".join(linhas) or "(você ainda não atribuiu tarefas)"
 
 
+def t_list_renewals(ctx, args):
+    rows = renewal_routes.list_for(ctx["user_id"])
+    out = []
+    for r in rows:
+        quando = "VENCIDO" if r["days_left"] < 0 else ("vence hoje" if r["days_left"] == 0 else f"vence em {r['days_left']} d")
+        out.append(f"V{r['id']} {r['label']} — {r['expires_on'].isoformat()} ({quando})" + (" [AVISO]" if r["warning"] else ""))
+    return "\n".join(out) or "(nenhum vencimento cadastrado)"
+
+
 def t_get_handoff(ctx, args):
     return summary_routes.handoff_text(ctx["user_id"])
 
@@ -514,7 +524,9 @@ TOOLS = {
     "complete_task": (t_complete_task, True, "Marca uma tarefa como concluída (agora, ou na data informada).",
                       {"type": "object", "required": ["task_id"], "properties": {
                           "task_id": {"type": "integer"},
-                          "completed_at": {**WHEN, "description": "Quando foi concluída (padrão: agora). " + WHEN["description"]}}}),
+                          "completed_at": {**WHEN, "description": "Quando foi concluída (padrão: agora). " + WHEN["description"]},
+                          "resolution": {"type": "string", "maxLength": 1000,
+                                         "description": "Como foi resolvido (vira base de conhecimento: entra na busca)"}}}),
     "list_recurring": (t_list_recurring, False, "Rotinas de um dia (padrão: hoje; até 7 dias atrás) e se foram feitas.",
                        {"type": "object", "properties": {"day": DATE}}),
     "set_recurring": (t_set_recurring, True, "Marca (done=true) ou desmarca uma rotina num dia (padrão hoje; até 7 dias atrás).",
@@ -532,6 +544,9 @@ TOOLS = {
     "create_from_template": (t_create_from_template, True, "Cria uma tarefa a partir de um modelo (com o checklist dele).",
                              {"type": "object", "required": ["template"], "properties": {
                                  "template": {"type": "string", "description": "Nome do modelo ou M<id> (veja list_templates)"}}}),
+    "list_renewals": (t_list_renewals, False,
+                      "Vencimentos cadastrados (certificados, licenças, domínios, garantias), do mais próximo ao mais longe; [AVISO] = dentro da antecedência.",
+                      {"type": "object", "properties": {}}),
     "get_handoff": (t_get_handoff, False,
                     "Passagem de turno/plantão: em aberto, bloqueadas com o motivo e há quantos dias, concluídas hoje e "
                     "rotinas pendentes, em texto pronto pra colar no chat da equipe.",

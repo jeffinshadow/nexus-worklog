@@ -23,6 +23,7 @@ UNDOABLE = {
     "recurring.create", "recurring.update", "recurring.deactivate", "recurring.toggle", "recurring.replace",
     "note.create", "note.delete", "checklist.create", "checklist.update", "checklist.delete",
     "time.create", "time.delete", "project.create", "project.update", "project.delete",
+    "renewal.create", "renewal.update", "renewal.renew", "renewal.delete",
 }
 
 ACTION_LABELS = {
@@ -35,6 +36,10 @@ ACTION_LABELS = {
     "assignments.consent": "alterou o aceite de tarefas atribuídas",
     "user.roles": "alterou as permissões",
     "user.delete": "excluiu a conta",
+    "renewal.create": "cadastrou o vencimento",
+    "renewal.update": "editou o vencimento",
+    "renewal.renew": "renovou",
+    "renewal.delete": "excluiu o vencimento",
     "app.settings": "alterou as configurações gerais",
     "recurring.create": "criou a rotina",
     "recurring.update": "editou a rotina",
@@ -212,12 +217,12 @@ def _restore_worklog(uid: int, snap: dict) -> None:
         """UPDATE worklog_tasks
               SET title = %s, description = %s, status = %s, due_date = %s, completed_at = %s,
                   project_id = %s, priority = %s, ticket = %s, after_hours = %s,
-                  blocked_reason = %s, blocked_at = %s, follow_up_on = %s
+                  blocked_reason = %s, blocked_at = %s, follow_up_on = %s, resolution = %s
             WHERE id = %s AND user_id = %s""",
         (snap["title"], snap["description"], snap["status"], snap["due_date"],
          snap["completed_at"], _projeto_existente(uid, snap.get("project_id")),
          snap.get("priority") or 2, snap.get("ticket"), bool(snap.get("after_hours")),
-         snap.get("blocked_reason"), snap.get("blocked_at"), snap.get("follow_up_on"), snap["id"], uid),
+         snap.get("blocked_reason"), snap.get("blocked_at"), snap.get("follow_up_on"), snap.get("resolution"), snap["id"], uid),
     )
 
 
@@ -300,16 +305,16 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
             """INSERT INTO worklog_tasks (id, user_id, title, description, status, due_date,
                                           created_at, completed_at, project_id, priority, ticket, after_hours,
                                           external_ref, assigned_by, assigned_at,
-                                          blocked_reason, blocked_at, assigner_notified_at, follow_up_on)
+                                          blocked_reason, blocked_at, assigner_notified_at, follow_up_on, resolution)
                OVERRIDING SYSTEM VALUE
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (eid, uid, before["title"], before["description"], before["status"],
              before["due_date"], before["created_at"], before["completed_at"],
              _projeto_existente(uid, before.get("project_id")), before.get("priority") or 2,
              before.get("ticket"), bool(before.get("after_hours")), _ref_livre(uid, before.get("external_ref")),
              _usuario_existente(before.get("assigned_by")), before.get("assigned_at"),
              before.get("blocked_reason"), before.get("blocked_at"), before.get("assigner_notified_at"),
-             before.get("follow_up_on")),
+             before.get("follow_up_on"), before.get("resolution")),
         )
         for n in kids.get("notes", []):
             _put_note(uid, eid, n)
@@ -378,6 +383,22 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
         _need_task(uid, before["task_id"])
         check_day_total(uid, before["day"], before["minutes"], status=409)
         _put_time(uid, before["task_id"], {**before, "id": eid})
+    elif a == "renewal.create":
+        if not db.execute("DELETE FROM renewals WHERE id = %s AND user_id = %s", (eid, uid)):
+            raise _gone()
+    elif a in ("renewal.update", "renewal.renew"):
+        if not db.execute(
+                """UPDATE renewals SET label = %s, expires_on = %s, warn_days = %s, project_id = %s, note = %s
+                    WHERE id = %s AND user_id = %s""",
+                (before["label"], before["expires_on"], before["warn_days"],
+                 _projeto_existente(uid, before.get("project_id")), before.get("note"), eid, uid)):
+            raise _gone()
+    elif a == "renewal.delete":
+        db.execute(
+            """INSERT INTO renewals (id, user_id, label, expires_on, warn_days, project_id, note)
+               OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+            (eid, uid, before["label"], before["expires_on"], before["warn_days"],
+             _projeto_existente(uid, before.get("project_id")), before.get("note")))
     elif a == "project.create":
         # Com tarefas no projeto, arquiva em vez de apagar (não tira de ninguém).
         if db.query_one("SELECT 1 FROM worklog_tasks WHERE project_id = %s LIMIT 1", (eid,)):

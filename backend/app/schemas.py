@@ -218,6 +218,7 @@ class WorklogUpdate(BaseModel):
     ticket: Optional[str] = Ticket     # null ou vazio = tirar o chamado
     after_hours: Optional[bool] = None
     completed_at: Optional[str] = When  # corrigir a data de uma tarefa concluída
+    resolution: Optional[str] = Field(default=None, max_length=1000)  # como foi resolvido (null apaga)
     blocked_reason: Optional[str] = Field(default=None, max_length=120)  # o que se aguarda (status blocked)
     follow_up_on: Optional[date] = None  # bloqueada: dia combinado para cobrar
 
@@ -234,6 +235,24 @@ class WorklogUpdate(BaseModel):
 
 class FinishIn(BaseModel):
     completed_at: Optional[str] = When  # ausente = agora
+    resolution: Optional[str] = Field(default=None, max_length=1000)  # como foi resolvido (opcional)
+
+
+class RenewalIn(BaseModel):
+    """Algo que vence: certificado, licença, domínio, garantia, contrato."""
+    label: str = Field(min_length=1, max_length=120)
+    expires_on: date
+    warn_days: int = Field(default=30, ge=1, le=365)  # avisar com quantos dias de antecedência
+    project_id: Optional[int] = None
+    note: Optional[str] = Field(default=None, max_length=200)
+
+
+class RenewalUpdate(BaseModel):
+    label: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    expires_on: Optional[date] = None
+    warn_days: Optional[int] = Field(default=None, ge=1, le=365)
+    project_id: Optional[int] = None
+    note: Optional[str] = Field(default=None, max_length=200)
 
 
 class TemplateIn(BaseModel):

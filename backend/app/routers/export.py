@@ -44,7 +44,7 @@ def _download(content: bytes, media: str, name: str) -> Response:
 def _tasks(uid: int) -> list[dict]:
     return db.query_all(
         """SELECT w.id, w.title, w.description, w.status, w.priority, w.due_date, w.created_at, w.completed_at,
-                  w.ticket, w.after_hours, w.blocked_reason, w.blocked_at, p.name AS project,
+                  w.ticket, w.after_hours, w.blocked_reason, w.blocked_at, w.resolution, p.name AS project,
                   """ + TASK_COUNTS + """
              FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
             WHERE w.user_id = %s ORDER BY w.created_at""", (uid,))
@@ -133,10 +133,10 @@ def export(kind: str, user=Depends(active_user)):
                  t["project"] or "", _local(t["created_at"]), t["due_date"] or "", _local(t["completed_at"]),
                  f"{t['check_done']}/{t['check_total']}" if t["check_total"] else "", t["minutes"],
                  str(round(t["minutes"] / 60, 2)).replace(".", ","), t["notes_count"],
-                 t["ticket"] or "", "sim" if t["after_hours"] else "", t["blocked_reason"] or ""] for t in _tasks(uid)]
+                 t["ticket"] or "", "sim" if t["after_hours"] else "", t["blocked_reason"] or "", t["resolution"] or ""] for t in _tasks(uid)]
         return _download(_csv(rows, ["id", "titulo", "descricao", "status", "prioridade", "projeto", "criada_em", "prazo",
                                      "concluida_em", "checklist", "minutos", "horas", "anotacoes", "chamado", "plantao",
-                                     "aguardando"]),
+                                     "aguardando", "como_resolveu"]),
                          "text/csv; charset=utf-8", f"nexus-tarefas-{stamp}.csv")
     if kind == "apontamentos.csv":
         return time_csv(uid, f"nexus-apontamentos-{stamp}.csv")

@@ -639,3 +639,5 @@ button.nav-link { border: 0; background: transparent; width: 100%; font-family: 
 .chip.blocked-reason { color: var(--warning); border-color: rgba(253,214,99,.35); background: rgba(253,214,99,.05); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .check-row .label small.evidence { color: var(--success); display: inline-block; text-decoration: none; } /* inline-block: a rotina feita fica riscada, a evidência não */
 .handoff-text { width: 100%; font-family: var(--font-label); font-size: .82rem; line-height: 1.55; resize: vertical; }
+.task-title .resolution { margin-top: 6px; color: var(--on-surface-variant); font-size: .9rem; white-space: pre-wrap; }
+.today-grid > .t-venc { grid-column: 1 / -1; }

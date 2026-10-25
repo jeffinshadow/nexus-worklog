@@ -126,7 +126,9 @@ function notes(open, today) {
     const d = idle(t);
     const nota = (text) => out.push({ key: `hoje:tarefa:${t.id}`, text, task: t });
     if (t.status === "blocked" && t.follow_up_on && t.follow_up_on <= today)
-      nota(`Hoje é dia de cobrar ${t.blocked_reason ? t.blocked_reason + " sobre " : ""}${q(t.title)}.`);
+      nota(t.follow_up_on < today
+        ? `A cobrança de ${q(t.title)}${t.blocked_reason ? ` (${t.blocked_reason})` : ""} está atrasada desde ${shortDate(t.follow_up_on)}.`
+        : `Hoje é dia de cobrar ${t.blocked_reason ? t.blocked_reason + " sobre " : ""}${q(t.title)}.`);
     else if (t.status === "blocked" && !t.follow_up_on && d >= 3) nota(t.blocked_reason
       ? `${q(t.title)} aguarda ${t.blocked_reason} há ${d} dias sem movimento. Vale cobrar.`
       : `${q(t.title)} está bloqueada e sem movimento há ${d} dias. Vale confirmar se ainda depende de alguém.`);

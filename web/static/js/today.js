@@ -10,6 +10,7 @@ import { summaryPanel } from "./summary.js";
 import { quickRegister } from "./quick.js";
 import { todayCard } from "./assistant.js";
 import { timerButton } from "./timer.js";
+import { todayRenewals } from "./renewals.js";
 
 const LAST_PROJECT = "nexus.quick.project";
 
@@ -151,7 +152,8 @@ export async function mount(root, ctx, opts = {}) {
     onProfile: meChanged,
   });
   ctx.setAssist(assist);
-  root.append(h("div", { class: "today-grid" }, recPanel, openPanel, donePanel, sum ? summaryPanel(sum, refresh) : null));
+  const venc = await todayRenewals(refresh); // só aparece com algo no aviso
+  root.append(h("div", { class: "today-grid" }, venc, recPanel, openPanel, donePanel, sum ? summaryPanel(sum, refresh) : null));
 }
 
 
