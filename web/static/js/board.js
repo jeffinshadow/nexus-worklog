@@ -1,7 +1,7 @@
 // Quadro de tarefas: rotinas (com seletor de dia), tarefas abertas e
 // concluídas. Também exporta os diálogos de criar/editar, usados pela tela Hoje.
 import { api } from "./api.js";
-import { h, icon, clear, addDays, shortDate, localDay } from "./dom.js";
+import { h, icon, clear, addDays, shortDate, localDay, localDateTime } from "./dom.js";
 import { confirmDialog, errorToast, toast, undoLatest } from "./ui.js";
 import { fillProjectSelect, listProjects, projectChip } from "./projects.js";
 import { openTask, duration, parseDuration } from "./task.js";
@@ -13,7 +13,7 @@ const WEEKDAYS_SHORT = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 const DONE_PAGE = 10;
 const BOARD_DONE_LIMIT = 200; // o servidor manda só as 200 concluídas mais recentes
 
-const STATUS_LABELS = {
+export const STATUS_LABELS = {
   todo: "a fazer",
   in_progress: "em andamento",
   blocked: "bloqueada",
@@ -45,6 +45,7 @@ export function taskChips(t, today) {
   const pc = projectChip(t);
   if (pc) chips.push(pc);
   if (t.ticket) chips.push(ticketChip(t.ticket));
+  if (t.assigned_by_name) chips.push(h("span", { class: "chip assigned", title: "Atribuída por " + t.assigned_by_name, text: "de " + t.assigned_by_name }));
   if (t.after_hours) chips.push(h("span", { class: "chip after-hours", title: "Plantão / fora do horário", text: "plantão" }));
   if (t.check_total) chips.push(h("span", { class: "tag" + (t.check_done === t.check_total ? " ok" : ""), title: "Checklist" }, icon("list"), `${t.check_done}/${t.check_total}`));
   if (t.minutes) chips.push(h("span", { class: "tag", title: "Tempo apontado" }, icon("clock"), duration(t.minutes)));
@@ -101,6 +102,23 @@ export function openWorklog(item, onDone, opts = {}) {
   const projReady = fillProjectSelect(projSel, item ? item.project_id : null).catch(() => {});
   const ticket = document.getElementById("wl-ticket");
   const after = document.getElementById("wl-after");
+  // Datas retroativas: "Concluída em" aparece com o status Concluída (vazio =
+  // agora); "Começou em" só ao criar. Limites: nada no futuro, até retro_days.
+  const statusSel = document.getElementById("wl-status");
+  const dates = document.getElementById("wl-dates");
+  const createdAt = document.getElementById("wl-created-at");
+  const doneAt = document.getElementById("wl-done-at");
+  const me = session.me || {};
+  const now = localDateTime(Date.now());
+  const minDay = addDays(now.slice(0, 10), -(me.retro_days || 60)) + "T00:00";
+  for (const el of [createdAt, doneAt]) { el.max = now; el.min = minDay; }
+  createdAt.value = "";
+  const doneOrig = item && item.completed_at ? localDateTime(item.completed_at) : "";
+  doneAt.value = doneOrig;
+  document.getElementById("wl-created-wrap").classList.toggle("hidden", !!item);
+  const syncDates = () => dates.classList.toggle("hidden", statusSel.value !== "done");
+  statusSel.onchange = syncDates;
+  syncDates();
   ticket.value = item && item.ticket ? item.ticket : "";
   after.checked = !!(item && item.after_hours);
 
@@ -160,6 +178,8 @@ export function openWorklog(item, onDone, opts = {}) {
       after_hours: after.checked,
     };
     if (!payload.title) return;
+    if (payload.status === "done" && doneAt.value && doneAt.value !== doneOrig) payload.completed_at = doneAt.value;
+    if (!item && createdAt.value) payload.created_at = createdAt.value;
     const minutes = !item && timeInput.value.trim() ? parseDuration(timeInput.value) : null;
     if (minutes === null && !item && timeInput.value.trim()) { toast("Tempo inválido. Ex.: 45, 1h30, 2:15.", { error: true }); timeInput.focus(); return; }
     try {

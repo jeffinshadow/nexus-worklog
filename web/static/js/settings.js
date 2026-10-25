@@ -14,6 +14,7 @@ const TABS = [
   ["conta", "Conta"],
 ];
 const OLD_TABS = { dias: "conta", chaves: "ia" }; // links antigos
+const ROLE_SHORT = { admin: "admin", assigner: "atribuidor", viewer: "visualizador" };
 
 // Dias úteis como máscara de bits, domingo = bit 0 (igual ao backend).
 const DAYS = [
@@ -21,14 +22,17 @@ const DAYS = [
 ];
 
 export async function mount(root, ctx) {
-  let active = (location.hash.split("?")[1] || "").replace("aba=", "") || "projetos";
+  // Conta sem registro próprio (só Admin/Visualizador/Atribuidor): só IA/API e Conta.
+  const isUser = (ctx.me.roles || []).includes("user");
+  const tabs = isUser ? TABS : TABS.filter(([k]) => k === "ia" || k === "conta");
+  let active = (location.hash.split("?")[1] || "").replace("aba=", "") || tabs[0][0];
   active = OLD_TABS[active] || active;
-  if (!TABS.some(([k]) => k === active)) active = "projetos";
+  if (!tabs.some(([k]) => k === active)) active = tabs[0][0];
 
   clear(root);
   const seg = h("div", { class: "seg", role: "tablist" });
   const body = h("div", { class: "settings-grid" });
-  for (const [key, label] of TABS) {
+  for (const [key, label] of tabs) {
     seg.append(h("button", {
       type: "button", class: "chip-btn", role: "tab", "aria-selected": key === active ? "true" : "false", text: label,
       onClick: () => {
@@ -47,7 +51,8 @@ export async function mount(root, ctx) {
     else if (active === "avisos") body.append(await notices());
     else if (active === "calendario") body.append(await calendarFeed(() => render()));
     else if (active === "ia") body.append(...aiHelp(), await tokens(() => render()));
-    else body.append(profilePanel(ctx.me, render), assistantPanel(ctx.me), ticketsPanel(ctx.me), workDays(ctx.me), shortcutsPanel(), account(ctx.me));
+    else if (isUser) body.append(profilePanel(ctx.me, render), assignmentsPanel(ctx.me), assistantPanel(ctx.me), ticketsPanel(ctx.me), workDays(ctx.me), shortcutsPanel(), account(ctx.me));
+    else body.append(profilePanel(ctx.me, render), account(ctx.me));
   }
   await render();
 }
@@ -516,6 +521,36 @@ function aiHelp() {
   ];
 }
 
+// ------------------------------------------------------- tarefas atribuídas --
+
+// Consentimento: sem ele, ninguém consegue mandar tarefas para esta pessoa.
+function assignmentsPanel(me) {
+  const cb = h("input", { type: "checkbox" });
+  cb.checked = !!me.accepts_assignments_at;
+  const since = h("p", { class: "dialog-note" });
+  const sync = () => {
+    since.textContent = me.accepts_assignments_at
+      ? `Aceito desde ${dateTime(me.accepts_assignments_at)}. Cada tarefa recebida chega por e-mail e aparece em Tarefas com “de” e o nome de quem mandou.`
+      : "Desligado: ninguém pode atribuir tarefas a você.";
+  };
+  sync();
+  cb.addEventListener("change", async () => {
+    cb.disabled = true;
+    try {
+      const res = await api.put("/me/assignments", { accept: cb.checked });
+      meChanged(me, res);
+      sync();
+      toast(cb.checked ? "Pronto: você aceita tarefas atribuídas." : "Você não recebe mais tarefas atribuídas. As já recebidas continuam com você.");
+    } catch (e) { cb.checked = !cb.checked; errorToast(e); }
+    finally { cb.disabled = false; }
+  });
+  return h("section", { class: "panel" },
+    h("div", { class: "panel-head" }, icon("send"), h("h2", { text: "Tarefas atribuídas" })),
+    h("p", { class: "help", text: "Quem tem a função de atribuidor de tarefas pode mandar tarefas para você, mas só se você permitir aqui. A tarefa recebida é sua: você edita, conclui ou exclui." }),
+    h("label", { class: "weekday-option" }, cb, h("span", { text: "Permitir que me atribuam tarefas" })),
+    since);
+}
+
 // ------------------------------------------------------------------- conta --
 
 function account(me) {
@@ -539,6 +574,6 @@ function account(me) {
   });
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Conta" })),
-    h("p", { class: "help mono", text: `${me.email}${me.role === "admin" ? " · admin" : ""}` }),
+    h("p", { class: "help mono", text: [me.email, ...(me.roles || []).filter((r) => r !== "user").map((r) => ROLE_SHORT[r])].join(" · ") }),
     form);
 }

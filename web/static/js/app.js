@@ -8,6 +8,8 @@ import * as reports from "./reports.js";
 import * as history from "./history.js";
 import * as settings from "./settings.js";
 import * as admin from "./admin.js";
+import * as equipe from "./equipe.js";
+import * as atribuir from "./atribuir.js";
 import * as search from "./search.js";
 import { loadBranding } from "./branding.js";
 import { avatar } from "./profile.js";
@@ -20,17 +22,25 @@ import { modal } from "./ui.js";
 
 let me = null;
 
+// need: papel exigido (user = tem o próprio registro). O backend confere de novo.
 const VIEWS = {
-  hoje: { title: "Hoje", mount: (el, ctx) => today.mount(el, ctx) },
-  tarefas: { title: "Tarefas", mount: (el, ctx) => board.mount(el, ctx) },
-  dashboard: { title: "Retrospectiva", eyebrow: "rotinas · fluxo · tempo · backlog", mount: (el, ctx) => dashboard.mount(el, { me: ctx.me, setAssist: ctx.setAssist }) },
-  relatorios: { title: "Relatórios", eyebrow: "PDF · exportar dados", mount: (el, ctx) => reports.mount(el, { me: ctx.me }) },
+  hoje: { title: "Hoje", need: "user", mount: (el, ctx) => today.mount(el, ctx) },
+  tarefas: { title: "Tarefas", need: "user", mount: (el, ctx) => board.mount(el, ctx) },
+  dashboard: { title: "Retrospectiva", need: "user", eyebrow: "rotinas · fluxo · tempo · backlog", mount: (el, ctx) => dashboard.mount(el, { me: ctx.me, setAssist: ctx.setAssist }) },
+  relatorios: { title: "Relatórios", need: "user", eyebrow: "PDF · exportar dados", mount: (el, ctx) => reports.mount(el, { me: ctx.me }) },
   historico: { title: "Histórico", eyebrow: "o que mudou, por quem", mount: (el) => history.mount(el) },
   config: { title: "Configurações", mount: (el, ctx) => settings.mount(el, ctx) },
-  admin: { title: "Admin", mount: (el) => admin.mount(el), adminOnly: true },
+  atribuir: { title: "Atribuir tarefas", need: "assigner", eyebrow: "para quem aceitou receber", mount: (el, ctx) => atribuir.mount(el, ctx) },
+  equipe: { title: "Equipe", need: "viewer", eyebrow: "registros e relatórios de cada pessoa", mount: (el) => equipe.mount(el) },
+  admin: { title: "Admin", need: "admin", eyebrow: "contas · permissões · configurações", mount: (el, ctx) => admin.mount(el, ctx) },
   mais: { title: "Mais", mount: (el) => mountMore(el) },
-  busca: { title: "Busca", eyebrow: "tarefas · anotações · checklist · projetos", mount: (el, ctx) => search.mount(el, ctx) },
+  busca: { title: "Busca", need: "user", eyebrow: "tarefas · anotações · checklist · projetos", mount: (el, ctx) => search.mount(el, ctx) },
 };
+
+const has = (role) => !!me && (me.roles || []).includes(role);
+const allowed = (name) => VIEWS[name] && (!VIEWS[name].need || has(VIEWS[name].need));
+// Primeira tela: Hoje para quem tem registro; senão, a primeira função da conta.
+const home = () => ["hoje", "atribuir", "equipe", "admin", "historico"].find(allowed);
 
 function setActions(...nodes) {
   const box = document.getElementById("page-actions");
@@ -39,8 +49,8 @@ function setActions(...nodes) {
 }
 
 async function route() {
-  let name = (location.hash.replace(/^#\/?/, "") || "hoje").split("?")[0];
-  if (!VIEWS[name] || (VIEWS[name].adminOnly && me.role !== "admin")) name = "hoje";
+  let name = (location.hash.replace(/^#\/?/, "") || home()).split("?")[0];
+  if (!allowed(name)) name = home();
   const view = VIEWS[name];
 
   for (const key of Object.keys(VIEWS)) {
@@ -97,9 +107,11 @@ function mountMore(el) {
   const items = [
     ["dashboard", "dashboard", "Retrospectiva"],
     ["historico", "history", "Histórico"],
+    ["atribuir", "send", "Atribuir tarefas"],
+    ["equipe", "team", "Equipe"],
+    ["admin", "admin", "Admin"],
     ["config", "settings", "Configurações"],
-  ];
-  if (me.role === "admin") items.push(["admin", "admin", "Admin"]);
+  ].filter(([v]) => allowed(v));
   el.append(
     h("a", { href: "#/config?aba=conta", class: "more-me" }, avatar(me, "md"),
       h("span", { class: "who-text" }, h("span", { class: "who-name", text: me.name }), h("span", { class: "who-email", text: me.email }))),
@@ -154,11 +166,14 @@ async function boot() {
   session.me = me;
   renderWho();
   configureAssistant(me);
-  initTimer(route);
-  startIdle(me, route);
+  if (has("user")) {
+    initTimer(route);
+    startIdle(me, route);
+  }
   // Perfil ou assistente mudou (Configurações, convite do assistente): atualiza o menu e o lembrete.
-  window.addEventListener("nexus:me", () => { renderWho(); configureAssistant(me); startIdle(me, route); });
-  if (me.role === "admin") document.getElementById("nav-admin").classList.remove("hidden");
+  window.addEventListener("nexus:me", () => { renderWho(); configureAssistant(me); if (has("user")) startIdle(me, route); });
+  // Menu: cada item aparece só para quem tem o papel (data-need).
+  for (const el of document.querySelectorAll("[data-need]")) el.classList.toggle("hidden", !has(el.dataset.need));
   document.getElementById("btn-logout").addEventListener("click", logout);
   // Busca na barra lateral; "/" foca a busca de qualquer tela.
   const sideQ = document.getElementById("side-search-q");
@@ -190,7 +205,7 @@ async function boot() {
   document.addEventListener("keydown", (ev) => {
     if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
     const sc = SHORTCUTS[ev.key.length === 1 ? ev.key.toLowerCase() : ""] || SHORTCUTS[ev.key];
-    if (!sc) return;
+    if (!sc || !has("user")) return;  // atalhos são do registro próprio
     const tag = (document.activeElement && document.activeElement.tagName) || "";
     if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag) || document.activeElement?.isContentEditable || document.querySelector("dialog[open]")) return;
     ev.preventDefault();
