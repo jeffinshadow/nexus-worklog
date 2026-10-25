@@ -136,15 +136,16 @@ def create(data: WorklogIn, response: Response, user=Depends(active_user_csrf)):
             """
             INSERT INTO worklog_tasks (user_id, title, description, status, due_date, created_at, completed_at,
                                        project_id, priority, ticket, after_hours, external_ref,
-                                       blocked_reason, blocked_at, follow_up_on)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                       blocked_reason, blocked_at, follow_up_on, resolution)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
             (uid, data.title, data.description, data.status, data.due_date, created_at, completed_at,
              data.project_id, data.priority, data.ticket, data.after_hours, data.external_ref,
              _reason(data.blocked_reason) if data.status == "blocked" else None,
              now if data.status == "blocked" else None,
-             data.follow_up_on if data.status == "blocked" else None),
+             data.follow_up_on if data.status == "blocked" else None,
+             ((data.resolution or "").strip() or None) if data.status == "done" else None),
         )
     except UniqueViolation:  # duas chamadas iguais ao mesmo tempo: a segunda devolve a primeira
         response.status_code = 200
@@ -310,7 +311,7 @@ def finish(task_id: int, data: Optional[FinishIn] = None, user=Depends(active_us
     when = before["completed_at"] if (before["completed_at"] and not raw) else \
         resolve_completed(raw, before["created_at"], datetime.now(timezone.utc))
     stop_timer_of(user, task_id)
-    resolution = " ".join(((data.resolution if data else None) or "").split()) or None
+    resolution = ((data.resolution if data else None) or "").strip() or None  # mantém as quebras de linha (passos)
     db.execute(
         """UPDATE worklog_tasks SET status = 'done', completed_at = %s,
                   blocked_reason = NULL, blocked_at = NULL, follow_up_on = NULL,

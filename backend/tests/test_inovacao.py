@@ -254,3 +254,29 @@ def test_vencimentos(usuario, novo_usuario):
     assert len(usuario.get("/renewals").json()) == 2
     assert "[AVISO]" in texto(Bearer(criar_chave(usuario)["token"]).tool("list_renewals"))
     assert usuario.post("/renewals", {"label": "", "expires_on": hoje.isoformat()}).status_code == 422
+
+
+def test_resolucao_na_criacao_e_quebras_de_linha(usuario):
+    tid = usuario.post("/worklog", {"title": "Impressora", "status": "done", "resolution": "Driver trocado"}).json()["id"]
+    assert usuario.get(f"/worklog/{tid}").json()["resolution"] == "Driver trocado"
+    t2 = usuario.post("/worklog", {"title": "VPN"}).json()["id"]
+    usuario.post(f"/worklog/{t2}/finish", {"resolution": "1. MTU 1400\n2. reiniciado o túnel"})
+    assert usuario.get(f"/worklog/{t2}").json()["resolution"] == "1. MTU 1400\n2. reiniciado o túnel"
+    # Aberta não guarda resolução na criação.
+    t3 = usuario.post("/worklog", {"title": "Aberta", "resolution": "x"}).json()["id"]
+    assert usuario.get(f"/worklog/{t3}").json()["resolution"] is None
+
+
+def test_vencimento_validacoes_e_dia_util(usuario, novo_usuario):
+    from datetime import date
+    from app.routers.renewals import warn_start
+    assert usuario.post("/renewals", {"label": "   ", "expires_on": "2030-01-01"}).status_code == 422
+    outro = novo_usuario("outro@example.com")
+    pid = outro.post("/projects", {"name": "Dele"}).json()["id"]
+    assert usuario.post("/renewals", {"label": "x", "expires_on": "2030-01-01", "project_id": pid}).status_code == 400
+    # Vence numa segunda com 1 dia de aviso: o aviso começa na sexta (seg–sex = 62).
+    seg = date(2030, 1, 7)
+    assert seg.weekday() == 0
+    assert warn_start(seg, 1, 62) == date(2030, 1, 4)
+    assert warn_start(seg, 3, 62) == date(2030, 1, 4)
+    assert warn_start(seg, 4, 62) == date(2030, 1, 3)

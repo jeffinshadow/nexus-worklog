@@ -146,10 +146,12 @@ def build_ics(uid: int, include_recurring: bool, cal_name: str) -> str:
               [f"URL:{config.APP_URL}/index.html#/tarefas?id={t['id']}"])
 
     # Vencimentos: no dia de vencer e no dia de começar a avisar.
-    for r in db.query_all("SELECT id, label, expires_on, warn_days FROM renewals WHERE user_id = %s", (uid,)):
-        event(f"renewal-{r['id']}", r["expires_on"], f"Vence: {r['label']}", "Vencimento cadastrado no Nexus.")
-        event(f"renewal-warn-{r['id']}", r["expires_on"] - timedelta(days=r["warn_days"]),
-              f"Renovar: {r['label']} (vence {r['expires_on']:%d/%m})", f"Aviso de {r['warn_days']} dias antes.")
+    from .renewals import list_for
+    link = [f"URL:{config.APP_URL}/index.html#/config?aba=vencimentos"]  # onde se clica "Renovei"
+    for r in list_for(uid):
+        event(f"renewal-{r['id']}", r["expires_on"], f"Vence: {r['label']}", "Vencimento cadastrado no Nexus.", link)
+        event(f"renewal-warn-{r['id']}", r["warn_from"],
+              f"Renovar: {r['label']} (vence {r['expires_on']:%d/%m})", f"Aviso de {r['warn_days']} dias antes.", link)
 
     if include_recurring:
         for r in db.query_all(

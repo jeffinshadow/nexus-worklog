@@ -7,22 +7,37 @@ from fastapi import APIRouter, Depends, HTTPException
 from .. import audit, db
 from ..deps import active_user, active_user_csrf
 from ..schemas import RenewalIn, RenewalUpdate
-from ..services import app_today
+from datetime import timedelta
+
+from ..services import app_today, is_work_day, work_mask
 
 router = APIRouter(prefix="/api/renewals", tags=["renewals"])
 
 COLS = "r.id, r.label, r.expires_on, r.warn_days, r.project_id, r.note, p.name AS project_name"
 
 
+def warn_start(expires_on, warn_days: int, mask: int):
+    """Primeiro dia do aviso; caindo em dia não útil, antecipa para o último dia útil
+    (um aviso curto não some no fim de semana)."""
+    d = expires_on - timedelta(days=warn_days)
+    for _ in range(7):
+        if is_work_day(d, mask):
+            return d
+        d -= timedelta(days=1)
+    return d
+
+
 def list_for(uid: int) -> list[dict]:
     """Todos, do que vence primeiro ao último, com dias até vencer e se já está no aviso."""
     today = app_today()
+    mask = work_mask(uid)
     rows = db.query_all(
         f"""SELECT {COLS} FROM renewals r LEFT JOIN projects p ON p.id = r.project_id
              WHERE r.user_id = %s ORDER BY r.expires_on, r.id""", (uid,))
     for r in rows:
         r["days_left"] = (r["expires_on"] - today).days
-        r["warning"] = r["days_left"] <= r["warn_days"]
+        r["warn_from"] = warn_start(r["expires_on"], r["warn_days"], mask)
+        r["warning"] = today >= r["warn_from"]
     return rows
 
 

@@ -35,14 +35,16 @@ export function toast(message, opts = {}) {
   const box = document.getElementById("toasts");
   if (!box) return;
   const el = h("div", { class: "toast" + (opts.error ? " error" : ""), role: "status" }, h("span", { text: message }));
-  if (opts.action) {
+  // Uma ação (action/onAction) ou várias (actions: [[rótulo, fn], ...]).
+  const actions = opts.actions || (opts.action ? [[opts.action, opts.onAction]] : []);
+  for (const [label, fn] of actions) {
     el.append(h("button", {
-      type: "button", class: "btn btn-ghost btn-sm", text: opts.action,
-      onClick: async () => { el.remove(); await opts.onAction?.(); },
+      type: "button", class: "btn btn-ghost btn-sm", text: label,
+      onClick: async () => { el.remove(); await fn?.(); },
     }));
   }
   box.append(el);
-  setTimeout(() => el.remove(), opts.action ? 7000 : 3500);
+  setTimeout(() => el.remove(), actions.length ? 9000 : 3500);
 }
 
 // Formulário: o botão de envio fica desabilitado até o handler terminar

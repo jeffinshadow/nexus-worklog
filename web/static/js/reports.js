@@ -111,7 +111,7 @@ export async function mount(root, opts = {}) {
         "Plantão do período (CSV)", "cada apontamento fora do horário, de todos os projetos, com as horas e o total — pra fechar sobreaviso ou banco de horas (usa as datas acima; sem datas, o mês atual)"),
       dl(() => "/export/rotinas.csv?" + new URLSearchParams(Object.entries({ start: startInput.value, end: endInput.value }).filter(([, v]) => v)),
         "Rotinas e evidências (CSV)", "trilha de auditoria: cada rotina em cada dia, se foi feita e o que foi conferido (usa as datas acima; sem datas, o mês atual)"),
-      dl("/export/tudo.json", "Tudo (JSON)", "tarefas com anotações, checklist e tempo, rotinas com os dias feitos e projetos")));
+      dl("/export/tudo.json", "Tudo (JSON)", "tarefas com anotações, checklist, tempo e como foram resolvidas; rotinas com dias feitos e evidências; vencimentos; projetos")));
   }
 
   async function run() {

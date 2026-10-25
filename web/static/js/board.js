@@ -2,7 +2,7 @@
 // concluídas. Também exporta os diálogos de criar/editar, usados pela tela Hoje.
 import { api } from "./api.js";
 import { h, icon, clear, addDays, shortDate, localDay, localDateTime, daysBetween } from "./dom.js";
-import { confirmDialog, errorToast, toast, undoLatest, busy } from "./ui.js";
+import { confirmDialog, errorToast, toast, undoLatest, busy, modal } from "./ui.js";
 import { fillProjectSelect, listProjects, projectChip } from "./projects.js";
 import { openTask, duration, parseDuration } from "./task.js";
 import { boardLine } from "./assistant.js";
@@ -333,11 +333,37 @@ function scheduleForm(item) {
   };
 }
 
+function askResolution(t, onDone) {
+  const area = h("textarea", { rows: "4", maxlength: "1000", placeholder: "ex.: perfil corrompido, recriado com o scanpst", "aria-label": "Como resolveu" });
+  const err = h("p", { class: "error-text" });
+  const form = h("form", {}, h("h2", { text: "Como resolveu?" }),
+    h("p", { class: "dialog-note", text: `${t.title}: em poucas linhas. A busca encontra isso da próxima vez que o problema voltar.` }),
+    area, err,
+    h("div", { class: "dialog-actions" },
+      h("button", { type: "button", class: "btn btn-text", text: "Agora não", onClick: () => dlg.close() }),
+      h("button", { type: "submit", class: "btn btn-primary", text: "Salvar" })));
+  form.addEventListener("submit", busy(async () => {
+    if (!area.value.trim()) { dlg.close(); return; }
+    try {
+      await api.patch(`/worklog/${t.id}`, { resolution: area.value.trim() });
+      dlg.close();
+      toast("Anotado. A busca vai encontrar.");
+      onDone && onDone();
+    } catch (e) { err.textContent = e.message || "Não foi possível salvar."; }
+  }));
+  const dlg = modal(form);
+  area.focus();
+}
+
 export async function finishTask(t, onDone) {
   try {
     await api.post(`/worklog/${t.id}/finish`);
     onDone && onDone();
-    toast(`Concluída: ${t.title}`, { action: "Desfazer", onAction: () => undoLatest("worklog", t.id, onDone) });
+    // A base de conhecimento só cresce se for perguntada na hora de concluir.
+    toast(`Concluída: ${t.title}`, { actions: [
+      ["Como resolveu?", () => askResolution(t, onDone)],
+      ["Desfazer", () => undoLatest("worklog", t.id, onDone)],
+    ] });
   } catch (e) {
     errorToast(e, "Erro ao concluir.");
   }

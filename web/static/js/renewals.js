@@ -33,6 +33,7 @@ function row(r, onChange, compact = false) {
 export function openRenewal(r, onChange, renew = false) {
   const label = h("input", { type: "text", maxlength: "120", required: "required", value: r ? r.label : "", placeholder: "ex.: Certificado *.empresa.com.br" });
   const expires = h("input", { type: "date", required: "required", value: r && !renew ? r.expires_on : "" });
+  if (renew) expires.min = r.expires_on; // renovar é empurrar a data pra frente (ano digitado errado é comum)
   const warn = h("input", { type: "number", min: "1", max: "365", value: String(r ? r.warn_days : 30) });
   const note = h("input", { type: "text", maxlength: "200", value: r && r.note ? r.note : "", placeholder: "onde renovar, contrato, fornecedor (opcional)" });
   const proj = h("select", {});
@@ -48,6 +49,7 @@ export function openRenewal(r, onChange, renew = false) {
       h("button", { type: "submit", class: "btn btn-primary", text: "Salvar" })));
   form.addEventListener("submit", busy(async () => {
     err.textContent = "";
+    if (renew && expires.value <= r.expires_on) { err.textContent = `A nova data deve ser depois de ${shortDate(r.expires_on)}.`; return; }
     const body = renew ? { expires_on: expires.value } : {
       label: label.value.trim(), expires_on: expires.value, warn_days: Number(warn.value) || 30,
       project_id: proj.value && proj.value !== "__new" ? Number(proj.value) : null, note: note.value.trim() || null,

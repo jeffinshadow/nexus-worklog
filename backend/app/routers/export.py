@@ -44,7 +44,7 @@ def _download(content: bytes, media: str, name: str) -> Response:
 def _tasks(uid: int) -> list[dict]:
     return db.query_all(
         """SELECT w.id, w.title, w.description, w.status, w.priority, w.due_date, w.created_at, w.completed_at,
-                  w.ticket, w.after_hours, w.blocked_reason, w.blocked_at, w.resolution, p.name AS project,
+                  w.ticket, w.after_hours, w.blocked_reason, w.blocked_at, w.follow_up_on, w.resolution, p.name AS project,
                   """ + TASK_COUNTS + """
              FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
             WHERE w.user_id = %s ORDER BY w.created_at""", (uid,))
@@ -168,6 +168,10 @@ def export(kind: str, user=Depends(active_user)):
             "projects": db.query_all("SELECT id, name, color, archived, created_at FROM projects WHERE user_id = %s ORDER BY id", (uid,)),
             "tasks": tasks,
             "recurring": recurring,
+            "renewals": db.query_all(
+                """SELECT r.label, r.expires_on, r.warn_days, p.name AS project, r.note, r.created_at
+                     FROM renewals r LEFT JOIN projects p ON p.id = r.project_id
+                    WHERE r.user_id = %s ORDER BY r.expires_on""", (uid,)),
         }
         body = json.dumps(payload, ensure_ascii=False, indent=2, default=lambda o: o.isoformat() if hasattr(o, "isoformat") else str(o))
         return _download(body.encode("utf-8"), "application/json", f"nexus-dados-{stamp}.json")

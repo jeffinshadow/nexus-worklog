@@ -19,6 +19,7 @@ const LAST_PROJECT = "nexus.quick.project";
 export async function mount(root, ctx, opts = {}) {
   const day = opts.day || null;
   const refresh = () => mount(root, ctx, { day });
+  const vencP = todayRenewals(() => mount(root, ctx, { day })); // em paralelo com o quadro
   const [b, sum] = await Promise.all([
     api.get(day ? `/board?day=${day}` : "/board"),
     opts.summary ? Promise.resolve(opts.summary) : api.get("/summary").catch(() => null),
@@ -152,7 +153,7 @@ export async function mount(root, ctx, opts = {}) {
     onProfile: meChanged,
   });
   ctx.setAssist(assist);
-  const venc = await todayRenewals(refresh); // só aparece com algo no aviso
+  const venc = await vencP; // só aparece com algo no aviso
   root.append(h("div", { class: "today-grid" }, venc, recPanel, openPanel, donePanel, sum ? summaryPanel(sum, refresh) : null));
 }
 

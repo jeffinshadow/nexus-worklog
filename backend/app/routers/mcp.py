@@ -481,6 +481,7 @@ TOOLS = {
                         "blocked_reason": {"type": ["string", "null"], "maxLength": 120,
                                            "description": "Com status blocked: o que se está aguardando"},
                         "follow_up_on": {**DATE, "type": ["string", "null"], "description": "Com status blocked: dia combinado para cobrar"},
+                        "resolution": {"type": "string", "maxLength": 1000, "description": "Com status done: como foi resolvido (entra na busca)"},
                         "external_ref": {"type": "string", "maxLength": 120,
                                          "description": "Chave sua para não duplicar: repetida, devolve a tarefa que já existe"}}}),
     "update_task": (t_update_task, True,

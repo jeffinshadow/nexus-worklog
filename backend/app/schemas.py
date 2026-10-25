@@ -193,6 +193,7 @@ class WorklogIn(BaseModel):
     external_ref: Optional[str] = Field(default=None, min_length=1, max_length=120)  # idempotência
     blocked_reason: Optional[str] = Field(default=None, max_length=120)  # o que se aguarda (status blocked)
     follow_up_on: Optional[date] = None  # bloqueada: dia combinado para cobrar
+    resolution: Optional[str] = Field(default=None, max_length=1000)  # com status done: como foi resolvido
 
     @model_validator(mode="after")
     def _norm(self):
@@ -238,6 +239,14 @@ class FinishIn(BaseModel):
     resolution: Optional[str] = Field(default=None, max_length=1000)  # como foi resolvido (opcional)
 
 
+def _renewal_label(m):
+    if m.label is not None:
+        m.label = m.label.strip()
+        if not m.label:
+            raise ValueError("informe o que vence")
+    return m
+
+
 class RenewalIn(BaseModel):
     """Algo que vence: certificado, licença, domínio, garantia, contrato."""
     label: str = Field(min_length=1, max_length=120)
@@ -246,6 +255,10 @@ class RenewalIn(BaseModel):
     project_id: Optional[int] = None
     note: Optional[str] = Field(default=None, max_length=200)
 
+    @model_validator(mode="after")
+    def _label(self):
+        return _renewal_label(self)
+
 
 class RenewalUpdate(BaseModel):
     label: Optional[str] = Field(default=None, min_length=1, max_length=120)
@@ -253,6 +266,10 @@ class RenewalUpdate(BaseModel):
     warn_days: Optional[int] = Field(default=None, ge=1, le=365)
     project_id: Optional[int] = None
     note: Optional[str] = Field(default=None, max_length=200)
+
+    @model_validator(mode="after")
+    def _label(self):
+        return _renewal_label(self)
 
 
 class TemplateIn(BaseModel):

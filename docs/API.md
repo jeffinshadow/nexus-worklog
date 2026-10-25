@@ -145,7 +145,7 @@ Agenda: `daily` (dias úteis do dono) · `weekly` + `weekdays` (máscara) ·
 | `GET /api/export/tarefas.csv` | | idem, com a coluna `aguardando` (motivo do bloqueio) |
 | `GET /api/export/plantao.csv?start=&end=` | | atendimentos de plantão do período (padrão: o mês), com horas por dia e total |
 | `GET /api/export/rotinas.csv?start=&end=` | | trilha de auditoria: cada rotina em cada dia do período (até hoje), prevista/extra, feita (sim/não/pendente) e a evidência — dia sem nada feito também aparece |
-| `GET /api/export/tudo.json` | | tarefas com anotações/checklist/tempo, rotinas com dias feitos e `evidence` (dia + evidência), projetos |
+| `GET /api/export/tudo.json` | | tarefas com anotações/checklist/tempo, rotinas com dias feitos e `evidence` (dia + evidência), `renewals` (vencimentos), projetos |
 
 ## Histórico — `/api/history`
 
@@ -179,7 +179,7 @@ Agenda: `daily` (dias úteis do dono) · `weekly` + `weekdays` (máscara) ·
 
 | Rota | | Corpo / observação |
 | --- | --- | --- |
-| `GET /` | | lista do que vence primeiro ao último, com `days_left` e `warning` (dentro de `warn_days`) |
+| `GET /` | | lista do que vence primeiro ao último, com `days_left`, `warn_from` (início do aviso; em dia não útil, antecipa para o último dia útil) e `warning` |
 | `POST /` | W | `{label, expires_on, warn_days? (padrão 30), project_id?, note?}` |
 | `PATCH /{id}` | W | campos a mudar; nova `expires_on` = renovação (no histórico como "renovou"; desfaz) |
 | `DELETE /{id}` | W | desfaz pelo histórico |
@@ -225,9 +225,9 @@ Aparecem no Hoje (só os no aviso), no e-mail da manhã e no calendário (dia de
 JSON-RPC 2.0 sobre HTTP, **uma mensagem por requisição** (sem lote, sem SSE),
 `Authorization: Bearer nxs_…`. Versões: 2025-11-25, 2025-06-18, 2025-03-26.
 
-Leitura: `get_today`, `get_summary`, `get_handoff` (passagem de turno), `list_tasks` (com `from`/`to`/`by` por período), `get_task`, `search`,
+Leitura: `get_today`, `get_summary`, `get_handoff` (passagem de turno), `list_renewals` (vencimentos), `list_tasks` (com `from`/`to`/`by` por período), `get_task`, `search`,
 `list_projects`, `list_recurring`, `list_templates`, `get_history`.
-Escrita (chave `write`): `create_task` (com `created_at`, `completed_at`, `external_ref`), `update_task` (com `completed_at`), `complete_task` (com `completed_at`),
+Escrita (chave `write`): `create_task` (com `created_at`, `completed_at`, `external_ref`), `update_task` (com `completed_at`), `complete_task` (com `completed_at` e `resolution`),
 `add_note`, `add_checklist_item`, `set_checklist_item`, `log_time`, `start_timer`, `stop_timer`,
 `create_from_template`, `set_recurring` (`recurring_id`, `note` = evidência), `undo` (só ações da própria chave). A IA não exclui o que o usuário fez.
 Só com o papel de atribuidor: `list_assignable`, `list_assigned` e `assign_task` (`to` = U<id>, e-mail ou nome).
