@@ -10,6 +10,7 @@ from .. import audit, db
 from ..deps import active_user, active_user_csrf
 from ..schemas import ChecklistIn, ChecklistUpdate, FinishIn, NoteIn, TimeIn, WorklogIn, WorklogUpdate
 from .assign import notify_assigner
+from ..services import is_work_day, work_mask
 from ..services import ASSIGNER_NAME, app_today, app_tz, task_retro_days
 
 router = APIRouter(prefix="/api/worklog", tags=["worklog"])
@@ -111,6 +112,17 @@ def safe_notify(task_id: int) -> None:
         logging.getLogger("uvicorn.error").exception("aviso de conclusão da tarefa %s falhou", task_id)
 
 
+def follow_up_day(uid: int, d):
+    """Dia para cobrar em dia não útil vai para o dia útil anterior (o lembrete
+    só aparece em dia útil), sem passar de hoje. Vale para app, API e MCP."""
+    if d is None:
+        return None
+    mask, today = work_mask(uid), app_today()
+    while d > today and not is_work_day(d, mask):
+        d -= timedelta(days=1)
+    return d
+
+
 def _reason(text):
     return " ".join((text or "").split()) or None
 
@@ -144,7 +156,7 @@ def create(data: WorklogIn, response: Response, user=Depends(active_user_csrf)):
              data.project_id, data.priority, data.ticket, data.after_hours, data.external_ref,
              _reason(data.blocked_reason) if data.status == "blocked" else None,
              now if data.status == "blocked" else None,
-             data.follow_up_on if data.status == "blocked" else None,
+             follow_up_day(uid, data.follow_up_on) if data.status == "blocked" else None,
              ((data.resolution or "").strip() or None) if data.status == "done" else None),
         )
     except UniqueViolation:  # duas chamadas iguais ao mesmo tempo: a segunda devolve a primeira
@@ -276,7 +288,7 @@ def update(task_id: int, data: WorklogUpdate, user=Depends(active_user_csrf)):
             values.append(_reason(data.blocked_reason))
         if "follow_up_on" in sent or before["status"] != "blocked":
             fields.append("follow_up_on = %s")
-            values.append(data.follow_up_on)
+            values.append(follow_up_day(user["user_id"], data.follow_up_on))
     elif before["status"] == "blocked":
         fields.append("blocked_at = NULL")
         fields.append("blocked_reason = NULL")

@@ -301,7 +301,15 @@ def test_ja_resolvi_antes(usuario, novo_usuario):
     assert usuario.get("/search/similar?title=troca de toner").json() == []
     usuario.post("/worklog", {"title": "Onboarding do RH", "status": "done", "resolution": "conta criada"})
     r = usuario.get("/search/similar?title=impressora rh parada").json()
-    assert [x["title"] for x in r] == ["Impressora do RH não imprime"]  # casa 2 palavras; o onboarding só 1
+    assert [x["title"] for x in r] == ["Impressora do RH não imprime"]  # "impressora" casa; "rh" minúsculo não conta
+    # Sigla em maiúsculas conta, e só como palavra inteira.
+    usuario.post("/worklog", {"title": "Usuário bloqueado no AD", "status": "done", "resolution": "desbloqueado no ADUC"})
+    usuario.post("/worklog", {"title": "Adaptador de rede queimado", "status": "done", "resolution": "trocado"})
+    assert [x["title"] for x in usuario.get("/search/similar?title=senha expirada no AD").json()] == ["Usuário bloqueado no AD"]
+    # % e _ do título são texto, não curinga.
+    assert usuario.get("/search/similar?title=srv_db%25 caiu").json() == []
+    ia = Bearer(criar_chave(usuario)["token"])
+    assert "Fila travada" in texto(ia.tool("find_similar", title="impressora travada"))
     assert novo_usuario("outro@example.com").get("/search/similar?title=impressora rh").json() == []
 
 
@@ -311,3 +319,15 @@ def test_vencimento_periodico(usuario):
     assert usuario.post("/renewals", {"label": "x", "expires_on": "2030-01-01", "renew_months": 0}).status_code == 422
     usuario.patch(f"/renewals/{rid}", {"renew_months": None})
     assert usuario.get("/renewals").json()[0]["renew_months"] is None
+
+
+def test_cobrar_em_fim_de_semana_vira_dia_util(usuario):
+    from datetime import date
+    from app.routers.worklog import follow_up_day
+    uid = uid_de(usuario)
+    sab = date(2030, 1, 5)
+    assert sab.weekday() == 5 and follow_up_day(uid, sab) == date(2030, 1, 4)
+    ia = Bearer(criar_chave(usuario)["token"])
+    tid = usuario.post("/worklog", {"title": "x", "status": "blocked"}).json()["id"]
+    ia.tool("update_task", task_id=tid, follow_up_on="2030-01-06")  # domingo, pelo MCP
+    assert usuario.get(f"/worklog/{tid}").json()["follow_up_on"] == "2030-01-04"

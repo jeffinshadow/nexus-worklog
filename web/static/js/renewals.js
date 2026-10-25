@@ -25,11 +25,17 @@ function row(r, onChange, compact = false) {
     h("div", { class: "t" }, h("span", { text: r.label }),
       !compact && (r.note || r.project_name) ? h("small", { text: [r.project_name, r.note].filter(Boolean).join(" · ") }) : null),
     h("span", { class: "chip " + w.cls, text: w.text }),
-    h("button", { type: "button", class: "btn btn-ghost btn-sm", title: "Criar a tarefa de renovação (prazo = vencimento)", onClick: async () => {
+    h("button", { type: "button", class: "btn btn-ghost btn-sm", title: "Criar a tarefa de renovação (prazo = vencimento)", onClick: async (ev) => {
+      const btn = ev.currentTarget;
+      btn.disabled = true; // clique duplo criaria duas
+      const title = `Renovar: ${r.label}`.slice(0, 200);
       try {
-        await api.post("/worklog", { title: `Renovar: ${r.label}`.slice(0, 200), due_date: r.expires_on, project_id: r.project_id || null });
+        const abertas = await api.get("/worklog?status=open&limit=500");
+        if (abertas.some((t) => t.title === title)) { toast("Já existe a tarefa de renovação em Tarefas."); return; }
+        await api.post("/worklog", { title, due_date: r.expires_on, project_id: r.project_id || null });
         toast("Tarefa de renovação criada em Tarefas.");
-      } catch (e) { errorToast(e); }
+        btn.textContent = "Tarefa criada";
+      } catch (e) { btn.disabled = false; errorToast(e); }
     } }, "Virar tarefa"),
     h("button", { type: "button", class: "btn btn-ghost btn-sm", title: "Informar a nova data de vencimento", onClick: () => openRenewal(r, onChange, true) }, "Renovei"),
     compact ? null : h("button", { type: "button", class: "icon", title: "Editar", "aria-label": "Editar " + r.label, onClick: () => openRenewal(r, onChange) }, icon("edit")),

@@ -103,6 +103,26 @@ export async function mount(root, ctx, opts = {}) {
     .then(() => proj.addEventListener("change", () => sessionStorage.setItem(LAST_PROJECT, proj.value)))
     .catch(() => {});
   const quick = h("input", { type: "text", placeholder: "Registrar e Enter · @projeto #chamado !plantão ^sex !bloq motivo — 15min", maxlength: "200", "aria-label": "Registrar tarefa rápida" });
+  // "Já resolvido antes" também aqui (por onde entra a maioria das tarefas):
+  // o título sem os marcadores, depois de uma pausa na digitação.
+  const hint = h("div", { class: "similar hidden", "aria-live": "polite" });
+  let hintTimer = null, hintSeq = 0;
+  quick.addEventListener("input", () => {
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(async () => {
+      const q = quick.value.split(/\s[@#!^]|\s[-–—]\s/)[0].trim(), my = ++hintSeq;
+      if (q.length < 6) { hint.classList.add("hidden"); return; }
+      let list = [];
+      try { list = await api.get("/search/similar?title=" + encodeURIComponent(q)); } catch { /* sugestão */ }
+      if (my !== hintSeq) return;
+      clear(hint);
+      hint.classList.toggle("hidden", !list.length);
+      if (list.length) hint.append(h("p", { class: "similar-head", text: "Já resolvido antes:" }),
+        ...list.map((s) => h("div", { class: "similar-item" },
+          h("button", { type: "button", class: "btn btn-text btn-sm", text: s.title, onClick: () => openTask(s.id, refresh) }),
+          h("p", { text: s.resolution.length > 140 ? s.resolution.slice(0, 139) + "…" : s.resolution }))));
+    }, 500);
+  });
   quick.addEventListener("keydown", async (ev) => {
     if (ev.key !== "Enter" || !quick.value.trim()) return;
     ev.preventDefault();
@@ -122,7 +142,7 @@ export async function mount(root, ctx, opts = {}) {
       h("span", { class: "count" + (late.length || blocked.length ? " warn" : ""), text: [String(open.length),
         late.length ? `${late.length} atrasada${late.length > 1 ? "s" : ""}` : "",
         blocked.length ? `${blocked.length} bloqueada${blocked.length > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ") })),
-    h("div", { class: "quick-row" }, quick, proj));
+    h("div", { class: "quick-row" }, quick, proj), hint);
   if (!open.length) openPanel.append(h("p", { class: "empty", text: "Nada em aberto." }));
   for (const t of open) {
     openPanel.append(h("div", { class: "list-row" },

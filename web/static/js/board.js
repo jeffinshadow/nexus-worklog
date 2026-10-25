@@ -157,6 +157,7 @@ export function openWorklog(item, onDone, opts = {}) {
   clear(similarBox);
   similarBox.classList.add("hidden");
   let simTimer = null, simSeq = 0;
+  dlg.onclose = () => { clearTimeout(simTimer); simSeq++; }; // nada pendente entre aberturas
   titleInput.oninput = item ? null : () => {
     clearTimeout(simTimer);
     simTimer = setTimeout(async () => {
@@ -170,7 +171,7 @@ export function openWorklog(item, onDone, opts = {}) {
       if (!list.length) return;
       similarBox.append(h("p", { class: "similar-head", text: "Já resolvido antes:" }),
         ...list.map((s) => h("div", { class: "similar-item" },
-          h("button", { type: "button", class: "btn btn-text btn-sm", text: s.title, title: "Abrir a tarefa", onClick: () => openTask(s.id) }),
+          h("button", { type: "button", class: "btn btn-text btn-sm", text: s.title, title: "Abrir a tarefa", onClick: () => openTask(s.id, onDone) }),
           h("p", { text: s.resolution.length > 160 ? s.resolution.slice(0, 159) + "…" : s.resolution }))));
     }, 400);
   };
@@ -191,6 +192,7 @@ export function openWorklog(item, onDone, opts = {}) {
         checklist = t ? t.checklist : [];
         if (!t) return;
         document.getElementById("wl-title").value = t.title;
+        titleInput.oninput && titleInput.oninput(); // título do modelo também procura "já resolvido antes"
         document.getElementById("wl-desc").value = t.description || "";
         document.getElementById("wl-prio").value = String(t.priority);
         after.checked = t.after_hours;

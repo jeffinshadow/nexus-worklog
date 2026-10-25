@@ -1,5 +1,7 @@
 """Busca sem acento: tarefas (título, descrição, anotações, checklist,
 apontamentos), rotinas e projetos."""
+import re
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from .. import db
@@ -23,7 +25,12 @@ def _snippet(text: str, q: str, width: int = 70) -> str:
 # Palavras que não dizem qual é o problema ("não", "para", "com"...).
 _VAZIAS = {"para", "pelo", "pela", "com", "sem", "nao", "esta", "esse", "essa", "isso", "como", "mais",
            "muito", "quando", "onde", "porque", "tarefa", "fazer", "verificar", "ver", "ajustar",
-           "dos", "das", "nos", "nas", "uma", "uns", "por", "que", "de novo", "novo", "nova", "outra", "outro"}
+           "dos", "das", "nos", "nas", "uma", "uns", "por", "que", "novo", "nova", "outra", "outro"}
+
+
+def _like(text: str) -> str:
+    """Padrão LIKE de "contém", com %, _ e \\ do texto escapados."""
+    return "%" + text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
 
 
 @router.get("/search/similar")
@@ -31,12 +38,25 @@ def similar(title: str = Query(..., min_length=3, max_length=200), user=Depends(
     """"Já resolvi isso antes?": até 3 tarefas concluídas, com "como resolveu",
     cujo título tem palavras em comum com `title` (sem acento, 3+ letras: VPN,
     DNS). Mais palavras em comum primeiro; com 4+ palavras no título, exige 2."""
-    words = [w for w in {fold(x) for x in title.replace("/", " ").split()} if len(w) >= 3 and w not in _VAZIAS][:6]
+    return find_similar(user["user_id"], title)
+
+
+def find_similar(uid: int, title: str) -> list[dict]:
+    # Palavras de 3+ letras, ou siglas de 2 em maiúsculas (AD, IP, RH, TI), sem
+    # repetir, as mais específicas (longas) primeiro — o corte em 6 é estável.
+    raw = title.replace("/", " ").split()
+    words = list(dict.fromkeys(fold(x) for x in raw
+                               if (len(x) >= 3 or (len(x) == 2 and x.isupper())) and fold(x) not in _VAZIAS))
+    words = sorted(words, key=len, reverse=True)[:6]
     if not words:
         return []
     need = 2 if len(words) >= 4 else 1
-    score = " + ".join(f"(nx_fold(w.title) LIKE %(w{i})s)::int" for i in range(len(words)))
-    params = {"uid": user["user_id"], "need": need, **{f"w{i}": f"%{w}%" for i, w in enumerate(words)}}
+    # Sigla curta casa só como palavra inteira ("ad" não casa "adaptador").
+    terms = [f"(nx_fold(w.title) ~ %(w{i})s)::int" if len(w) <= 3 else f"(nx_fold(w.title) LIKE %(w{i})s)::int"
+             for i, w in enumerate(words)]
+    score = " + ".join(terms)
+    params = {"uid": uid, "need": need,
+              **{f"w{i}": (rf"\m{re.escape(w)}\M" if len(w) <= 3 else _like(w)) for i, w in enumerate(words)}}
     rows = db.query_all(
         f"""SELECT w.id, w.title, w.resolution, w.completed_at, w.ticket, ({score}) AS score
               FROM worklog_tasks w
@@ -55,7 +75,7 @@ def search(q: str = Query(..., min_length=2, max_length=100), user=Depends(activ
     fq = fold(q.strip()[:100]).lstrip("#")  # "#1234" acha o chamado; também pelo MCP (sem validação de Query)
     if len(fq) < 2:
         raise HTTPException(status_code=400, detail="busque ao menos 2 letras")
-    like = "%" + fq.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+    like = _like(fq)
 
     tasks: dict[int, dict] = {}
 

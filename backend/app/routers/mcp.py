@@ -427,6 +427,12 @@ def t_list_renewals(ctx, args):
     return "\n".join(out) or "(nenhum vencimento cadastrado)"
 
 
+def t_find_similar(ctx, args):
+    rows = search_routes.find_similar(ctx["user_id"], str(args.get("title", "")))
+    return "\n\n".join(f"#{r['id']} {r['title']}\nComo resolveu: {r['resolution']}" for r in rows) \
+        or "(nada parecido resolvido antes)"
+
+
 def t_get_handoff(ctx, args):
     return summary_routes.handoff_text(ctx["user_id"])
 
@@ -552,9 +558,13 @@ TOOLS = {
     "list_renewals": (t_list_renewals, False,
                       "Vencimentos cadastrados (certificados, licenças, domínios, garantias), do mais próximo ao mais longe; [AVISO] = dentro da antecedência.",
                       {"type": "object", "properties": {}}),
+    "find_similar": (t_find_similar, False,
+                     "Já resolvi isso antes? Tarefas concluídas com título parecido e como foram resolvidas. "
+                     "Use antes de abrir uma tarefa de problema repetido (impressora, VPN, AD...).",
+                     {"type": "object", "required": ["title"], "properties": {"title": {"type": "string", "minLength": 3, "maxLength": 200}}}),
     "get_handoff": (t_get_handoff, False,
-                    "Passagem de turno/plantão: em aberto, bloqueadas com o motivo e há quantos dias, concluídas hoje e "
-                    "rotinas pendentes, em texto pronto pra colar no chat da equipe.",
+                    "Passagem de turno/plantão: em aberto, bloqueadas com o motivo e há quantos dias, concluídas nas "
+                    "últimas 12 h, rotinas pendentes e vencimentos no aviso, em texto pronto pra colar no chat da equipe.",
                     {"type": "object", "properties": {}}),
     "list_assignable": (t_list_assignable, False, "Atribuidor: pessoas que aceitam receber tarefas atribuídas.",
                         {"type": "object", "properties": {}}),
