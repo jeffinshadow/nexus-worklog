@@ -115,6 +115,7 @@ export async function mount(root, ctx, opts = {}) {
   quick.addEventListener("input", () => {
     clearTimeout(hintTimer);
     hintTimer = setTimeout(async () => {
+      if (!quick.isConnected) return; // trocou de tela
       const q = quick.value.split(/\s[@#!^]|\s[-–—]\s/)[0].trim(), my = ++hintSeq;
       if (q.length < 6) { hint.classList.add("hidden"); return; }
       let list = [];

@@ -2,6 +2,8 @@
 // Configurações > Vencimentos; no Hoje aparecem só os que estão no aviso.
 import { api } from "./api.js";
 import { h, icon, clear, field, shortDate, addDays } from "./dom.js";
+import { busy, confirmDialog, errorToast, modal, toast, undoLatest } from "./ui.js";
+import { fillProjectSelect } from "./projects.js";
 
 // Mesma data N meses depois (31/01 + 1 mês = 28/02 ou 29/02).
 function addMonths(iso, n) {
@@ -10,8 +12,6 @@ function addMonths(iso, n) {
   const t = new Date(Date.UTC(y, m - 1 + n, Math.min(d, last)));
   return t.toISOString().slice(0, 10);
 }
-import { busy, confirmDialog, errorToast, modal, toast, undoLatest } from "./ui.js";
-import { fillProjectSelect } from "./projects.js";
 
 function when(r) {
   if (r.days_left < 0) return { text: `venceu há ${-r.days_left} d`, cls: "late" };

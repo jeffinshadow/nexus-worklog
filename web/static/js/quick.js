@@ -66,6 +66,7 @@ export async function quickRegister(text, project_id = null) {
   const comTempo = minutes && minutes <= 1440;
   if (comTempo) title = title.slice(0, m.index).trim();
   const marks = await parseMarks(title);
+  if (!marks.title) throw Object.assign(new Error("Escreva o que foi feito antes dos marcadores."), { status: 400 });
   const created = await api.post("/worklog", {
     title: marks.title || title, project_id: marks.project ? marks.project.id : project_id,
     ticket: marks.ticket, after_hours: marks.afterHours, due_date: marks.due, priority: marks.high ? 1 : 2,

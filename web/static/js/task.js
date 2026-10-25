@@ -63,8 +63,8 @@ export async function openTask(taskId, onChange) {
         t.status !== "done"
           ? h("button", { type: "button", class: "icon", title: "Concluir", "aria-label": "Concluir", onClick: () => finishTask(t, after) }, icon("check"))
           : null,
-        h("button", { type: "button", class: "icon", title: "Copiar resumo (para o chamado ou o cliente)", "aria-label": "Copiar resumo", onClick: () => copySummary(t) }, icon("note")),
-        h("button", { type: "button", class: "icon", title: "Salvar como modelo", "aria-label": "Salvar como modelo", onClick: () => saveAsTemplate(t) }, icon("copy")),
+        h("button", { type: "button", class: "icon", title: "Copiar resumo (para o chamado ou o cliente)", "aria-label": "Copiar resumo", onClick: () => copySummary(t) }, icon("copy")),
+        h("button", { type: "button", class: "icon", title: "Salvar como modelo", "aria-label": "Salvar como modelo", onClick: () => saveAsTemplate(t) }, icon("list")),
         h("button", { type: "button", class: "icon", title: "Editar", "aria-label": "Editar", onClick: () => {
           dlg.close();
           openWorklog(t, () => { onChange && onChange(); openTask(taskId, onChange); });

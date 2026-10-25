@@ -383,7 +383,11 @@ function askResolution(t, onDone) {
     try {
       await api.patch(`/worklog/${t.id}`, { resolution: area.value.trim() });
       dlg.close();
-      toast("Anotado. A busca vai encontrar.", { action: "Desfazer a conclusão", onAction: () => undoLatest("worklog", t.id, onDone) });
+      // Desfaz as duas coisas: a anotação (última ação) e a conclusão.
+      toast("Anotado. A busca vai encontrar.", { action: "Desfazer a conclusão", onAction: async () => {
+        await undoLatest("worklog", t.id, null);
+        await undoLatest("worklog", t.id, onDone);
+      } });
       onDone && onDone();
     } catch (e) { err.textContent = e.message || "Não foi possível salvar."; }
   }));

@@ -268,7 +268,7 @@ def update(task_id: int, data: WorklogUpdate, user=Depends(active_user_csrf)):
     if data.after_hours is not None:
         fields.append("after_hours = %s")
         values.append(data.after_hours)
-    if "resolution" in sent:
+    if "resolution" in sent and (data.status or before["status"]) == "done":  # como o create: só em concluída
         fields.append("resolution = %s")
         values.append((data.resolution or "").strip() or None)
     final_status = data.status or before["status"]
