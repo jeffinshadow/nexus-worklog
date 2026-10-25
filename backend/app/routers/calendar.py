@@ -131,6 +131,7 @@ def build_ics(uid: int, include_recurring: bool, cal_name: str) -> str:
         desc = f"Status: {STATUS_PT.get(t['status'], t['status'])} · prioridade {PRIO_PT.get(t['priority'], 'normal')}"
         # Sem a descrição: o feed vai para Google/Apple/Microsoft — só o necessário.
         extra = [f"CATEGORIES:{_esc(t['project'])}"] if t["project"] else []
+        extra.append(f"URL:{config.APP_URL}/index.html#/tarefas?id={t['id']}")  # abre a tarefa no app
         if t["priority"] == 1:
             extra.append("PRIORITY:1")
         event(f"task-{t['id']}", t["due_date"], summary, desc, extra)

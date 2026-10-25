@@ -38,7 +38,7 @@ def _assignment_mail(task: dict, by_name: str):
              "Ela já está nas suas tarefas no Nexus.")
     m.reason = "Você recebe este e-mail porque aceitou receber tarefas atribuídas (Configurações > Conta)."
     m.settings_tab = "conta"
-    m.link = "/index.html#/tarefas"
+    m.link = f"/index.html#/tarefas?id={task['id']}"
     itens = [task["title"]]
     if task.get("description"):
         itens.append(task["description"])
