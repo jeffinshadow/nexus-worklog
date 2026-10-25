@@ -182,6 +182,8 @@ export function openWorklog(item, onDone, opts = {}) {
     if (!item && createdAt.value) payload.created_at = createdAt.value;
     const minutes = !item && timeInput.value.trim() ? parseDuration(timeInput.value) : null;
     if (minutes === null && !item && timeInput.value.trim()) { toast("Tempo inválido. Ex.: 45, 1h30, 2:15.", { error: true }); timeInput.focus(); return; }
+    const btn = ev.submitter;
+    if (btn) btn.disabled = true; // duplo clique criava a tarefa duas vezes
     try {
       if (item) await api.patch(`/worklog/${item.id}`, payload);
       else {
@@ -193,6 +195,8 @@ export function openWorklog(item, onDone, opts = {}) {
       onDone && onDone();
     } catch (e) {
       errorToast(e, "Erro ao salvar.");
+    } finally {
+      if (btn) btn.disabled = false;
     }
   };
   dlg.showModal();

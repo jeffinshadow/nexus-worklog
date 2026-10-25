@@ -1,5 +1,5 @@
 // Casca do app: sessão, rotas por hash (#/hoje, #/tarefas...), menu e títulos.
-import { api } from "./api.js";
+import { api, toLogin } from "./api.js";
 import { h, icon, clear, setTimeZone } from "./dom.js";
 import * as today from "./today.js";
 import * as board from "./board.js";
@@ -18,6 +18,7 @@ import { configure as configureAssistant } from "./assistant.js";
 import { session } from "./session.js";
 import { initTimer, stopTimer, timerState } from "./timer.js";
 import { openWorklog } from "./board.js";
+import { openTask } from "./task.js";
 import { modal } from "./ui.js";
 
 let me = null;
@@ -72,13 +73,25 @@ async function route() {
   // A fala do assistente fica acima do título; uma tela antiga que termina de
   // carregar depois da troca não sobrescreve a da tela atual.
   const assist = (node) => { if (seq === routeSeq) setAssist(node); };
+  // Carregando: a tela antiga não fica parecendo a nova enquanto a resposta não vem.
+  el.setAttribute("aria-busy", "true");
+  const loading = setTimeout(() => { if (seq === routeSeq) { clear(el); el.append(h("p", { class: "empty", text: "Carregando…" })); } }, 250);
   try {
     await view.mount(el, { me, setActions, setEyebrow, setAssist: assist, go });
   } catch (e) {
     clear(el);
-    el.append(h("p", { class: "empty", text: "Erro ao carregar. Tente de novo." }));
+    el.append(h("p", { class: "empty", text: e && e.status === 0 ? e.message : "Erro ao carregar. Tente de novo." }));
+  } finally {
+    clearTimeout(loading);
+    el.removeAttribute("aria-busy");
   }
   window.scrollTo(0, 0);
+  // Link direto para uma tarefa (#/tarefas?id=N: e-mail de atribuição, calendário).
+  const taskId = Number(new URLSearchParams(location.hash.split("?")[1] || "").get("id"));
+  if (name === "tarefas" && taskId > 0 && seq === routeSeq) {
+    history.replaceState(null, "", "#/tarefas");
+    openTask(taskId, route);
+  }
 }
 
 let routeSeq = 0;
@@ -117,10 +130,34 @@ function mountMore(el) {
       h("span", { class: "who-text" }, h("span", { class: "who-name", text: me.name }), h("span", { class: "who-email", text: me.email }))),
     h("div", { class: "menu-list" },
       ...items.map(([v, ic, label]) => h("a", { href: "#/" + v }, icon(ic), h("span", { text: label }))),
+      h("button", { type: "button", class: "nav-btn", onClick: showHelp }, icon("help"), h("span", { text: "Ajuda" })),
       h("button", { type: "button", class: "nav-btn logout", onClick: logout }, icon("logout"), h("span", { text: "Sair" }))
     )
   );
 }
+
+// Ajuda: atalhos, onde está o guia e a quem recorrer (contato do Admin > Geral).
+function showHelp() {
+  const dlg = modal(h("h2", { text: "Ajuda" }),
+    h("p", { class: "help", text: "Tarefas, rotinas e tempo ficam em Hoje e Tarefas; a Retrospectiva e os Relatórios mostram o período. Tudo que muda fica no Histórico, com desfazer." }),
+    has("user") ? h("p", { class: "help", text: "Atalhos: n nova tarefa, / buscar, h t r l trocam de tela, s para o cronômetro, ? mostra todos." }) : null,
+    h("p", { class: "help" }, "Guia completo: ", h("a", { href: "https://github.com/jeffinshadow/shadow-nexus-worklog#readme", target: "_blank", rel: "noopener noreferrer", text: "README do Nexus" }), "."),
+    me.support_contact ? h("p", { class: "help" }, "Suporte: ", h("strong", { text: me.support_contact })) : h("p", { class: "dialog-note", text: "Dúvidas ou problemas: fale com quem administra o Nexus na sua equipe." }),
+    h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Fechar", onClick: () => dlg.close() })));
+}
+
+// Erros de JavaScript vão para o log do servidor (sem terceiros). Poucos por página.
+let reported = 0;
+function reportError(message, where) {
+  if (reported++ >= 5 || !me) return;
+  api.post("/client-errors", { message: String(message || "erro").slice(0, 300), where: String(where || location.hash).slice(0, 200) }).catch(() => {});
+}
+window.addEventListener("error", (ev) => reportError(ev.message, `${ev.filename || ""}:${ev.lineno || ""} ${location.hash}`));
+window.addEventListener("unhandledrejection", (ev) => {
+  const r = ev.reason;
+  if (r && "status" in r) return; // erro de API já mostrado na tela
+  reportError(r && (r.stack || r.message) || r, location.hash);
+});
 
 // Rodapé do menu: foto (ou iniciais), nome e e-mail; leva ao perfil.
 function renderWho() {
@@ -153,7 +190,7 @@ async function boot() {
   try {
     me = await api.get("/auth/me");
   } catch {
-    location.href = "/login.html";
+    toLogin();
     return;
   }
   api.setCsrf(me.csrf_token);
@@ -175,6 +212,7 @@ async function boot() {
   // Menu: cada item aparece só para quem tem o papel (data-need).
   for (const el of document.querySelectorAll("[data-need]")) el.classList.toggle("hidden", !has(el.dataset.need));
   document.getElementById("btn-logout").addEventListener("click", logout);
+  document.getElementById("btn-help").addEventListener("click", showHelp);
   // Busca na barra lateral; "/" foca a busca de qualquer tela.
   const sideQ = document.getElementById("side-search-q");
   document.getElementById("side-search").addEventListener("submit", (ev) => {

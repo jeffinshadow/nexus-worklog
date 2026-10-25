@@ -51,8 +51,8 @@ export async function mount(root, ctx) {
     else if (active === "avisos") body.append(await notices());
     else if (active === "calendario") body.append(await calendarFeed(() => render()));
     else if (active === "ia") body.append(...aiHelp(), await tokens(() => render()));
-    else if (isUser) body.append(profilePanel(ctx.me, render), assignmentsPanel(ctx.me), assistantPanel(ctx.me), ticketsPanel(ctx.me), workDays(ctx.me), shortcutsPanel(), account(ctx.me));
-    else body.append(profilePanel(ctx.me, render), account(ctx.me));
+    else if (isUser) body.append(profilePanel(ctx.me, render), assignmentsPanel(ctx.me), assistantPanel(ctx.me), ticketsPanel(ctx.me), workDays(ctx.me), shortcutsPanel(), account(ctx.me), deleteAccount(isUser));
+    else body.append(profilePanel(ctx.me, render), account(ctx.me), deleteAccount(isUser));
   }
   await render();
 }
@@ -549,6 +549,30 @@ function assignmentsPanel(me) {
     h("p", { class: "help", text: "Quem tem a função de atribuidor de tarefas pode mandar tarefas para você, mas só se você permitir aqui. A tarefa recebida é sua: você edita, conclui ou exclui." }),
     h("label", { class: "weekday-option" }, cb, h("span", { text: "Permitir que me atribuam tarefas" })),
     since);
+}
+
+// --------------------------------------------------------- excluir a conta --
+
+// LGPD: a pessoa apaga a conta e tudo o que registrou, com a senha. Sem volta.
+function deleteAccount(isUser) {
+  const pw = h("input", { type: "password", autocomplete: "current-password", required: "required" });
+  const err = h("p", { class: "error-text" });
+  const form = h("form", {},
+    h("p", { class: "help", text: "Apaga a sua conta e tudo o que está nela: tarefas, rotinas, tempo apontado, anotações, chaves de API e histórico. Não dá para desfazer." }),
+    isUser ? h("p", { class: "dialog-note" }, "Quer guardar uma cópia? Baixe antes em ", h("a", { href: "#/relatorios", text: "Relatórios" }), " (JSON ou CSV).") : null,
+    field("Sua senha, para confirmar", pw), err,
+    h("button", { type: "submit", class: "btn btn-danger", text: "Excluir minha conta" }));
+  form.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    err.textContent = "";
+    const ok = await confirmDialog({ title: "Excluir a sua conta?", text: "Tudo o que você registrou será apagado agora, sem volta.", confirm: "Excluir para sempre", danger: true });
+    if (!ok) return;
+    try {
+      await api.post("/me/delete", { password: pw.value });
+      location.href = "/login.html";
+    } catch (e) { err.textContent = e.message || "Não foi possível excluir."; }
+  });
+  return h("section", { class: "panel" }, h("div", { class: "panel-head" }, icon("trash"), h("h2", { text: "Excluir a conta" })), form);
 }
 
 // ------------------------------------------------------------------- conta --

@@ -50,8 +50,33 @@ async function mountUsers(root) {
     ...users.map((u) => h("div", { class: "list-row" }, avatar(u, "sm"),
       h("div", { class: "t" }, h("span", { text: u.display_name ? `${u.display_name} · ${u.email}` : u.email }),
         h("small", { text: roleNames(u.roles) })),
-      h("button", { type: "button", class: "btn btn-text btn-sm", text: "Redefinir senha", onClick: () => onReset(String(u.id)) }))));
+      h("button", { type: "button", class: "btn btn-text btn-sm", text: "Redefinir senha", onClick: () => onReset(String(u.id)) }),
+      h("button", { type: "button", class: "icon", title: "Excluir conta", "aria-label": "Excluir a conta de " + u.email, onClick: () => onDelete(u) }, icon("trash")))));
   root.append(h("div", { class: "settings-grid" }, list));
+
+  // ---- Excluir conta (LGPD): apaga a conta e todos os dados dela; confirma com o e-mail ----
+  function onDelete(u) {
+    const input = h("input", { type: "email", autocomplete: "off", required: "required" });
+    const err = h("p", { class: "error-text" });
+    const form = h("form", {},
+      h("p", { class: "help", text: `Apaga a conta ${u.email} e tudo o que está nela: tarefas, rotinas, tempo, anotações, chaves de API e histórico. Não dá para desfazer. Tarefas que essa pessoa atribuiu a outras continuam com quem recebeu.` }),
+      field("Digite o e-mail da conta para confirmar", input), err,
+      h("div", { class: "dialog-actions" },
+        h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
+        h("button", { type: "submit", class: "btn btn-danger", text: "Excluir para sempre" })));
+    form.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      err.textContent = "";
+      try {
+        const res = await api.post(`/admin/users/${u.id}/delete`, { confirm_email: input.value.trim() });
+        dlg.close();
+        toast(`Conta ${res.email} excluída (${res.tasks} tarefas, ${res.routines} rotinas).`);
+        mountUsers(root);
+      } catch (e) { err.textContent = e.message || "Não foi possível excluir."; }
+    });
+    const dlg = modal(h("h2", { text: "Excluir conta?" }), form);
+    input.focus();
+  }
 
   // ---- Redefinir senha (senha temporária, troca forçada no próximo login) ----
   async function onReset(uid) {
@@ -162,22 +187,25 @@ async function mountGeneral(root, me) {
   clear(root);
   const cfg = await api.get("/admin/settings");
   const days = h("input", { type: "number", min: "1", max: "366", value: String(cfg.retro_days), required: "required" });
+  const contact = h("input", { type: "text", maxlength: "200", value: cfg.support_contact || "", placeholder: "ex.: suporte@empresa.com · ramal 2040" });
   const err = h("p", { class: "error-text" });
   const form = h("form", {},
     field("Dias para trás", days),
     h("p", { class: "dialog-note", text: "Vale para criar ou concluir tarefas com data passada, pelo app, pela API e pela IA. As rotinas seguem com 7 dias." }),
+    field("Contato de suporte (aparece em Ajuda)", contact),
     err, h("button", { type: "submit", class: "btn btn-primary", text: "Salvar" }));
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     err.textContent = "";
     try {
-      const res = await api.put("/admin/settings", { retro_days: Number(days.value) });
+      const res = await api.put("/admin/settings", { retro_days: Number(days.value), support_contact: contact.value.trim() || null });
       me.retro_days = res.retro_days;
-      toast(`Limite retroativo: ${res.retro_days} dias.`);
+      me.support_contact = res.support_contact;
+      toast("Configurações salvas.");
     } catch (e) { err.textContent = e.message || "Falha ao salvar."; }
   });
   root.append(h("div", { class: "settings-grid" }, h("section", { class: "panel" },
-    h("div", { class: "panel-head" }, icon("calendar"), h("h2", { text: "Lançamento retroativo" })), form)));
+    h("div", { class: "panel-head" }, icon("calendar"), h("h2", { text: "Geral" })), form)));
 }
 
 

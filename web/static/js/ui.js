@@ -45,8 +45,10 @@ export function toast(message, opts = {}) {
   setTimeout(() => el.remove(), opts.action ? 7000 : 3500);
 }
 
+// Só mensagens da API (que têm status) vão para a tela; erro de JavaScript
+// (em inglês, técnico) vira a mensagem genérica.
 export function errorToast(e, fallback = "Algo deu errado.") {
-  toast((e && e.message) || fallback, { error: true });
+  toast((e && "status" in e && e.message) || fallback, { error: true });
 }
 
 // Desfaz a ação mais recente de um item (usa o histórico do backend).
