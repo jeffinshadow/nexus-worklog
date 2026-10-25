@@ -4,4 +4,4 @@ psycopg[binary,pool]==3.3.6
 argon2-cffi==25.1.0
 pydantic[email]==2.14.1
 fpdf2==2.8.9
-fonttools>=4.50,<5
+fonttools==4.67.0

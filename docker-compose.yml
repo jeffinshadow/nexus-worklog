@@ -1,5 +1,11 @@
+# Logs com rotação (são o único monitoramento: inclui os erros do navegador).
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "5" }
+
 services:
   db:
+    logging: *logging
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
@@ -17,6 +23,7 @@ services:
       retries: 12
 
   backend:
+    logging: *logging
     build: ./backend
     restart: unless-stopped
     # Todas as variáveis vêm do .env; os padrões ficam num lugar só (app/config.py).
@@ -37,6 +44,7 @@ services:
       start_period: 30s
 
   web:
+    logging: *logging
     build: ./web
     restart: unless-stopped
     depends_on:
