@@ -6,9 +6,11 @@ Multiusuário, auto-hospedado, sem frameworks JS nem passo de build.
 Prioridades: **simples > seguro > funcional > elegante**.
 
 Cada pessoa vê **apenas** os próprios dados. As contas são criadas pelo
-**admin** (convite com senha temporária); o admin consulta, só para leitura, o
-quadro, a retrospectiva e os relatórios de qualquer usuário. Não há cadastro
-público.
+**admin** (convite com senha temporária); não há cadastro público. Papéis
+acumuláveis, dados em **Admin › Permissões**: **Usuário** (o próprio registro),
+**Admin** (contas, permissões, configurações), **Atribuidor de tarefas** (manda
+tarefas a quem aceitou receber) e **Visualizador de tarefas** (consulta, só
+para leitura, o quadro, a retrospectiva e os relatórios de cada pessoa).
 
 ## O que faz
 
@@ -24,7 +26,12 @@ público.
   anotações e apontamento de tempo; **cronômetro** (um por pessoa, vale em
   qualquer aparelho); **número do chamado** (GLPI, TomTicket, Jira…) que vira
   link; **plantão** fora do horário, com o tempo separado no relatório; e
-  **modelos** de tarefa com checklist pronto.
+  **modelos** de tarefa com checklist pronto. Lançamento **retroativo** (criada e
+  concluída em datas passadas, até um limite configurável pelo admin; padrão 60
+  dias).
+- **Atribuição** — quem aceita (Configurações › Conta) recebe tarefas de um
+  atribuidor pelo app ou pela IA, com aviso por e-mail; a tarefa passa a ser
+  dela, e quem atribuiu acompanha o status.
 - **Relatórios** — PDF por período, por projeto ou do projeto inteiro;
   exportação em CSV (planilha) e JSON (backup).
 - **Retrospectiva** (aderência das rotinas, vazão, tempo por projeto, backlog),
@@ -34,7 +41,9 @@ público.
   `?`…), perfil com nome e foto e **identidade visual** configurável pelo admin.
 - **IA** — chaves de API e servidor **MCP** (`/mcp`): a IA registra, anota,
   aponta e cronometra o que você contar, com tudo marcado no histórico pelo nome
-  da chave. Comandos prontos para o resumo da semana e para a daily.
+  da chave. Comandos prontos para o resumo da semana e para a daily. Para
+  lançar o que já aconteceu: `created_at`/`completed_at`, `external_ref` (não
+  duplica) e `list_tasks` por período.
 
 ## Telas
 
@@ -131,7 +140,8 @@ em profundidade).
   **CSRF** por header em toda mutação.
 - **Chaves de API** (`nxs_…`) e **link do calendário** (`nxc_…`): só o HMAC no
   banco, revogáveis; trocar a senha (ou o reset pelo admin) revoga ambos. Chave nunca
-  acessa rotas de admin, chaves, calendário ou avisos.
+  acessa rotas de admin, de visualizador, chaves, calendário ou avisos; atribuir
+  por chave exige o papel de atribuidor e escopo de escrita.
 - **Isolamento**: toda consulta filtra por `user_id`; permissões em
   `backend/app/deps.py`.
 - **nginx**: CSP sem inline, HSTS, `nosniff`, `DENY` em frames; o link do
