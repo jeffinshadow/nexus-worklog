@@ -27,7 +27,9 @@ from ..schemas import (AssignIn, ChecklistIn, ChecklistUpdate, FinishIn, NoteIn,
 from . import assign as assign_routes
 from . import history as history_routes
 from . import projects as project_routes
+from . import renewals as renewal_routes
 from . import search as search_routes
+from . import summary as summary_routes
 from . import recurring as recurring_routes
 from . import templates as template_routes
 from . import timer as timer_routes
@@ -43,7 +45,7 @@ INSTRUCTIONS = (
     "ver o dia (rotinas e tarefas abertas) e get_summary para a daily/retro (ontem e a "
     "semana, com tempo por projeto). Registre o que o usuário contar com "
     "create_task/update_task/complete_task, log_time e add_note; marque rotinas com "
-    "set_recurring. Para medir o tempo enquanto o usuário trabalha, use start_timer/stop_timer; "
+    "set_recurring (com note = evidência); get_handoff dá a passagem de turno. Para medir o tempo enquanto o usuário trabalha, use start_timer/stop_timer; "
     "procedimentos repetidos têm modelos (list_templates, create_from_template). "
     "Datas no formato AAAA-MM-DD, no fuso " + config.APP_TZ + ". Rotinas "
     "aceitam até 7 dias para trás; marcar uma rotina fora da agenda dela conta como extra. "
@@ -80,6 +82,10 @@ def _task_line(t: dict, today: date) -> str:
         parts.append(f"(atribuída por {t['assigned_by_name']})")
     if t.get("external_ref"):
         parts.append(f"(ref {t['external_ref']})")
+    if t.get("status") == "blocked" and t.get("blocked_reason"):
+        parts.append(f"(aguardando {t['blocked_reason']})")
+    if t.get("status") == "blocked" and t.get("follow_up_on"):
+        parts.append(f"(cobrar em {t['follow_up_on'].isoformat()})")
     if t.get("ticket"):
         parts.append(f"(chamado {t['ticket']})")
     if t.get("after_hours"):
@@ -140,7 +146,7 @@ def _task_args(uid: int, args: dict) -> dict:
 def _find_task(uid: int, task_id: int) -> dict:
     t = db.query_one(
         """SELECT w.id, w.title, w.description, w.status, w.due_date, w.completed_at, w.priority,
-                  w.ticket, w.after_hours, w.external_ref, p.name AS project_name,
+                  w.ticket, w.after_hours, w.external_ref, w.blocked_reason, w.follow_up_on, p.name AS project_name,
                   """ + services.ASSIGNER_NAME + ", " + services.TASK_COUNTS + """
              FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
             WHERE w.id = %s AND w.user_id = %s""", (task_id, uid))
@@ -226,7 +232,7 @@ def t_update_task(ctx, args):
 
 def t_complete_task(ctx, args):
     task_id = int(args["task_id"])
-    data = _call(FinishIn, completed_at=args.get("completed_at"))
+    data = _call(FinishIn, completed_at=args.get("completed_at"), resolution=args.get("resolution"))
     _call(worklog_routes.finish, task_id, data, user=ctx)
     return "Concluída: " + _task_line(_find_task(ctx["user_id"], task_id), services.app_today())
 
@@ -241,6 +247,8 @@ def t_get_task(ctx, args):
     if t["notes"]:
         lines += ["", "Anotações (mais recentes primeiro):"]
         lines += [f"  {n['created_at'].astimezone(services.app_tz()):%d/%m %H:%M} — {n['body']}" for n in t["notes"][:10]]
+    if t.get("resolution"):
+        lines += ["", "Como resolveu:", t["resolution"]]
     if t["time"]:
         lines += ["", f"Tempo apontado: {_dur(t['minutes'])}"]
         lines += [f"  {e['day']:%d/%m} {_dur(e['minutes'])}" + (f" — {e['note']}" if e["note"] else "") for e in t["time"][:10]]
@@ -358,12 +366,14 @@ def t_create_from_template(ctx, args):
 
 
 def t_set_recurring(ctx, args):
-    data = _call(ToggleIn, done=args.get("done", True), day=args.get("day"))
+    extra = {"note": args["note"]} if "note" in args else {}  # sem note: mantém a evidência
+    data = _call(ToggleIn, done=args.get("done", True), day=args.get("day"), **extra)
     rid = args.get("recurring_id")
     if rid is None:
         raise ToolError("informe recurring_id (veja list_recurring)")
     res = _call(recurring_routes.toggle, int(rid), data, user=ctx)
-    return f"Rotina R{rid} {'marcada' if res['done'] else 'desmarcada'} em {res['day'].isoformat()}."
+    nota = f" Evidência: {res['note']}." if res.get("note") else ""
+    return f"Rotina R{rid} {'marcada' if res['done'] else 'desmarcada'} em {res['day'].isoformat()}.{nota}"
 
 
 # Atribuição (só para quem tem o papel Atribuidor de tarefas).
@@ -408,6 +418,25 @@ def t_list_assigned(ctx, args):
         atraso = " (ATRASADA)" if r["late"] else ""
         linhas.append(f"#{r['id']} {r['title']} → {r['to_name']} [{st}]{fim}{atraso}")
     return "\n".join(linhas) or "(você ainda não atribuiu tarefas)"
+
+
+def t_list_renewals(ctx, args):
+    rows = renewal_routes.list_for(ctx["user_id"])
+    out = []
+    for r in rows:
+        quando = "VENCIDO" if r["days_left"] < 0 else ("vence hoje" if r["days_left"] == 0 else f"vence em {r['days_left']} d")
+        out.append(f"V{r['id']} {r['label']} — {r['expires_on'].isoformat()} ({quando})" + (" [AVISO]" if r["warning"] else ""))
+    return "\n".join(out) or "(nenhum vencimento cadastrado)"
+
+
+def t_find_similar(ctx, args):
+    rows = search_routes.find_similar(ctx["user_id"], str(args.get("title", "")))
+    return "\n\n".join(f"#{r['id']} {r['title']}\nComo resolveu: {r['resolution']}" for r in rows) \
+        or "(nada parecido resolvido antes)"
+
+
+def t_get_handoff(ctx, args):
+    return summary_routes.handoff_text(ctx["user_id"])
 
 
 def t_get_history(ctx, args):
@@ -459,6 +488,10 @@ TOOLS = {
                         "after_hours": {"type": "boolean", "default": False, "description": "Plantão / fora do horário"},
                         "created_at": {**WHEN, "description": "Quando a tarefa começou (retroativo; padrão: agora). " + WHEN["description"]},
                         "completed_at": {**WHEN, "description": "Quando foi concluída (implica status done; padrão: agora). " + WHEN["description"]},
+                        "blocked_reason": {"type": ["string", "null"], "maxLength": 120,
+                                           "description": "Com status blocked: o que se está aguardando"},
+                        "follow_up_on": {**DATE, "type": ["string", "null"], "description": "Com status blocked: dia combinado para cobrar"},
+                        "resolution": {"type": "string", "maxLength": 1000, "description": "Com status done: como foi resolvido (entra na busca)"},
                         "external_ref": {"type": "string", "maxLength": 120,
                                          "description": "Chave sua para não duplicar: repetida, devolve a tarefa que já existe"}}}),
     "update_task": (t_update_task, True,
@@ -473,7 +506,12 @@ TOOLS = {
                         "priority": {"type": "string", "enum": ["alta", "normal", "baixa"]},
                         "ticket": {"type": ["string", "null"], "maxLength": 40},
                         "after_hours": {"type": "boolean"},
-                        "completed_at": {**WHEN, "description": "Corrige a data de conclusão (tarefa concluída). " + WHEN["description"]}}}),
+                        "completed_at": {**WHEN, "description": "Corrige a data de conclusão (tarefa concluída). " + WHEN["description"]},
+                        "blocked_reason": {"type": ["string", "null"], "maxLength": 120,
+                                           "description": "Com status blocked: o que se está aguardando (fornecedor, cliente, aprovação...)"},
+                        "follow_up_on": {**DATE, "type": ["string", "null"], "description": "Com status blocked: dia combinado para cobrar (AAAA-MM-DD)"},
+                        "resolution": {"type": ["string", "null"], "maxLength": 1000,
+                                       "description": "Como foi resolvido (tarefa concluída; null apaga)"}}}),
     "get_summary": (t_get_summary, False, "Resumo para a daily/retro: o último dia útil e a semana até hoje (rotinas, tarefas concluídas, tempo por projeto, o que ficou para trás).",
                     {"type": "object", "properties": {}}),
     "get_task": (t_get_task, False, "Tarefa completa: checklist, anotações e tempo apontado.",
@@ -499,14 +537,17 @@ TOOLS = {
     "complete_task": (t_complete_task, True, "Marca uma tarefa como concluída (agora, ou na data informada).",
                       {"type": "object", "required": ["task_id"], "properties": {
                           "task_id": {"type": "integer"},
-                          "completed_at": {**WHEN, "description": "Quando foi concluída (padrão: agora). " + WHEN["description"]}}}),
+                          "completed_at": {**WHEN, "description": "Quando foi concluída (padrão: agora). " + WHEN["description"]},
+                          "resolution": {"type": "string", "maxLength": 1000,
+                                         "description": "Como foi resolvido (vira base de conhecimento: entra na busca)"}}}),
     "list_recurring": (t_list_recurring, False, "Rotinas de um dia (padrão: hoje; até 7 dias atrás) e se foram feitas.",
                        {"type": "object", "properties": {"day": DATE}}),
     "set_recurring": (t_set_recurring, True, "Marca (done=true) ou desmarca uma rotina num dia (padrão hoje; até 7 dias atrás).",
                       {"type": "object", "required": ["recurring_id"], "properties": {
                           "recurring_id": {"type": "integer", "description": "id da rotina (R<n> em get_today/list_recurring), não de tarefa"},
                           "done": {"type": "boolean", "default": True},
-                          "day": DATE}}),
+                          "day": DATE,
+                          "note": {"type": "string", "maxLength": 200, "description": "Evidência curta da verificação (ex.: backup OK, 2,1 TB)"}}}),
     "start_timer": (t_start_timer, True, "Inicia o cronômetro numa tarefa aberta (se outro estiver rodando, ele para e aponta o tempo).",
                     {"type": "object", "required": ["task_id"], "properties": {"task_id": {"type": "integer"}}}),
     "stop_timer": (t_stop_timer, True, "Para o cronômetro e aponta o tempo na tarefa.",
@@ -516,6 +557,17 @@ TOOLS = {
     "create_from_template": (t_create_from_template, True, "Cria uma tarefa a partir de um modelo (com o checklist dele).",
                              {"type": "object", "required": ["template"], "properties": {
                                  "template": {"type": "string", "description": "Nome do modelo ou M<id> (veja list_templates)"}}}),
+    "list_renewals": (t_list_renewals, False,
+                      "Vencimentos cadastrados (certificados, licenças, domínios, garantias), do mais próximo ao mais longe; [AVISO] = dentro da antecedência.",
+                      {"type": "object", "properties": {}}),
+    "find_similar": (t_find_similar, False,
+                     "Já resolvi isso antes? Tarefas concluídas com título parecido e como foram resolvidas. "
+                     "Use antes de abrir uma tarefa de problema repetido (impressora, VPN, AD...).",
+                     {"type": "object", "required": ["title"], "properties": {"title": {"type": "string", "minLength": 3, "maxLength": 200}}}),
+    "get_handoff": (t_get_handoff, False,
+                    "Passagem de turno/plantão: em aberto, bloqueadas com o motivo e há quantos dias, concluídas nas "
+                    "últimas 12 h, rotinas pendentes e vencimentos no aviso, em texto pronto pra colar no chat da equipe.",
+                    {"type": "object", "properties": {}}),
     "list_assignable": (t_list_assignable, False, "Atribuidor: pessoas que aceitam receber tarefas atribuídas.",
                         {"type": "object", "properties": {}}),
     "assign_task": (t_assign_task, True,

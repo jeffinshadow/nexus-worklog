@@ -22,6 +22,8 @@ const DAYS = [
 ];
 
 export async function mount(root, ctx) {
+  // A aba de vencimentos virou item do menu: link antigo vai para a tela nova.
+  if (/aba=vencimentos/.test(location.hash)) { location.hash = "#/vencimentos"; return; }
   // Conta sem registro próprio (só Admin/Visualizador/Atribuidor): só IA/API e Conta.
   const isUser = (ctx.me.roles || []).includes("user");
   const tabs = isUser ? TABS : TABS.filter(([k]) => k === "ia" || k === "conta");

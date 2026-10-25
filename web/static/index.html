@@ -13,8 +13,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Nexus">
   <link rel="preload" as="font" type="font/woff2" href="/fonts/GoogleSansFlex.woff2" crossorigin>
-  <link rel="stylesheet" href="/css/tokens.css?v=48">
-  <link rel="stylesheet" href="/css/app.css?v=48">
+  <link rel="stylesheet" href="/css/tokens.css?v=61">
+  <link rel="stylesheet" href="/css/app.css?v=61">
 </head>
 <body>
   <!-- Ícones (traço 1.75, 24px), sem script/style inline (CSP). -->
@@ -95,6 +95,7 @@
       <nav class="nav" id="nav">
         <a href="#/hoje" data-view="hoje" data-need="user" class="hidden"><svg class="ico"><use href="#icon-today"></use></svg><span>Hoje</span></a>
         <a href="#/tarefas" data-view="tarefas" data-need="user" class="hidden"><svg class="ico"><use href="#icon-tasks"></use></svg><span>Tarefas</span></a>
+        <a href="#/vencimentos" data-view="vencimentos" data-need="user" class="hidden"><svg class="ico"><use href="#icon-calendar"></use></svg><span>Vencimentos</span></a>
         <a href="#/dashboard" data-view="dashboard" data-need="user" class="hidden"><svg class="ico"><use href="#icon-dashboard"></use></svg><span>Retrospectiva</span></a>
         <a href="#/relatorios" data-view="relatorios" data-need="user" class="hidden"><svg class="ico"><use href="#icon-reports"></use></svg><span>Relatórios</span></a>
         <a href="#/historico" data-view="historico"><svg class="ico"><use href="#icon-history"></use></svg><span>Histórico</span></a>
@@ -129,6 +130,7 @@
       <section id="view-historico" class="view hidden"></section>
       <section id="view-config" class="view hidden"></section>
       <section id="view-admin" class="view hidden"></section>
+      <section id="view-vencimentos" class="view hidden"></section>
       <section id="view-equipe" class="view hidden"></section>
       <section id="view-atribuir" class="view hidden"></section>
       <section id="view-mais" class="view hidden"></section>
@@ -172,6 +174,9 @@
         <label for="rec-interval">A cada quantos dias (contando de quando foi criada)</label>
         <input id="rec-interval" type="number" min="2" max="365" value="15">
       </div>
+      <div class="field field-check">
+        <label class="weekday-option"><input id="rec-require-note" type="checkbox"><span>Exigir evidência ao marcar (o que foi conferido, pra auditoria)</span></label>
+      </div>
       <div class="dialog-actions">
         <button type="button" class="btn btn-danger hidden" id="rec-delete">Excluir</button>
         <div class="spacer"></div>
@@ -192,6 +197,7 @@
         <label for="wl-title">Título</label>
         <input id="wl-title" type="text" required maxlength="200">
       </div>
+      <div class="similar hidden" id="wl-similar" aria-live="polite"></div>
       <div class="field">
         <label for="wl-desc">Descrição (uma linha)</label>
         <input id="wl-desc" type="text" maxlength="300">
@@ -234,6 +240,20 @@
           <label class="weekday-option"><input id="wl-after" type="checkbox"><span>Plantão / fora do horário</span></label>
         </div>
       </div>
+      <div class="field-row hidden" id="wl-blocked-wrap">
+        <div class="field">
+          <label for="wl-blocked">Aguardando o quê? (opcional)</label>
+          <input id="wl-blocked" type="text" maxlength="120" placeholder="ex.: retorno do fornecedor, aprovação da diretoria">
+        </div>
+        <div class="field">
+          <label for="wl-followup">Cobrar em (opcional)</label>
+          <input id="wl-followup" type="date">
+        </div>
+      </div>
+      <div class="field hidden" id="wl-resolution-wrap">
+        <label for="wl-resolution">Como resolveu? (opcional — entra na busca)</label>
+        <textarea id="wl-resolution" rows="2" maxlength="1000" placeholder="ex.: perfil corrompido, recriado com o scanpst"></textarea>
+      </div>
       <div class="field-row hidden" id="wl-dates">
         <div class="field" id="wl-created-wrap">
           <label for="wl-created-at">Começou em (opcional)</label>
@@ -260,7 +280,7 @@
   <div class="toasts" id="toasts" aria-live="polite"></div>
   <div class="timer-chip timer-mobile hidden" id="timer-mobile" role="status" aria-live="polite"></div>
 
-  <script type="module" src="/js/app.js?v=48"></script>
-  <script type="module" src="/js/pwa.js?v=48"></script>
+  <script type="module" src="/js/app.js?v=61"></script>
+  <script type="module" src="/js/pwa.js?v=61"></script>
 </body>
 </html>

@@ -10,6 +10,7 @@ import * as settings from "./settings.js";
 import * as admin from "./admin.js";
 import * as equipe from "./equipe.js";
 import * as atribuir from "./atribuir.js";
+import { renewalsPanel } from "./renewals.js";
 import * as search from "./search.js";
 import { loadBranding } from "./branding.js";
 import { avatar } from "./profile.js";
@@ -27,6 +28,7 @@ let me = null;
 const VIEWS = {
   hoje: { title: "Hoje", need: "user", mount: (el, ctx) => today.mount(el, ctx) },
   tarefas: { title: "Tarefas", need: "user", mount: (el, ctx) => board.mount(el, ctx) },
+  vencimentos: { title: "Vencimentos", need: "user", eyebrow: "certificados · licenças · domínios · garantias", mount: (el) => mountRenewals(el) },
   dashboard: { title: "Retrospectiva", need: "user", eyebrow: "rotinas · fluxo · tempo · backlog", mount: (el, ctx) => dashboard.mount(el, { me: ctx.me, setAssist: ctx.setAssist }) },
   relatorios: { title: "Relatórios", need: "user", eyebrow: "PDF · exportar dados", mount: (el, ctx) => reports.mount(el, { me: ctx.me }) },
   historico: { title: "Histórico", eyebrow: "o que mudou, por quem", mount: (el) => history.mount(el) },
@@ -114,10 +116,21 @@ async function logout() {
   location.href = "/login.html";
 }
 
+// Vencimentos: item próprio no menu (importante demais para ficar em Configurações).
+async function mountRenewals(el) {
+  const render = async () => {
+    const panel = await renewalsPanel(render);
+    clear(el);
+    el.append(h("div", { class: "settings-grid" }, panel));
+  };
+  await render();
+}
+
 // Celular: "Mais" reúne o que não cabe na barra inferior.
 function mountMore(el) {
   clear(el);
   const items = [
+    ["vencimentos", "calendar", "Vencimentos"],
     ["dashboard", "dashboard", "Retrospectiva"],
     ["historico", "history", "Histórico"],
     ["atribuir", "send", "Atribuir tarefas"],
@@ -141,7 +154,8 @@ function showHelp() {
   const dlg = modal(h("h2", { text: "Ajuda" }),
     h("p", { class: "help", text: "Tarefas, rotinas e tempo ficam em Hoje e Tarefas; a Retrospectiva e os Relatórios mostram o período. Tudo que muda fica no Histórico, com desfazer." }),
     has("user") ? h("p", { class: "help", text: "Atalhos: n nova tarefa, / buscar, h t r l trocam de tela, s para o cronômetro, ? mostra todos." }) : null,
-    h("p", { class: "help" }, "Guia completo: ", h("a", { href: "https://github.com/jeffinshadow/shadow-nexus-worklog#readme", target: "_blank", rel: "noopener noreferrer", text: "README do Nexus" }), "."),
+    has("user") ? h("p", { class: "help", text: "Registro rápido (no Hoje), marcadores no fim: @Projeto #chamado !plantão !alta ^hoje, ^amanhã, ^sex ou ^25/10 (prazo) e !bloq motivo (por último); “— 45min” já conclui com o tempo." }) : null,
+    h("p", { class: "help" }, "Manual de uso, tela por tela: ", h("a", { href: "https://shadow.tec.br/nexus-manual.html", target: "_blank", rel: "noopener noreferrer", text: "shadow.tec.br/nexus-manual" }), "."),
     me.support_contact ? h("p", { class: "help" }, "Suporte: ", h("strong", { text: me.support_contact })) : h("p", { class: "dialog-note", text: "Dúvidas ou problemas: fale com quem administra o Nexus na sua equipe." }),
     h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Fechar", onClick: () => dlg.close() })));
 }

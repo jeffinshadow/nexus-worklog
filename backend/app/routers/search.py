@@ -1,5 +1,7 @@
 """Busca sem acento: tarefas (título, descrição, anotações, checklist,
 apontamentos), rotinas e projetos."""
+import re
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from .. import db
@@ -20,13 +22,60 @@ def _snippet(text: str, q: str, width: int = 70) -> str:
     return ("…" if a else "") + text[a:b].strip() + ("…" if b < len(text) else "")
 
 
+# Palavras que não dizem qual é o problema ("não", "para", "com"...).
+_VAZIAS = {"para", "pelo", "pela", "com", "sem", "nao", "esta", "esse", "essa", "isso", "como", "mais",
+           "muito", "quando", "onde", "porque", "tarefa", "fazer", "verificar", "ver", "ajustar",
+           "dos", "das", "nos", "nas", "uma", "uns", "por", "que", "novo", "nova", "outra", "outro"}
+
+
+def _like(text: str) -> str:
+    """Padrão LIKE de "contém", com %, _ e \\ do texto escapados."""
+    return "%" + text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+
+@router.get("/search/similar")
+def similar(title: str = Query(..., min_length=3, max_length=200), user=Depends(active_user)):
+    """"Já resolvi isso antes?": até 3 tarefas concluídas, com "como resolveu",
+    cujo título tem palavras em comum com `title` (sem acento, 3+ letras: VPN,
+    DNS). Mais palavras em comum primeiro; com 4+ palavras no título, exige 2."""
+    return find_similar(user["user_id"], title)
+
+
+def find_similar(uid: int, title: str) -> list[dict]:
+    # Palavras de 3+ letras, ou siglas de 2 em maiúsculas (AD, IP, RH, TI), sem
+    # repetir, as mais específicas (longas) primeiro — o corte em 6 é estável.
+    raw = [x for x in re.split(r"[^\w]+", title) if x]  # "VPN: caiu", "(Financeiro)": só as palavras
+    words = list(dict.fromkeys(fold(x) for x in raw
+                               if (len(x) >= 3 or (len(x) == 2 and x.isupper())) and fold(x) not in _VAZIAS))
+    words = sorted(words, key=len, reverse=True)[:6]
+    if not words:
+        return []
+    need = 2 if len(words) >= 4 else 1
+    # Sigla curta casa só como palavra inteira ("ad" não casa "adaptador").
+    terms = [f"(nx_fold(w.title) ~ %(w{i})s)::int" if len(w) <= 3 else f"(nx_fold(w.title) LIKE %(w{i})s)::int"
+             for i, w in enumerate(words)]
+    score = " + ".join(terms)
+    params = {"uid": uid, "need": need,
+              **{f"w{i}": (rf"\m{re.escape(w)}\M" if len(w) <= 3 else _like(w)) for i, w in enumerate(words)}}
+    rows = db.query_all(
+        f"""SELECT w.id, w.title, w.resolution, w.completed_at, w.ticket, ({score}) AS score
+              FROM worklog_tasks w
+             WHERE w.user_id = %(uid)s AND w.status = 'done' AND w.resolution IS NOT NULL
+               AND ({score}) >= %(need)s
+             ORDER BY score DESC, w.completed_at DESC NULLS LAST
+             LIMIT 3""", params)
+    # Só os que casam tanto quanto o melhor: "impressora financeiro" não puxa
+    # "Onboarding (Financeiro)" se há uma impressora do financeiro resolvida.
+    return [r for r in rows if r["score"] == rows[0]["score"]] if rows else []
+
+
 @router.get("/search")
 def search(q: str = Query(..., min_length=2, max_length=100), user=Depends(active_user)):
     uid = user["user_id"]
     fq = fold(q.strip()[:100]).lstrip("#")  # "#1234" acha o chamado; também pelo MCP (sem validação de Query)
     if len(fq) < 2:
         raise HTTPException(status_code=400, detail="busque ao menos 2 letras")
-    like = "%" + fq.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+    like = _like(fq)
 
     tasks: dict[int, dict] = {}
 
@@ -58,6 +107,7 @@ def search(q: str = Query(..., min_length=2, max_length=100), user=Depends(activ
         ("anotação", ", n.body AS hit", "JOIN task_notes n ON n.task_id = w.id", "nx_fold(n.body) LIKE %(like)s", "hit"),
         ("checklist", ", c.label AS hit", "JOIN task_checklist c ON c.task_id = w.id", "nx_fold(c.label) LIKE %(like)s", "hit"),
         ("apontamento", ", e.note AS hit", "JOIN time_entries e ON e.task_id = w.id", "nx_fold(e.note) LIKE %(like)s", "hit"),
+        ("como resolveu", ", w.resolution AS hit", "", "nx_fold(w.resolution) LIKE %(like)s", "hit"),
     ]:
         for r in db.query_all(base.format(extra=extra, join=join, cond=cond), params):
             t = task(r)

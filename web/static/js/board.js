@@ -1,8 +1,8 @@
 // Quadro de tarefas: rotinas (com seletor de dia), tarefas abertas e
 // concluídas. Também exporta os diálogos de criar/editar, usados pela tela Hoje.
 import { api } from "./api.js";
-import { h, icon, clear, addDays, shortDate, localDay, localDateTime } from "./dom.js";
-import { confirmDialog, errorToast, toast, undoLatest, busy } from "./ui.js";
+import { h, icon, clear, addDays, shortDate, localDay, localDateTime, daysBetween } from "./dom.js";
+import { confirmDialog, errorToast, toast, undoLatest, busy, modal } from "./ui.js";
 import { fillProjectSelect, listProjects, projectChip } from "./projects.js";
 import { openTask, duration, parseDuration } from "./task.js";
 import { boardLine } from "./assistant.js";
@@ -30,9 +30,23 @@ export function dayLabel(iso, today) {
 
 // Chips de uma tarefa (compartilhado com a tela Hoje): status,
 // prioridade, prazo, projeto e os contadores de checklist/tempo/anotações.
+// "bloqueada · 3 d": há quanto tempo o impedimento existe.
+// Dias de calendário no fuso da app (bloqueada ontem às 18h = 1 d hoje), como no servidor.
+function blockedDays(t, today) {
+  if (t.status !== "blocked" || !t.blocked_at || !today) return "";
+  const d = daysBetween(localDay(t.blocked_at), today);
+  return d >= 1 ? ` · ${d} d` : "";
+}
+
 export function taskChips(t, today) {
   // Concluída: a coluna já diz; fica só a data de fim.
-  const chips = t.status === "done" ? [] : [h("span", { class: "chip " + t.status, text: STATUS_LABELS[t.status] })];
+  const chips = t.status === "done" ? [] : [h("span", { class: "chip " + t.status, text: STATUS_LABELS[t.status] + blockedDays(t, today) })];
+  if (t.status === "blocked" && t.follow_up_on)
+    chips.push(h("span", { class: "chip " + (t.follow_up_on <= today ? "late" : "blocked-reason"), title: "Dia combinado para cobrar",
+      text: t.follow_up_on < today ? "cobrança atrasada · " + shortDate(t.follow_up_on)
+        : t.follow_up_on === today ? "cobrar hoje" : "cobrar " + shortDate(t.follow_up_on) }));
+  if (t.status === "blocked" && t.blocked_reason)
+    chips.push(h("span", { class: "chip blocked-reason", title: "Aguardando: " + t.blocked_reason, text: "aguardando " + (t.blocked_reason.length > 40 ? t.blocked_reason.slice(0, 39) + "…" : t.blocked_reason) }));
   if (t.priority === 1 && t.status !== "done") chips.push(h("span", { class: "chip prio-1", text: "alta" }));
   if (t.status === "done") {
     // O dia da conclusão no fuso da app (o timestamp vem em UTC: à noite já seria "amanhã").
@@ -116,11 +130,53 @@ export function openWorklog(item, onDone, opts = {}) {
   const doneOrig = item && item.completed_at ? localDateTime(item.completed_at) : "";
   doneAt.value = doneOrig;
   document.getElementById("wl-created-wrap").classList.toggle("hidden", !!item);
-  const syncDates = () => dates.classList.toggle("hidden", statusSel.value !== "done");
+  const blockedWrap = document.getElementById("wl-blocked-wrap");
+  const blocked = document.getElementById("wl-blocked");
+  blocked.value = item && item.blocked_reason ? item.blocked_reason : "";
+  const followUp = document.getElementById("wl-followup");
+  const followOrig = item && item.follow_up_on ? item.follow_up_on : "";
+  followUp.value = followOrig;
+  // Dia para cobrar: hoje ou depois — mas uma cobrança já atrasada pode ficar como está.
+  followUp.min = followOrig && followOrig < now.slice(0, 10) ? followOrig : now.slice(0, 10);
+  const resolution = document.getElementById("wl-resolution");
+  const resolOrig = item && item.resolution ? item.resolution : "";
+  resolution.value = resolOrig;
+  const syncDates = () => {
+    dates.classList.toggle("hidden", statusSel.value !== "done");
+    document.getElementById("wl-resolution-wrap").classList.toggle("hidden", statusSel.value !== "done");
+    blockedWrap.classList.toggle("hidden", statusSel.value !== "blocked");
+    followUp.disabled = statusSel.value !== "blocked"; // escondido e desabilitado: o navegador não valida
+  };
   statusSel.onchange = syncDates;
   syncDates();
   ticket.value = item && item.ticket ? item.ticket : "";
   after.checked = !!(item && item.after_hours);
+
+  // "Já resolvi isso antes?": ao digitar o título de uma tarefa nova, mostra até 3
+  // concluídas parecidas com o "como resolveu" delas (busca sem IA).
+  const similarBox = document.getElementById("wl-similar");
+  const titleInput = document.getElementById("wl-title");
+  clear(similarBox);
+  similarBox.classList.add("hidden");
+  let simTimer = null, simSeq = 0;
+  dlg.onclose = () => { clearTimeout(simTimer); simSeq++; }; // nada pendente entre aberturas
+  titleInput.oninput = item ? null : () => {
+    clearTimeout(simTimer);
+    simTimer = setTimeout(async () => {
+      const q = titleInput.value.trim(), my = ++simSeq;
+      if (q.length < 4) { similarBox.classList.add("hidden"); return; }
+      let list = [];
+      try { list = await api.get("/search/similar?title=" + encodeURIComponent(q)); } catch { /* sugestão: falha não atrapalha */ }
+      if (my !== simSeq) return;
+      clear(similarBox);
+      similarBox.classList.toggle("hidden", !list.length);
+      if (!list.length) return;
+      similarBox.append(h("p", { class: "similar-head", text: "Já resolvido antes:" }),
+        ...list.map((s) => h("div", { class: "similar-item" },
+          h("button", { type: "button", class: "btn btn-text btn-sm", text: s.title, title: "Abrir a tarefa", onClick: () => openTask(s.id, onDone) }),
+          h("p", { text: s.resolution.length > 160 ? s.resolution.slice(0, 159) + "…" : s.resolution }))));
+    }, 400);
+  };
 
   // Modelo: preenche o formulário; o checklist dele entra depois de criar.
   let checklist = [];
@@ -138,6 +194,7 @@ export function openWorklog(item, onDone, opts = {}) {
         checklist = t ? t.checklist : [];
         if (!t) return;
         document.getElementById("wl-title").value = t.title;
+        titleInput.oninput && titleInput.oninput(); // título do modelo também procura "já resolvido antes"
         document.getElementById("wl-desc").value = t.description || "";
         document.getElementById("wl-prio").value = String(t.priority);
         after.checked = t.after_hours;
@@ -180,6 +237,16 @@ export function openWorklog(item, onDone, opts = {}) {
     if (!payload.title) return;
     if (payload.status === "done" && doneAt.value && doneAt.value !== doneOrig) payload.completed_at = doneAt.value;
     if (!item && createdAt.value) payload.created_at = createdAt.value;
+    if (payload.status === "done" && resolution.value.trim() !== resolOrig) payload.resolution = resolution.value.trim() || null;
+    if (payload.status === "blocked") {
+      payload.blocked_reason = blocked.value.trim() || null;
+      if (followUp.value !== followOrig) payload.follow_up_on = followUp.value || null; // data vencida não volta a ser validada
+      // Dia não útil: o lembrete só aparece em dia útil — cobra no dia útil anterior.
+      const mask = (session.me && session.me.work_days) || 62;
+      let fd = payload.follow_up_on;
+      while (fd && !((mask >> new Date(fd + "T12:00:00Z").getUTCDay()) & 1) && fd > now.slice(0, 10)) fd = addDays(fd, -1);
+      if (fd && fd !== payload.follow_up_on) { toast(`Cobrança antecipada para ${shortDate(fd)}, o dia útil anterior.`); payload.follow_up_on = fd; }
+    }
     const minutes = !item && timeInput.value.trim() ? parseDuration(timeInput.value) : null;
     if (minutes === null && !item && timeInput.value.trim()) { toast("Tempo inválido. Ex.: 45, 1h30, 2:15.", { error: true }); timeInput.focus(); return; }
     const btn = ev.submitter;
@@ -214,6 +281,8 @@ export function openRecurring(item, onDone) {
   const input = document.getElementById("rec-label");
   input.value = item ? item.label : "";
   const sched = scheduleForm(item);
+  const requireNote = document.getElementById("rec-require-note");
+  requireNote.checked = !!(item && item.require_note);
 
   const del = document.getElementById("rec-delete");
   del.classList.toggle("hidden", !item);
@@ -239,8 +308,8 @@ export function openRecurring(item, onDone) {
     const agenda = sched.value();
     if (!agenda) return;
     try {
-      if (item) await api.patch(`/recurring/${item.id}`, { label, ...agenda });
-      else await api.post("/recurring", { label, ...agenda });
+      if (item) await api.patch(`/recurring/${item.id}`, { label, ...agenda, require_note: requireNote.checked });
+      else await api.post("/recurring", { label, ...agenda, require_note: requireNote.checked });
       dlg.close();
       onDone && onDone();
     } catch (e) {
@@ -298,11 +367,43 @@ function scheduleForm(item) {
   };
 }
 
+function askResolution(t, onDone) {
+  // Ao fechar, o "Desfazer" da conclusão volta (o aviso some quando se clica numa ação).
+  const undoAgain = () => toast(`Concluída: ${t.title}`, { action: "Desfazer", onAction: () => undoLatest("worklog", t.id, onDone) });
+  const area = h("textarea", { rows: "4", maxlength: "1000", placeholder: "ex.: perfil corrompido, recriado com o scanpst", "aria-label": "Como resolveu" });
+  const err = h("p", { class: "error-text" });
+  const form = h("form", {}, h("h2", { text: "Como resolveu?" }),
+    h("p", { class: "dialog-note", text: `${t.title}: em poucas linhas. A busca encontra isso da próxima vez que o problema voltar.` }),
+    area, err,
+    h("div", { class: "dialog-actions" },
+      h("button", { type: "button", class: "btn btn-text", text: "Agora não", onClick: () => { dlg.close(); undoAgain(); } }),
+      h("button", { type: "submit", class: "btn btn-primary", text: "Salvar" })));
+  form.addEventListener("submit", busy(async () => {
+    if (!area.value.trim()) { dlg.close(); undoAgain(); return; }
+    try {
+      await api.patch(`/worklog/${t.id}`, { resolution: area.value.trim() });
+      dlg.close();
+      // Desfaz as duas coisas: a anotação (última ação) e a conclusão.
+      toast("Anotado. A busca vai encontrar.", { action: "Desfazer a conclusão", onAction: async () => {
+        await undoLatest("worklog", t.id, null);
+        await undoLatest("worklog", t.id, onDone);
+      } });
+      onDone && onDone();
+    } catch (e) { err.textContent = e.message || "Não foi possível salvar."; }
+  }));
+  const dlg = modal(form);
+  area.focus();
+}
+
 export async function finishTask(t, onDone) {
   try {
     await api.post(`/worklog/${t.id}/finish`);
     onDone && onDone();
-    toast(`Concluída: ${t.title}`, { action: "Desfazer", onAction: () => undoLatest("worklog", t.id, onDone) });
+    // A base de conhecimento só cresce se for perguntada na hora de concluir.
+    toast(`Concluída: ${t.title}`, { actions: [
+      ["Como resolveu?", () => askResolution(t, onDone)],
+      ["Desfazer", () => undoLatest("worklog", t.id, onDone)],
+    ] });
   } catch (e) {
     errorToast(e, "Erro ao concluir.");
   }

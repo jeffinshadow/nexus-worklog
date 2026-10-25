@@ -77,9 +77,9 @@ class Mail:
             out.append(heading)
             out += [f"  - {i}" for i in items]
             out.append("")
-        out += [f"Abrir o Nexus: {config.APP_URL}{self.link}", "",
-                self.reason,
-                f"Para desligar: {config.APP_URL}/index.html#/config?aba={self.settings_tab}"]
+        out += [f"Abrir o Nexus: {config.APP_URL}{self.link}", "", self.reason]
+        if self.settings_tab:  # aviso que não tem como desligar não promete isso
+            out.append(f"Para desligar: {config.APP_URL}/index.html#/config?aba={self.settings_tab}")
         return "\n".join(out)
 
     def html(self) -> str:
@@ -104,7 +104,7 @@ class Mail:
 <p style="margin:26px 0 0"><a href="{e(config.APP_URL + self.link)}" style="display:inline-block;background:#5294E2;color:#0b0d10;text-decoration:none;font:600 14px/1 Arial,sans-serif;padding:12px 20px;border-radius:999px">Abrir o Nexus</a></p>
 </td></tr></table>
 <p style="max-width:560px;margin:14px auto 0;font:12px/1.5 Arial,sans-serif;color:#86868e">{e(self.reason)}
-<a href="{e(config.APP_URL)}/index.html#/config?aba={e(self.settings_tab)}" style="color:#86868e">Mudar ou desligar</a>.</p>
+{f'<a href="{e(config.APP_URL)}/index.html#/config?aba={e(self.settings_tab)}" style="color:#86868e">Mudar ou desligar</a>.' if self.settings_tab else ''}</p>
 </td></tr></table></body></html>"""
 
 
@@ -116,10 +116,19 @@ def build_morning(uid: int, today: date, show: bool) -> Mail:
     atrasadas = [f"{t['title']} (prazo {t['due_date']:%d/%m})" for t in abertas if t["due_date"] and t["due_date"] < today]
     alta = [t["title"] for t in abertas if t["priority"] == 1 and t["title"] not in hoje
             and not (t["due_date"] and t["due_date"] < today)]
+    cobrar = [f"{t['title']}" + (f" (aguardando {t['blocked_reason']})" if t.get("blocked_reason") else "")
+              + (f" — combinado para {t['follow_up_on']:%d/%m}" if t["follow_up_on"] < today else "")
+              for t in abertas if t["status"] == "blocked" and t.get("follow_up_on") and t["follow_up_on"] <= today]
     m = Mail(f"Seu dia · {_day(today)}", f"Bom dia, {profile(uid)['name']}",
              f"{len(do_dia)} rotina{'s' if len(do_dia) != 1 else ''} para hoje e {len(abertas)} tarefa{'s' if len(abertas) != 1 else ''} em aberto.")
     m.block("Atrasadas", atrasadas, show)
     m.block("Vencem hoje", hoje, show)
+    m.block("Cobrar hoje", cobrar, show)
+    from .routers.renewals import list_for
+    vence = [f"{r['label']} — " + ("VENCIDO" if r["days_left"] < 0 else "vence hoje" if r["days_left"] == 0
+                                   else f"vence em {r['days_left']} d ({r['expires_on']:%d/%m})")
+             for r in list_for(uid) if r["warning"]]
+    m.block("Vencimentos", vence, show)
     m.block("Rotinas de hoje", do_dia, show)
     m.block("Prioridade alta", alta, show)
     return m

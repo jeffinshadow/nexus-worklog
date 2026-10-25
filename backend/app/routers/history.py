@@ -23,6 +23,7 @@ UNDOABLE = {
     "recurring.create", "recurring.update", "recurring.deactivate", "recurring.toggle", "recurring.replace",
     "note.create", "note.delete", "checklist.create", "checklist.update", "checklist.delete",
     "time.create", "time.delete", "project.create", "project.update", "project.delete",
+    "renewal.create", "renewal.update", "renewal.renew", "renewal.delete",
 }
 
 ACTION_LABELS = {
@@ -35,6 +36,10 @@ ACTION_LABELS = {
     "assignments.consent": "alterou o aceite de tarefas atribuídas",
     "user.roles": "alterou as permissões",
     "user.delete": "excluiu a conta",
+    "renewal.create": "cadastrou o vencimento",
+    "renewal.update": "editou o vencimento",
+    "renewal.renew": "renovou",
+    "renewal.delete": "excluiu o vencimento",
     "app.settings": "alterou as configurações gerais",
     "recurring.create": "criou a rotina",
     "recurring.update": "editou a rotina",
@@ -105,6 +110,8 @@ def _label(row) -> str:
     text = ACTION_LABELS.get(row["action"], row["action"])
     if row["action"] == "recurring.toggle" and row["after"]:
         text = ("marcou" if row["after"]["done"] else "desmarcou") + " a rotina"
+        if row["after"]["done"] and row["before"] and row["before"].get("done") and row["after"].get("note") != row["before"].get("note"):
+            text = "anotou a evidência da rotina" if row["after"].get("note") else "apagou a evidência da rotina"
         name = f"{name} em {row['after']['day']}" if name else row["after"]["day"]
     return f"{text} “{name}”" if name else text
 
@@ -209,11 +216,13 @@ def _restore_worklog(uid: int, snap: dict) -> None:
     db.execute(
         """UPDATE worklog_tasks
               SET title = %s, description = %s, status = %s, due_date = %s, completed_at = %s,
-                  project_id = %s, priority = %s, ticket = %s, after_hours = %s
+                  project_id = %s, priority = %s, ticket = %s, after_hours = %s,
+                  blocked_reason = %s, blocked_at = %s, follow_up_on = %s, resolution = %s
             WHERE id = %s AND user_id = %s""",
         (snap["title"], snap["description"], snap["status"], snap["due_date"],
          snap["completed_at"], _projeto_existente(uid, snap.get("project_id")),
-         snap.get("priority") or 2, snap.get("ticket"), bool(snap.get("after_hours")), snap["id"], uid),
+         snap.get("priority") or 2, snap.get("ticket"), bool(snap.get("after_hours")),
+         snap.get("blocked_reason"), snap.get("blocked_at"), snap.get("follow_up_on"), snap.get("resolution"), snap["id"], uid),
     )
 
 
@@ -221,11 +230,11 @@ def _restore_recurring(uid: int, snap: dict) -> None:
     db.execute(
         """UPDATE recurring_tasks
               SET label = %s, position = %s, active = %s, created_at = %s, deactivated_at = %s,
-                  freq = %s, weekdays = %s, month_day = %s, interval_days = %s
+                  freq = %s, weekdays = %s, month_day = %s, interval_days = %s, require_note = %s
             WHERE id = %s AND user_id = %s""",
         (snap["label"], snap["position"], snap["active"], snap["created_at"],
          snap["deactivated_at"], snap.get("freq") or "daily", snap.get("weekdays"),
-         snap.get("month_day"), snap.get("interval_days"), snap["id"], uid),
+         snap.get("month_day"), snap.get("interval_days"), bool(snap.get("require_note")), snap["id"], uid),
     )
 
 
@@ -295,14 +304,17 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
         db.execute(
             """INSERT INTO worklog_tasks (id, user_id, title, description, status, due_date,
                                           created_at, completed_at, project_id, priority, ticket, after_hours,
-                                          external_ref, assigned_by, assigned_at)
+                                          external_ref, assigned_by, assigned_at,
+                                          blocked_reason, blocked_at, assigner_notified_at, follow_up_on, resolution)
                OVERRIDING SYSTEM VALUE
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (eid, uid, before["title"], before["description"], before["status"],
              before["due_date"], before["created_at"], before["completed_at"],
              _projeto_existente(uid, before.get("project_id")), before.get("priority") or 2,
              before.get("ticket"), bool(before.get("after_hours")), _ref_livre(uid, before.get("external_ref")),
-             _usuario_existente(before.get("assigned_by")), before.get("assigned_at")),
+             _usuario_existente(before.get("assigned_by")), before.get("assigned_at"),
+             before.get("blocked_reason"), before.get("blocked_at"), before.get("assigner_notified_at"),
+             before.get("follow_up_on"), before.get("resolution")),
         )
         for n in kids.get("notes", []):
             _put_note(uid, eid, n)
@@ -340,9 +352,10 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
             raise HTTPException(status_code=409, detail="essa marcação já saiu da janela de edição (7 dias)")
         if before["done"]:
             db.execute(
-                """INSERT INTO recurring_completions (task_id, user_id, completed_date)
-                   VALUES (%s, %s, %s) ON CONFLICT (task_id, completed_date) DO NOTHING""",
-                (eid, uid, day))
+                """INSERT INTO recurring_completions (task_id, user_id, completed_date, note)
+                   VALUES (%s, %s, %s, %s)
+                   ON CONFLICT (task_id, completed_date) DO UPDATE SET note = EXCLUDED.note""",
+                (eid, uid, day, before.get("note")))
         else:
             db.execute(
                 "DELETE FROM recurring_completions WHERE task_id = %s AND user_id = %s AND completed_date = %s",
@@ -370,6 +383,23 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
         _need_task(uid, before["task_id"])
         check_day_total(uid, before["day"], before["minutes"], status=409)
         _put_time(uid, before["task_id"], {**before, "id": eid})
+    elif a == "renewal.create":
+        if not db.execute("DELETE FROM renewals WHERE id = %s AND user_id = %s", (eid, uid)):
+            raise _gone()
+    elif a in ("renewal.update", "renewal.renew"):
+        if not db.execute(
+                """UPDATE renewals SET label = %s, expires_on = %s, warn_days = %s, project_id = %s, note = %s,
+                                       renew_months = %s
+                    WHERE id = %s AND user_id = %s""",
+                (before["label"], before["expires_on"], before["warn_days"],
+                 _projeto_existente(uid, before.get("project_id")), before.get("note"), before.get("renew_months"), eid, uid)):
+            raise _gone()
+    elif a == "renewal.delete":
+        db.execute(
+            """INSERT INTO renewals (id, user_id, label, expires_on, warn_days, project_id, note, renew_months)
+               OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+            (eid, uid, before["label"], before["expires_on"], before["warn_days"],
+             _projeto_existente(uid, before.get("project_id")), before.get("note"), before.get("renew_months")))
     elif a == "project.create":
         # Com tarefas no projeto, arquiva em vez de apagar (não tira de ninguém).
         if db.query_one("SELECT 1 FROM worklog_tasks WHERE project_id = %s LIMIT 1", (eid,)):

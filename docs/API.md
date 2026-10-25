@@ -79,7 +79,7 @@ Legenda: **S** = só sessão do app · **W** = exige escopo `write` (chave) ou C
 | Rota | | Corpo / observação |
 | --- | --- | --- |
 | `GET /api/timer` | | `{timer}`: `{task_id, title, started_at}` ou null (um por pessoa, vale em qualquer aparelho) |
-| `POST /api/timer/start` | W | `{task_id}` — tarefa aberta; se outro estiver rodando, ele para e aponta (`stopped`). "A fazer" vira "em andamento" |
+| `POST /api/timer/start` | W | `{task_id}` — tarefa aberta; se outro estiver rodando, ele para e aponta (`stopped`, mesma regra do stop). "A fazer" vira "em andamento" |
 | `POST /api/timer/stop` | W | para e aponta o tempo (nota "cronômetro", no dia em que começou), só o que ainda cabe nas 24 h daquele dia; dia cheio = `stopped: null` (para assim mesmo). Concluir a tarefa também para |
 | `DELETE /api/timer` | W | descarta sem apontar |
 | `GET /api/templates` · `POST` · `PUT /{id}` · `DELETE /{id}` | (W) | `{name, title, description, priority, project_id, after_hours, checklist: [itens]}` — até 50 modelos, 30 itens |
@@ -89,18 +89,19 @@ Legenda: **S** = só sessão do app · **W** = exige escopo `write` (chave) ou C
 
 | Rota | | Observação |
 | --- | --- | --- |
-| `GET /api/board?day=&project=` | | `day` até 7 dias atrás (padrão hoje); `project` filtra as tarefas (`0` = sem projeto). Devolve `recurring` (com `due`, `done_today`, agenda), `in_progress` (tarefas abertas: a fazer, em andamento, bloqueadas; com `touched_at`, o último movimento), `timer`, `done`, `day`, `today`, `min_day`, `work_day` |
+| `GET /api/board?day=&project=` | | `day` até 7 dias atrás (padrão hoje); `project` filtra as tarefas (`0` = sem projeto). Devolve `recurring` (com `due`, `done_today`, `note` = evidência do dia, `require_note`, agenda), `in_progress` (tarefas abertas: a fazer, em andamento, bloqueadas; com `touched_at`, o último movimento, e `blocked_reason`/`blocked_at`/`follow_up_on`), `timer`, `done`, `day`, `today`, `min_day`, `work_day` |
 | `GET /api/summary` | | `last_day` (do último dia útil até ontem), `week` (com `previous` = mesmos dias da semana passada) e `today_stats` (o dia de hoje): rotinas, tarefas concluídas, minutos, por projeto, rotinas não feitas |
+| `GET /api/summary/handoff` | | `{text}` — passagem de turno: em aberto, bloqueadas com o motivo, há quantos dias e o dia de cobrar, concluídas nas últimas 12 h (plantão marcado), rotinas pendentes e vencimentos no aviso |
 | `GET /api/dashboard` | | retrospectiva: `heatmap` (4 semanas), `task_adherence` (30 dias, a mais pulada primeiro), `throughput`, `projects` (tempo, 30 dias), `backlog` |
 
 ## Rotinas — `/api/recurring`
 
 | Rota | | Corpo |
 | --- | --- | --- |
-| `POST /` | W | `{label, freq?, weekdays?, month_day?, interval_days?}` |
-| `PATCH /{id}` | W | `{label?, freq?…}` — mudar a agenda exige `freq` + o parâmetro dela; se a rotina já tem passado, ela é encerrada hoje e uma nova (devolvida em `id`) começa hoje — uma ação só no histórico |
+| `POST /` | W | `{label, freq?, weekdays?, month_day?, interval_days?, require_note?}` — `require_note` = marcar exige evidência |
+| `PATCH /{id}` | W | `{label?, require_note?, freq?…}` — mudar a agenda exige `freq` + o parâmetro dela; se a rotina já tem passado, ela é encerrada hoje e uma nova (devolvida em `id`) começa hoje — uma ação só no histórico |
 | `DELETE /{id}` | W | remove daqui para a frente (o passado fica) |
-| `POST /{id}/toggle` | W | `{done, day?}` — `day` até 7 dias atrás e só quando a rotina existia |
+| `POST /{id}/toggle` | W | `{done, day?, note?}` — `day` até 7 dias atrás e só quando a rotina existia; `note` (até 200) = evidência do que foi conferido (vai pro PDF e pro JSON; remarcar sem `note` mantém a anterior; `note` vazio apaga). Rotina com `require_note` só é marcada com evidência (400) |
 
 Agenda: `daily` (dias úteis do dono) · `weekly` + `weekdays` (máscara) ·
 `monthly` + `month_day` (1–31; 31 = último dia) · `interval` + `interval_days`
@@ -111,10 +112,10 @@ Agenda: `daily` (dias úteis do dono) · `weekly` + `weekdays` (máscara) ·
 | Rota | | Corpo / observação |
 | --- | --- | --- |
 | `GET /` | | `?from=&to=` (dias, inclusive) `&by=created\|completed&status=open\|done\|all&limit=` (até 500): tarefas por período, com `external_ref` |
-| `POST /` | W | `{title, description?, status?, due_date?, project_id?, priority?, ticket?, after_hours?, created_at?, completed_at?, external_ref?}` (prioridade 1 alta, 2 normal, 3 baixa; `ticket` = número do chamado, sem o "#"; `after_hours` = plantão). Datas retroativas: `AAAA-MM-DD` (criação às 9h, conclusão às 18h) ou data e hora, fuso da app; nunca no futuro, nunca conclusão antes da criação, até `retro_days` (padrão 60). `completed_at` sem `status` = já concluída. `external_ref` repetido devolve a existente (200, `existing: true`) |
+| `POST /` | W | `{title, description?, status?, due_date?, project_id?, priority?, ticket?, after_hours?, created_at?, completed_at?, external_ref?, blocked_reason?, follow_up_on?, resolution?}` (`resolution` só com status done: como foi resolvido) (prioridade 1 alta, 2 normal, 3 baixa; `ticket` = número do chamado, sem o "#"; `after_hours` = plantão). Datas retroativas: `AAAA-MM-DD` (criação às 9h, conclusão às 18h) ou data e hora, fuso da app; nunca no futuro, nunca conclusão antes da criação, até `retro_days` (padrão 60). `completed_at` sem `status` = já concluída. `external_ref` repetido devolve a existente (200, `existing: true`) |
 | `GET /{id}` | | tarefa + `checklist`, `notes`, `time`, `minutes`, `today` |
-| `PATCH /{id}` | W | campos a mudar; `description`/`due_date`/`project_id`/`ticket` = `null` apaga; `completed_at` corrige a data de uma concluída |
-| `POST /{id}/finish` | W | conclui agora, ou `{completed_at}` (mesmas regras); com o cronômetro rodando nela, ele para e aponta |
+| `PATCH /{id}` | W | campos a mudar (concluir uma atribuída avisa quem atribuiu, uma vez); `description`/`due_date`/`project_id`/`ticket` = `null` apaga; `completed_at` corrige a data de uma concluída; `resolution` (até 1000; null apaga; só em tarefa concluída) = como foi resolvido; `blocked_reason` (até 120) e `follow_up_on` (dia combinado para cobrar; em dia não útil vai para o dia útil anterior) com status `blocked` = o que se aguarda (`blocked_at` marca desde quando; sair do bloqueio limpa tudo) |
+| `POST /{id}/finish` | W | conclui agora, ou `{completed_at, resolution?}` (mesmas regras; `resolution` = como foi resolvido, até 1000, entra na busca); limpa o bloqueio; com o cronômetro rodando nela, ele para e aponta. Tarefa atribuída: quem atribuiu recebe um e-mail, uma vez |
 | `DELETE /{id}` | W | exclui junto anotações, checklist e tempo (o desfazer devolve tudo) |
 | `POST /{id}/notes` | W | `{body}` (até 2000) |
 | `DELETE /api/notes/{id}` | W | |
@@ -139,10 +140,13 @@ Agenda: `daily` (dias úteis do dono) · `weekly` + `weekdays` (máscara) ·
 | --- | --- | --- |
 | `GET /api/reports/export?start=&end=&project=` | | PDF (até 6 por minuto). Período até 366 dias (fim limitado a hoje). Com `project` e sem datas: o projeto inteiro (até ~3 anos) |
 | `GET /api/reports/preview?start=&end=&project=` | | o que o PDF traria: tarefas concluídas, minutos, rotinas, dias com atividade |
-| `GET /api/search?q=` | | 2–100 caracteres, sem acento: tarefas (com onde casou), rotinas, projetos |
+| `GET /api/search/similar?title=` | | "já resolvi isso antes?": tarefas concluídas com `resolution` e título parecido — palavras de 3+ letras (sem as vazias) e siglas de 2 em maiúsculas (AD, IP, RH) como palavra inteira; com 4+ palavras exige 2 em comum; só as de maior pontuação, até 3 |
+| `GET /api/search?q=` | | 2–100 caracteres, sem acento: tarefas (com onde casou: título, descrição, chamado, anotação, checklist, apontamento, como resolveu), rotinas, projetos |
 | `GET /api/export/apontamentos.csv` | | CSV `;` + BOM (Excel BR) |
-| `GET /api/export/tarefas.csv` | | idem |
-| `GET /api/export/tudo.json` | | tarefas com anotações/checklist/tempo, rotinas com dias feitos, projetos |
+| `GET /api/export/tarefas.csv` | | idem, com as colunas `aguardando` (motivo do bloqueio) e `como_resolveu` |
+| `GET /api/export/plantao.csv?start=&end=` | | atendimentos de plantão do período (padrão: o mês), com horas por dia e total |
+| `GET /api/export/rotinas.csv?start=&end=` | | trilha de auditoria: cada rotina em cada dia do período (até hoje), prevista/extra, feita (sim/não/pendente) e a evidência — dia sem nada feito também aparece |
+| `GET /api/export/tudo.json` | | tarefas com anotações/checklist/tempo, rotinas com dias feitos, `require_note` e `evidence` (dia + evidência), `renewals` (vencimentos), projetos |
 
 ## Histórico — `/api/history`
 
@@ -158,7 +162,7 @@ Agenda: `daily` (dias úteis do dono) · `weekly` + `weekdays` (máscara) ·
 | `GET /api/calendar` | S | estado do link |
 | `POST /api/calendar` | S W | `{include_recurring}` — cria/troca o link e devolve `path` uma vez |
 | `PATCH /api/calendar` · `DELETE /api/calendar` | S W | |
-| `GET /api/calendar/{nxc_…}.ics` | público (segredo no link) | prazos (dia inteiro, sem a descrição) e rotinas (RRULE) |
+| `GET /api/calendar/{nxc_…}.ics` | público (segredo no link) | prazos (dia inteiro, sem a descrição), dias de cobrar impedimentos (sem o motivo), vencimentos (dia de vencer e de começar a avisar) e rotinas (RRULE) |
 | `GET /api/notifications` · `PUT /api/notifications` | S (W) | `{morning, morning_hour, evening, evening_hour, weekly, weekly_hour, show_titles}` |
 | `POST /api/notifications/test` | S W | manda um teste para o e-mail da conta (503 sem SMTP) |
 | `GET /api/tokens` · `POST /api/tokens` · `DELETE /api/tokens/{id}` | S (W) | `{name, scope, expires_in_days}`; até 20 ativas |
@@ -171,6 +175,17 @@ Agenda: `daily` (dias úteis do dono) · `weekly` + `weekdays` (máscara) ·
 | `PUT /api/admin/branding` | admin W | `{line1, line2}` |
 | `POST /api/admin/branding/logo` | admin W | corpo = a imagem (PNG, WebP ou SVG seguro, até 256 KB) |
 | `DELETE /api/admin/branding/logo` | admin W | volta ao dragão |
+
+## Vencimentos — `/api/renewals`
+
+| Rota | | Corpo / observação |
+| --- | --- | --- |
+| `GET /` | | lista do que vence primeiro ao último, com `days_left`, `warn_from` (início do aviso; em dia não útil, antecipa para o último dia útil) e `warning` |
+| `POST /` | W | `{label, expires_on, warn_days? (padrão 30), project_id?, note?, renew_months?}` — `renew_months` = repete a cada N meses (o app sugere a próxima data ao renovar) |
+| `PATCH /{id}` | W | campos a mudar; nova `expires_on` = renovação (no histórico como "renovou"; desfaz) |
+| `DELETE /{id}` | W | desfaz pelo histórico |
+
+Aparecem no Hoje (só os no aviso), no e-mail da manhã e no calendário (dia de vencer e dia de começar a avisar). MCP: `list_renewals`.
 
 ## Admin — `/api/admin` (só pelo app, papel admin)
 
@@ -211,11 +226,11 @@ Agenda: `daily` (dias úteis do dono) · `weekly` + `weekdays` (máscara) ·
 JSON-RPC 2.0 sobre HTTP, **uma mensagem por requisição** (sem lote, sem SSE),
 `Authorization: Bearer nxs_…`. Versões: 2025-11-25, 2025-06-18, 2025-03-26.
 
-Leitura: `get_today`, `get_summary`, `list_tasks` (com `from`/`to`/`by` por período), `get_task`, `search`,
+Leitura: `get_today`, `get_summary`, `get_handoff` (passagem de turno: abertas, bloqueadas, concluídas nas últimas 12 h, vencimentos no aviso), `list_renewals` (vencimentos), `find_similar` (já resolvi isso antes?), `list_tasks` (com `from`/`to`/`by` por período), `get_task`, `search`,
 `list_projects`, `list_recurring`, `list_templates`, `get_history`.
-Escrita (chave `write`): `create_task` (com `created_at`, `completed_at`, `external_ref`), `update_task` (com `completed_at`), `complete_task` (com `completed_at`),
+Escrita (chave `write`): `create_task` (com `created_at`, `completed_at`, `external_ref`, `blocked_reason`, `follow_up_on`, `resolution`), `update_task` (com `completed_at`, `blocked_reason`, `follow_up_on`, `resolution`), `complete_task` (com `completed_at` e `resolution`),
 `add_note`, `add_checklist_item`, `set_checklist_item`, `log_time`, `start_timer`, `stop_timer`,
-`create_from_template`, `set_recurring` (`recurring_id`), `undo` (só ações da própria chave). A IA não exclui o que o usuário fez.
+`create_from_template`, `set_recurring` (`recurring_id`, `note` = evidência), `undo` (só ações da própria chave). A IA não exclui o que o usuário fez.
 Só com o papel de atribuidor: `list_assignable`, `list_assigned` e `assign_task` (`to` = U<id>, e-mail ou nome).
 
 Prompts (`prompts/list`, `prompts/get`): `resumo_semanal` (argumento `para`: gestor, time, cliente) e `daily`.

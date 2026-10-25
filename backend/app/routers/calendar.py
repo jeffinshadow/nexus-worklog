@@ -136,6 +136,23 @@ def build_ics(uid: int, include_recurring: bool, cal_name: str) -> str:
             extra.append("PRIORITY:1")
         event(f"task-{t['id']}", t["due_date"], summary, desc, extra)
 
+    # Impedimento com dia combinado para cobrar ("o fornecedor retorna na quinta").
+    for t in db.query_all(
+        """SELECT id, title, blocked_reason, follow_up_on FROM worklog_tasks
+            WHERE user_id = %s AND status = 'blocked' AND follow_up_on IS NOT NULL""", (uid,)):
+        # Sem o motivo (fornecedor, cliente): o feed vai para calendários de terceiros.
+        event(f"followup-{t['id']}", t["follow_up_on"], f"Cobrar: {t['title']}",
+              "Tarefa bloqueada com dia combinado para cobrar.",
+              [f"URL:{config.APP_URL}/index.html#/tarefas?id={t['id']}"])
+
+    # Vencimentos: no dia de vencer e no dia de começar a avisar.
+    from .renewals import list_for
+    link = [f"URL:{config.APP_URL}/index.html#/vencimentos"]  # onde se clica "Renovei"
+    for r in list_for(uid):
+        event(f"renewal-{r['id']}", r["expires_on"], f"Vence: {r['label']}", "Vencimento cadastrado no Nexus.", link)
+        event(f"renewal-warn-{r['id']}", r["warn_from"],
+              f"Renovar: {r['label']} (vence {r['expires_on']:%d/%m})", f"Aviso de {r['warn_days']} dias antes.", link)
+
     if include_recurring:
         for r in db.query_all(
             """SELECT id, label, freq, weekdays, month_day, interval_days,

@@ -680,6 +680,16 @@ def _diary(pdf: _Report, data: dict) -> None:
 
         if day["recurring"]:
             _tokens(pdf, day["recurring"], gx, gw)
+            # Evidência anotada ao marcar a rotina (auditoria: o que foi conferido).
+            for r in day["recurring"]:
+                if r.get("note"):
+                    pdf.room(5)
+                    yy = pdf.get_y()
+                    pdf.font("labelb", 6.8, OK)
+                    pdf.text_at(gx, yy, 16, 4, "evidência")
+                    pdf.font("sans", 7.6, INK2)
+                    pdf.set_xy(gx + 16, yy)
+                    pdf.multi_cell(gw - 16, 4, _s(f"{r['label']}: {r['note']}"), new_x="LMARGIN", new_y="NEXT")
 
         for w in day["pontual"]:
             pdf.room(5)

@@ -56,13 +56,15 @@ export async function openTask(taskId, onChange) {
       h("div", { class: "task-title" },
         h("h2", { text: t.title }),
         t.description ? h("p", { text: t.description }) : null,
+        t.resolution ? h("p", { class: "resolution" }, h("strong", { text: "Como resolveu: " }), t.resolution) : null,
         h("div", { class: "card-meta" }, ...chips)),
       h("div", { class: "task-tools" },
         timerButton(t, after),
         t.status !== "done"
           ? h("button", { type: "button", class: "icon", title: "Concluir", "aria-label": "Concluir", onClick: () => finishTask(t, after) }, icon("check"))
           : null,
-        h("button", { type: "button", class: "icon", title: "Salvar como modelo", "aria-label": "Salvar como modelo", onClick: () => saveAsTemplate(t) }, icon("copy")),
+        h("button", { type: "button", class: "icon", title: "Copiar resumo (para o chamado ou o cliente)", "aria-label": "Copiar resumo", onClick: () => copySummary(t) }, icon("copy")),
+        h("button", { type: "button", class: "icon", title: "Salvar como modelo", "aria-label": "Salvar como modelo", onClick: () => saveAsTemplate(t) }, icon("list")),
         h("button", { type: "button", class: "icon", title: "Editar", "aria-label": "Editar", onClick: () => {
           dlg.close();
           openWorklog(t, () => { onChange && onChange(); openTask(taskId, onChange); });
@@ -189,6 +191,31 @@ export async function openTask(taskId, onChange) {
 
   await render();
   dlg.showModal();
+}
+
+// Resumo para colar no chamado (GLPI, Jira...) ou no e-mail do cliente: o que
+// foi feito, como resolveu e o tempo, montado do que já está registrado.
+export function summaryText(t) {
+  const linhas = [t.title + (t.ticket ? ` (chamado ${t.ticket})` : "")];
+  if (t.description) linhas.push(t.description);
+  const feitos = t.checklist.filter((c) => c.done).map((c) => `- ${c.label}`);
+  if (feitos.length) linhas.push("", "Feito:", ...feitos);
+  if (t.resolution) linhas.push("", "Como foi resolvido:", t.resolution);
+  if (t.minutes) linhas.push("", `Tempo: ${duration(t.minutes)}`);
+  if (t.status === "done" && t.completed_at) linhas.push(`Concluído em ${dateTime(t.completed_at)}.`);
+  return linhas.join("\n");
+}
+
+async function copySummary(t) {
+  const text = summaryText(t);
+  try { await navigator.clipboard.writeText(text); toast("Resumo copiado. Cole no chamado ou no e-mail."); }
+  catch {
+    const area = h("textarea", { rows: "10", readonly: "readonly", class: "handoff-text", "aria-label": "Resumo da tarefa" });
+    area.value = text;
+    const dlg = modal(h("h2", { text: "Resumo da tarefa" }), area,
+      h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Fechar", onClick: () => dlg.close() })));
+    area.select();
+  }
 }
 
 // "Salvar como modelo": título, descrição, prioridade, projeto, plantão e os

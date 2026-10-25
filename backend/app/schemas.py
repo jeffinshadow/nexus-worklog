@@ -95,18 +95,22 @@ class _Agenda(BaseModel):
 
 class RecurringIn(_Agenda):
     label: str = Field(min_length=1, max_length=200)
+    require_note: bool = False  # marcar exige evidência (auditoria)
 
 
 class RecurringUpdate(_Agenda):
     """Nome e agenda. Remover = DELETE; voltar atrás = desfazer pelo histórico
     (reativar por aqui reescreveria a vigência e apagaria o passado)."""
     label: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    require_note: Optional[bool] = None
 
 
 class ToggleIn(BaseModel):
     done: bool
     # Dia da marcação; ausente = hoje. Vale até RETRO_DAYS dias para trás.
     day: Optional[date] = None
+    # Evidência curta da verificação ("backup OK, 2,1 TB"); só com done=true.
+    note: Optional[str] = Field(default=None, max_length=200)
 
 
 class TokenIn(BaseModel):
@@ -148,6 +152,15 @@ class AssistantIn(BaseModel):
         return self
 
 
+def _not_past(v):
+    """Dia para cobrar: hoje ou depois (passado é engano de digitação)."""
+    if v is not None:
+        from .services import app_today  # import tardio: services importa o banco
+        if v < app_today():
+            raise ValueError("o dia para cobrar não pode estar no passado")
+    return v
+
+
 def _ticket(v):
     """Número do chamado: sem espaços e sem o "#" que as pessoas costumam digitar."""
     if v is None:
@@ -178,10 +191,14 @@ class WorklogIn(BaseModel):
     created_at: Optional[str] = When        # lançamento retroativo (padrão: agora)
     completed_at: Optional[str] = When      # com status done (padrão: agora)
     external_ref: Optional[str] = Field(default=None, min_length=1, max_length=120)  # idempotência
+    blocked_reason: Optional[str] = Field(default=None, max_length=120)  # o que se aguarda (status blocked)
+    follow_up_on: Optional[date] = None  # bloqueada: dia combinado para cobrar
+    resolution: Optional[str] = Field(default=None, max_length=1000)  # com status done: como foi resolvido
 
     @model_validator(mode="after")
     def _norm(self):
         self.ticket = _ticket(self.ticket)
+        self.follow_up_on = _not_past(self.follow_up_on)
         if self.external_ref is not None:
             self.external_ref = self.external_ref.strip() or None
         # Data de conclusão sem status: a tarefa já nasce concluída.
@@ -202,6 +219,9 @@ class WorklogUpdate(BaseModel):
     ticket: Optional[str] = Ticket     # null ou vazio = tirar o chamado
     after_hours: Optional[bool] = None
     completed_at: Optional[str] = When  # corrigir a data de uma tarefa concluída
+    resolution: Optional[str] = Field(default=None, max_length=1000)  # como foi resolvido (null apaga)
+    blocked_reason: Optional[str] = Field(default=None, max_length=120)  # o que se aguarda (status blocked)
+    follow_up_on: Optional[date] = None  # bloqueada: dia combinado para cobrar
 
     @model_validator(mode="after")
     def _norm(self):
@@ -209,11 +229,49 @@ class WorklogUpdate(BaseModel):
         # Pydantic, e o PATCH apagaria o chamado de quem só mudou o status.
         if "ticket" in self.model_fields_set:
             self.ticket = _ticket(self.ticket)
+        if "follow_up_on" in self.model_fields_set:
+            self.follow_up_on = _not_past(self.follow_up_on)
         return self
 
 
 class FinishIn(BaseModel):
     completed_at: Optional[str] = When  # ausente = agora
+    resolution: Optional[str] = Field(default=None, max_length=1000)  # como foi resolvido (opcional)
+
+
+def _renewal_label(m):
+    if m.label is not None:
+        m.label = m.label.strip()
+        if not m.label:
+            raise ValueError("informe o que vence")
+    return m
+
+
+class RenewalIn(BaseModel):
+    """Algo que vence: certificado, licença, domínio, garantia, contrato."""
+    label: str = Field(min_length=1, max_length=120)
+    expires_on: date
+    warn_days: int = Field(default=30, ge=1, le=365)  # avisar com quantos dias de antecedência
+    project_id: Optional[int] = None
+    note: Optional[str] = Field(default=None, max_length=200)
+    renew_months: Optional[int] = Field(default=None, ge=1, le=120)  # repete a cada N meses (Renovei sugere)
+
+    @model_validator(mode="after")
+    def _label(self):
+        return _renewal_label(self)
+
+
+class RenewalUpdate(BaseModel):
+    label: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    expires_on: Optional[date] = None
+    warn_days: Optional[int] = Field(default=None, ge=1, le=365)
+    project_id: Optional[int] = None
+    note: Optional[str] = Field(default=None, max_length=200)
+    renew_months: Optional[int] = Field(default=None, ge=1, le=120)  # null apaga
+
+    @model_validator(mode="after")
+    def _label(self):
+        return _renewal_label(self)
 
 
 class TemplateIn(BaseModel):
