@@ -4,12 +4,16 @@ Só pelo app (sessão + CSRF nas mudanças): chave de API não troca a foto de
 ninguém. A foto é validada pelo CONTEÚDO, como o logo, mas só aceita PNG,
 JPEG e WebP (nada de SVG, que pode carregar script).
 """
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 
-from .. import audit, db, people
+from .. import audit, db, people, roles
+from ..deps import clear_session_cookie
+from ..security import login_limiter, verify_password
 from ..deps import web_active, web_active_csrf
-from ..schemas import AssistantIn, ConsentIn, ProfileIn, TicketUrlIn
+from ..schemas import AssistantIn, ConsentIn, DeleteMeIn, ProfileIn, TicketUrlIn
 from ..services import running_timer
 
 router = APIRouter(prefix="/api/me", tags=["me"])
@@ -134,3 +138,21 @@ def put_assignments(data: ConsentIn, user=Depends(web_active_csrf)):
         audit.record(user, "assignments.consent", "user", uid,
                      before={"accept": before is not None}, after={"accept": after is not None})
     return {"accepts_assignments_at": after}
+
+
+@router.post("/delete")
+def delete_me(data: DeleteMeIn, response: Response, user=Depends(web_active_csrf)):
+    """A própria pessoa exclui a conta e todos os dados dela (LGPD), com a
+    senha. Sem volta; exporte antes em Relatórios. O último admin não sai."""
+    uid = user["user_id"]
+    if not login_limiter.allow(f"pw:{uid}"):  # sessão roubada não testa senhas à vontade
+        raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
+    row = db.query_one("SELECT password_hash FROM users WHERE id = %s", (uid,))
+    if not row or not verify_password(row["password_hash"], data.password):
+        raise HTTPException(status_code=400, detail="senha incorreta")
+    if "admin" in user["roles"] and roles.admins_count() <= 1:
+        raise HTTPException(status_code=400, detail="você é o único admin: dê o papel de admin a outra pessoa antes")
+    db.execute("DELETE FROM users WHERE id = %s", (uid,))
+    logging.getLogger("uvicorn.error").info("conta %s excluída pela própria pessoa", uid)
+    clear_session_cookie(response)
+    return {"ok": True}
