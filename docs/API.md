@@ -80,7 +80,7 @@ Legenda: **S** = só sessão do app · **W** = exige escopo `write` (chave) ou C
 | --- | --- | --- |
 | `GET /api/timer` | | `{timer}`: `{task_id, title, started_at}` ou null (um por pessoa, vale em qualquer aparelho) |
 | `POST /api/timer/start` | W | `{task_id}` — tarefa aberta; se outro estiver rodando, ele para e aponta (`stopped`). "A fazer" vira "em andamento" |
-| `POST /api/timer/stop` | W | para e aponta o tempo (nota "cronômetro", no dia em que começou); concluir a tarefa também para |
+| `POST /api/timer/stop` | W | para e aponta o tempo (nota "cronômetro", no dia em que começou), só o que ainda cabe nas 24 h daquele dia; dia cheio = `stopped: null` (para assim mesmo). Concluir a tarefa também para |
 | `DELETE /api/timer` | W | descarta sem apontar |
 | `GET /api/templates` · `POST` · `PUT /{id}` · `DELETE /{id}` | (W) | `{name, title, description, priority, project_id, after_hours, checklist: [itens]}` — até 50 modelos, 30 itens |
 | `POST /api/templates/{id}/use` | W | cria a tarefa do modelo, com o checklist |

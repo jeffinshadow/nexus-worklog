@@ -335,6 +335,8 @@ def t_start_timer(ctx, args):
 def t_stop_timer(ctx, args):
     res = _call(timer_routes.stop, user=ctx)
     st = res["stopped"]
+    if not st:  # o dia do cronômetro já tinha 24h apontadas: parou, mas nada foi somado
+        return "Cronômetro parado. O dia dele já tinha 24h apontadas; nada foi somado."
     return f"Cronômetro parado: {_dur(st['minutes'])} apontados em #{st['task_id']} ({st['day'].isoformat()})."
 
 
