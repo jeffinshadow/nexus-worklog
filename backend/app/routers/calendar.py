@@ -147,7 +147,7 @@ def build_ics(uid: int, include_recurring: bool, cal_name: str) -> str:
 
     # Vencimentos: no dia de vencer e no dia de começar a avisar.
     from .renewals import list_for
-    link = [f"URL:{config.APP_URL}/index.html#/config?aba=vencimentos"]  # onde se clica "Renovei"
+    link = [f"URL:{config.APP_URL}/index.html#/vencimentos"]  # onde se clica "Renovei"
     for r in list_for(uid):
         event(f"renewal-{r['id']}", r["expires_on"], f"Vence: {r['label']}", "Vencimento cadastrado no Nexus.", link)
         event(f"renewal-warn-{r['id']}", r["warn_from"],

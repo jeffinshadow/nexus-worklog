@@ -1,5 +1,5 @@
 // Vencimentos: certificados, licenças, domínios, garantias. Cadastro em
-// Configurações > Vencimentos; no Hoje aparecem só os que estão no aviso.
+// tela própria (menu lateral); no Hoje aparecem só os que estão no aviso.
 import { api } from "./api.js";
 import { h, icon, clear, field, shortDate, addDays } from "./dom.js";
 import { busy, confirmDialog, errorToast, modal, toast, undoLatest } from "./ui.js";
@@ -91,7 +91,7 @@ export function openRenewal(r, onChange, renew = false) {
   (renew ? expires : label).focus();
 }
 
-// Configurações > Vencimentos: lista completa e cadastro.
+// Tela Vencimentos: lista completa e cadastro.
 export async function renewalsPanel(rerender) {
   const list = await api.get("/renewals");
   const sec = h("section", { class: "panel" },
