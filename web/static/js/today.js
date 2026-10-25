@@ -16,7 +16,11 @@ const LAST_PROJECT = "nexus.quick.project";
 
 // opts.day: dia das rotinas (padrão hoje); opts.focusQuick: volta o cursor ao
 // registro rápido (lote de itens seguidos); opts.summary: reaproveita o resumo.
+// Busca pendente do "já resolvido antes" da montagem anterior (refresh/navegação).
+let pendingHint = null;
+
 export async function mount(root, ctx, opts = {}) {
+  if (pendingHint) pendingHint();
   const day = opts.day || null;
   const refresh = () => mount(root, ctx, { day });
   const vencP = todayRenewals(() => mount(root, ctx, { day })); // em paralelo com o quadro
@@ -107,6 +111,7 @@ export async function mount(root, ctx, opts = {}) {
   // o título sem os marcadores, depois de uma pausa na digitação.
   const hint = h("div", { class: "similar hidden", "aria-live": "polite" });
   let hintTimer = null, hintSeq = 0;
+  pendingHint = () => { clearTimeout(hintTimer); hintSeq++; };
   quick.addEventListener("input", () => {
     clearTimeout(hintTimer);
     hintTimer = setTimeout(async () => {
@@ -181,7 +186,8 @@ export async function mount(root, ctx, opts = {}) {
 
 // Evidência da rotina: uma linha curta do que foi conferido ("backup OK, 2,1 TB").
 function editEvidence(r, day, refresh) {
-  const input = h("input", { type: "text", maxlength: "200", value: r.note || "", placeholder: "ex.: backup OK, 2,1 TB, 0 erros" });
+  const input = h("input", { type: "text", maxlength: "200", value: r.note || "", placeholder: "ex.: backup OK, 2,1 TB, 0 erros",
+    required: r.require_note ? "required" : null });
   const err = h("p", { class: "error-text" });
   const form = h("form", {}, h("h2", { text: "Evidência" }),
     h("p", { class: "dialog-note", text: `${r.label}: o que foi conferido. Aparece no relatório em PDF e na exportação.${r.require_note ? " Esta rotina só é marcada com a evidência." : ""}` }),

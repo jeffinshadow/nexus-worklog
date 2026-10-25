@@ -79,8 +79,8 @@ Legenda: **S** = só sessão do app · **W** = exige escopo `write` (chave) ou C
 | Rota | | Corpo / observação |
 | --- | --- | --- |
 | `GET /api/timer` | | `{timer}`: `{task_id, title, started_at}` ou null (um por pessoa, vale em qualquer aparelho) |
-| `POST /api/timer/start` | W | `{task_id}` — tarefa aberta; se outro estiver rodando, ele para e aponta (`stopped`). "A fazer" vira "em andamento" |
-| `POST /api/timer/stop` | W | para e aponta o tempo (nota "cronômetro", no dia em que começou); concluir a tarefa também para |
+| `POST /api/timer/start` | W | `{task_id}` — tarefa aberta; se outro estiver rodando, ele para e aponta (`stopped`, mesma regra do stop). "A fazer" vira "em andamento" |
+| `POST /api/timer/stop` | W | para e aponta o tempo (nota "cronômetro", no dia em que começou), só o que ainda cabe nas 24 h daquele dia; dia cheio = `stopped: null` (para assim mesmo). Concluir a tarefa também para |
 | `DELETE /api/timer` | W | descarta sem apontar |
 | `GET /api/templates` · `POST` · `PUT /{id}` · `DELETE /{id}` | (W) | `{name, title, description, priority, project_id, after_hours, checklist: [itens]}` — até 50 modelos, 30 itens |
 | `POST /api/templates/{id}/use` | W | cria a tarefa do modelo, com o checklist |
@@ -146,7 +146,7 @@ Agenda: `daily` (dias úteis do dono) · `weekly` + `weekdays` (máscara) ·
 | `GET /api/export/tarefas.csv` | | idem, com as colunas `aguardando` (motivo do bloqueio) e `como_resolveu` |
 | `GET /api/export/plantao.csv?start=&end=` | | atendimentos de plantão do período (padrão: o mês), com horas por dia e total |
 | `GET /api/export/rotinas.csv?start=&end=` | | trilha de auditoria: cada rotina em cada dia do período (até hoje), prevista/extra, feita (sim/não/pendente) e a evidência — dia sem nada feito também aparece |
-| `GET /api/export/tudo.json` | | tarefas com anotações/checklist/tempo, rotinas com dias feitos e `evidence` (dia + evidência), `renewals` (vencimentos), projetos |
+| `GET /api/export/tudo.json` | | tarefas com anotações/checklist/tempo, rotinas com dias feitos, `require_note` e `evidence` (dia + evidência), `renewals` (vencimentos), projetos |
 
 ## Histórico — `/api/history`
 

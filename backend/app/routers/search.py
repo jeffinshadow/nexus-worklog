@@ -44,7 +44,7 @@ def similar(title: str = Query(..., min_length=3, max_length=200), user=Depends(
 def find_similar(uid: int, title: str) -> list[dict]:
     # Palavras de 3+ letras, ou siglas de 2 em maiúsculas (AD, IP, RH, TI), sem
     # repetir, as mais específicas (longas) primeiro — o corte em 6 é estável.
-    raw = title.replace("/", " ").split()
+    raw = [x for x in re.split(r"[^\w]+", title) if x]  # "VPN: caiu", "(Financeiro)": só as palavras
     words = list(dict.fromkeys(fold(x) for x in raw
                                if (len(x) >= 3 or (len(x) == 2 and x.isupper())) and fold(x) not in _VAZIAS))
     words = sorted(words, key=len, reverse=True)[:6]

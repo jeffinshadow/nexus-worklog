@@ -368,20 +368,22 @@ function scheduleForm(item) {
 }
 
 function askResolution(t, onDone) {
+  // Ao fechar, o "Desfazer" da conclusão volta (o aviso some quando se clica numa ação).
+  const undoAgain = () => toast(`Concluída: ${t.title}`, { action: "Desfazer", onAction: () => undoLatest("worklog", t.id, onDone) });
   const area = h("textarea", { rows: "4", maxlength: "1000", placeholder: "ex.: perfil corrompido, recriado com o scanpst", "aria-label": "Como resolveu" });
   const err = h("p", { class: "error-text" });
   const form = h("form", {}, h("h2", { text: "Como resolveu?" }),
     h("p", { class: "dialog-note", text: `${t.title}: em poucas linhas. A busca encontra isso da próxima vez que o problema voltar.` }),
     area, err,
     h("div", { class: "dialog-actions" },
-      h("button", { type: "button", class: "btn btn-text", text: "Agora não", onClick: () => dlg.close() }),
+      h("button", { type: "button", class: "btn btn-text", text: "Agora não", onClick: () => { dlg.close(); undoAgain(); } }),
       h("button", { type: "submit", class: "btn btn-primary", text: "Salvar" })));
   form.addEventListener("submit", busy(async () => {
-    if (!area.value.trim()) { dlg.close(); return; }
+    if (!area.value.trim()) { dlg.close(); undoAgain(); return; }
     try {
       await api.patch(`/worklog/${t.id}`, { resolution: area.value.trim() });
       dlg.close();
-      toast("Anotado. A busca vai encontrar.");
+      toast("Anotado. A busca vai encontrar.", { action: "Desfazer a conclusão", onAction: () => undoLatest("worklog", t.id, onDone) });
       onDone && onDone();
     } catch (e) { err.textContent = e.message || "Não foi possível salvar."; }
   }));

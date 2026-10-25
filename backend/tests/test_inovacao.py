@@ -310,6 +310,9 @@ def test_ja_resolvi_antes(usuario, novo_usuario):
     assert usuario.get("/search/similar?title=srv_db%25 caiu").json() == []
     ia = Bearer(criar_chave(usuario)["token"])
     assert "Fila travada" in texto(ia.tool("find_similar", title="impressora travada"))
+    # Pontuação colada não atrapalha.
+    usuario.post("/worklog", {"title": "VPN caiu no home office", "status": "done", "resolution": "MTU 1400"})
+    assert [x["title"] for x in usuario.get("/search/similar?title=VPN: caiu de novo").json()] == ["VPN caiu no home office"]
     assert novo_usuario("outro@example.com").get("/search/similar?title=impressora rh").json() == []
 
 
@@ -352,6 +355,12 @@ def test_parar_cronometro_com_dia_cheio(usuario):
     tid = usuario.post("/worklog", {"title": "x"}).json()["id"]
     ontem = (dia_hoje(usuario) - timedelta(days=1)).isoformat()
     usuario.post(f"/worklog/{tid}/time", {"minutes": 1440, "day": ontem})
+    usuario.post("/timer/start", {"task_id": tid})
+    db.execute("UPDATE task_timers SET started_at = (%s::date + time '10:00') AT TIME ZONE 'America/Sao_Paulo' WHERE task_id = %s",
+               (ontem, tid))
+    ia = Bearer(criar_chave(usuario)["token"])
+    res = ia.tool("stop_timer")  # pelo MCP: parou, sem erro
+    assert not res["isError"] and "24h" in texto(res)
     usuario.post("/timer/start", {"task_id": tid})
     db.execute("UPDATE task_timers SET started_at = (%s::date + time '10:00') AT TIME ZONE 'America/Sao_Paulo' WHERE task_id = %s",
                (ontem, tid))
