@@ -372,7 +372,54 @@ def get_dashboard_analytics(user_id: int, tasks, completions, mask: int, today: 
     }
 
 
-def get_report_range(user_id: int, start: date, end: date, project: dict | None = None) -> dict:
+_PROJ_FILTER = " AND (%s::bigint IS NULL OR w.project_id = %s)"
+
+
+def _report_inputs(user_id: int, start: date, end: date, project: dict | None = None) -> dict:
+    """O que o relatório lê do banco para [start, end]: agenda (máscara de dias
+    úteis), rotinas, marcações, pontuais concluídas e apontamentos de tempo."""
+    tz = config.APP_TZ
+    if project:
+        tasks, completions = [], []
+    else:
+        tasks, completions = _recurring_tasks_and_completions(user_id, start, end)
+    pid = project["id"] if project else None
+    pontuais = db.query_all(
+        """
+        SELECT w.id, w.title, w.description, w.priority, w.created_at, w.completed_at,
+               p.name AS project, p.color AS project_color,
+               (w.completed_at AT TIME ZONE %s)::date AS done_date,
+               """ + TASK_COUNTS + """
+          FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
+         WHERE w.user_id = %s AND w.status = 'done' AND w.completed_at IS NOT NULL
+           AND (w.completed_at AT TIME ZONE %s)::date BETWEEN %s AND %s"""
+        + _PROJ_FILTER + " ORDER BY w.completed_at",
+        (tz, user_id, tz, start, end, pid, pid),
+    )
+    entries = db.query_all(
+        """
+        SELECT e.day, e.minutes, e.note, w.title, w.after_hours, p.name AS project, p.color AS project_color
+          FROM time_entries e
+          JOIN worklog_tasks w ON w.id = e.task_id
+          LEFT JOIN projects p ON p.id = w.project_id
+         WHERE e.user_id = %s AND e.day BETWEEN %s AND %s"""
+        + _PROJ_FILTER + " ORDER BY e.day, e.created_at",
+        (user_id, start, end, pid, pid),
+    )
+    return {"mask": work_mask(user_id), "tasks": tasks, "completions": completions,
+            "pontuais": pontuais, "entries": entries}
+
+
+def _slice_inputs(inp: dict, start: date, end: date) -> dict:
+    """Recorte de um _report_inputs de período maior (os resumos leem uma vez só)."""
+    return {**inp,
+            "completions": [c for c in inp["completions"] if start <= c["completed_date"] <= end],
+            "pontuais": [w for w in inp["pontuais"] if start <= w["done_date"] <= end],
+            "entries": [e for e in inp["entries"] if start <= e["day"] <= end]}
+
+
+def get_report_range(user_id: int, start: date, end: date, project: dict | None = None,
+                     inputs: dict | None = None, with_open: bool = True) -> dict:
     """Dados do relatório em PDF do período [start, end] ('end' já limitado a
     hoje pela rota).
 
@@ -384,48 +431,24 @@ def get_report_range(user_id: int, start: date, end: date, project: dict | None 
 
     Com 'project' ({id, name}) o relatório é do projeto: só pontuais, tempo e
     abertas dele; recorrentes não têm projeto e ficam de fora.
-    """
-    tz = config.APP_TZ
-    hoje = app_today()
-    mask = work_mask(user_id)
-    if project:
-        tasks, completions = [], []
-    else:
-        tasks, completions = _recurring_tasks_and_completions(user_id, start, end)
-    pid = project["id"] if project else None
-    filtro = " AND (%s::bigint IS NULL OR w.project_id = %s)"
 
-    pontuais = db.query_all(
-        """
-        SELECT w.id, w.title, w.description, w.priority, w.created_at, w.completed_at,
-               p.name AS project, p.color AS project_color,
-               (w.completed_at AT TIME ZONE %s)::date AS done_date,
-               """ + TASK_COUNTS + """
-          FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
-         WHERE w.user_id = %s AND w.status = 'done' AND w.completed_at IS NOT NULL
-           AND (w.completed_at AT TIME ZONE %s)::date BETWEEN %s AND %s"""
-        + filtro + " ORDER BY w.completed_at",
-        (tz, user_id, tz, start, end, pid, pid),
-    )
-    entries = db.query_all(
-        """
-        SELECT e.day, e.minutes, e.note, w.title, w.after_hours, p.name AS project, p.color AS project_color
-          FROM time_entries e
-          JOIN worklog_tasks w ON w.id = e.task_id
-          LEFT JOIN projects p ON p.id = w.project_id
-         WHERE e.user_id = %s AND e.day BETWEEN %s AND %s"""
-        + filtro + " ORDER BY e.day, e.created_at",
-        (user_id, start, end, pid, pid),
-    )
+    `inputs` (de _report_inputs, de um período que contém este) evita ler o
+    banco de novo; with_open=False pula a lista do que está aberto agora.
+    """
+    hoje = app_today()
+    inp = _slice_inputs(inputs, start, end) if inputs else _report_inputs(user_id, start, end, project)
+    mask, tasks, completions = inp["mask"], inp["tasks"], inp["completions"]
+    pontuais, entries = inp["pontuais"], inp["entries"]
+    pid = project["id"] if project else None
     abertas = db.query_all(
         """
         SELECT w.title, w.status, w.priority, w.due_date, p.name AS project, p.color AS project_color,
                """ + TASK_COUNTS + """
           FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
          WHERE w.user_id = %s AND w.status <> 'done'"""
-        + filtro + " ORDER BY w.priority, COALESCE(w.due_date, DATE '9999-12-31'), w.created_at",
+        + _PROJ_FILTER + " ORDER BY w.priority, COALESCE(w.due_date, DATE '9999-12-31'), w.created_at",
         (user_id, pid, pid),
-    )
+    ) if with_open else []
 
     done_by_date: dict[date, set[int]] = {}
     notes: dict[tuple, str] = {}  # (dia, rotina) -> evidência
@@ -502,7 +525,7 @@ def get_report_range(user_id: int, start: date, end: date, project: dict | None 
         "start": start,
         "end": end,
         "today": app_today(),
-        "generated_at": datetime.now(ZoneInfo(tz)),
+        "generated_at": datetime.now(ZoneInfo(config.APP_TZ)),
         "project": project["name"] if project else None,
         "whole_project": bool(project and project.get("whole")),
         "project_truncated": bool(project and project.get("truncated")),
@@ -577,8 +600,14 @@ def get_summary(user_id: int) -> dict:
     ws = week_start(today)
     prev_s = ws - timedelta(days=7)
     prev_e = prev_s + (today - ws)
-    week = _compact(get_report_range(user_id, ws, today))
-    prev = _compact(get_report_range(user_id, prev_s, prev_e))
+    # Uma leitura do banco para os quatro recortes (o servidor é pequeno).
+    inputs = _report_inputs(user_id, min(last, prev_s), today)
+
+    def resumo(start: date, end: date) -> dict:
+        return _compact(get_report_range(user_id, start, end, inputs=inputs, with_open=False))
+
+    week = resumo(ws, today)
+    prev = resumo(prev_s, prev_e)
     week["previous"] = {k: prev[k] for k in ("recurring_done", "recurring_total", "pontual_done", "minutes", "start", "end")}
-    return {"today": today, "last_day": _compact(get_report_range(user_id, last, today - timedelta(days=1))), "week": week,
-            "today_stats": _compact(get_report_range(user_id, today, today))}  # fechamento do dia
+    return {"today": today, "last_day": resumo(last, today - timedelta(days=1)), "week": week,
+            "today_stats": resumo(today, today)}  # fechamento do dia

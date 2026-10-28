@@ -75,13 +75,17 @@ async function route() {
   // A fala do assistente fica acima do título; uma tela antiga que termina de
   // carregar depois da troca não sobrescreve a da tela atual.
   const assist = (node) => { if (seq === routeSeq) setAssist(node); };
-  // Carregando: a tela antiga não fica parecendo a nova enquanto a resposta não vem.
+  // Tela já visitada: aparece na hora com o que mostrava e se atualiza quando a
+  // resposta chega (esmaecida se demorar). Primeira visita: "Carregando…".
   // O aviso fica fora da tela e só a esconde: a tela pode já ter montado a
-  // estrutura antes da API responder (Tarefas, Atribuir) e não pode perdê-la.
+  // estrutura antes da API responder e não pode perdê-la.
   el.setAttribute("aria-busy", "true");
   const loadingMsg = document.getElementById("view-loading");
+  const visited = el.childElementCount > 0;
   const loading = setTimeout(() => {
-    if (seq === routeSeq) { el.classList.add("hidden"); loadingMsg.classList.remove("hidden"); }
+    if (seq !== routeSeq) return;
+    if (visited) el.classList.add("refreshing");
+    else { el.classList.add("hidden"); loadingMsg.classList.remove("hidden"); }
   }, 250);
   try {
     await view.mount(el, { me, setActions, setEyebrow, setAssist: assist, go });
@@ -91,6 +95,7 @@ async function route() {
   } finally {
     clearTimeout(loading);
     el.removeAttribute("aria-busy");
+    el.classList.remove("refreshing");
     if (seq === routeSeq) { el.classList.remove("hidden"); loadingMsg.classList.add("hidden"); }
   }
   window.scrollTo(0, 0);

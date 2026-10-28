@@ -21,6 +21,41 @@ def test_resumo_semana_e_ultimo_dia(usuario):
     assert date.fromisoformat(s["last_day"]["start"]) < dia_hoje(usuario)
 
 
+def test_resumo_igual_aos_relatorios_separados(usuario):
+    """O resumo lê o banco uma vez e recorta os quatro períodos: tem que dar
+    exatamente o que dariam quatro relatórios independentes."""
+    from app import services
+    uid, hoje = uid_de(usuario), dia_hoje(usuario)
+    pid = usuario.post("/projects", {"name": "Cliente Y"}).json()["id"]
+    diaria = usuario.post("/recurring", {"label": "Backup"}).json()["id"]
+    semanal = usuario.post("/recurring", {"label": "Relatório", "freq": "weekly", "weekdays": 0b1010}).json()["id"]
+    for r in (diaria, semanal):
+        recuar_criacao(r, 30)
+    for i in range(0, 16):
+        d = hoje - timedelta(days=i)
+        if i % 3:  # falha um dia a cada três
+            db.execute("INSERT INTO recurring_completions (task_id, user_id, completed_date, note) VALUES (%s, %s, %s, %s)",
+                       (diaria, uid, d, "ok" if i % 2 else None))
+        if i % 4 == 0:
+            db.execute("INSERT INTO recurring_completions (task_id, user_id, completed_date) VALUES (%s, %s, %s)", (semanal, uid, d))
+        tid = usuario.post("/worklog", {"title": f"Tarefa {i}", "project_id": pid if i % 2 else None}).json()["id"]
+        db.execute("""UPDATE worklog_tasks SET status = 'done', created_at = %s::date + time '09:00',
+                      completed_at = %s::date + time '15:00' WHERE id = %s""", (d, d, tid))
+        db.execute("INSERT INTO time_entries (task_id, user_id, minutes, day) VALUES (%s, %s, %s, %s)", (tid, uid, 30 + i, d))
+    usuario.post("/worklog", {"title": "Ainda aberta", "project_id": pid})
+
+    s = services.get_summary(uid)
+    mask = services.work_mask(uid)
+    ws = services.week_start(hoje)
+    prev_s = ws - timedelta(days=7)
+    um = lambda a, b: services._compact(services.get_report_range(uid, a, b))
+    week, prev = um(ws, hoje), um(prev_s, prev_s + (hoje - ws))
+    week["previous"] = {k: prev[k] for k in ("recurring_done", "recurring_total", "pontual_done", "minutes", "start", "end")}
+    assert s == {"today": hoje, "last_day": um(services.last_work_day(hoje, mask), hoje - timedelta(days=1)),
+                 "week": week, "today_stats": um(hoje, hoje)}
+    assert s["week"]["minutes"] > 0 and s["last_day"]["recurring_total"] > 0
+
+
 # -------------------------------------------------------------------- busca --
 
 def test_busca_sem_acento_em_tudo(usuario, novo_usuario):

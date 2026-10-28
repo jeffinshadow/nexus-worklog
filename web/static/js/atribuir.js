@@ -9,13 +9,15 @@ import { STATUS_LABELS } from "./board.js";
 import { session } from "./session.js";
 
 export async function mount(root) {
+  // As duas listas vêm juntas (uma ida ao servidor a menos) e antes de limpar:
+  // na volta à tela, a visita anterior fica até chegar.
+  const [people, sent] = await Promise.all([api.get("/assign/people"), api.get("/assign/sent").catch((e) => e)]);
   clear(root);
   const grid = h("div", { class: "settings-grid" });
   root.append(grid);
   const sentBox = h("section", { class: "panel" });
-  const people = await api.get("/assign/people");
   grid.append(assignForm(people, () => loadSent(sentBox)), sentBox, consentsPanel(people));
-  await loadSent(sentBox);
+  await loadSent(sentBox, sent);
 }
 
 function assignForm(people, onSent) {
@@ -67,11 +69,16 @@ function assignForm(people, onSent) {
   return sec;
 }
 
-async function loadSent(sec) {
+// `ready`: a lista já buscada (ou o erro dela) na abertura da tela.
+async function loadSent(sec, ready) {
+  let rows;
+  try {
+    rows = ready === undefined ? await api.get("/assign/sent") : ready;
+    if (rows instanceof Error) throw rows;
+  } catch (e) { errorToast(e); rows = null; }
   clear(sec);
   sec.append(h("div", { class: "panel-head" }, icon("list"), h("h2", { text: "Tarefas que atribuí" })));
-  let rows;
-  try { rows = await api.get("/assign/sent"); } catch (e) { errorToast(e); return; }
+  if (!rows) return;
   if (!rows.length) {
     sec.append(h("p", { class: "empty", text: "Você ainda não atribuiu tarefas." }));
     return;

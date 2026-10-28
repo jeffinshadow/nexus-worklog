@@ -418,6 +418,14 @@ export async function mount(root, opts = {}) {
   let doneShown = DONE_PAGE;
   let project = readOnly ? "" : sessionStorage.getItem("nexus.board.project") || "";
 
+  // Quadro e projetos (do filtro) vêm juntos: uma ida ao servidor a menos.
+  // Busca antes de limpar: na volta à tela, a visita anterior fica até chegar.
+  const fetchBoard = () => {
+    const sep = boardUrl.includes("?") ? "&" : "?";
+    return api.get(project !== "" ? `${boardUrl}${sep}project=${project}` : boardUrl);
+  };
+  let [list, data] = await Promise.all([readOnly ? null : listProjects(true).catch(() => null), fetchBoard()]);
+
   clear(root);
   // Tarefas (as rotinas ficam na tela Hoje).
   const wip = column("Em aberto");
@@ -426,19 +434,19 @@ export async function mount(root, opts = {}) {
 
   // Filtro por projeto (só no quadro do próprio usuário).
   const filter = h("select", { class: "select-sm", "aria-label": "Filtrar por projeto" });
-  if (!readOnly) {
-    try {
-      const list = await listProjects(true);
-      filter.append(h("option", { value: "", text: "Todos os projetos" }), h("option", { value: "0", text: "Sem projeto" }),
-        ...list.map((p) => h("option", { value: String(p.id), text: p.name })));
-      if (![...filter.options].some((o) => o.value === project)) project = "";
-      filter.value = project;
-      filter.addEventListener("change", () => {
-        project = filter.value;
-        sessionStorage.setItem("nexus.board.project", project);
-        refresh();
-      });
-    } catch { /* sem filtro */ }
+  if (list) {
+    filter.append(h("option", { value: "", text: "Todos os projetos" }), h("option", { value: "0", text: "Sem projeto" }),
+      ...list.map((p) => h("option", { value: String(p.id), text: p.name })));
+    if (![...filter.options].some((o) => o.value === project)) {
+      project = ""; // o projeto guardado sumiu: o quadro veio filtrado por ele
+      data = await fetchBoard();
+    }
+    filter.value = project;
+    filter.addEventListener("change", () => {
+      project = filter.value;
+      sessionStorage.setItem("nexus.board.project", project);
+      refresh();
+    });
   }
 
   if (opts.setActions && !readOnly) {
@@ -448,13 +456,15 @@ export async function mount(root, opts = {}) {
     );
   }
 
-  async function refresh() {
-    const sep = boardUrl.includes("?") ? "&" : "?";
-    const data = await api.get(project !== "" ? `${boardUrl}${sep}project=${project}` : boardUrl);
+  function render(data) {
     // A linha do assistente, acima do título (só no quadro do próprio usuário).
     if (!readOnly && opts.setAssist) opts.setAssist(boardLine(data.in_progress, data.today, opts.me));
     renderCards(wip, data.in_progress, false, data.today);
     renderCards(done, data.done, true, data.today);
+  }
+
+  async function refresh() {
+    render(await fetchBoard());
   }
 
   function renderCards(col, items, isDone, today) {
@@ -490,7 +500,7 @@ export async function mount(root, opts = {}) {
     }
   }
 
-  await refresh();
+  render(data);
 }
 
 function column(title, opts = {}) {

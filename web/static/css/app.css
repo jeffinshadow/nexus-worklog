@@ -16,6 +16,8 @@ body {
 h1, h2, h3, p { margin: 0; }
 a { color: var(--primary-hi); text-decoration: none; }
 .hidden { display: none !important; }
+/* tela já visitada se atualizando (a resposta passou de 250 ms) */
+.refreshing { opacity: .6; transition: opacity .2s; }
 .spacer { flex: 1; }
 .mono { font-family: var(--font-label); }
 /* rótulos: peso médio, um respiro entre as letras e números tabulares (horas e contagens alinham) */

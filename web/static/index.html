@@ -13,8 +13,34 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Nexus">
   <link rel="preload" as="font" type="font/woff2" href="/fonts/GoogleSansFlex.woff2" crossorigin>
-  <link rel="stylesheet" href="/css/tokens.css?v=62">
-  <link rel="stylesheet" href="/css/app.css?v=62">
+  <link rel="stylesheet" href="/css/tokens.css?v=63">
+  <link rel="stylesheet" href="/css/app.css?v=63">
+  <!-- Módulos baixados todos de uma vez (sem isso vêm em ondas, um import
+       revelando o próximo). Módulo novo fora desta lista só carrega mais tarde. -->
+  <link rel="modulepreload" href="/js/admin.js">
+  <link rel="modulepreload" href="/js/api.js">
+  <link rel="modulepreload" href="/js/assistant.js">
+  <link rel="modulepreload" href="/js/atribuir.js">
+  <link rel="modulepreload" href="/js/board.js">
+  <link rel="modulepreload" href="/js/branding.js">
+  <link rel="modulepreload" href="/js/dashboard.js">
+  <link rel="modulepreload" href="/js/dom.js">
+  <link rel="modulepreload" href="/js/equipe.js">
+  <link rel="modulepreload" href="/js/history.js">
+  <link rel="modulepreload" href="/js/idle.js">
+  <link rel="modulepreload" href="/js/profile.js">
+  <link rel="modulepreload" href="/js/projects.js">
+  <link rel="modulepreload" href="/js/quick.js">
+  <link rel="modulepreload" href="/js/renewals.js">
+  <link rel="modulepreload" href="/js/reports.js">
+  <link rel="modulepreload" href="/js/search.js">
+  <link rel="modulepreload" href="/js/session.js">
+  <link rel="modulepreload" href="/js/settings.js">
+  <link rel="modulepreload" href="/js/summary.js">
+  <link rel="modulepreload" href="/js/task.js">
+  <link rel="modulepreload" href="/js/timer.js">
+  <link rel="modulepreload" href="/js/today.js">
+  <link rel="modulepreload" href="/js/ui.js">
 </head>
 <body>
   <!-- Ícones (traço 1.75, 24px), sem script/style inline (CSP). -->
@@ -281,7 +307,7 @@
   <div class="toasts" id="toasts" aria-live="polite"></div>
   <div class="timer-chip timer-mobile hidden" id="timer-mobile" role="status" aria-live="polite"></div>
 
-  <script type="module" src="/js/app.js?v=62"></script>
-  <script type="module" src="/js/pwa.js?v=62"></script>
+  <script type="module" src="/js/app.js?v=63"></script>
+  <script type="module" src="/js/pwa.js?v=63"></script>
 </body>
 </html>

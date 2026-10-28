@@ -14,8 +14,8 @@ const SUBVIEWS = [
 ];
 
 export async function mount(root) {
-  clear(root);
   const users = await api.get("/viewer/users");
+  clear(root); // só depois da resposta: na volta à tela, a visita anterior fica até chegar
   if (!users.length) {
     root.append(h("p", { class: "empty", text: "Nenhuma pessoa com registro ainda." }));
     return;

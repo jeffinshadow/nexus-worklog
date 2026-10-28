@@ -21,6 +21,8 @@ function ranges(today) {
 
 export async function mount(root, opts = {}) {
   const base = opts.exportBase || "/reports/export";
+  // Projetos antes de limpar: na volta à tela, a visita anterior fica até chegar.
+  const projects = await api.get(opts.projectsUrl || "/projects?include_archived=true").catch(() => []);
   clear(root);
 
   const today = localDay(Date.now());
@@ -29,10 +31,8 @@ export async function mount(root, opts = {}) {
   const err = h("p", { class: "error-text" });
   // Projeto: os do próprio usuário, ou (admin) os do usuário escolhido.
   const projSel = h("select", {}, h("option", { value: "", text: "Todos (relatório completo)" }));
-  try {
-    for (const p of await api.get(opts.projectsUrl || "/projects?include_archived=true"))
-      projSel.append(h("option", { value: String(p.id), text: p.name + (p.archived ? " (arquivado)" : "") }));
-  } catch { /* sem projetos */ }
+  for (const p of projects)
+    projSel.append(h("option", { value: String(p.id), text: p.name + (p.archived ? " (arquivado)" : "") }));
   const btn = h("button", { type: "button", class: "btn btn-primary", onClick: run }, icon("reports"), "Exportar PDF");
 
   const quick = h("div", { class: "quick" }, ...ranges(today).map(([label, a, b]) =>
