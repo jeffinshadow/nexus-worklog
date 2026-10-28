@@ -834,6 +834,33 @@ dialog.sheet .menu-list > :last-child { border-bottom: 0; }
   body.has-side .main { margin-right: 420px; }
   dialog.task-dialog.side { width: 420px; max-width: 420px; }
 }
+/* Janela de notebook (1200–1739 px): com o detalhe aberto ao lado, o menu
+   encolhe para a faixa de ícones em vez de espremer o quadro do meio
+   (menu 255 + painel 414 + quadro 990 px reais não cabem). Mesmas regras
+   do bloco acima, só enquanto o painel está aberto. */
+@media (min-width: 1200px) and (max-width: 1739px) {
+  body.has-side { --sidebar-w: 92px; }
+  body.has-side .sidebar { padding: 18px 6px 12px; gap: 16px; }
+  body.has-side .sidebar > .lockup { padding: 0; justify-content: center; }
+  body.has-side .sidebar > .lockup .lockup-type { display: none; }
+  body.has-side .side-search { display: none; }
+  body.has-side .nav a.rail-only:not(.hidden) { display: flex; }
+  body.has-side .nav { gap: 4px; }
+  body.has-side .nav a, body.has-side .sidebar .nav-link { position: relative; flex-direction: column; gap: 3px; padding: 2px 0 4px; border-radius: 0; font-size: .7rem; text-align: center; }
+  body.has-side .nav a:hover, body.has-side .nav a.active, body.has-side .sidebar .nav-link:hover, body.has-side .sidebar .nav-link.active { background: none; }
+  body.has-side .nav a .ico, body.has-side .sidebar .nav-link .ico { box-sizing: content-box; width: 22px; height: 22px; padding: 5px 18px; border-radius: 999px; transition: background-color .2s; }
+  body.has-side .nav a:hover .ico, body.has-side .sidebar .nav-link:hover .ico { background: rgba(255,255,255,.06); }
+  body.has-side .nav a.active .ico, body.has-side .sidebar .nav-link.active .ico { background: var(--primary-container); }
+  body.has-side .nav a span, body.has-side .sidebar .nav-link span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  body.has-side .nav a .nav-badge { position: absolute; top: -2px; left: 50%; margin: 0 0 0 6px; }
+  body.has-side button.nav-link { text-align: center; }
+  body.has-side .who { flex-direction: column; padding: 8px 0 0; }
+  body.has-side .who-me { flex: none; justify-content: center; }
+  body.has-side .who-text { display: none; }
+  body.has-side #timer-side { display: none !important; }
+  body.has-side .timer-mobile:not(.hidden) { display: flex; position: fixed; left: 108px; bottom: 16px; width: 380px; z-index: 40;
+    background: var(--surface-accent); box-shadow: 0 12px 30px -12px rgba(0,0,0,.8); }
+}
 
 /* Fora do zoom do <body> (posição em px da tela): menu de contexto e dicas. */
 .pop-menu { position: fixed; z-index: 1000; min-width: 200px; padding: 6px 0; border-radius: 12px; font: 14px/1.4 var(--font-sans);
