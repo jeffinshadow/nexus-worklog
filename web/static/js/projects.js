@@ -27,7 +27,8 @@ export function projectChip(t) {
 
 // Preenche um <select> com "Sem projeto", os projetos e "+ Novo projeto…".
 // O novo projeto é criado na hora e fica selecionado.
-export async function fillProjectSelect(select, selectedId) {
+// onPick(valor): chamado quando o usuário escolhe um projeto (ou cria um novo).
+export async function fillProjectSelect(select, selectedId, onPick) {
   const list = await listProjects();
   clear(select);
   select.append(h("option", { value: "", text: "Sem projeto" }));
@@ -40,13 +41,14 @@ export async function fillProjectSelect(select, selectedId) {
   select.value = selectedId ? String(selectedId) : "";
   let previous = select.value;
   select.onchange = async () => {
-    if (select.value !== "__new") { previous = select.value; return; }
+    if (select.value !== "__new") { previous = select.value; if (onPick) onPick(select.value); return; }
     const name = await askName();
     if (!name) { select.value = previous; return; }
     try {
       const p = await api.post("/projects", { name });
       invalidateProjects();
-      await fillProjectSelect(select, p.id);
+      await fillProjectSelect(select, p.id, onPick);
+      if (onPick) onPick(String(p.id));
       toast(`Projeto “${p.name}” criado.`);
     } catch (e) {
       errorToast(e, "Erro ao criar projeto.");

@@ -344,7 +344,7 @@ async function boot() {
       if (getComputedStyle(sideQ).display !== "none" && sideQ.offsetParent) sideQ.focus();
       else location.hash = "#/busca";
     }],
-    n: ["Nova tarefa", () => openWorklog(null, route)],
+    n: ["Nova tarefa", () => openWorklog(route)],
     h: ["Ir para Hoje", () => go("hoje")],
     t: ["Ir para Tarefas", () => go("tarefas")],
     r: ["Ir para Retrospectiva", () => go("dashboard")],

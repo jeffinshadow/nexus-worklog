@@ -418,6 +418,27 @@ dialog.task-dialog { max-width: 640px; padding: 0; max-height: min(88vh / var(--
 .task-sec .check-row button.icon .ico { width: 15px; height: 15px; }
 .task-add { margin: 6px 0 12px; }
 .progress.thin { height: 4px; margin: 0 0 8px; }
+/* Editar no próprio detalhe: título e descrição parecem texto e viram campo
+   no hover/foco; os detalhes (status, prazo...) salvam ao sair do campo. */
+.inline-edit { display: block; margin: 0 0 0 -8px; width: calc(100% + 8px); padding: 2px 8px; border: 1px solid transparent; border-radius: 8px;
+  background: transparent; color: var(--on-surface); font: inherit; min-height: 0; resize: none; transition: border-color .15s, background-color .15s; }
+.inline-edit:hover { border-color: var(--outline-variant); }
+.inline-edit:focus { background: var(--surface-container-high); }
+.inline-title { overflow: hidden; font-size: 1.15rem; font-weight: 600; letter-spacing: -.02em; line-height: 1.35; overflow-wrap: anywhere; }
+.inline-desc { height: auto; margin-top: 2px; font-size: .92rem; color: var(--on-surface-variant); }
+.inline-desc::placeholder { color: var(--dim); }
+.task-title .assigned-note { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; font-size: .84rem; color: var(--on-surface-variant); }
+.assigned-note .ico { width: 14px; height: 14px; }
+.props { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+.props > .field { min-width: 0; margin-bottom: 12px; }
+.props > .field label { font-size: .78rem; }
+.props > .wide { grid-column: 1 / -1; }
+.props .field-check { padding-bottom: 8px; }
+.props input.late { color: var(--error); border-color: rgba(242,139,130,.5); }
+.with-link { display: flex; align-items: center; gap: 4px; }
+.with-link input { flex: 1; min-width: 0; }
+.saved-mark { font-family: var(--font-label); font-size: .76rem; color: var(--dim); padding: 0 6px; }
+@media (max-width: 340px) { .props { grid-template-columns: 1fr; } }
 
 .time-form { display: grid; grid-template-columns: 90px 150px 1fr auto; gap: 8px; align-items: center; margin-bottom: 10px; }
 .time-form input { height: 40px; }
@@ -638,7 +659,6 @@ button.nav-link { border: 0; background: transparent; width: 100%; font-family: 
 .chip.blocked-reason { color: var(--warning); border-color: rgba(253,214,99,.35); background: rgba(253,214,99,.05); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .check-row .label small.evidence { color: var(--success); display: inline-block; text-decoration: none; } /* inline-block: a rotina feita fica riscada, a evidência não */
 .handoff-text { width: 100%; font-family: var(--font-label); font-size: .82rem; line-height: 1.55; resize: vertical; }
-.task-title .resolution { margin-top: 6px; color: var(--on-surface-variant); font-size: .9rem; white-space: pre-wrap; }
 .today-grid > .t-venc { grid-column: 1 / -1; }
 .similar { margin: -4px 0 12px; padding: 10px 12px; border: 1px solid var(--outline-variant); border-radius: 12px; background: rgba(129,201,149,.05); }
 .similar-head { margin: 0 0 4px; font-size: .78rem; color: var(--success); font-weight: 600; }

@@ -32,7 +32,7 @@ export async function mount(root, ctx, opts = {}) {
   ctx.setEyebrow(longDate(today) + (b.work_day ? "" : " · dia não útil"));
   ctx.setActions(
     h("button", { type: "button", class: "btn btn-ghost", title: "Texto pronto com o que fica aberto, bloqueado e o que foi concluído nas últimas 12 h", onClick: showHandoff }, icon("copy"), "Passagem de turno"),
-    h("button", { type: "button", class: "btn btn-primary", "data-fab": "", onClick: () => openWorklog(null, refresh) }, icon("add"), "Tarefa")
+    h("button", { type: "button", class: "btn btn-primary", "data-fab": "", onClick: () => openWorklog(refresh) }, icon("add"), "Tarefa")
   );
 
   // Devidas no dia pela agenda de cada uma; as de fora da agenda vêm depois,
@@ -97,13 +97,13 @@ export async function mount(root, ctx, opts = {}) {
         "aria-label": "Evidência de " + r.label, onClick: (ev) => { ev.preventDefault(); editEvidence(r, b.day, refresh); } }, icon("note")) : null,
       // Achou algo na verificação? Vira tarefa (com anotações e tempo).
       h("button", { type: "button", class: "icon only-desk", title: "Registrar um achado como tarefa", "aria-label": "Registrar achado de " + r.label,
-        onClick: (ev) => { ev.preventDefault(); openWorklog(null, refresh, { title: `Achado: ${r.label}` }); } }, icon("alert")),
+        onClick: (ev) => { ev.preventDefault(); openWorklog(refresh, { title: `Achado: ${r.label}` }); } }, icon("alert")),
       h("button", { type: "button", class: "icon only-desk", title: "Editar rotina", "aria-label": "Editar " + r.label,
         onClick: (ev) => { ev.preventDefault(); openRecurring(r, refresh); } }, icon("edit")),
       // Celular: os dois acima num menu ⋮.
       h("button", { type: "button", class: "icon only-mob", title: "Mais ações", "aria-label": "Mais ações de " + r.label,
         onClick: (ev) => { ev.preventDefault(); sheet(r.label, [
-          ["Registrar um achado como tarefa", "alert", () => openWorklog(null, refresh, { title: `Achado: ${r.label}` })],
+          ["Registrar um achado como tarefa", "alert", () => openWorklog(refresh, { title: `Achado: ${r.label}` })],
           ["Editar rotina", "edit", () => openRecurring(r, refresh)],
         ]); } }, icon("more-v"))));
   }
@@ -168,7 +168,6 @@ export async function mount(root, ctx, opts = {}) {
         h("button", { type: "button", class: "card-open", text: t.title, onClick: () => openTask(t.id, refresh) }),
         h("small", {}, h("span", { class: "card-meta" }, ...taskChips(t, today)))),
       desk(timerButton(t, refresh)),
-      h("button", { type: "button", class: "icon only-desk", title: "Editar", "aria-label": "Editar " + t.title, onClick: () => openWorklog(t, refresh) }, icon("edit")),
       moreButton(t, refresh)), t, refresh));
   }
 

@@ -1,9 +1,13 @@
-// Detalhe de uma tarefa: checklist, tempo apontado e anotações.
+// Detalhe de uma tarefa: é também onde se edita. Título, descrição e os
+// detalhes (status, prazo, projeto...) salvam sozinhos ao sair do campo;
+// abaixo, checklist, tempo apontado e anotações.
 // Abre por cima do quadro/Hoje; ao fechar, quem abriu recarrega (onChange).
 import { api } from "./api.js";
-import { h, icon, clear, addDays, shortDate, dateTime, field } from "./dom.js";
+import { h, icon, clear, addDays, shortDate, dateTime, field, localDateTime } from "./dom.js";
 import { errorToast, modal, toast, undoLatest, busy, sheet } from "./ui.js";
-import { openWorklog, finishTask, taskChips } from "./board.js";
+import { finishTask, deleteTask, followUpDay, isOverdue, ticketUrl } from "./board.js";
+import { fillProjectSelect } from "./projects.js";
+import { session } from "./session.js";
 import { timerButton, timerState, startTimer, stopTimer } from "./timer.js";
 
 export function duration(min) {
@@ -59,7 +63,9 @@ export async function openTask(taskId, onChange) {
     if (changed) onChange && onChange();
   });
   // No painel lateral o quadro ao lado se atualiza na hora; na janela, ao fechar.
-  const touch = () => { if (side) { if (onChange) onChange(); } else changed = true; return render(); };
+  // (Um campo salvo ao sair dele pode terminar com a janela já fechada.)
+  const notify = () => { if (side || !dlg.open) { if (onChange) onChange(); } else changed = true; };
+  const touch = () => { notify(); return render(); };
   // Desfazer pelo aviso pode chegar com o detalhe já fechado: aí recarrega quem abriu.
   const after = () => (dlg.open ? touch() : onChange && onChange());
 
@@ -73,21 +79,22 @@ export async function openTask(taskId, onChange) {
       return;
     }
     const today = t.today;
+    cur = t;
     clear(body);
 
-    // ---- cabeçalho
-    const chips = taskChips(t, today); // os mesmos do cartão
-    const edit = () => {
-      dlg.close();
-      openWorklog(t, () => { onChange && onChange(); openTask(taskId, onChange); });
-    };
+    // ---- cabeçalho: título e descrição editáveis no lugar
+    const title = h("textarea", { class: "inline-edit inline-title", rows: "1", maxlength: "200", "aria-label": "Título" });
+    title.value = t.title;
+    const desc = h("input", { type: "text", class: "inline-edit inline-desc", maxlength: "300", placeholder: "Adicionar descrição", "aria-label": "Descrição" });
+    desc.value = t.description || "";
+    inline(title, () => t.title, (v) => (v ? { title: v } : null));
+    inline(desc, () => t.description || "", (v) => ({ description: v || null }));
+    title.addEventListener("input", () => grow(title));
 
+    const remove = async () => { if (await deleteTask(t, onChange)) dlg.close(); };
     const head = h("div", { class: "task-head" },
-      h("div", { class: "task-title" },
-        h("h2", { text: t.title }),
-        t.description ? h("p", { text: t.description }) : null,
-        t.resolution ? h("p", { class: "resolution" }, h("strong", { text: "Como resolveu: " }), t.resolution) : null,
-        h("div", { class: "card-meta" }, ...chips)),
+      h("div", { class: "task-title" }, title, desc,
+        t.assigned_by_name ? h("p", { class: "assigned-note" }, icon("send"), "Atribuída por " + t.assigned_by_name) : null),
       h("div", { class: "task-tools" },
         timerButton(t, after),
         t.status !== "done"
@@ -95,18 +102,19 @@ export async function openTask(taskId, onChange) {
           : null,
         h("button", { type: "button", class: "icon", title: "Copiar resumo (para o chamado ou o cliente)", "aria-label": "Copiar resumo", onClick: () => copySummary(t) }, icon("copy")),
         h("button", { type: "button", class: "icon", title: "Salvar como modelo", "aria-label": "Salvar como modelo", onClick: () => saveAsTemplate(t) }, icon("list")),
-        h("button", { type: "button", class: "icon", title: "Editar", "aria-label": "Editar", onClick: edit }, icon("edit")),
+        h("button", { type: "button", class: "icon", title: "Excluir", "aria-label": "Excluir", onClick: remove }, icon("trash")),
         h("button", { type: "button", class: "icon", title: "Fechar", "aria-label": "Fechar", onClick: () => dlg.close() }, icon("close"))));
 
-    // Celular: tela inteira com barra no topo (fechar, editar e o resto no ⋮) e
-    // as duas ações principais como botões grandes abaixo do título.
+    // Celular e painel lateral: barra no topo (fechar e o resto no ⋮) e as
+    // duas ações principais como botões grandes abaixo do título.
     const appbar = h("div", { class: "task-appbar" },
       h("button", { type: "button", class: "icon", title: "Fechar", "aria-label": "Fechar", onClick: () => dlg.close() }, icon("close")),
       h("span", { class: "task-appbar-title", text: "Tarefa" }),
-      h("button", { type: "button", class: "icon", title: "Editar", "aria-label": "Editar", onClick: edit }, icon("edit")),
+      saved,
       h("button", { type: "button", class: "icon", title: "Mais ações", "aria-label": "Mais ações", onClick: () => sheet(t.title, [
         ["Copiar resumo (para o chamado ou o cliente)", "copy", () => copySummary(t)],
         ["Salvar como modelo", "list", () => saveAsTemplate(t)],
+        ["Excluir tarefa", "trash", remove],
       ]) }, icon("more-v")));
     const running = (timerState() || {}).task_id === t.id;
     const mainActs = t.status === "done" ? null : h("div", { class: "task-main-actions" },
@@ -114,7 +122,125 @@ export async function openTask(taskId, onChange) {
         icon(running ? "stop" : "play"), running ? "Parar cronômetro" : "Cronômetro"),
       h("button", { type: "button", class: "btn btn-primary", onClick: () => finishTask(t, after) }, icon("check"), "Concluir"));
 
-    body.append(...[appbar, head, mainActs, checklist(t), timePanel(t, today), notesPanel(t)].filter(Boolean));
+    body.append(...[appbar, head, mainActs, details(t, today), checklist(t), timePanel(t, today), notesPanel(t)].filter(Boolean));
+    requestAnimationFrame(() => grow(title)); // a altura só existe com o campo na tela (e o painel aberto)
+    // Redesenhou com o foco num campo (ex.: trocou o status): volta para ele.
+    if (refocus) { const el = body.querySelector(`[aria-label="${refocus}"]`); if (el) el.focus(); refocus = null; }
+  }
+
+  // ---- edição no lugar
+  // Salva só o que mudou; na falha, avisa e redesenha com o que está no servidor.
+  let cur = null, refocus = null, savedTimer = null;
+  const saved = h("span", { class: "saved-mark", "aria-live": "polite" });
+  async function save(patch, redraw = false) {
+    try { await api.patch(`/worklog/${taskId}`, patch); }
+    catch (e) { errorToast(e, "Não foi possível salvar."); await render(); return; }
+    Object.assign(cur, patch);
+    notify();
+    saved.textContent = "Salvo";
+    clearTimeout(savedTimer);
+    savedTimer = setTimeout(() => { saved.textContent = ""; }, 1800);
+    if (redraw) { refocus = document.activeElement && document.activeElement.getAttribute("aria-label"); await render(); }
+  }
+  // Campo de texto: Enter confirma (sai do campo), Esc desfaz; salva ao sair.
+  // toPatch(valor) devolve o que mandar, ou null para voltar ao valor anterior.
+  function inline(el, original, toPatch) {
+    const multi = el.tagName === "TEXTAREA" && !el.classList.contains("inline-title");
+    el.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); el.value = original(); grow(el); el.blur(); }
+      else if (ev.key === "Enter" && (!multi || ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); el.blur(); }
+    });
+    el.addEventListener("blur", () => {
+      const v = el.value.trim();
+      if (v === original()) return;
+      const patch = toPatch(v);
+      if (!patch) { el.value = original(); grow(el); return; }
+      save(patch);
+    });
+  }
+  function grow(el) {
+    if (!el.classList.contains("inline-title")) return;
+    el.style.height = "auto";
+    el.style.height = el.scrollHeight + "px";
+  }
+
+  // ---- detalhes (o que antes ficava na janela "Editar")
+  function details(t, today) {
+    const sec = h("section", { class: "task-sec task-props" },
+      h("div", { class: "task-sec-head" }, icon("edit"), h("h3", { text: "Detalhes" })));
+    const grid = h("div", { class: "props" });
+
+    const status = h("select", { "aria-label": "Status" },
+      ...[["todo", "A fazer"], ["in_progress", "Em andamento"], ["blocked", "Bloqueada"], ["done", "Concluída"]]
+        .map(([v, l]) => h("option", { value: v, text: l })));
+    status.value = t.status;
+    status.addEventListener("change", () => {
+      // Concluir pelo status = o mesmo concluir dos botões (com "Como resolveu?").
+      if (status.value === "done") { refocus = "Status"; finishTask(t, after); }
+      else save({ status: status.value }, true);
+    });
+
+    const due = h("input", { type: "date", "aria-label": "Prazo", class: isOverdue(t, today) ? "late" : "" });
+    due.value = t.due_date || "";
+    due.addEventListener("change", () => {
+      due.classList.toggle("late", !!due.value && due.value < today && t.status !== "done");
+      save({ due_date: due.value || null });
+    });
+
+    const proj = h("select", { "aria-label": "Projeto" });
+    fillProjectSelect(proj, t.project_id, (v) => {
+      const id = v ? Number(v) : null;
+      if (id !== (cur.project_id || null)) save({ project_id: id });
+    }).catch(() => {});
+
+    const prio = h("select", { "aria-label": "Prioridade" },
+      h("option", { value: "1", text: "Alta" }), h("option", { value: "2", text: "Normal" }), h("option", { value: "3", text: "Baixa" }));
+    prio.value = String(t.priority || 2);
+    prio.addEventListener("change", () => save({ priority: Number(prio.value) }));
+
+    const ticket = h("input", { type: "text", maxlength: "41", placeholder: "ex.: 4821", autocomplete: "off", "aria-label": "Chamado" });
+    ticket.value = t.ticket || "";
+    inline(ticket, () => cur.ticket || "", (v) => ({ ticket: v || null }));
+    ticket.id = "f-ticket-" + t.id;
+    const url = t.ticket ? ticketUrl(t.ticket) : null;
+
+    const afterHours = h("input", { type: "checkbox", "aria-label": "Plantão / fora do horário" });
+    afterHours.checked = !!t.after_hours;
+    afterHours.addEventListener("change", () => save({ after_hours: afterHours.checked }));
+
+    grid.append(field("Status", status), field("Prazo", due), field("Projeto / cliente", proj), field("Prioridade", prio),
+      h("div", { class: "field" }, h("label", { for: ticket.id, text: "Chamado" }),
+        url ? h("div", { class: "with-link" }, ticket, h("a", { class: "icon", href: url, target: "_blank", rel: "noopener noreferrer", title: "Abrir o chamado", "aria-label": "Abrir o chamado" }, icon("right"))) : ticket),
+      h("div", { class: "field field-check" }, h("label", { class: "weekday-option" }, afterHours, h("span", { text: "Plantão / fora do horário" }))));
+
+    if (t.status === "blocked") {
+      const reason = h("input", { type: "text", maxlength: "120", placeholder: "ex.: retorno do fornecedor", "aria-label": "Aguardando o quê?" });
+      reason.value = t.blocked_reason || "";
+      inline(reason, () => cur.blocked_reason || "", (v) => ({ blocked_reason: v || null }));
+      const follow = h("input", { type: "date", "aria-label": "Cobrar em" });
+      follow.value = t.follow_up_on || "";
+      // Hoje ou depois — mas uma cobrança já atrasada pode ficar como está.
+      follow.min = t.follow_up_on && t.follow_up_on < today ? t.follow_up_on : today;
+      follow.addEventListener("change", () => {
+        const day = followUpDay(follow.value || null);
+        follow.value = day || "";
+        save({ follow_up_on: day });
+      });
+      grid.append(field("Aguardando o quê?", reason), field("Cobrar em", follow));
+    }
+    if (t.status === "done") {
+      const now = localDateTime(Date.now());
+      const doneAt = h("input", { type: "datetime-local", "aria-label": "Concluída em", max: now,
+        min: addDays(now.slice(0, 10), -((session.me && session.me.retro_days) || 60)) + "T00:00" });
+      doneAt.value = t.completed_at ? localDateTime(t.completed_at) : "";
+      doneAt.addEventListener("change", () => { if (doneAt.value) save({ completed_at: doneAt.value }); });
+      const resolution = h("textarea", { rows: "2", maxlength: "1000", placeholder: "ex.: perfil corrompido, recriado com o scanpst", "aria-label": "Como resolveu?" });
+      resolution.value = t.resolution || "";
+      inline(resolution, () => cur.resolution || "", (v) => ({ resolution: v || null }));
+      grid.append(field("Concluída em", doneAt), field("Como resolveu? (entra na busca)", resolution, "wide"));
+    }
+    sec.append(grid);
+    return sec;
   }
 
   // ---- checklist

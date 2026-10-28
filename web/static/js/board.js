@@ -1,5 +1,5 @@
 // Quadro de tarefas: rotinas (com seletor de dia), tarefas abertas e
-// concluídas. Também exporta os diálogos de criar/editar, usados pela tela Hoje.
+// concluídas. Também exporta o diálogo de nova tarefa, usado pela tela Hoje.
 import { api } from "./api.js";
 import { h, icon, clear, addDays, shortDate, localDay, localDateTime, daysBetween } from "./dom.js";
 import { confirmDialog, errorToast, toast, undoLatest, busy, modal, sheet, navBadge, popupMenu } from "./ui.js";
@@ -98,8 +98,8 @@ export function isOverdue(t, today) {
   return t.status !== "done" && t.due_date && t.due_date < today;
 }
 
-// Celular: cronômetro e editar saem da linha e vão para um menu (⋮) que sobe
-// de baixo; na linha ficam só concluir e este botão, com alvo de 48 px.
+// Celular: o cronômetro sai da linha e vai para um menu (⋮) que sobe de
+// baixo; na linha ficam só concluir e este botão, com alvo de 48 px.
 export function moreButton(t, onDone) {
   return h("button", { type: "button", class: "icon only-mob", title: "Mais ações", "aria-label": "Mais ações de " + t.title,
     onClick: () => {
@@ -108,7 +108,7 @@ export function moreButton(t, onDone) {
         t.status === "done" ? null : running
           ? ["Parar o cronômetro e apontar", "stop", () => stopTimer(onDone)]
           : ["Iniciar o cronômetro", "play", () => startTimer(t, onDone)],
-        ["Editar", "edit", () => openWorklog(t, onDone)],
+        ["Abrir (ver e editar)", "right", () => openTask(t.id, onDone)],
       ]);
     } }, icon("more-v"));
 }
@@ -128,7 +128,7 @@ export function withMenu(el, t, onDone) {
         ? ["Parar o cronômetro e apontar", "stop", () => stopTimer(onDone)]
         : ["Iniciar o cronômetro", "play", () => startTimer(t, onDone)],
       t.status === "done" ? null : ["Concluir", "check", () => finishTask(t, onDone)],
-      ["Editar", "edit", () => openWorklog(t, onDone)],
+      ["Excluir", "trash", () => deleteTask(t, onDone)],
     ];
     if (matchMedia("(max-width: 860px)").matches) { sheet(t.title, items); return; }
     let { clientX: x, clientY: y } = ev;
@@ -149,24 +149,47 @@ export const lateBadge = (open, today) => {
 
 // ------------------------------------------------------- diálogos (export) --
 
-export function openWorklog(item, onDone, opts = {}) {
+// Dia para cobrar uma bloqueada: o lembrete só aparece em dia útil, então
+// um dia não útil vira o dia útil anterior (com aviso).
+export function followUpDay(day) {
+  const today = localDateTime(Date.now()).slice(0, 10);
+  const mask = (session.me && session.me.work_days) || 62;
+  let fd = day;
+  while (fd && !((mask >> new Date(fd + "T12:00:00Z").getUTCDay()) & 1) && fd > today) fd = addDays(fd, -1);
+  if (fd && fd !== day) toast(`Cobrança antecipada para ${shortDate(fd)}, o dia útil anterior.`);
+  return fd;
+}
+
+export async function deleteTask(t, onDone) {
+  if (!(await confirmDialog({ title: "Excluir tarefa?", text: `“${t.title}” sai do quadro. Dá para desfazer pelo histórico.`, confirm: "Excluir", danger: true }))) return false;
+  try {
+    await api.del(`/worklog/${t.id}`);
+    onDone && onDone();
+    toast("Tarefa excluída.", { action: "Desfazer", onAction: () => undoLatest("worklog", t.id, onDone) });
+    return true;
+  } catch (e) {
+    errorToast(e, "Erro ao excluir.");
+    return false;
+  }
+}
+
+// Nova tarefa (editar é no próprio detalhe, task.js).
+export function openWorklog(onDone, opts = {}) {
   const dlg = document.getElementById("dialog-worklog");
-  document.getElementById("dlg-wl-title").textContent = item ? "Editar tarefa" : "Nova tarefa";
-  document.getElementById("wl-title").value = item ? item.title : opts.title || "";
-  document.getElementById("wl-desc").value = item && item.description ? item.description : "";
-  document.getElementById("wl-status").value = item ? item.status : "todo";
-  document.getElementById("wl-due").value = item && item.due_date ? item.due_date : "";
-  document.getElementById("wl-prio").value = String(item ? item.priority || 2 : 2);
+  document.getElementById("wl-title").value = opts.title || "";
+  document.getElementById("wl-desc").value = "";
+  document.getElementById("wl-status").value = "todo";
+  document.getElementById("wl-due").value = "";
+  document.getElementById("wl-prio").value = "2";
   // Tempo já na criação (técnico em campo: "Loja X, 2h"); depois, pelo detalhe.
   const timeInput = document.getElementById("wl-time");
   timeInput.value = "";
-  document.getElementById("wl-time-wrap").classList.toggle("hidden", !!item);
   const projSel = document.getElementById("wl-project");
-  const projReady = fillProjectSelect(projSel, item ? item.project_id : null).catch(() => {});
+  const projReady = fillProjectSelect(projSel, null).catch(() => {});
   const ticket = document.getElementById("wl-ticket");
   const after = document.getElementById("wl-after");
   // Datas retroativas: "Concluída em" aparece com o status Concluída (vazio =
-  // agora); "Começou em" só ao criar. Limites: nada no futuro, até retro_days.
+  // agora). Limites: nada no futuro, até retro_days.
   const statusSel = document.getElementById("wl-status");
   const dates = document.getElementById("wl-dates");
   const createdAt = document.getElementById("wl-created-at");
@@ -176,20 +199,15 @@ export function openWorklog(item, onDone, opts = {}) {
   const minDay = addDays(now.slice(0, 10), -(me.retro_days || 60)) + "T00:00";
   for (const el of [createdAt, doneAt]) { el.max = now; el.min = minDay; }
   createdAt.value = "";
-  const doneOrig = item && item.completed_at ? localDateTime(item.completed_at) : "";
-  doneAt.value = doneOrig;
-  document.getElementById("wl-created-wrap").classList.toggle("hidden", !!item);
+  doneAt.value = "";
   const blockedWrap = document.getElementById("wl-blocked-wrap");
   const blocked = document.getElementById("wl-blocked");
-  blocked.value = item && item.blocked_reason ? item.blocked_reason : "";
+  blocked.value = "";
   const followUp = document.getElementById("wl-followup");
-  const followOrig = item && item.follow_up_on ? item.follow_up_on : "";
-  followUp.value = followOrig;
-  // Dia para cobrar: hoje ou depois — mas uma cobrança já atrasada pode ficar como está.
-  followUp.min = followOrig && followOrig < now.slice(0, 10) ? followOrig : now.slice(0, 10);
+  followUp.value = "";
+  followUp.min = now.slice(0, 10);
   const resolution = document.getElementById("wl-resolution");
-  const resolOrig = item && item.resolution ? item.resolution : "";
-  resolution.value = resolOrig;
+  resolution.value = "";
   const syncDates = () => {
     dates.classList.toggle("hidden", statusSel.value !== "done");
     document.getElementById("wl-resolution-wrap").classList.toggle("hidden", statusSel.value !== "done");
@@ -198,8 +216,8 @@ export function openWorklog(item, onDone, opts = {}) {
   };
   statusSel.onchange = syncDates;
   syncDates();
-  ticket.value = item && item.ticket ? item.ticket : "";
-  after.checked = !!(item && item.after_hours);
+  ticket.value = "";
+  after.checked = false;
 
   // "Já resolvi isso antes?": ao digitar o título de uma tarefa nova, mostra até 3
   // concluídas parecidas com o "como resolveu" delas (busca sem IA).
@@ -209,7 +227,7 @@ export function openWorklog(item, onDone, opts = {}) {
   similarBox.classList.add("hidden");
   let simTimer = null, simSeq = 0;
   dlg.onclose = () => { clearTimeout(simTimer); simSeq++; }; // nada pendente entre aberturas
-  titleInput.oninput = item ? null : () => {
+  titleInput.oninput = () => {
     clearTimeout(simTimer);
     simTimer = setTimeout(async () => {
       const q = titleInput.value.trim(), my = ++simSeq;
@@ -232,50 +250,32 @@ export function openWorklog(item, onDone, opts = {}) {
   const tplWrap = document.getElementById("wl-template-wrap");
   const tplSel = document.getElementById("wl-template");
   tplWrap.classList.add("hidden");
-  if (!item) {
-    api.get("/templates").then((list) => {
-      if (!list.length) return;
-      clear(tplSel);
-      tplSel.append(h("option", { value: "", text: "Nenhum (tarefa em branco)" }),
-        ...list.map((t) => h("option", { value: String(t.id), text: t.name + (t.checklist.length ? ` · ${t.checklist.length} itens` : "") })));
-      tplSel.onchange = async () => {
-        const t = list.find((x) => String(x.id) === tplSel.value);
-        checklist = t ? t.checklist : [];
-        if (!t) return;
-        document.getElementById("wl-title").value = t.title;
-        titleInput.oninput && titleInput.oninput(); // título do modelo também procura "já resolvido antes"
-        document.getElementById("wl-desc").value = t.description || "";
-        document.getElementById("wl-prio").value = String(t.priority);
-        after.checked = t.after_hours;
-        await projReady;
-        if (t.project_id && [...projSel.options].some((o) => o.value === String(t.project_id))) projSel.value = String(t.project_id);
-      };
-      tplWrap.classList.remove("hidden");
-    }).catch(() => {});
-  }
-
-  const del = document.getElementById("wl-delete");
-  del.classList.toggle("hidden", !item);
-  del.onclick = item
-    ? async () => {
-        dlg.close();
-        if (!(await confirmDialog({ title: "Excluir tarefa?", text: `“${item.title}” sai do quadro. Dá para desfazer pelo histórico.`, confirm: "Excluir", danger: true }))) return;
-        try {
-          await api.del(`/worklog/${item.id}`);
-          onDone && onDone();
-          toast("Tarefa excluída.", { action: "Desfazer", onAction: () => undoLatest("worklog", item.id, onDone) });
-        } catch (e) {
-          errorToast(e, "Erro ao excluir.");
-        }
-      }
-    : null;
+  api.get("/templates").then((list) => {
+    if (!list.length) return;
+    clear(tplSel);
+    tplSel.append(h("option", { value: "", text: "Nenhum (tarefa em branco)" }),
+      ...list.map((t) => h("option", { value: String(t.id), text: t.name + (t.checklist.length ? ` · ${t.checklist.length} itens` : "") })));
+    tplSel.onchange = async () => {
+      const t = list.find((x) => String(x.id) === tplSel.value);
+      checklist = t ? t.checklist : [];
+      if (!t) return;
+      document.getElementById("wl-title").value = t.title;
+      titleInput.oninput && titleInput.oninput(); // título do modelo também procura "já resolvido antes"
+      document.getElementById("wl-desc").value = t.description || "";
+      document.getElementById("wl-prio").value = String(t.priority);
+      after.checked = t.after_hours;
+      await projReady;
+      if (t.project_id && [...projSel.options].some((o) => o.value === String(t.project_id))) projSel.value = String(t.project_id);
+    };
+    tplWrap.classList.remove("hidden");
+  }).catch(() => {});
 
   document.getElementById("wl-cancel").onclick = () => dlg.close();
   document.getElementById("wl-close").onclick = () => dlg.close();
   // Celular: campos menos usados ficam em "Mais opções" (abertos se a tarefa já usa algum).
   const more = document.getElementById("wl-more"), moreBtn = document.getElementById("wl-more-toggle");
   const setMore = (open) => { more.classList.toggle("open", open); moreBtn.setAttribute("aria-expanded", String(open)); moreBtn.textContent = open ? "Menos opções" : "Mais opções"; };
-  setMore(!!(item && (item.ticket || item.after_hours || item.completed_at)));
+  setMore(false);
   moreBtn.onclick = () => setMore(!more.classList.contains("open"));
   document.getElementById("form-worklog").onsubmit = async (ev) => {
     ev.preventDefault();
@@ -290,33 +290,25 @@ export function openWorklog(item, onDone, opts = {}) {
       after_hours: after.checked,
     };
     if (!payload.title) return;
-    if (payload.status === "done" && doneAt.value && doneAt.value !== doneOrig) payload.completed_at = doneAt.value;
-    if (!item && createdAt.value) payload.created_at = createdAt.value;
-    if (payload.status === "done" && resolution.value.trim() !== resolOrig) payload.resolution = resolution.value.trim() || null;
+    if (payload.status === "done" && doneAt.value) payload.completed_at = doneAt.value;
+    if (createdAt.value) payload.created_at = createdAt.value;
+    if (payload.status === "done" && resolution.value.trim()) payload.resolution = resolution.value.trim();
     if (payload.status === "blocked") {
       payload.blocked_reason = blocked.value.trim() || null;
-      if (followUp.value !== followOrig) payload.follow_up_on = followUp.value || null; // data vencida não volta a ser validada
-      // Dia não útil: o lembrete só aparece em dia útil — cobra no dia útil anterior.
-      const mask = (session.me && session.me.work_days) || 62;
-      let fd = payload.follow_up_on;
-      while (fd && !((mask >> new Date(fd + "T12:00:00Z").getUTCDay()) & 1) && fd > now.slice(0, 10)) fd = addDays(fd, -1);
-      if (fd && fd !== payload.follow_up_on) { toast(`Cobrança antecipada para ${shortDate(fd)}, o dia útil anterior.`); payload.follow_up_on = fd; }
+      payload.follow_up_on = followUpDay(followUp.value || null);
     }
-    const minutes = !item && timeInput.value.trim() ? parseDuration(timeInput.value) : null;
-    if (minutes === null && !item && timeInput.value.trim()) { toast("Tempo inválido. Ex.: 45, 1h30, 2:15.", { error: true }); timeInput.focus(); return; }
+    const minutes = timeInput.value.trim() ? parseDuration(timeInput.value) : null;
+    if (minutes === null && timeInput.value.trim()) { toast("Tempo inválido. Ex.: 45, 1h30, 2:15.", { error: true }); timeInput.focus(); return; }
     const btn = ev.submitter;
     if (btn) btn.disabled = true; // duplo clique criava a tarefa duas vezes
     try {
-      if (item) await api.patch(`/worklog/${item.id}`, payload);
-      else {
-        const created = await api.post("/worklog", payload);
-        // A tarefa já existe: se checklist ou tempo falharem, não reenviar (duplicaria).
-        try {
-          for (const label of checklist) await api.post(`/worklog/${created.id}/checklist`, { label });
-          if (minutes) await api.post(`/worklog/${created.id}/time`, { minutes });
-        } catch (e) {
-          toast(`Tarefa criada, mas ${minutes ? "o tempo ou " : ""}o checklist não foi salvo: ${e.message || "tente pelo detalhe"}.`, { error: true });
-        }
+      const created = await api.post("/worklog", payload);
+      // A tarefa já existe: se checklist ou tempo falharem, não reenviar (duplicaria).
+      try {
+        for (const label of checklist) await api.post(`/worklog/${created.id}/checklist`, { label });
+        if (minutes) await api.post(`/worklog/${created.id}/time`, { minutes });
+      } catch (e) {
+        toast(`Tarefa criada, mas ${minutes ? "o tempo ou " : ""}o checklist não foi salvo: ${e.message || "tente pelo detalhe"}.`, { error: true });
       }
       dlg.close();
       onDone && onDone();
@@ -516,7 +508,7 @@ export async function mount(root, opts = {}) {
   if (opts.setActions && !readOnly) {
     opts.setActions(
       filter.options.length > 2 ? h("div", { class: "filter-wrap" }, filter, clearFilter) : null,
-      h("button", { type: "button", class: "btn btn-primary", "data-fab": "", onClick: () => openWorklog(null, refresh) }, icon("add"), "Tarefa")
+      h("button", { type: "button", class: "btn btn-primary", "data-fab": "", onClick: () => openWorklog(refresh) }, icon("add"), "Tarefa")
     );
   }
 
@@ -550,9 +542,8 @@ export async function mount(root, opts = {}) {
         if (!isDone)
           actions.append(desk(timerButton(it, refresh)),
             h("button", { type: "button", class: "icon", title: "Concluir", "aria-label": "Concluir " + it.title, onClick: () => finishTask(it, refresh) }, icon("check")));
-        actions.append(h("button", { type: "button", class: "icon" + (isDone ? "" : " only-desk"), title: "Editar", "aria-label": "Editar " + it.title, onClick: () => openWorklog(it, refresh) }, icon("edit")));
         if (!isDone) actions.append(moreButton(it, refresh));
-        card.append(actions);
+        if (actions.firstChild) card.append(actions);
         withMenu(card, it, refresh);
       }
       col.body.append(card);
