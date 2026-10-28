@@ -64,17 +64,24 @@ async function route() {
     if (a.dataset.view === name) a.setAttribute("aria-current", "page");
     else a.removeAttribute("aria-current");
   }
+  // Na volta a uma tela, a fala do assistente e a linha acima do título ficam
+  // como estavam até a resposta chegar, sem a página pular.
+  const eyebrow = document.getElementById("page-eyebrow");
+  if (shownView) kept[shownView] = { assist: document.getElementById("assist-slot").firstChild, eyebrow: eyebrow.textContent };
+  shownView = name;
+  const prev = kept[name] || {};
   document.getElementById("page-title").textContent = view.title;
-  document.getElementById("page-eyebrow").textContent = view.eyebrow || "";
+  eyebrow.textContent = view.eyebrow || prev.eyebrow || "";
   document.title = `${view.title} · Nexus Worklog`;
   setActions();
 
   const el = document.getElementById("view-" + name);
   const seq = ++routeSeq;
-  setAssist(null);
   // A fala do assistente fica acima do título; uma tela antiga que termina de
   // carregar depois da troca não sobrescreve a da tela atual.
-  const assist = (node) => { if (seq === routeSeq) setAssist(node); };
+  setAssist(prev.assist || null);
+  let assisted = false;
+  const assist = (node) => { if (seq === routeSeq) { assisted = true; setAssist(node); } };
   // Tela já visitada: aparece na hora com o que mostrava e se atualiza quando a
   // resposta chega (esmaecida se demorar). Primeira visita: "Carregando…".
   // O aviso fica fora da tela e só a esconde: a tela pode já ter montado a
@@ -96,7 +103,10 @@ async function route() {
     clearTimeout(loading);
     el.removeAttribute("aria-busy");
     el.classList.remove("refreshing");
-    if (seq === routeSeq) { el.classList.remove("hidden"); loadingMsg.classList.add("hidden"); }
+    if (seq === routeSeq) {
+      el.classList.remove("hidden"); loadingMsg.classList.add("hidden");
+      if (!assisted) setAssist(null);
+    }
   }
   window.scrollTo(0, 0);
   // Link direto para uma tarefa (#/tarefas?id=N: e-mail de atribuição, calendário).
@@ -108,6 +118,8 @@ async function route() {
 }
 
 let routeSeq = 0;
+let shownView = null;
+const kept = {};
 function setAssist(node) {
   const slot = document.getElementById("assist-slot");
   clear(slot);
