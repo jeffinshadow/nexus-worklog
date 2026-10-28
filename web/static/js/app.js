@@ -83,16 +83,20 @@ async function route() {
   let assisted = false;
   const assist = (node) => { if (seq === routeSeq) { assisted = true; setAssist(node); } };
   // Tela já visitada: aparece na hora com o que mostrava e se atualiza quando a
-  // resposta chega (esmaecida se demorar). Primeira visita: "Carregando…".
-  // O aviso fica fora da tela e só a esconde: a tela pode já ter montado a
-  // estrutura antes da API responder e não pode perdê-la.
+  // resposta chega (esmaecida se demorar). Primeira visita: título e tela só
+  // aparecem prontos, juntos com a fala do assistente, sem descer quando ela
+  // chega; passando de 250 ms, "Carregando…". O aviso fica fora da tela e só a
+  // esconde: a tela pode já ter montado a estrutura antes da API responder.
   el.setAttribute("aria-busy", "true");
   const loadingMsg = document.getElementById("view-loading");
+  const head = document.querySelector(".page-head");
   const visited = el.childElementCount > 0;
+  el.classList.toggle("hidden", !visited);
+  head.classList.toggle("hidden", !visited);
   const loading = setTimeout(() => {
     if (seq !== routeSeq) return;
     if (visited) el.classList.add("refreshing");
-    else { el.classList.add("hidden"); loadingMsg.classList.remove("hidden"); }
+    else loadingMsg.classList.remove("hidden");
   }, 250);
   try {
     await view.mount(el, { me, setActions, setEyebrow, setAssist: assist, go });
@@ -104,7 +108,7 @@ async function route() {
     el.removeAttribute("aria-busy");
     el.classList.remove("refreshing");
     if (seq === routeSeq) {
-      el.classList.remove("hidden"); loadingMsg.classList.add("hidden");
+      el.classList.remove("hidden"); head.classList.remove("hidden"); loadingMsg.classList.add("hidden");
       if (!assisted) setAssist(null);
     }
   }
