@@ -653,7 +653,7 @@ button.nav-link { border: 0; background: transparent; width: 100%; font-family: 
    rolar, janelas de tela inteira e menus que sobem de baixo (bottom sheet). */
 @media (max-width: 860px) { .only-desk { display: none !important; } }
 @media (min-width: 861px) {
-  .only-mob, .appbar, .fab, .task-appbar, .task-main-actions, .more-toggle, .assist-more, .intro-more, .quick-hint { display: none !important; }
+  .only-mob, .appbar, .fab, .task-appbar, .task-main-actions, .more-toggle, .intro-more, .quick-hint { display: none !important; }
   /* Nova tarefa no computador: a mesma ordem de sempre ("Mais opções" só existe no celular). */
   #form-worklog { display: flex; flex-direction: column; }
   #wl-more { display: contents; }
@@ -665,6 +665,10 @@ button.nav-link { border: 0; background: transparent; width: 100%; font-family: 
   #wl-time-wrap { order: 5; }
   #form-worklog > .dialog-actions { order: 6; }
 }
+
+/* Assistente: avisos recolhidos atrás de "Ver N avisos" (celular e computador). */
+.assist:not(.open) .assist-items { display: none; }
+.assist-more { margin-top: 10px; }
 
 .nav-badge { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--error); color: #2b0a07;
   font: 600 .66rem/18px var(--font-label); text-align: center; }
@@ -716,9 +720,6 @@ dialog.sheet .menu-list > :last-child { border-bottom: 0; }
   .column-done .card h3 { padding-right: 52px; }
   .list-row { gap: 4px; }
 
-  /* Hoje: o assistente começa recolhido (saudação e resumo; avisos num toque). */
-  .assist:not(.open) .assist-items { display: none; }
-  .assist-more { margin-top: 10px; }
   .quick-hint { margin: calc(-1 * var(--gap) + 6px) 0 12px 4px; font: .74rem var(--font-label); color: var(--dim); }
   .sub.intro:not(.open) { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .intro-more { margin: -6px 0 10px -12px; color: var(--primary-hi); }

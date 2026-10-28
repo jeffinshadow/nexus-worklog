@@ -89,17 +89,27 @@ function stack(key, mainParts, items) {
   const notices = items.filter(Boolean).map(noticeItem);
   const el = card({ ...mainParts, key, main: notices.length > 0,
     extra: notices.length ? h("div", { class: "assist-items" }, ...notices) : null });
-  // Celular: os avisos ficam recolhidos atrás de um botão, para a tela não
-  // abrir só com o assistente (no computador aparecem sempre).
+  // Os avisos ficam recolhidos atrás de um botão, para a tela não abrir só
+  // com o assistente. Aberto, fica aberto enquanto a aba do navegador durar
+  // (o Hoje se redesenha a cada ação).
   const shown = notices.filter((n) => !n.classList.contains("hidden")).length;
   if (shown) {
     const label = shown === 1 ? "Ver 1 aviso" : `Ver ${shown} avisos`;
-    const btn = h("button", { type: "button", class: "btn btn-ghost btn-sm assist-more", "aria-expanded": "false", text: label,
-      onClick: () => {
-        const open = el.classList.toggle("open");
-        btn.setAttribute("aria-expanded", String(open));
-        btn.textContent = open ? "Ocultar avisos" : label;
-      } });
+    const memo = "nexus.assist.open." + key;
+    const btn = h("button", { type: "button", class: "btn btn-ghost btn-sm assist-more", "aria-expanded": "false", text: label });
+    const set = (open) => {
+      el.classList.toggle("open", open);
+      btn.setAttribute("aria-expanded", String(open));
+      btn.textContent = open ? "Ocultar avisos" : label;
+    };
+    let wasOpen = false;
+    try { wasOpen = sessionStorage.getItem(memo) === "1"; } catch { /* sem storage: começa recolhido */ }
+    set(wasOpen);
+    btn.addEventListener("click", () => {
+      const open = !el.classList.contains("open");
+      set(open);
+      try { if (open) sessionStorage.setItem(memo, "1"); else sessionStorage.removeItem(memo); } catch { /* idem */ }
+    });
     el.querySelector(".assist-items").before(btn);
   }
   return el;
