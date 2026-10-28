@@ -62,12 +62,23 @@ export function popupMenu(x, y, items) {
   menuClose = close;
 }
 
+// Menu compacto (só ícones): em 861–1199 px sempre; em 1200–1739 px só
+// enquanto o detalhe da tarefa está aberto ao lado (body.has-side).
+const railAlways = matchMedia("(min-width: 861px) and (max-width: 1199px)");
+const railWithSide = matchMedia("(min-width: 1200px) and (max-width: 1739px)");
+export function syncRail() {
+  const b = document.body;
+  b.classList.toggle("rail", railAlways.matches || (railWithSide.matches && b.classList.contains("has-side")));
+}
+railAlways.addEventListener("change", syncRail);
+railWithSide.addEventListener("change", syncRail);
+
 // Dicas dos botões só com ícone (Material 3, "plain tooltip"): no lugar da
 // dica nativa do navegador, que demora e é pequena. Aparece ao passar o mouse
 // ou ao chegar pelo teclado. Só em aparelhos com mouse.
 export function initTooltips() {
   if (!matchMedia("(hover: hover)").matches) return;
-  const SEL = "button.icon, .icon-btn, button.column-toggle";
+  const SEL = "button.icon, .icon-btn, button.column-toggle, body.rail .sidebar .nav a, body.rail .sidebar .nav-link, body.rail .who-me";
   const tip = h("div", { class: "tooltip", "aria-hidden": "true" });
   document.documentElement.append(tip);
   let cur = null, timer = null;
@@ -77,6 +88,11 @@ export function initTooltips() {
     tip.textContent = el.dataset.tip;
     tip.classList.add("show");
     const r = el.getBoundingClientRect(), t = tip.getBoundingClientRect();
+    if (el.closest(".sidebar")) { // menu compacto: a dica sai à direita do ícone
+      tip.style.left = r.right + 8 + "px";
+      tip.style.top = r.top + r.height / 2 - t.height / 2 + "px";
+      return;
+    }
     const below = r.bottom + 6 + t.height <= innerHeight - 4;
     tip.style.left = Math.max(4, Math.min(r.left + r.width / 2 - t.width / 2, innerWidth - t.width - 4)) + "px";
     tip.style.top = (below ? r.bottom + 6 : r.top - 6 - t.height) + "px";
@@ -89,6 +105,7 @@ export function initTooltips() {
       if (!el.hasAttribute("aria-label")) el.setAttribute("aria-label", el.dataset.tip);
       el.removeAttribute("title");
     }
+    if (!el.dataset.tip && el.closest(".sidebar")) el.dataset.tip = el.querySelector("span:not(.nav-badge)")?.textContent || "";
     return el.dataset.tip ? el : null;
   };
   document.addEventListener("mouseover", (ev) => {

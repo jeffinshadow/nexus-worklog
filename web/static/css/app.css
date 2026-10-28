@@ -807,59 +807,31 @@ dialog.sheet .menu-list > :last-child { border-bottom: 0; }
   .select-sm.filter-on { border-color: rgba(82,148,226,.6); background-color: var(--primary-container); color: var(--on-surface); }
 }
 
-/* Telas médias (notebook pequeno): menu vira uma faixa de ícones com rótulo. */
-.nav a.rail-only { display: none; }
+/* Menu compacto (body.rail, ver syncRail em ui.js): o mesmo menu, só mais
+   estreito. Some o texto e ficam os ícones, cada um na mesma altura em que
+   estava; a busca vira uma lupa no lugar do campo e o nome aparece na dica.
+   Vale para 861–1199 px e, com o detalhe aberto ao lado, para 1200–1739 px
+   (menu 255 + painel 414 + quadro 990 px reais não cabem). */
+.sidebar .rail-only { display: none; }
+.app { transition: grid-template-columns .2s var(--ease); }
+body.rail { --sidebar-w: 73px; }  /* 14 + 12 + ícone 20 + 12 + 14, mais a borda */
+body.rail .sidebar > .lockup { padding: 0; gap: 0; justify-content: center; }
+body.rail .sidebar > .lockup .lockup-type { width: 0; overflow: hidden; visibility: hidden; }  /* sem texto, mas com a mesma altura */
+body.rail .side-search { display: none; }
+body.rail .sidebar .rail-only:not(.hidden) { display: flex; height: 38px; margin: -8px 2px -6px; padding: 0 10px; }  /* a caixa do campo de busca */
+body.rail .nav a, body.rail .sidebar .nav-link { position: relative; gap: 0; }
+/* O texto fica com largura zero (não some): segura a altura da linha e continua sendo o nome do link. */
+body.rail .nav a > span:not(.nav-badge), body.rail .sidebar .nav-link > span { width: 0; overflow: hidden; white-space: nowrap; }
+body.rail .nav a .nav-badge { position: absolute; top: 2px; left: 26px; margin: 0; }
+body.rail .who { justify-content: center; padding: 10px 0 0; }
+body.rail .who-me { flex: none; }
+body.rail .who-text, body.rail #btn-logout { display: none; }  /* Sair continua em Configurações */
+body.rail #timer-side { display: none !important; }
+body.rail .timer-mobile:not(.hidden) { display: flex; position: fixed; left: 89px; bottom: 16px; width: 380px; z-index: 40;
+  background: var(--surface-accent); box-shadow: 0 12px 30px -12px rgba(0,0,0,.8); }
 @media (min-width: 861px) and (max-width: 1199px) {
-  :root { --sidebar-w: 92px; }
-  .sidebar { padding: 18px 6px 12px; gap: 16px; }
-  .sidebar > .lockup { padding: 0; justify-content: center; }
-  .sidebar > .lockup .lockup-type { display: none; }
-  .side-search { display: none; }
-  .nav a.rail-only:not(.hidden) { display: flex; }
-  .nav { gap: 4px; }
-  .nav a, .sidebar .nav-link { position: relative; flex-direction: column; gap: 3px; padding: 2px 0 4px; border-radius: 0; font-size: .7rem; text-align: center; }
-  .nav a:hover, .nav a.active, .sidebar .nav-link:hover, .sidebar .nav-link.active { background: none; }
-  .nav a .ico, .sidebar .nav-link .ico { box-sizing: content-box; width: 22px; height: 22px; padding: 5px 18px; border-radius: 999px; transition: background-color .2s; }
-  .nav a:hover .ico, .sidebar .nav-link:hover .ico { background: rgba(255,255,255,.06); }
-  .nav a.active .ico, .sidebar .nav-link.active .ico { background: var(--primary-container); }
-  .nav a span, .sidebar .nav-link span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .nav a .nav-badge { position: absolute; top: -2px; left: 50%; margin: 0 0 0 6px; }
-  button.nav-link { text-align: center; }
-  .who { flex-direction: column; padding: 8px 0 0; }
-  .who-me { flex: none; justify-content: center; }
-  .who-text { display: none; }
-  #timer-side { display: none !important; }
-  .timer-mobile:not(.hidden) { display: flex; position: fixed; left: 108px; bottom: 16px; width: 380px; z-index: 40;
-    background: var(--surface-accent); box-shadow: 0 12px 30px -12px rgba(0,0,0,.8); }
   body.has-side .main { margin-right: 420px; }
   dialog.task-dialog.side { width: 420px; max-width: 420px; }
-}
-/* Janela de notebook (1200–1739 px): com o detalhe aberto ao lado, o menu
-   encolhe para a faixa de ícones em vez de espremer o quadro do meio
-   (menu 255 + painel 414 + quadro 990 px reais não cabem). Mesmas regras
-   do bloco acima, só enquanto o painel está aberto. */
-@media (min-width: 1200px) and (max-width: 1739px) {
-  body.has-side { --sidebar-w: 92px; }
-  body.has-side .sidebar { padding: 18px 6px 12px; gap: 16px; }
-  body.has-side .sidebar > .lockup { padding: 0; justify-content: center; }
-  body.has-side .sidebar > .lockup .lockup-type { display: none; }
-  body.has-side .side-search { display: none; }
-  body.has-side .nav a.rail-only:not(.hidden) { display: flex; }
-  body.has-side .nav { gap: 4px; }
-  body.has-side .nav a, body.has-side .sidebar .nav-link { position: relative; flex-direction: column; gap: 3px; padding: 2px 0 4px; border-radius: 0; font-size: .7rem; text-align: center; }
-  body.has-side .nav a:hover, body.has-side .nav a.active, body.has-side .sidebar .nav-link:hover, body.has-side .sidebar .nav-link.active { background: none; }
-  body.has-side .nav a .ico, body.has-side .sidebar .nav-link .ico { box-sizing: content-box; width: 22px; height: 22px; padding: 5px 18px; border-radius: 999px; transition: background-color .2s; }
-  body.has-side .nav a:hover .ico, body.has-side .sidebar .nav-link:hover .ico { background: rgba(255,255,255,.06); }
-  body.has-side .nav a.active .ico, body.has-side .sidebar .nav-link.active .ico { background: var(--primary-container); }
-  body.has-side .nav a span, body.has-side .sidebar .nav-link span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  body.has-side .nav a .nav-badge { position: absolute; top: -2px; left: 50%; margin: 0 0 0 6px; }
-  body.has-side button.nav-link { text-align: center; }
-  body.has-side .who { flex-direction: column; padding: 8px 0 0; }
-  body.has-side .who-me { flex: none; justify-content: center; }
-  body.has-side .who-text { display: none; }
-  body.has-side #timer-side { display: none !important; }
-  body.has-side .timer-mobile:not(.hidden) { display: flex; position: fixed; left: 108px; bottom: 16px; width: 380px; z-index: 40;
-    background: var(--surface-accent); box-shadow: 0 12px 30px -12px rgba(0,0,0,.8); }
 }
 
 /* Fora do zoom do <body> (posição em px da tela): menu de contexto e dicas. */

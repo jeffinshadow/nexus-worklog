@@ -21,7 +21,7 @@ import { session } from "./session.js";
 import { initTimer, stopTimer, timerState } from "./timer.js";
 import { openWorklog } from "./board.js";
 import { openTask, closeSidePanel } from "./task.js";
-import { modal, busy, initTooltips } from "./ui.js";
+import { modal, busy, initTooltips, syncRail } from "./ui.js";
 
 let me = null;
 
@@ -271,6 +271,7 @@ async function boot() {
   // Menu: cada item aparece só para quem tem o papel (data-need).
   for (const el of document.querySelectorAll("[data-need]")) el.classList.toggle("hidden", !has(el.dataset.need));
   initTooltips();
+  syncRail();
   // Barra inferior: no máximo 5 itens; quem atribui troca a Busca por Atribuir.
   if (has("assigner")) document.querySelector('#tabbar [data-view="busca"]').classList.add("hidden");
   // Celular: rolando a página, o título vira uma barra fina no topo.

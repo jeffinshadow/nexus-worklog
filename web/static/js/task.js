@@ -5,7 +5,7 @@
 // Abre por cima do quadro/Hoje; ao fechar, quem abriu recarrega (onChange).
 import { api } from "./api.js";
 import { h, icon, clear, addDays, shortDate, dateTime, field, localDateTime } from "./dom.js";
-import { errorToast, modal, toast, undoLatest, busy, sheet } from "./ui.js";
+import { errorToast, modal, toast, undoLatest, busy, sheet, syncRail } from "./ui.js";
 import { finishTask, deleteTask, followUpDay, isOverdue, ticketUrl, taskChips } from "./board.js";
 import { fillProjectSelect } from "./projects.js";
 import { session } from "./session.js";
@@ -59,7 +59,7 @@ export async function openTask(taskId, onChange) {
     if (side) {
       document.removeEventListener("keydown", onKey);
       // O "close" chega depois; se outro painel já abriu, ele é o dono agora.
-      if (sideOwner === dlg) { sideOwner = null; sideTaskId = null; document.body.classList.remove("has-side"); markSelected(); }
+      if (sideOwner === dlg) { sideOwner = null; sideTaskId = null; document.body.classList.remove("has-side"); syncRail(); markSelected(); }
     }
     if (changed) onChange && onChange();
   });
@@ -390,6 +390,7 @@ export async function openTask(taskId, onChange) {
   sideOwner = dlg;
   sideTaskId = taskId;
   document.body.classList.add("has-side");
+  syncRail();
   markSelected();
   document.addEventListener("keydown", onKey);
   const first = dlg.querySelector(".task-appbar button");
