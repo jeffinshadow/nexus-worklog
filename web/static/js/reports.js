@@ -19,6 +19,14 @@ function ranges(today) {
   ];
 }
 
+// Texto de apresentação: no celular, recolhido em duas linhas com "Como funciona".
+function intro(text) {
+  const p = h("p", { class: "sub intro" }, text);
+  const btn = h("button", { type: "button", class: "btn btn-text btn-sm intro-more", "aria-expanded": "false", text: "Como funciona",
+    onClick: () => { const open = p.classList.toggle("open"); btn.setAttribute("aria-expanded", String(open)); btn.textContent = open ? "Recolher" : "Como funciona"; } });
+  return [p, btn];
+}
+
 export async function mount(root, opts = {}) {
   const base = opts.exportBase || "/reports/export";
   // Projetos antes de limpar: na volta à tela, a visita anterior fica até chegar.
@@ -85,7 +93,7 @@ export async function mount(root, opts = {}) {
 
   root.append(h("div", { class: "report-section" },
     h("h3", { text: "Relatório em PDF" }),
-    h("p", { class: "sub", text: "Indicadores, ritmo, rotinas, tarefas concluídas, o que está em aberto e o diário com o tempo apontado. Escolhendo um projeto, sai só o que é dele — do período que você quiser ou do projeto inteiro." }),
+    intro("Indicadores, ritmo, rotinas, tarefas concluídas, o que está em aberto e o diário com o tempo apontado. Escolhendo um projeto, sai só o que é dele — do período que você quiser ou do projeto inteiro."),
     projSel.options.length > 1 ? field("Projeto", projSel, "report-project") : null,
     scope, wholeNote, quick,
     h("div", { class: "report-controls" }, dates, btn),

@@ -2,8 +2,8 @@
 // tela. É o único lugar das rotinas (marcar até 7 dias atrás, editar, achado).
 import { api } from "./api.js";
 import { h, icon, clear, longDate, localDay, addDays } from "./dom.js";
-import { errorToast, modal, toast, busy } from "./ui.js";
-import { openRecurring, openWorklog, finishTask, taskChips, isOverdue, scheduleLabel, dayLabel } from "./board.js";
+import { errorToast, modal, toast, busy, sheet } from "./ui.js";
+import { openRecurring, openWorklog, finishTask, taskChips, isOverdue, scheduleLabel, dayLabel, moreButton, desk, lateBadge } from "./board.js";
 import { openTask } from "./task.js";
 import { fillProjectSelect } from "./projects.js";
 import { summaryPanel } from "./summary.js";
@@ -32,7 +32,7 @@ export async function mount(root, ctx, opts = {}) {
   ctx.setEyebrow(longDate(today) + (b.work_day ? "" : " · dia não útil"));
   ctx.setActions(
     h("button", { type: "button", class: "btn btn-ghost", title: "Texto pronto com o que fica aberto, bloqueado e o que foi concluído nas últimas 12 h", onClick: showHandoff }, icon("copy"), "Passagem de turno"),
-    h("button", { type: "button", class: "btn btn-primary", onClick: () => openWorklog(null, refresh) }, icon("add"), "Tarefa")
+    h("button", { type: "button", class: "btn btn-primary", "data-fab": "", onClick: () => openWorklog(null, refresh) }, icon("add"), "Tarefa")
   );
 
   // Devidas no dia pela agenda de cada uma; as de fora da agenda vêm depois,
@@ -46,6 +46,7 @@ export async function mount(root, ctx, opts = {}) {
   const late = open.filter((t) => isOverdue(t, today));
   const blocked = open.filter((t) => t.status === "blocked");
   const doneToday = b.done.filter((t) => t.completed_at && localDay(t.completed_at) === today);
+  if (!day) lateBadge(open, today);
 
   clear(root);
 
@@ -95,10 +96,16 @@ export async function mount(root, ctx, opts = {}) {
       r.done_today ? h("button", { type: "button", class: "icon", title: r.note ? "Editar a evidência" : "Anotar a evidência (o que foi conferido)",
         "aria-label": "Evidência de " + r.label, onClick: (ev) => { ev.preventDefault(); editEvidence(r, b.day, refresh); } }, icon("note")) : null,
       // Achou algo na verificação? Vira tarefa (com anotações e tempo).
-      h("button", { type: "button", class: "icon", title: "Registrar um achado como tarefa", "aria-label": "Registrar achado de " + r.label,
+      h("button", { type: "button", class: "icon only-desk", title: "Registrar um achado como tarefa", "aria-label": "Registrar achado de " + r.label,
         onClick: (ev) => { ev.preventDefault(); openWorklog(null, refresh, { title: `Achado: ${r.label}` }); } }, icon("alert")),
-      h("button", { type: "button", class: "icon", title: "Editar rotina", "aria-label": "Editar " + r.label,
-        onClick: (ev) => { ev.preventDefault(); openRecurring(r, refresh); } }, icon("edit"))));
+      h("button", { type: "button", class: "icon only-desk", title: "Editar rotina", "aria-label": "Editar " + r.label,
+        onClick: (ev) => { ev.preventDefault(); openRecurring(r, refresh); } }, icon("edit")),
+      // Celular: os dois acima num menu ⋮.
+      h("button", { type: "button", class: "icon only-mob", title: "Mais ações", "aria-label": "Mais ações de " + r.label,
+        onClick: (ev) => { ev.preventDefault(); sheet(r.label, [
+          ["Registrar um achado como tarefa", "alert", () => openWorklog(null, refresh, { title: `Achado: ${r.label}` })],
+          ["Editar rotina", "edit", () => openRecurring(r, refresh)],
+        ]); } }, icon("more-v"))));
   }
 
   // ---- abertas + registro rápido (com projeto; com "— 15min" já sai concluída)
@@ -106,7 +113,9 @@ export async function mount(root, ctx, opts = {}) {
   fillProjectSelect(proj, Number(sessionStorage.getItem(LAST_PROJECT)) || null)
     .then(() => proj.addEventListener("change", () => sessionStorage.setItem(LAST_PROJECT, proj.value)))
     .catch(() => {});
-  const quick = h("input", { type: "text", placeholder: "Registrar e Enter · @projeto #chamado !alta ^amanhã !bloq motivo — 15min", maxlength: "200", "aria-label": "Registrar tarefa rápida" });
+  const phone = matchMedia("(max-width: 860px)").matches;
+  const quick = h("input", { type: "text", maxlength: "200", "aria-label": "Registrar tarefa rápida",
+    placeholder: phone ? "Nova tarefa e Enter" : "Registrar e Enter · @projeto #chamado !alta ^amanhã !bloq motivo — 15min" });
   // "Já resolvido antes" também aqui (por onde entra a maioria das tarefas):
   // o título sem os marcadores, depois de uma pausa na digitação.
   const hint = h("div", { class: "similar hidden", "aria-live": "polite" });
@@ -149,7 +158,8 @@ export async function mount(root, ctx, opts = {}) {
       h("span", { class: "count" + (late.length || blocked.length ? " warn" : ""), text: [String(open.length),
         late.length ? `${late.length} atrasada${late.length > 1 ? "s" : ""}` : "",
         blocked.length ? `${blocked.length} bloqueada${blocked.length > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ") })),
-    h("div", { class: "quick-row" }, quick, proj), hint);
+    h("div", { class: "quick-row" }, quick, proj),
+    phone ? h("p", { class: "quick-hint", text: "No fim: @projeto #chamado !alta ^amanhã — 15min" }) : null, hint);
   if (!open.length) openPanel.append(h("p", { class: "empty", text: "Nada em aberto." }));
   for (const t of open) {
     openPanel.append(h("div", { class: "list-row" },
@@ -157,8 +167,9 @@ export async function mount(root, ctx, opts = {}) {
       h("div", { class: "t" },
         h("button", { type: "button", class: "card-open", text: t.title, onClick: () => openTask(t.id, refresh) }),
         h("small", {}, h("span", { class: "card-meta" }, ...taskChips(t, today)))),
-      timerButton(t, refresh),
-      h("button", { type: "button", class: "icon", title: "Editar", "aria-label": "Editar " + t.title, onClick: () => openWorklog(t, refresh) }, icon("edit"))));
+      desk(timerButton(t, refresh)),
+      h("button", { type: "button", class: "icon only-desk", title: "Editar", "aria-label": "Editar " + t.title, onClick: () => openWorklog(t, refresh) }, icon("edit")),
+      moreButton(t, refresh)));
   }
 
   // ---- concluídas hoje (com projeto e tempo, para conferir no fim do dia)

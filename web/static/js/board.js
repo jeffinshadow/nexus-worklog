@@ -2,12 +2,12 @@
 // concluídas. Também exporta os diálogos de criar/editar, usados pela tela Hoje.
 import { api } from "./api.js";
 import { h, icon, clear, addDays, shortDate, localDay, localDateTime, daysBetween } from "./dom.js";
-import { confirmDialog, errorToast, toast, undoLatest, busy, modal } from "./ui.js";
+import { confirmDialog, errorToast, toast, undoLatest, busy, modal, sheet, navBadge } from "./ui.js";
 import { fillProjectSelect, listProjects, projectChip } from "./projects.js";
 import { openTask, duration, parseDuration } from "./task.js";
 import { boardLine } from "./assistant.js";
 import { session } from "./session.js";
-import { timerButton } from "./timer.js";
+import { timerButton, timerState, startTimer, stopTimer } from "./timer.js";
 
 const WEEKDAYS_SHORT = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 const DONE_PAGE = 10;
@@ -97,6 +97,30 @@ export function scheduleLabel(r) {
 export function isOverdue(t, today) {
   return t.status !== "done" && t.due_date && t.due_date < today;
 }
+
+// Celular: cronômetro e editar saem da linha e vão para um menu (⋮) que sobe
+// de baixo; na linha ficam só concluir e este botão, com alvo de 48 px.
+export function moreButton(t, onDone) {
+  return h("button", { type: "button", class: "icon only-mob", title: "Mais ações", "aria-label": "Mais ações de " + t.title,
+    onClick: () => {
+      const running = (timerState() || {}).task_id === t.id;
+      sheet(t.title, [
+        t.status === "done" ? null : running
+          ? ["Parar o cronômetro e apontar", "stop", () => stopTimer(onDone)]
+          : ["Iniciar o cronômetro", "play", () => startTimer(t, onDone)],
+        ["Editar", "edit", () => openWorklog(t, onDone)],
+      ]);
+    } }, icon("more-v"));
+}
+
+// Esconde no celular (o botão vai para o menu ⋮).
+export const desk = (el) => { if (el) el.classList.add("only-desk"); return el; };
+
+// Tarefas atrasadas no item do menu (Hoje e Tarefas sem filtro atualizam).
+export const lateBadge = (open, today) => {
+  const n = open.filter((t) => isOverdue(t, today)).length;
+  navBadge("tarefas", n, n === 1 ? "1 tarefa atrasada" : `${n} tarefas atrasadas`);
+};
 
 // ------------------------------------------------------- diálogos (export) --
 
@@ -222,6 +246,12 @@ export function openWorklog(item, onDone, opts = {}) {
     : null;
 
   document.getElementById("wl-cancel").onclick = () => dlg.close();
+  document.getElementById("wl-close").onclick = () => dlg.close();
+  // Celular: campos menos usados ficam em "Mais opções" (abertos se a tarefa já usa algum).
+  const more = document.getElementById("wl-more"), moreBtn = document.getElementById("wl-more-toggle");
+  const setMore = (open) => { more.classList.toggle("open", open); moreBtn.setAttribute("aria-expanded", String(open)); moreBtn.textContent = open ? "Menos opções" : "Mais opções"; };
+  setMore(!!(item && (item.ticket || item.after_hours || item.completed_at)));
+  moreBtn.onclick = () => setMore(!more.classList.contains("open"));
   document.getElementById("form-worklog").onsubmit = async (ev) => {
     ev.preventDefault();
     const payload = {
@@ -452,11 +482,12 @@ export async function mount(root, opts = {}) {
   if (opts.setActions && !readOnly) {
     opts.setActions(
       filter.options.length > 2 ? filter : null,
-      h("button", { type: "button", class: "btn btn-primary", onClick: () => openWorklog(null, refresh) }, icon("add"), "Tarefa")
+      h("button", { type: "button", class: "btn btn-primary", "data-fab": "", onClick: () => openWorklog(null, refresh) }, icon("add"), "Tarefa")
     );
   }
 
   function render(data) {
+    if (!readOnly && project === "") lateBadge(data.in_progress, data.today);
     // A linha do assistente, acima do título (só no quadro do próprio usuário).
     if (!readOnly && opts.setAssist) opts.setAssist(boardLine(data.in_progress, data.today, opts.me));
     renderCards(wip, data.in_progress, false, data.today);
@@ -483,9 +514,10 @@ export async function mount(root, opts = {}) {
       if (!readOnly) {
         const actions = h("div", { class: "card-actions" });
         if (!isDone)
-          actions.append(timerButton(it, refresh),
+          actions.append(desk(timerButton(it, refresh)),
             h("button", { type: "button", class: "icon", title: "Concluir", "aria-label": "Concluir " + it.title, onClick: () => finishTask(it, refresh) }, icon("check")));
-        actions.append(h("button", { type: "button", class: "icon", title: "Editar", "aria-label": "Editar " + it.title, onClick: () => openWorklog(it, refresh) }, icon("edit")));
+        actions.append(h("button", { type: "button", class: "icon" + (isDone ? "" : " only-desk"), title: "Editar", "aria-label": "Editar " + it.title, onClick: () => openWorklog(it, refresh) }, icon("edit")));
+        if (!isDone) actions.append(moreButton(it, refresh));
         card.append(actions);
       }
       col.body.append(card);

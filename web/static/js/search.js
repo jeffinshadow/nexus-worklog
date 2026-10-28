@@ -33,7 +33,7 @@ function highlight(text, q) {
 export async function mount(root, ctx) {
   const q = queryFromHash();
   clear(root);
-  const input = h("input", { type: "search", value: q, maxlength: "100", placeholder: "Buscar em tarefas, anotações, checklist, projetos…", "aria-label": "Buscar" });
+  const input = h("input", { type: "search", value: q, maxlength: "100", placeholder: "Tarefas, anotações, projetos…", "aria-label": "Buscar" });
   const form = h("form", { class: "search-big", role: "search" }, icon("search"), input,
     h("button", { type: "submit", class: "btn btn-primary btn-sm", text: "Buscar" }));
   form.addEventListener("submit", (ev) => {

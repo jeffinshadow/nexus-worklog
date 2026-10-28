@@ -49,6 +49,11 @@ function setActions(...nodes) {
   const box = document.getElementById("page-actions");
   clear(box);
   box.append(...nodes.filter(Boolean));
+  // Celular: a ação principal da tela (data-fab) vira o botão flutuante.
+  const main = box.querySelector("[data-fab]");
+  const fab = document.getElementById("fab");
+  fab.classList.toggle("hidden", !main);
+  fab.onclick = main ? () => main.click() : null;
 }
 
 async function route() {
@@ -73,6 +78,7 @@ async function route() {
   shownView = name;
   const prev = kept[name] || {};
   document.getElementById("page-title").textContent = view.title;
+  document.getElementById("appbar-title").textContent = view.title;
   eyebrow.textContent = view.eyebrow || prev.eyebrow || "";
   document.title = `${view.title} · Nexus Worklog`;
   setActions(...(prev.actions || []));
@@ -165,7 +171,8 @@ function mountMore(el) {
     ["vencimentos", "calendar", "Vencimentos"],
     ["dashboard", "dashboard", "Retrospectiva"],
     ["historico", "history", "Histórico"],
-    ["atribuir", "send", "Atribuir tarefas"],
+    // Quem atribui tem Atribuir na barra; a Busca vem para cá.
+    has("assigner") ? ["busca", "search", "Busca"] : ["atribuir", "send", "Atribuir tarefas"],
     ["equipe", "team", "Equipe"],
     ["admin", "admin", "Admin"],
     ["config", "settings", "Configurações"],
@@ -261,6 +268,14 @@ async function boot() {
   window.addEventListener("nexus:me", () => { renderWho(); configureAssistant(me); if (has("user")) startIdle(me, route); });
   // Menu: cada item aparece só para quem tem o papel (data-need).
   for (const el of document.querySelectorAll("[data-need]")) el.classList.toggle("hidden", !has(el.dataset.need));
+  // Barra inferior: no máximo 5 itens; quem atribui troca a Busca por Atribuir.
+  if (has("assigner")) document.querySelector('#tabbar [data-view="busca"]').classList.add("hidden");
+  // Celular: rolando a página, o título vira uma barra fina no topo.
+  const pageTitle = document.getElementById("page-title");
+  new IntersectionObserver(([e]) => {
+    const shown = !pageTitle.closest(".hidden");
+    document.getElementById("appbar").classList.toggle("show", shown && !e.isIntersecting && e.boundingClientRect.top < 0);
+  }).observe(pageTitle);
   document.getElementById("btn-logout").addEventListener("click", logout);
   document.getElementById("btn-help").addEventListener("click", showHelp);
   // Busca na barra lateral; "/" foca a busca de qualquer tela.

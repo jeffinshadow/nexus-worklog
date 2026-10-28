@@ -2,9 +2,9 @@
 // Abre por cima do quadro/Hoje; ao fechar, quem abriu recarrega (onChange).
 import { api } from "./api.js";
 import { h, icon, clear, addDays, shortDate, dateTime, field } from "./dom.js";
-import { errorToast, modal, toast, undoLatest, busy } from "./ui.js";
+import { errorToast, modal, toast, undoLatest, busy, sheet } from "./ui.js";
 import { openWorklog, finishTask, taskChips } from "./board.js";
-import { timerButton } from "./timer.js";
+import { timerButton, timerState, startTimer, stopTimer } from "./timer.js";
 
 export function duration(min) {
   if (!min) return "0 min";
@@ -51,6 +51,10 @@ export async function openTask(taskId, onChange) {
 
     // ---- cabeçalho
     const chips = taskChips(t, today); // os mesmos do cartão
+    const edit = () => {
+      dlg.close();
+      openWorklog(t, () => { onChange && onChange(); openTask(taskId, onChange); });
+    };
 
     const head = h("div", { class: "task-head" },
       h("div", { class: "task-title" },
@@ -65,13 +69,26 @@ export async function openTask(taskId, onChange) {
           : null,
         h("button", { type: "button", class: "icon", title: "Copiar resumo (para o chamado ou o cliente)", "aria-label": "Copiar resumo", onClick: () => copySummary(t) }, icon("copy")),
         h("button", { type: "button", class: "icon", title: "Salvar como modelo", "aria-label": "Salvar como modelo", onClick: () => saveAsTemplate(t) }, icon("list")),
-        h("button", { type: "button", class: "icon", title: "Editar", "aria-label": "Editar", onClick: () => {
-          dlg.close();
-          openWorklog(t, () => { onChange && onChange(); openTask(taskId, onChange); });
-        } }, icon("edit")),
+        h("button", { type: "button", class: "icon", title: "Editar", "aria-label": "Editar", onClick: edit }, icon("edit")),
         h("button", { type: "button", class: "icon", title: "Fechar", "aria-label": "Fechar", onClick: () => dlg.close() }, icon("close"))));
 
-    body.append(head, checklist(t), timePanel(t, today), notesPanel(t));
+    // Celular: tela inteira com barra no topo (fechar, editar e o resto no ⋮) e
+    // as duas ações principais como botões grandes abaixo do título.
+    const appbar = h("div", { class: "task-appbar" },
+      h("button", { type: "button", class: "icon", title: "Fechar", "aria-label": "Fechar", onClick: () => dlg.close() }, icon("close")),
+      h("span", { class: "task-appbar-title", text: "Tarefa" }),
+      h("button", { type: "button", class: "icon", title: "Editar", "aria-label": "Editar", onClick: edit }, icon("edit")),
+      h("button", { type: "button", class: "icon", title: "Mais ações", "aria-label": "Mais ações", onClick: () => sheet(t.title, [
+        ["Copiar resumo (para o chamado ou o cliente)", "copy", () => copySummary(t)],
+        ["Salvar como modelo", "list", () => saveAsTemplate(t)],
+      ]) }, icon("more-v")));
+    const running = (timerState() || {}).task_id === t.id;
+    const mainActs = t.status === "done" ? null : h("div", { class: "task-main-actions" },
+      h("button", { type: "button", class: "btn btn-ghost" + (running ? " timer-on" : ""), onClick: () => (running ? stopTimer(after) : startTimer(t, after)) },
+        icon(running ? "stop" : "play"), running ? "Parar cronômetro" : "Cronômetro"),
+      h("button", { type: "button", class: "btn btn-primary", onClick: () => finishTask(t, after) }, icon("check"), "Concluir"));
+
+    body.append(...[appbar, head, mainActs, checklist(t), timePanel(t, today), notesPanel(t)].filter(Boolean));
   }
 
   // ---- checklist

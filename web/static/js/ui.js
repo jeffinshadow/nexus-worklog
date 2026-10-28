@@ -12,6 +12,30 @@ export function modal(...children) {
   return dlg;
 }
 
+// Celular: menu que sobe de baixo (bottom sheet). items: [rótulo, ícone, fn];
+// null é ignorado. Toque fora ou Esc fecha.
+export function sheet(title, items) {
+  const dlg = modal(
+    h("span", { class: "sheet-handle", "aria-hidden": "true" }),
+    title ? h("p", { class: "sheet-title", text: title }) : null,
+    h("div", { class: "menu-list" }, ...items.filter(Boolean).map(([label, ic, fn]) =>
+      h("button", { type: "button", class: "nav-btn", onClick: () => { dlg.close(); fn(); } }, icon(ic), h("span", { text: label })))));
+  dlg.classList.add("sheet");
+  dlg.addEventListener("click", (ev) => { if (ev.target === dlg) dlg.close(); });
+  return dlg;
+}
+
+// Número no item do menu (ex.: tarefas atrasadas); 0 apaga.
+export function navBadge(view, n, label) {
+  for (const a of document.querySelectorAll(`#tabbar [data-view="${view}"], #nav [data-view="${view}"]`)) {
+    let b = a.querySelector(".nav-badge");
+    if (!n) { if (b) b.remove(); continue; }
+    if (!b) { b = h("span", { class: "nav-badge" }); (a.querySelector(".tab-ind") || a).append(b); }
+    b.textContent = n > 99 ? "99+" : String(n);
+    b.setAttribute("aria-label", label || String(n));
+  }
+}
+
 // Confirmação com botões próprios. Resolve true/false.
 export function confirmDialog({ title, text, confirm = "Confirmar", danger = false }) {
   return new Promise((resolve) => {

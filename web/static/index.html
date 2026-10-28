@@ -13,8 +13,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Nexus">
   <link rel="preload" as="font" type="font/woff2" href="/fonts/GoogleSansFlex.woff2" crossorigin>
-  <link rel="stylesheet" href="/css/tokens.css?v=66">
-  <link rel="stylesheet" href="/css/app.css?v=66">
+  <link rel="stylesheet" href="/css/tokens.css?v=67">
+  <link rel="stylesheet" href="/css/app.css?v=67">
   <!-- Módulos baixados todos de uma vez (sem isso vêm em ondas, um import
        revelando o próximo). Módulo novo fora desta lista só carrega mais tarde. -->
   <link rel="modulepreload" href="/js/admin.js">
@@ -53,6 +53,7 @@
     <symbol id="icon-settings" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></g></symbol>
     <symbol id="icon-admin" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></g></symbol>
     <symbol id="icon-more" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></g></symbol>
+    <symbol id="icon-more-v" viewBox="0 0 24 24"><g fill="currentColor"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></g></symbol>
     <symbol id="icon-logout" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></g></symbol>
     <symbol id="icon-add" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></g></symbol>
     <symbol id="icon-edit" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></g></symbol>
@@ -140,6 +141,10 @@
       </div>
     </aside>
 
+    <header class="appbar" id="appbar">
+      <span class="appbar-title" id="appbar-title"></span>
+      <a href="#/busca" class="icon-btn hidden" data-need="user" title="Buscar" aria-label="Buscar"><svg class="ico"><use href="#icon-search"></use></svg></a>
+    </header>
     <main class="main" id="main">
       <div id="assist-slot"></div>
       <header class="page-head">
@@ -166,11 +171,12 @@
 
     <!-- Celular: barra inferior. -->
     <nav class="tabbar" id="tabbar" aria-label="Menu">
-      <a href="#/hoje" data-view="hoje" data-need="user" class="hidden"><svg class="ico"><use href="#icon-today"></use></svg><span>Hoje</span></a>
-      <a href="#/tarefas" data-view="tarefas" data-need="user" class="hidden"><svg class="ico"><use href="#icon-tasks"></use></svg><span>Tarefas</span></a>
-      <a href="#/busca" data-view="busca" data-need="user" class="hidden"><svg class="ico"><use href="#icon-search"></use></svg><span>Busca</span></a>
-      <a href="#/relatorios" data-view="relatorios" data-need="user" class="hidden"><svg class="ico"><use href="#icon-reports"></use></svg><span>Relatórios</span></a>
-      <a href="#/mais" data-view="mais"><svg class="ico"><use href="#icon-more"></use></svg><span>Mais</span></a>
+      <a href="#/hoje" data-view="hoje" data-need="user" class="hidden"><span class="tab-ind"><svg class="ico"><use href="#icon-today"></use></svg></span><span>Hoje</span></a>
+      <a href="#/tarefas" data-view="tarefas" data-need="user" class="hidden"><span class="tab-ind"><svg class="ico"><use href="#icon-tasks"></use></svg></span><span>Tarefas</span></a>
+      <a href="#/busca" data-view="busca" data-need="user" class="hidden"><span class="tab-ind"><svg class="ico"><use href="#icon-search"></use></svg></span><span>Busca</span></a>
+      <a href="#/atribuir" data-view="atribuir" data-need="assigner" class="hidden"><span class="tab-ind"><svg class="ico"><use href="#icon-send"></use></svg></span><span>Atribuir</span></a>
+      <a href="#/relatorios" data-view="relatorios" data-need="user" class="hidden"><span class="tab-ind"><svg class="ico"><use href="#icon-reports"></use></svg></span><span>Relatórios</span></a>
+      <a href="#/mais" data-view="mais"><span class="tab-ind"><svg class="ico"><use href="#icon-more"></use></svg></span><span>Mais</span></a>
     </nav>
   </div>
 
@@ -213,13 +219,13 @@
     </form>
   </dialog>
 
-  <dialog id="dialog-worklog">
-    <h2 id="dlg-wl-title">Tarefa</h2>
+  <dialog id="dialog-worklog" class="form-dialog">
+    <div class="dlg-bar">
+      <button type="button" class="icon only-mob" id="wl-close" title="Cancelar" aria-label="Cancelar"><svg class="ico"><use href="#icon-close"></use></svg></button>
+      <h2 id="dlg-wl-title">Tarefa</h2>
+      <button type="submit" form="form-worklog" class="btn btn-primary btn-sm only-mob">Salvar</button>
+    </div>
     <form id="form-worklog">
-      <div class="field hidden" id="wl-template-wrap">
-        <label for="wl-template">Modelo</label>
-        <select id="wl-template"></select>
-      </div>
       <div class="field">
         <label for="wl-title">Título</label>
         <input id="wl-title" type="text" required maxlength="200">
@@ -258,15 +264,6 @@
           </select>
         </div>
       </div>
-      <div class="field-row">
-        <div class="field">
-          <label for="wl-ticket">Chamado (opcional)</label>
-          <input id="wl-ticket" type="text" maxlength="41" placeholder="ex.: 4821" autocomplete="off">
-        </div>
-        <div class="field field-check">
-          <label class="weekday-option"><input id="wl-after" type="checkbox"><span>Plantão / fora do horário</span></label>
-        </div>
-      </div>
       <div class="field-row hidden" id="wl-blocked-wrap">
         <div class="field">
           <label for="wl-blocked">Aguardando o quê? (opcional)</label>
@@ -281,33 +278,50 @@
         <label for="wl-resolution">Como resolveu? (opcional — entra na busca)</label>
         <textarea id="wl-resolution" rows="2" maxlength="1000" placeholder="ex.: perfil corrompido, recriado com o scanpst"></textarea>
       </div>
-      <div class="field-row hidden" id="wl-dates">
-        <div class="field" id="wl-created-wrap">
-          <label for="wl-created-at">Começou em (opcional)</label>
-          <input id="wl-created-at" type="datetime-local">
-        </div>
-        <div class="field">
-          <label for="wl-done-at">Concluída em</label>
-          <input id="wl-done-at" type="datetime-local">
-        </div>
-      </div>
       <div class="field" id="wl-time-wrap">
         <label for="wl-time">Tempo gasto (opcional)</label>
         <input id="wl-time" type="text" inputmode="text" maxlength="10" placeholder="ex.: 45, 1h30, 2:15">
       </div>
+      <button type="button" class="btn btn-text more-toggle" id="wl-more-toggle" aria-expanded="false" aria-controls="wl-more">Mais opções</button>
+      <div class="more-opts" id="wl-more">
+        <div class="field hidden" id="wl-template-wrap">
+          <label for="wl-template">Modelo</label>
+          <select id="wl-template"></select>
+        </div>
+        <div class="field-row" id="wl-ticket-row">
+          <div class="field">
+            <label for="wl-ticket">Chamado (opcional)</label>
+            <input id="wl-ticket" type="text" maxlength="41" placeholder="ex.: 4821" autocomplete="off">
+          </div>
+          <div class="field field-check">
+            <label class="weekday-option"><input id="wl-after" type="checkbox"><span>Plantão / fora do horário</span></label>
+          </div>
+        </div>
+        <div class="field-row hidden" id="wl-dates">
+          <div class="field" id="wl-created-wrap">
+            <label for="wl-created-at">Começou em (opcional)</label>
+            <input id="wl-created-at" type="datetime-local">
+          </div>
+          <div class="field">
+            <label for="wl-done-at">Concluída em</label>
+            <input id="wl-done-at" type="datetime-local">
+          </div>
+        </div>
+      </div>
       <div class="dialog-actions">
         <button type="button" class="btn btn-danger hidden" id="wl-delete">Excluir</button>
         <div class="spacer"></div>
-        <button type="button" class="btn btn-text" id="wl-cancel">Cancelar</button>
-        <button type="submit" class="btn btn-primary">Salvar</button>
+        <button type="button" class="btn btn-text only-desk" id="wl-cancel">Cancelar</button>
+        <button type="submit" class="btn btn-primary only-desk">Salvar</button>
       </div>
     </form>
   </dialog>
 
   <div class="toasts" id="toasts" aria-live="polite"></div>
   <div class="timer-chip timer-mobile hidden" id="timer-mobile" role="status" aria-live="polite"></div>
+  <button type="button" class="fab hidden" id="fab"><svg class="ico"><use href="#icon-add"></use></svg><span id="fab-label">Tarefa</span></button>
 
-  <script type="module" src="/js/app.js?v=66"></script>
-  <script type="module" src="/js/pwa.js?v=66"></script>
+  <script type="module" src="/js/app.js?v=67"></script>
+  <script type="module" src="/js/pwa.js?v=67"></script>
 </body>
 </html>
