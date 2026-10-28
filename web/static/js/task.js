@@ -5,7 +5,7 @@
 // Abre por cima do quadro/Hoje; ao fechar, quem abriu recarrega (onChange).
 import { api } from "./api.js";
 import { h, icon, clear, addDays, shortDate, dateTime, field, localDateTime } from "./dom.js";
-import { errorToast, modal, toast, undoLatest, busy, sheet, syncRail } from "./ui.js";
+import { errorToast, modal, toast, undoLatest, busy, sheet, syncRail, growFrom } from "./ui.js";
 import { finishTask, deleteTask, followUpDay, isOverdue, ticketUrl, taskChips } from "./board.js";
 import { fillProjectSelect } from "./projects.js";
 import { session } from "./session.js";
@@ -385,7 +385,7 @@ export async function openTask(taskId, onChange) {
   }
 
   await render();
-  if (!side) { dlg.showModal(); return; }
+  if (!side) { dlg.showModal(); growFrom(dlg); return; }
   dlg.show();
   sideOwner = dlg;
   sideTaskId = taskId;

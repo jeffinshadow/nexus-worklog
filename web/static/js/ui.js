@@ -62,6 +62,33 @@ export function popupMenu(x, y, items) {
   menuClose = close;
 }
 
+// Quem pediu ao sistema menos movimento (as animações em JS também respeitam).
+const calm = matchMedia("(prefers-reduced-motion: reduce)");
+export const calmMotion = () => calm.matches;
+
+// Último cartão ou linha tocado: de onde o detalhe da tarefa cresce no celular.
+let pressed = null, pressedAt = 0;
+document.addEventListener("pointerdown", (ev) => {
+  pressed = ev.target.closest ? ev.target.closest(".card, .list-row, .search-row, .sum-row, .sugg-item") : null;
+  pressedAt = Date.now();
+}, true);
+
+// Material 3, "container transform": a tela inteira nasce do retângulo do
+// cartão tocado e cresce até ocupar a tela. Sem cartão de origem, sobe de leve.
+export function growFrom(el) {
+  if (calmMotion()) return;
+  const from = pressed && pressed.isConnected && Date.now() - pressedAt < 4000 ? pressed : null;
+  pressed = null;
+  if (!from) {
+    el.animate([{ opacity: 0, transform: "translateY(16px)" }, { opacity: 1, transform: "none" }], { duration: 250, easing: "cubic-bezier(.05, .7, .1, 1)" });
+    return;
+  }
+  const r = from.getBoundingClientRect();
+  const clip = `inset(${r.top}px ${innerWidth - r.right}px ${innerHeight - r.bottom}px ${r.left}px round 14px)`;
+  el.animate([{ clipPath: clip }, { clipPath: "inset(0 round 0)" }], { duration: 320, easing: "cubic-bezier(.05, .7, .1, 1)" });
+  el.firstElementChild?.animate([{ opacity: 0 }, { opacity: 0, offset: .25 }, { opacity: 1 }], { duration: 320 });
+}
+
 // Menu compacto (só ícones): em 861–1199 px sempre; em 1200–1739 px só
 // enquanto o detalhe da tarefa está aberto ao lado (body.has-side).
 const railAlways = matchMedia("(min-width: 861px) and (max-width: 1199px)");

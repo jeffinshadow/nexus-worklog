@@ -21,7 +21,7 @@ import { session } from "./session.js";
 import { initTimer, stopTimer, timerState } from "./timer.js";
 import { openWorklog } from "./board.js";
 import { openTask, closeSidePanel } from "./task.js";
-import { modal, busy, initTooltips, syncRail } from "./ui.js";
+import { modal, busy, initTooltips, syncRail, calmMotion } from "./ui.js";
 
 let me = null;
 
@@ -74,7 +74,8 @@ async function route() {
   // botões ao lado dele ficam como estavam até a resposta chegar, sem a página
   // pular (os botões podem quebrar linha e mudar a altura do cabeçalho).
   const eyebrow = document.getElementById("page-eyebrow");
-  if (shownView !== name) closeSidePanel(); // o detalhe lateral é da tela que ficou para trás
+  const changed = shownView !== name;
+  if (changed) closeSidePanel(); // o detalhe lateral é da tela que ficou para trás
   if (shownView) kept[shownView] = { assist: document.getElementById("assist-slot").firstChild, eyebrow: eyebrow.textContent,
     actions: [...document.getElementById("page-actions").childNodes] };
   shownView = name;
@@ -97,18 +98,19 @@ async function route() {
   // Tela já visitada: aparece na hora com o que mostrava e se atualiza quando a
   // resposta chega (esmaecida se demorar). Primeira visita: título e tela só
   // aparecem prontos, juntos com a fala do assistente, sem descer quando ela
-  // chega; passando de 250 ms, "Carregando…". O aviso fica fora da tela e só a
-  // esconde: a tela pode já ter montado a estrutura antes da API responder.
+  // chega. Passando de 250 ms, a barra fina no topo (as duas); a tela nova só
+  // fica escondida: pode já ter montado a estrutura antes da API responder.
   el.setAttribute("aria-busy", "true");
   const loadingMsg = document.getElementById("view-loading");
   const head = document.querySelector(".page-head");
   const visited = el.childElementCount > 0;
   el.classList.toggle("hidden", !visited);
   head.classList.toggle("hidden", !visited);
+  if (visited && changed) enter(el);
   const loading = setTimeout(() => {
     if (seq !== routeSeq) return;
     if (visited) el.classList.add("refreshing");
-    else loadingMsg.classList.remove("hidden");
+    loadingMsg.classList.remove("hidden");
   }, 250);
   try {
     await view.mount(el, { me, setActions: actions, setEyebrow, setAssist: assist, go });
@@ -121,6 +123,7 @@ async function route() {
     el.classList.remove("refreshing");
     if (seq === routeSeq) {
       el.classList.remove("hidden"); head.classList.remove("hidden"); loadingMsg.classList.add("hidden");
+      if (!visited && changed) enter(el);
       if (!assisted) setAssist(null);
       if (!acted) setActions();
     }
@@ -132,6 +135,15 @@ async function route() {
     window.history.replaceState(null, "", "#/tarefas"); // "history" aqui é a tela de Histórico
     openTask(taskId, route);
   }
+}
+
+// Troca de tela (Material 3, "fade through"): a nova tela e o título surgem
+// esmaecendo e crescendo um pouco. Quem pediu menos movimento só vê a troca.
+function enter(el) {
+  if (calmMotion()) return;
+  for (const n of [document.querySelector(".page-head"), document.getElementById("assist-slot"), el])
+    n.animate([{ opacity: 0, transform: "scale(.985)" }, { opacity: 1, transform: "none" }],
+      { duration: 220, easing: "cubic-bezier(.2, 0, 0, 1)" });
 }
 
 let routeSeq = 0;
@@ -272,6 +284,15 @@ async function boot() {
   for (const el of document.querySelectorAll("[data-need]")) el.classList.toggle("hidden", !has(el.dataset.need));
   initTooltips();
   syncRail();
+  // Celular: rolando para baixo, o botão flutuante encolhe para o ícone; para cima, volta.
+  const fab = document.getElementById("fab");
+  let lastY = scrollY;
+  addEventListener("scroll", () => {
+    const y = scrollY;
+    if (Math.abs(y - lastY) < 6) return;
+    fab.classList.toggle("compact", y > lastY && y > 80);
+    lastY = y;
+  }, { passive: true });
   // Barra inferior: no máximo 5 itens; quem atribui troca a Busca por Atribuir.
   if (has("assigner")) document.querySelector('#tabbar [data-view="busca"]').classList.add("hidden");
   // Celular: rolando a página, o título vira uma barra fina no topo.

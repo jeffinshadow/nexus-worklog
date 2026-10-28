@@ -872,3 +872,40 @@ body.rail .timer-mobile:not(.hidden) { display: flex; position: fixed; left: 89p
 .export-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .export-title { font-weight: 600; font-size: .94rem; }
 .export-help { font-size: .82rem; color: var(--on-surface-variant); line-height: 1.4; }
+
+/* ------------------------------------------------------------ movimento -- */
+/* Camada de toque (Material 3, "pressed state layer"): ao pressionar, uma
+   película da cor do texto por cima do fundo, sem trocar a cor do botão. No
+   celular substitui o realce azul do navegador. */
+html { -webkit-tap-highlight-color: transparent; }
+:root { --press: color-mix(in srgb, currentColor 12%, transparent); }
+.btn:active:not(:disabled), .icon-btn:active, button.icon:active:not(:disabled), button.column-toggle:active, .fab:active,
+.nav a:active, .nav-link:active, .who-me:active, .more-me:active, .seg button.chip-btn:active, .pop-menu button:active,
+.sugg-item:active, .sugg-all:active, .day-nav button:active, .sheet button:active,
+.card:has(.card-open:active), .list-row:has(.card-open:active), .search-row:has(.card-open:active), .sum-row:has(.card-open:active),
+.tabbar a:active .tab-ind {
+  background-image: linear-gradient(var(--press), var(--press));
+}
+body.rail .nav a:active, body.rail .sidebar .nav-link:active { transform: scale(.94); transition: transform .1s; }
+
+/* Carregando: barra fina no topo (Material 3, indicador linear indeterminado).
+   Só aparece se a resposta passar de 250 ms. */
+.loading-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 2000; height: 3px; max-width: none !important; overflow: hidden; background: var(--primary-container); }
+.loading-bar::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 40%; border-radius: 3px; background: var(--primary);
+  animation: loading-bar 1.3s cubic-bezier(.4, 0, .2, 1) infinite; }
+@keyframes loading-bar { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+
+/* Celular: rolando para baixo o botão flutuante vira só o ícone (56 × 56) e
+   deixa de cobrir os cartões; rolando para cima, volta com o texto. */
+@media (max-width: 860px) {
+  .fab { transition: padding .2s var(--ease), gap .2s var(--ease); }
+  .fab #fab-label { max-width: 12em; overflow: hidden; white-space: nowrap; transition: max-width .2s var(--ease), opacity .15s; }
+  .fab.compact { padding: 0 16px; gap: 0; }
+  .fab.compact #fab-label { max-width: 0; opacity: 0; }
+}
+
+/* Quem pediu menos movimento ao sistema: nada desliza nem cresce. */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+  .loading-bar::before { animation: none !important; width: 100%; opacity: .5; }
+}
