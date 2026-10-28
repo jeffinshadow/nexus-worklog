@@ -64,16 +64,18 @@ async function route() {
     if (a.dataset.view === name) a.setAttribute("aria-current", "page");
     else a.removeAttribute("aria-current");
   }
-  // Na volta a uma tela, a fala do assistente e a linha acima do título ficam
-  // como estavam até a resposta chegar, sem a página pular.
+  // Na volta a uma tela, a fala do assistente, a linha acima do título e os
+  // botões ao lado dele ficam como estavam até a resposta chegar, sem a página
+  // pular (os botões podem quebrar linha e mudar a altura do cabeçalho).
   const eyebrow = document.getElementById("page-eyebrow");
-  if (shownView) kept[shownView] = { assist: document.getElementById("assist-slot").firstChild, eyebrow: eyebrow.textContent };
+  if (shownView) kept[shownView] = { assist: document.getElementById("assist-slot").firstChild, eyebrow: eyebrow.textContent,
+    actions: [...document.getElementById("page-actions").childNodes] };
   shownView = name;
   const prev = kept[name] || {};
   document.getElementById("page-title").textContent = view.title;
   eyebrow.textContent = view.eyebrow || prev.eyebrow || "";
   document.title = `${view.title} · Nexus Worklog`;
-  setActions();
+  setActions(...(prev.actions || []));
 
   const el = document.getElementById("view-" + name);
   const seq = ++routeSeq;
@@ -82,6 +84,8 @@ async function route() {
   setAssist(prev.assist || null);
   let assisted = false;
   const assist = (node) => { if (seq === routeSeq) { assisted = true; setAssist(node); } };
+  let acted = false;
+  const actions = (...nodes) => { if (seq === routeSeq) { acted = true; setActions(...nodes); } };
   // Tela já visitada: aparece na hora com o que mostrava e se atualiza quando a
   // resposta chega (esmaecida se demorar). Primeira visita: título e tela só
   // aparecem prontos, juntos com a fala do assistente, sem descer quando ela
@@ -99,7 +103,7 @@ async function route() {
     else loadingMsg.classList.remove("hidden");
   }, 250);
   try {
-    await view.mount(el, { me, setActions, setEyebrow, setAssist: assist, go });
+    await view.mount(el, { me, setActions: actions, setEyebrow, setAssist: assist, go });
   } catch (e) {
     clear(el);
     el.append(h("p", { class: "empty", text: e && e.status === 0 ? e.message : "Erro ao carregar. Tente de novo." }));
@@ -110,6 +114,7 @@ async function route() {
     if (seq === routeSeq) {
       el.classList.remove("hidden"); head.classList.remove("hidden"); loadingMsg.classList.add("hidden");
       if (!assisted) setAssist(null);
+      if (!acted) setActions();
     }
   }
   window.scrollTo(0, 0);
