@@ -1,11 +1,12 @@
-// Detalhe de uma tarefa: é também onde se edita. Título, descrição e os
-// detalhes (status, prazo, projeto...) salvam sozinhos ao sair do campo;
-// abaixo, checklist, tempo apontado e anotações.
+// Detalhe de uma tarefa: é também onde se edita. O lápis ao lado do título
+// troca a leitura (etiquetas) pelos campos: título, descrição e os detalhes
+// (status, prazo, projeto...), que salvam sozinhos ao sair do campo.
+// Abaixo, checklist, tempo apontado e anotações.
 // Abre por cima do quadro/Hoje; ao fechar, quem abriu recarrega (onChange).
 import { api } from "./api.js";
 import { h, icon, clear, addDays, shortDate, dateTime, field, localDateTime } from "./dom.js";
 import { errorToast, modal, toast, undoLatest, busy, sheet } from "./ui.js";
-import { finishTask, deleteTask, followUpDay, isOverdue, ticketUrl } from "./board.js";
+import { finishTask, deleteTask, followUpDay, isOverdue, ticketUrl, taskChips } from "./board.js";
 import { fillProjectSelect } from "./projects.js";
 import { session } from "./session.js";
 import { timerButton, timerState, startTimer, stopTimer } from "./timer.js";
@@ -78,22 +79,42 @@ export async function openTask(taskId, onChange) {
       dlg.close();
       return;
     }
-    const today = t.today;
     cur = t;
+    paint();
+  }
+
+  // Desenha com o que já está em memória (entrar no modo edição não vai ao servidor).
+  function paint() {
+    const t = cur, today = t.today;
     clear(body);
 
-    // ---- cabeçalho: título e descrição editáveis no lugar
-    const title = h("textarea", { class: "inline-edit inline-title", rows: "1", maxlength: "200", "aria-label": "Título" });
-    title.value = t.title;
-    const desc = h("input", { type: "text", class: "inline-edit inline-desc", maxlength: "300", placeholder: "Adicionar descrição", "aria-label": "Descrição" });
-    desc.value = t.description || "";
-    inline(title, () => t.title, (v) => (v ? { title: v } : null));
-    inline(desc, () => t.description || "", (v) => ({ description: v || null }));
-    title.addEventListener("input", () => grow(title));
+    // ---- cabeçalho: leitura (título, descrição, etiquetas) ou edição no lugar
+    let title = null, titleBlock;
+    if (editing) {
+      title = h("textarea", { class: "inline-edit inline-title", rows: "1", maxlength: "200", "aria-label": "Título" });
+      title.value = t.title;
+      const desc = h("input", { type: "text", class: "inline-edit inline-desc", maxlength: "300", placeholder: "Adicionar descrição", "aria-label": "Descrição" });
+      desc.value = t.description || "";
+      inline(title, () => cur.title, (v) => (v ? { title: v } : null));
+      inline(desc, () => cur.description || "", (v) => ({ description: v || null }));
+      title.addEventListener("input", () => grow(title));
+      titleBlock = [title, desc];
+    } else {
+      titleBlock = [h("h2", { text: t.title }),
+        t.description ? h("p", { class: "task-desc", text: t.description }) : null,
+        t.resolution && t.status === "done" ? h("p", { class: "resolution" }, h("strong", { text: "Como resolveu: " }), t.resolution) : null,
+        h("div", { class: "card-meta" }, ...taskChips(t, today))];
+    }
+    // Lápis ao lado do título: entra na edição; "Pronto" volta (e busca do
+    // servidor o que mudou, para as etiquetas saírem certas).
+    const toggle = editing
+      ? h("button", { type: "button", class: "btn btn-ghost btn-sm edit-toggle", onClick: async () => { await pending; editing = false; render(); } }, icon("check"), "Pronto")
+      : h("button", { type: "button", class: "icon edit-toggle", title: "Editar a tarefa", "aria-label": "Editar a tarefa",
+          onClick: () => { editing = true; refocus = "Título"; paint(); } }, icon("edit"));
 
     const remove = async () => { if (await deleteTask(t, onChange)) dlg.close(); };
     const head = h("div", { class: "task-head" },
-      h("div", { class: "task-title" }, title, desc,
+      h("div", { class: "task-title" }, h("div", { class: "title-row" }, h("div", { class: "title-main" }, ...titleBlock), toggle),
         t.assigned_by_name ? h("p", { class: "assigned-note" }, icon("send"), "Atribuída por " + t.assigned_by_name) : null),
       h("div", { class: "task-tools" },
         timerButton(t, after),
@@ -122,17 +143,22 @@ export async function openTask(taskId, onChange) {
         icon(running ? "stop" : "play"), running ? "Parar cronômetro" : "Cronômetro"),
       h("button", { type: "button", class: "btn btn-primary", onClick: () => finishTask(t, after) }, icon("check"), "Concluir"));
 
-    body.append(...[appbar, head, mainActs, details(t, today), checklist(t), timePanel(t, today), notesPanel(t)].filter(Boolean));
-    requestAnimationFrame(() => grow(title)); // a altura só existe com o campo na tela (e o painel aberto)
+    body.append(...[appbar, head, mainActs, editing ? details(t, today) : null, checklist(t), timePanel(t, today), notesPanel(t)].filter(Boolean));
+    if (title) requestAnimationFrame(() => grow(title)); // a altura só existe com o campo na tela (e o painel aberto)
     // Redesenhou com o foco num campo (ex.: trocou o status): volta para ele.
     if (refocus) { const el = body.querySelector(`[aria-label="${refocus}"]`); if (el) el.focus(); refocus = null; }
   }
 
   // ---- edição no lugar
   // Salva só o que mudou; na falha, avisa e redesenha com o que está no servidor.
-  let cur = null, refocus = null, savedTimer = null;
+  let cur = null, refocus = null, savedTimer = null, editing = false;
+  let pending = Promise.resolve(); // o último salvamento (o "Pronto" espera ele)
   const saved = h("span", { class: "saved-mark", "aria-live": "polite" });
-  async function save(patch, redraw = false) {
+  function save(patch, redraw = false) {
+    pending = doSave(patch, redraw);
+    return pending;
+  }
+  async function doSave(patch, redraw) {
     try { await api.patch(`/worklog/${taskId}`, patch); }
     catch (e) { errorToast(e, "Não foi possível salvar."); await render(); return; }
     Object.assign(cur, patch);

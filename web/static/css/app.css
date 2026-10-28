@@ -427,6 +427,12 @@ dialog.task-dialog { max-width: 640px; padding: 0; max-height: min(88vh / var(--
 .inline-title { overflow: hidden; font-size: 1.15rem; font-weight: 600; letter-spacing: -.02em; line-height: 1.35; overflow-wrap: anywhere; }
 .inline-desc { height: auto; margin-top: 2px; font-size: .92rem; color: var(--on-surface-variant); }
 .inline-desc::placeholder { color: var(--dim); }
+.title-row { display: flex; align-items: flex-start; gap: 8px; }
+.title-main { flex: 1; min-width: 0; }
+.title-main > h2 { margin: 0 0 4px; overflow-wrap: anywhere; }
+.title-main > .task-desc { margin-bottom: 10px; }
+.title-main .resolution { margin: 0 0 10px; color: var(--on-surface-variant); font-size: .9rem; white-space: pre-wrap; }
+.edit-toggle { flex: none; }
 .task-title .assigned-note { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; font-size: .84rem; color: var(--on-surface-variant); }
 .assigned-note .ico { width: 14px; height: 14px; }
 .props { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
