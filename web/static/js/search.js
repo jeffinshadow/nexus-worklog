@@ -14,7 +14,7 @@ function queryFromHash() {
 const FOLD = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 
 // Texto com o termo destacado em <mark> (comparação sem acento).
-function highlight(text, q) {
+export function highlight(text, q) {
   const f = FOLD(text), fq = FOLD(q);
   const out = [];
   let i = 0;

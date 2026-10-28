@@ -3,7 +3,7 @@
 import { api } from "./api.js";
 import { h, icon, clear, longDate, localDay, addDays } from "./dom.js";
 import { errorToast, modal, toast, busy, sheet } from "./ui.js";
-import { openRecurring, openWorklog, finishTask, taskChips, isOverdue, scheduleLabel, dayLabel, moreButton, desk, lateBadge } from "./board.js";
+import { openRecurring, openWorklog, finishTask, taskChips, isOverdue, scheduleLabel, dayLabel, moreButton, desk, lateBadge, withMenu } from "./board.js";
 import { openTask } from "./task.js";
 import { fillProjectSelect } from "./projects.js";
 import { summaryPanel } from "./summary.js";
@@ -162,14 +162,14 @@ export async function mount(root, ctx, opts = {}) {
     phone ? h("p", { class: "quick-hint", text: "No fim: @projeto #chamado !alta ^amanhã — 15min" }) : null, hint);
   if (!open.length) openPanel.append(h("p", { class: "empty", text: "Nada em aberto." }));
   for (const t of open) {
-    openPanel.append(h("div", { class: "list-row" },
+    openPanel.append(withMenu(h("div", { class: "list-row" },
       h("button", { type: "button", class: "icon", title: "Concluir", "aria-label": "Concluir " + t.title, onClick: () => finishTask(t, refresh) }, icon("check")),
       h("div", { class: "t" },
         h("button", { type: "button", class: "card-open", text: t.title, onClick: () => openTask(t.id, refresh) }),
         h("small", {}, h("span", { class: "card-meta" }, ...taskChips(t, today)))),
       desk(timerButton(t, refresh)),
       h("button", { type: "button", class: "icon only-desk", title: "Editar", "aria-label": "Editar " + t.title, onClick: () => openWorklog(t, refresh) }, icon("edit")),
-      moreButton(t, refresh)));
+      moreButton(t, refresh)), t, refresh));
   }
 
   // ---- concluídas hoje (com projeto e tempo, para conferir no fim do dia)

@@ -466,7 +466,7 @@ dialog.task-dialog { max-width: 640px; padding: 0; max-height: min(88vh / var(--
 
 /* --------------------------------------------- entrega 4: resumos, busca -- */
 .side-search { position: relative; display: flex; align-items: center; margin: -8px 2px -6px; }
-.side-search .ico { position: absolute; left: 11px; width: 16px; height: 16px; color: var(--dim); pointer-events: none; }
+.side-search > .ico { position: absolute; left: 11px; width: 16px; height: 16px; color: var(--dim); pointer-events: none; }
 .side-search input { height: 38px; padding: 0 30px 0 34px; border-radius: 10px; font-size: .88rem; background: rgba(255,255,255,.03); border-color: var(--outline-variant); }
 .side-search kbd { position: absolute; right: 9px; font-size: .68rem; color: var(--dim); border: 1px solid var(--line-2); border-radius: 5px; padding: 0 5px; line-height: 1.5; }
 .side-search input:focus + kbd { display: none; }
@@ -518,9 +518,6 @@ mark { background: rgba(82,148,226,.28); color: var(--on-surface); border-radius
 .notice-main small { display: block; color: var(--on-surface-variant); font-size: .82rem; margin-top: 2px; line-height: 1.45; }
 .notice-titles { margin: 16px 0 4px; }
 .row-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
-.export-row { display: flex; align-items: center; gap: 14px; padding: 8px 0; flex-wrap: wrap; }
-.export-row .btn { min-width: 200px; justify-content: flex-start; }
-.export-row .help { margin: 0; font-size: .84rem; color: var(--on-surface-variant); }
 
 .panel-head .count.warn { color: var(--warning); }
 @media (max-width: 560px) { .quick-row { flex-wrap: wrap; } .quick-row input { flex-basis: 100%; } .quick-row select { max-width: none; width: 100%; } }
@@ -653,7 +650,8 @@ button.nav-link { border: 0; background: transparent; width: 100%; font-family: 
    rolar, janelas de tela inteira e menus que sobem de baixo (bottom sheet). */
 @media (max-width: 860px) { .only-desk { display: none !important; } }
 @media (min-width: 861px) {
-  .only-mob, .appbar, .fab, .task-appbar, .task-main-actions, .more-toggle, .intro-more, .quick-hint { display: none !important; }
+  .only-mob, .appbar, .fab, .more-toggle, .intro-more, .quick-hint { display: none !important; }
+  .task-dialog:not(.side) .task-appbar, .task-dialog:not(.side) .task-main-actions { display: none; }
   /* Nova tarefa no computador: a mesma ordem de sempre ("Mais opções" só existe no celular). */
   #form-worklog { display: flex; flex-direction: column; }
   #wl-more { display: contents; }
@@ -743,3 +741,109 @@ dialog.sheet .menu-list > :last-child { border-bottom: 0; }
   .task-sec .check-row button.icon { width: 48px; height: 48px; }
 }
 @media (max-width: 480px) { .field-row { row-gap: 0; } }  /* empilhados: o espaço vem do .field */
+
+/* ----------------------------------------------- computador (Material 3) --
+   Detalhe da tarefa em painel lateral (lista + detalhe), menu compacto
+   (navigation rail) em telas médias, ações dos cartões no hover, menu de
+   contexto, dicas dos ícones, sugestões da busca e itens de lista. */
+/* Sem especificidade: o celular e o painel lateral mostram (regras próprias). */
+:where(.task-appbar, .task-main-actions) { display: none; }
+.seg.quick { display: inline-flex; }
+@media (min-width: 861px) {
+  dialog.task-dialog.side { position: fixed; top: 0; bottom: 0; left: auto; right: 0; z-index: 50; margin: 0; padding: 0;
+    width: 460px; max-width: 460px; height: auto; max-height: none; border: 0; border-left: 1px solid var(--line-2); border-radius: 0;
+    box-shadow: -24px 0 48px -24px rgba(0,0,0,.7); animation: side-in .2s var(--ease); }
+  @keyframes side-in { from { transform: translateX(24px); opacity: 0; } }
+  .task-dialog.side .task-body { height: 100%; max-height: none; padding: 0 22px 24px; }
+  .task-dialog.side .task-tools { display: none; }
+  .task-dialog.side .task-appbar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 2px;
+    margin: 0 -22px 14px; padding: 10px 12px 10px 8px; background: var(--surface-pop); border-bottom: 1px solid var(--outline-variant); }
+  .task-dialog.side .task-appbar-title { flex: 1; font-weight: 600; padding-left: 4px; }
+  .task-dialog.side .task-head { border-bottom: 0; padding-bottom: 14px; }
+  .task-dialog.side .task-main-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding-bottom: 18px; border-bottom: 1px solid var(--outline-variant); }
+  .task-dialog.side .task-main-actions .btn.timer-on { color: var(--error); }
+  .task-dialog.side .time-form { grid-template-columns: 104px 1fr; }
+  .task-dialog.side .time-form > :nth-child(n+3) { grid-column: span 2; }
+  body.has-side .main { margin-right: 460px; }
+  .card.selected, .list-row.selected { border-color: rgba(82,148,226,.6); background: rgba(82,148,226,.06); }
+  .list-row.selected { border-radius: 10px; }
+
+  /* Com mouse: na linha fica só o concluir; cronômetro e editar aparecem no hover ou no foco. */
+  @media (hover: hover) {
+    .card .card-actions .only-desk, .card.is-done .card-actions button, .list-row > .only-desk { opacity: 0; transition: opacity .15s; }
+    .card:hover .card-actions .only-desk, .card:focus-within .card-actions .only-desk,
+    .card.is-done:hover .card-actions button, .card.is-done:focus-within .card-actions button,
+    .list-row:hover > .only-desk, .list-row:focus-within > .only-desk { opacity: 1; }
+  }
+
+  /* Filtro de projeto ativo: chip preenchido com X para limpar. */
+  .filter-wrap { display: flex; align-items: center; gap: 2px; }
+  .select-sm.filter-on { border-color: rgba(82,148,226,.6); background-color: var(--primary-container); color: var(--on-surface); }
+}
+
+/* Telas médias (notebook pequeno): menu vira uma faixa de ícones com rótulo. */
+.nav a.rail-only { display: none; }
+@media (min-width: 861px) and (max-width: 1199px) {
+  :root { --sidebar-w: 92px; }
+  .sidebar { padding: 18px 6px 12px; gap: 16px; }
+  .sidebar > .lockup { padding: 0; justify-content: center; }
+  .sidebar > .lockup .lockup-type { display: none; }
+  .side-search { display: none; }
+  .nav a.rail-only:not(.hidden) { display: flex; }
+  .nav { gap: 4px; }
+  .nav a, .sidebar .nav-link { position: relative; flex-direction: column; gap: 3px; padding: 2px 0 4px; border-radius: 0; font-size: .7rem; text-align: center; }
+  .nav a:hover, .nav a.active, .sidebar .nav-link:hover, .sidebar .nav-link.active { background: none; }
+  .nav a .ico, .sidebar .nav-link .ico { box-sizing: content-box; width: 22px; height: 22px; padding: 5px 18px; border-radius: 999px; transition: background-color .2s; }
+  .nav a:hover .ico, .sidebar .nav-link:hover .ico { background: rgba(255,255,255,.06); }
+  .nav a.active .ico, .sidebar .nav-link.active .ico { background: var(--primary-container); }
+  .nav a span, .sidebar .nav-link span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nav a .nav-badge { position: absolute; top: -2px; left: 50%; margin: 0 0 0 6px; }
+  button.nav-link { text-align: center; }
+  .who { flex-direction: column; padding: 8px 0 0; }
+  .who-me { flex: none; justify-content: center; }
+  .who-text { display: none; }
+  #timer-side { display: none !important; }
+  .timer-mobile:not(.hidden) { display: flex; position: fixed; left: 108px; bottom: 16px; width: 380px; z-index: 40;
+    background: var(--surface-accent); box-shadow: 0 12px 30px -12px rgba(0,0,0,.8); }
+  body.has-side .main { margin-right: 420px; }
+  dialog.task-dialog.side { width: 420px; max-width: 420px; }
+}
+
+/* Fora do zoom do <body> (posição em px da tela): menu de contexto e dicas. */
+.pop-menu { position: fixed; z-index: 1000; min-width: 200px; padding: 6px 0; border-radius: 12px; font: 14px/1.4 var(--font-sans);
+  background: var(--surface-pop); border: 1px solid var(--line-2); box-shadow: 0 16px 36px -12px rgba(0,0,0,.8); animation: toast-in .12s var(--ease); }
+.pop-menu button { display: flex; align-items: center; gap: 12px; width: 100%; height: 40px; padding: 0 16px; border: 0;
+  background: transparent; color: var(--on-surface); font: inherit; text-align: left; cursor: pointer; }
+.pop-menu button:hover, .pop-menu button:focus-visible { background: var(--surface-container-high); outline: none; }
+.pop-menu .ico { width: 18px; height: 18px; color: var(--on-surface-variant); }
+.tooltip { position: fixed; z-index: 1001; max-width: 260px; padding: 5px 9px; border-radius: 6px; pointer-events: none;
+  font: 500 12px/1.35 var(--font-sans); color: var(--surface); background: var(--on-surface);
+  opacity: 0; transition: opacity .12s; left: -9999px; top: 0; }
+.tooltip.show { opacity: 1; }
+
+/* Busca do menu lateral: resultados enquanto digita. */
+.side-sugg { position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 60; padding: 6px; border-radius: 12px;
+  background: var(--surface-pop); border: 1px solid var(--line-2); box-shadow: 0 16px 36px -12px rgba(0,0,0,.8); }
+.sugg-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--on-surface); font: inherit; font-size: .86rem; text-align: left; cursor: pointer; }
+.sugg-item:hover, .sugg-item:focus-visible { background: var(--surface-container-high); outline: none; }
+.sugg-item .ico { flex: none; width: 16px; height: 16px; color: var(--dim); }
+.sugg-t mark { padding: 0; }
+.sugg-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sugg-item small { flex: none; font-size: .72rem; color: var(--dim); }
+.sugg-empty { padding: 8px 10px; font-size: .84rem; color: var(--dim); }
+.sugg-all { display: block; width: 100%; margin-top: 4px; padding: 8px 10px; border: 0; border-top: 1px solid var(--outline-variant);
+  border-radius: 0 0 8px 8px; background: transparent; color: var(--primary-hi); font: inherit; font-size: .84rem; text-align: left; cursor: pointer; }
+.sugg-all:hover, .sugg-all:focus-visible { background: var(--surface-container-high); outline: none; }
+
+/* Exportar dados: itens de lista com ícone, título, descrição e download. */
+.export-item { display: flex; align-items: center; gap: 14px; width: 100%; padding: 12px 10px; border: 0; border-top: 1px solid var(--outline-variant);
+  background: transparent; color: var(--on-surface); font: inherit; text-align: left; cursor: pointer; border-radius: 0; transition: background-color .2s; }
+.export-item:first-of-type { border-top: 0; }
+.export-item:hover:not(:disabled), .export-item:focus-visible { background: rgba(255,255,255,.04); }
+.export-item > .ico { flex: none; width: 20px; height: 20px; color: var(--primary-hi); }
+.export-ico { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--primary-container); color: var(--primary-hi); }
+.export-ico .ico { width: 18px; height: 18px; }
+.export-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.export-title { font-weight: 600; font-size: .94rem; }
+.export-help { font-size: .82rem; color: var(--on-surface-variant); line-height: 1.4; }

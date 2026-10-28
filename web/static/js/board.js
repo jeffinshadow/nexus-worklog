@@ -2,9 +2,9 @@
 // concluídas. Também exporta os diálogos de criar/editar, usados pela tela Hoje.
 import { api } from "./api.js";
 import { h, icon, clear, addDays, shortDate, localDay, localDateTime, daysBetween } from "./dom.js";
-import { confirmDialog, errorToast, toast, undoLatest, busy, modal, sheet, navBadge } from "./ui.js";
+import { confirmDialog, errorToast, toast, undoLatest, busy, modal, sheet, navBadge, popupMenu } from "./ui.js";
 import { fillProjectSelect, listProjects, projectChip } from "./projects.js";
-import { openTask, duration, parseDuration } from "./task.js";
+import { openTask, openTaskId, duration, parseDuration } from "./task.js";
 import { boardLine } from "./assistant.js";
 import { session } from "./session.js";
 import { timerButton, timerState, startTimer, stopTimer } from "./timer.js";
@@ -111,6 +111,31 @@ export function moreButton(t, onDone) {
         ["Editar", "edit", () => openWorklog(t, onDone)],
       ]);
     } }, icon("more-v"));
+}
+
+// Clique direito (ou tecla de menu) num cartão ou linha de tarefa: as ações
+// dela num menu; no celular (toque longo), no menu que sobe de baixo.
+export function withMenu(el, t, onDone) {
+  el.dataset.taskId = String(t.id);
+  if (openTaskId() === t.id) el.classList.add("selected");
+  el.addEventListener("contextmenu", (ev) => {
+    if (ev.target.closest("a, input, select, textarea")) return; // nesses, o menu do navegador
+    ev.preventDefault();
+    const running = (timerState() || {}).task_id === t.id;
+    const items = [
+      ["Abrir", "right", () => openTask(t.id, onDone)],
+      t.status === "done" ? null : running
+        ? ["Parar o cronômetro e apontar", "stop", () => stopTimer(onDone)]
+        : ["Iniciar o cronômetro", "play", () => startTimer(t, onDone)],
+      t.status === "done" ? null : ["Concluir", "check", () => finishTask(t, onDone)],
+      ["Editar", "edit", () => openWorklog(t, onDone)],
+    ];
+    if (matchMedia("(max-width: 860px)").matches) { sheet(t.title, items); return; }
+    let { clientX: x, clientY: y } = ev;
+    if (!x && !y) { const r = el.getBoundingClientRect(); x = r.left + 24; y = r.top + 24; } // pela tecla de menu
+    popupMenu(x, y, items);
+  });
+  return el;
 }
 
 // Esconde no celular (o botão vai para o menu ⋮).
@@ -479,9 +504,18 @@ export async function mount(root, opts = {}) {
     });
   }
 
+  // Filtro ativo (Material 3, filter chip): destacado e com um X para limpar.
+  const clearFilter = h("button", { type: "button", class: "icon filter-clear", title: "Limpar o filtro", "aria-label": "Limpar o filtro de projeto",
+    onClick: () => { filter.value = ""; filter.dispatchEvent(new Event("change")); } }, icon("close"));
+  const markFilter = () => {
+    filter.classList.toggle("filter-on", project !== "");
+    clearFilter.classList.toggle("hidden", project === "");
+  };
+  filter.addEventListener("change", markFilter);
+  markFilter();
   if (opts.setActions && !readOnly) {
     opts.setActions(
-      filter.options.length > 2 ? filter : null,
+      filter.options.length > 2 ? h("div", { class: "filter-wrap" }, filter, clearFilter) : null,
       h("button", { type: "button", class: "btn btn-primary", "data-fab": "", onClick: () => openWorklog(null, refresh) }, icon("add"), "Tarefa")
     );
   }
@@ -507,7 +541,7 @@ export async function mount(root, opts = {}) {
     }
     const list = isDone ? items.slice(0, doneShown) : items;
     for (const it of list) {
-      const card = h("article", { class: "card" + (isOverdue(it, today) ? " overdue" : "") + (it.priority === 1 && !isDone ? " high" : "") },
+      const card = h("article", { class: "card" + (isOverdue(it, today) ? " overdue" : "") + (it.priority === 1 && !isDone ? " high" : "") + (isDone ? " is-done" : "") },
         h("h3", {}, readOnly ? it.title : h("button", { type: "button", class: "card-open", text: it.title, onClick: () => openTask(it.id, refresh) })));
       if (it.description) card.append(h("p", { text: it.description }));
       card.append(h("div", { class: "card-meta" }, ...taskChips(it, today)));
@@ -519,6 +553,7 @@ export async function mount(root, opts = {}) {
         actions.append(h("button", { type: "button", class: "icon" + (isDone ? "" : " only-desk"), title: "Editar", "aria-label": "Editar " + it.title, onClick: () => openWorklog(it, refresh) }, icon("edit")));
         if (!isDone) actions.append(moreButton(it, refresh));
         card.append(actions);
+        withMenu(card, it, refresh);
       }
       col.body.append(card);
     }

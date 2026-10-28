@@ -25,6 +25,91 @@ export function sheet(title, items) {
   return dlg;
 }
 
+// Menu flutuante (Material 3) aberto num ponto da tela, como o clique direito
+// num cartão. items: [rótulo, ícone, fn]; fecha com clique fora, Esc, rolagem
+// ou Tab; setas andam entre os itens. Fica fora do zoom do <body>, então a
+// posição é a do ponteiro em px da tela.
+let menuClose = null;
+export function popupMenu(x, y, items) {
+  if (menuClose) menuClose();
+  const back = document.activeElement;
+  const menu = h("div", { class: "pop-menu", role: "menu" }, ...items.filter(Boolean).map(([label, ic, fn]) =>
+    h("button", { type: "button", role: "menuitem", onClick: () => { close(); fn(); } }, icon(ic), h("span", { text: label }))));
+  document.documentElement.append(menu);
+  const r = menu.getBoundingClientRect();
+  menu.style.left = Math.max(8, Math.min(x, innerWidth - r.width - 8)) + "px";
+  menu.style.top = Math.max(8, Math.min(y, innerHeight - r.height - 8)) + "px";
+  const btns = [...menu.querySelectorAll("button")];
+  btns[0].focus();
+  const onDown = (ev) => { if (!menu.contains(ev.target)) close(); };
+  const onKey = (ev) => {
+    const i = btns.indexOf(document.activeElement);
+    if (ev.key === "Escape" || ev.key === "Tab") { ev.preventDefault(); ev.stopPropagation(); close(); if (back && back.focus) back.focus(); }
+    else if (ev.key === "ArrowDown") { ev.preventDefault(); btns[(i + 1) % btns.length].focus(); }
+    else if (ev.key === "ArrowUp") { ev.preventDefault(); btns[(i - 1 + btns.length) % btns.length].focus(); }
+  };
+  function close() {
+    menu.remove(); menuClose = null;
+    document.removeEventListener("pointerdown", onDown, true);
+    document.removeEventListener("keydown", onKey, true);
+    removeEventListener("scroll", close, true);
+    removeEventListener("resize", close);
+  }
+  document.addEventListener("pointerdown", onDown, true);
+  document.addEventListener("keydown", onKey, true);
+  addEventListener("scroll", close, true);
+  addEventListener("resize", close);
+  menuClose = close;
+}
+
+// Dicas dos botões só com ícone (Material 3, "plain tooltip"): no lugar da
+// dica nativa do navegador, que demora e é pequena. Aparece ao passar o mouse
+// ou ao chegar pelo teclado. Só em aparelhos com mouse.
+export function initTooltips() {
+  if (!matchMedia("(hover: hover)").matches) return;
+  const SEL = "button.icon, .icon-btn, button.column-toggle";
+  const tip = h("div", { class: "tooltip", "aria-hidden": "true" });
+  document.documentElement.append(tip);
+  let cur = null, timer = null;
+  const hide = () => { clearTimeout(timer); cur = null; tip.classList.remove("show"); };
+  const place = (el) => {
+    if (cur !== el || !el.isConnected) return;
+    tip.textContent = el.dataset.tip;
+    tip.classList.add("show");
+    const r = el.getBoundingClientRect(), t = tip.getBoundingClientRect();
+    const below = r.bottom + 6 + t.height <= innerHeight - 4;
+    tip.style.left = Math.max(4, Math.min(r.left + r.width / 2 - t.width / 2, innerWidth - t.width - 4)) + "px";
+    tip.style.top = (below ? r.bottom + 6 : r.top - 6 - t.height) + "px";
+  };
+  const target = (node) => {
+    const el = node && node.closest ? node.closest(SEL) : null;
+    if (!el) return null;
+    if (el.hasAttribute("title")) { // a nativa sairia junto; o texto vai para o leitor de tela também
+      el.dataset.tip = el.getAttribute("title");
+      if (!el.hasAttribute("aria-label")) el.setAttribute("aria-label", el.dataset.tip);
+      el.removeAttribute("title");
+    }
+    return el.dataset.tip ? el : null;
+  };
+  document.addEventListener("mouseover", (ev) => {
+    const el = target(ev.target);
+    if (el === cur) return;
+    hide();
+    if (!el) return;
+    cur = el;
+    timer = setTimeout(() => place(el), 350);
+  });
+  document.addEventListener("focusin", (ev) => {
+    const el = target(ev.target);
+    if (!el || !el.matches(":focus-visible")) return;
+    hide(); cur = el; place(el);
+  });
+  document.addEventListener("focusout", hide);
+  document.addEventListener("pointerdown", hide, true);
+  document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") hide(); });
+  addEventListener("scroll", hide, true);
+}
+
 // Número no item do menu (ex.: tarefas atrasadas); 0 apaga.
 export function navBadge(view, n, label) {
   for (const a of document.querySelectorAll(`#tabbar [data-view="${view}"], #nav [data-view="${view}"]`)) {

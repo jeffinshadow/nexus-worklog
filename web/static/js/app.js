@@ -12,6 +12,7 @@ import * as equipe from "./equipe.js";
 import * as atribuir from "./atribuir.js";
 import { renewalsPanel } from "./renewals.js";
 import * as search from "./search.js";
+import { highlight } from "./search.js";
 import { loadBranding } from "./branding.js";
 import { avatar } from "./profile.js";
 import { startIdle } from "./idle.js";
@@ -19,8 +20,8 @@ import { configure as configureAssistant } from "./assistant.js";
 import { session } from "./session.js";
 import { initTimer, stopTimer, timerState } from "./timer.js";
 import { openWorklog } from "./board.js";
-import { openTask } from "./task.js";
-import { modal, busy } from "./ui.js";
+import { openTask, closeSidePanel } from "./task.js";
+import { modal, busy, initTooltips } from "./ui.js";
 
 let me = null;
 
@@ -73,6 +74,7 @@ async function route() {
   // botões ao lado dele ficam como estavam até a resposta chegar, sem a página
   // pular (os botões podem quebrar linha e mudar a altura do cabeçalho).
   const eyebrow = document.getElementById("page-eyebrow");
+  if (shownView !== name) closeSidePanel(); // o detalhe lateral é da tela que ficou para trás
   if (shownView) kept[shownView] = { assist: document.getElementById("assist-slot").firstChild, eyebrow: eyebrow.textContent,
     actions: [...document.getElementById("page-actions").childNodes] };
   shownView = name;
@@ -268,6 +270,7 @@ async function boot() {
   window.addEventListener("nexus:me", () => { renderWho(); configureAssistant(me); if (has("user")) startIdle(me, route); });
   // Menu: cada item aparece só para quem tem o papel (data-need).
   for (const el of document.querySelectorAll("[data-need]")) el.classList.toggle("hidden", !has(el.dataset.need));
+  initTooltips();
   // Barra inferior: no máximo 5 itens; quem atribui troca a Busca por Atribuir.
   if (has("assigner")) document.querySelector('#tabbar [data-view="busca"]').classList.add("hidden");
   // Celular: rolando a página, o título vira uma barra fina no topo.
@@ -283,7 +286,57 @@ async function boot() {
   document.getElementById("side-search").addEventListener("submit", (ev) => {
     ev.preventDefault();
     const v = sideQ.value.trim();
+    hideSugg();
     if (v.length >= 2) location.hash = "#/busca?q=" + encodeURIComponent(v);
+  });
+  // Resultados enquanto digita (até 5 tarefas e 2 projetos); Enter abre a Busca completa.
+  const sugg = h("div", { class: "side-sugg hidden", id: "side-sugg", "aria-label": "Sugestões da busca" });
+  document.getElementById("side-search").append(sugg);
+  let suggTimer = null, suggSeq = 0;
+  // Idempotente: tirar da tela a sugestão com foco dispara o focusout, que chama de novo.
+  function hideSugg() {
+    clearTimeout(suggTimer); suggSeq++;
+    if (sugg.classList.contains("hidden")) return;
+    sugg.classList.add("hidden");
+    sugg.replaceChildren();
+  }
+  const suggItems = () => [...sugg.querySelectorAll(".sugg-item")];
+  sideQ.addEventListener("input", () => {
+    clearTimeout(suggTimer);
+    const q = sideQ.value.trim();
+    if (q.length < 2) { hideSugg(); return; }
+    suggTimer = setTimeout(async () => {
+      const my = ++suggSeq;
+      let r;
+      try { r = await api.get("/search?q=" + encodeURIComponent(q)); } catch { return; }
+      if (my !== suggSeq) return;
+      clear(sugg);
+      const tasks = r.tasks.slice(0, 5), projs = r.projects.slice(0, 2);
+      for (const t of tasks)
+        sugg.append(h("button", { type: "button", class: "sugg-item", onClick: () => { hideSugg(); sideQ.value = ""; openTask(t.id, route); } },
+          icon("tasks"), h("span", { class: "sugg-t" }, ...highlight(t.title, q)), t.status === "done" ? h("small", { text: "concluída" }) : null));
+      for (const p of projs)
+        sugg.append(h("button", { type: "button", class: "sugg-item", onClick: () => {
+          hideSugg(); sideQ.value = "";
+          sessionStorage.setItem("nexus.board.project", String(p.id));
+          if (location.hash.startsWith("#/tarefas")) route(); else location.hash = "#/tarefas";
+        } }, icon("folder"), h("span", { class: "sugg-t" }, ...highlight(p.name, q)), h("small", { text: "projeto" })));
+      if (!tasks.length && !projs.length) sugg.append(h("p", { class: "sugg-empty", text: "Nada encontrado." }));
+      sugg.append(h("button", { type: "submit", class: "sugg-all", text: "Ver todos os resultados" }));
+      sugg.classList.remove("hidden");
+    }, 250);
+  });
+  // Setas andam entre as sugestões; Esc fecha e volta ao campo.
+  document.getElementById("side-search").addEventListener("keydown", (ev) => {
+    const items = suggItems();
+    if (sugg.classList.contains("hidden") || !items.length) return;
+    const i = items.indexOf(document.activeElement);
+    if (ev.key === "ArrowDown") { ev.preventDefault(); items[Math.min(i + 1, items.length - 1)].focus(); }
+    else if (ev.key === "ArrowUp") { ev.preventDefault(); if (i <= 0) sideQ.focus(); else items[i - 1].focus(); }
+    else if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); hideSugg(); sideQ.focus(); }
+  });
+  document.getElementById("side-search").addEventListener("focusout", (ev) => {
+    if (!ev.currentTarget.contains(ev.relatedTarget)) hideSugg();
   });
   // Atalhos de teclado (fora de campos e diálogos). "?" mostra a lista.
   const SHORTCUTS = {
@@ -310,7 +363,7 @@ async function boot() {
     const sc = SHORTCUTS[ev.key.length === 1 ? ev.key.toLowerCase() : ""] || SHORTCUTS[ev.key];
     if (!sc || !has("user")) return;  // atalhos são do registro próprio
     const tag = (document.activeElement && document.activeElement.tagName) || "";
-    if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag) || document.activeElement?.isContentEditable || document.querySelector("dialog[open]")) return;
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag) || document.activeElement?.isContentEditable || document.querySelector("dialog[open]:not(.side)")) return;
     ev.preventDefault();
     sc[1]();
   });

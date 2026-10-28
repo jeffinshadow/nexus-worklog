@@ -27,13 +27,39 @@ function actorBadge(row) {
   return h("span", { class: "who-badge", title: "Feito por chave de API" }, icon("spark"), row.token_name || row.actor);
 }
 
+// Tarefa aberta no painel lateral (computador): o quadro marca o cartão dela.
+let sideTaskId = null, sideOwner = null;
+export const openTaskId = () => sideTaskId;
+function markSelected() {
+  for (const el of document.querySelectorAll("[data-task-id]"))
+    el.classList.toggle("selected", Number(el.dataset.taskId) === sideTaskId);
+}
+// Fecha o painel lateral (ex.: ao trocar de tela).
+export function closeSidePanel() {
+  for (const d of document.querySelectorAll("dialog.task-dialog.side[open]")) d.close();
+}
+
 export async function openTask(taskId, onChange) {
+  // Computador: painel lateral (lista + detalhe, Material 3); o quadro segue
+  // visível e clicável ao lado. Celular: tela inteira.
+  const side = matchMedia("(min-width: 861px)").matches;
+  closeSidePanel(); // um detalhe por vez: abrir outro cartão troca o painel
   let changed = false;
   const body = h("div", { class: "task-body" });
-  const dlg = h("dialog", { class: "task-dialog", "aria-label": "Detalhe da tarefa" }, body);
+  const dlg = h("dialog", { class: "task-dialog" + (side ? " side" : ""), "aria-label": "Detalhe da tarefa" }, body);
   document.body.append(dlg);
-  dlg.addEventListener("close", () => { dlg.remove(); if (changed) onChange && onChange(); });
-  const touch = () => { changed = true; return render(); };
+  const onKey = (ev) => { if (ev.key === "Escape" && !document.querySelector("dialog:modal")) dlg.close(); };
+  dlg.addEventListener("close", () => {
+    dlg.remove();
+    if (side) {
+      document.removeEventListener("keydown", onKey);
+      // O "close" chega depois; se outro painel já abriu, ele é o dono agora.
+      if (sideOwner === dlg) { sideOwner = null; sideTaskId = null; document.body.classList.remove("has-side"); markSelected(); }
+    }
+    if (changed) onChange && onChange();
+  });
+  // No painel lateral o quadro ao lado se atualiza na hora; na janela, ao fechar.
+  const touch = () => { if (side) { if (onChange) onChange(); } else changed = true; return render(); };
   // Desfazer pelo aviso pode chegar com o detalhe já fechado: aí recarrega quem abriu.
   const after = () => (dlg.open ? touch() : onChange && onChange());
 
@@ -207,7 +233,15 @@ export async function openTask(taskId, onChange) {
   }
 
   await render();
-  dlg.showModal();
+  if (!side) { dlg.showModal(); return; }
+  dlg.show();
+  sideOwner = dlg;
+  sideTaskId = taskId;
+  document.body.classList.add("has-side");
+  markSelected();
+  document.addEventListener("keydown", onKey);
+  const first = dlg.querySelector(".task-appbar button");
+  if (first) first.focus();
 }
 
 // Resumo para colar no chamado (GLPI, Jira...) ou no e-mail do cliente: o que

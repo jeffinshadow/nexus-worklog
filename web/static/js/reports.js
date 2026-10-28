@@ -43,8 +43,19 @@ export async function mount(root, opts = {}) {
     projSel.append(h("option", { value: String(p.id), text: p.name + (p.archived ? " (arquivado)" : "") }));
   const btn = h("button", { type: "button", class: "btn btn-primary", onClick: run }, icon("reports"), "Exportar PDF");
 
-  const quick = h("div", { class: "quick" }, ...ranges(today).map(([label, a, b]) =>
-    h("button", { type: "button", class: "btn btn-ghost btn-sm", text: label, onClick: () => { startInput.value = a; endInput.value = b; refreshPreview(); } })));
+  // Períodos prontos como botão segmentado: o que bate com as datas fica marcado.
+  const periods = ranges(today);
+  const quick = h("div", { class: "seg seg-sm quick", role: "group", "aria-label": "Período" }, ...periods.map(([label, a, b]) =>
+    h("button", { type: "button", class: "chip-btn", text: label, "aria-pressed": "false",
+      onClick: () => { startInput.value = a; endInput.value = b; markPeriod(); refreshPreview(); } })));
+  function markPeriod() {
+    [...quick.children].forEach((b, i) => {
+      const on = periods[i][1] === startInput.value && periods[i][2] === endInput.value;
+      b.setAttribute("aria-pressed", String(on));
+      b.setAttribute("aria-selected", String(on)); // mesmo visual do .seg
+    });
+  }
+  for (const el of [startInput, endInput]) el.addEventListener("change", markPeriod);
 
   // Com projeto escolhido: "projeto completo" (padrão, sem datas) ou um período.
   let whole = true;
@@ -99,16 +110,21 @@ export async function mount(root, opts = {}) {
     h("div", { class: "report-controls" }, dates, btn),
     preview, err));
   sync();
+  markPeriod();
   refreshPreview();
 
   // Exportação dos dados (só no próprio usuário; o admin exporta PDF).
   if (!opts.exportBase) {
+    // Cada exportação é um item de lista (Material 3): ícone, título, descrição
+    // e o download no fim; a linha toda é o botão.
     const dl = (path, label, help) => {
-      const b = h("button", { type: "button", class: "btn btn-ghost", onClick: async () => {
+      const b = h("button", { type: "button", class: "export-item", onClick: async () => {
         b.disabled = true;
         try { await api.download(typeof path === "function" ? path() : path); } catch (e) { errorToast(e, "Falha ao exportar."); } finally { b.disabled = false; }
-      } }, icon("download"), label);
-      return h("div", { class: "export-row" }, b, h("span", { class: "help", text: help }));
+      } }, h("span", { class: "export-ico" }, icon(label.includes("JSON") ? "folder" : "list")),
+        h("span", { class: "export-text" }, h("span", { class: "export-title", text: label }), h("span", { class: "export-help", text: help })),
+        icon("download"));
+      return b;
     };
     root.append(h("div", { class: "report-section" },
       h("h3", { text: "Exportar dados" }),
