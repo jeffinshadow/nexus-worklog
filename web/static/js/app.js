@@ -76,8 +76,13 @@ async function route() {
   // carregar depois da troca não sobrescreve a da tela atual.
   const assist = (node) => { if (seq === routeSeq) setAssist(node); };
   // Carregando: a tela antiga não fica parecendo a nova enquanto a resposta não vem.
+  // O aviso fica fora da tela e só a esconde: a tela pode já ter montado a
+  // estrutura antes da API responder (Tarefas, Atribuir) e não pode perdê-la.
   el.setAttribute("aria-busy", "true");
-  const loading = setTimeout(() => { if (seq === routeSeq) { clear(el); el.append(h("p", { class: "empty", text: "Carregando…" })); } }, 250);
+  const loadingMsg = document.getElementById("view-loading");
+  const loading = setTimeout(() => {
+    if (seq === routeSeq) { el.classList.add("hidden"); loadingMsg.classList.remove("hidden"); }
+  }, 250);
   try {
     await view.mount(el, { me, setActions, setEyebrow, setAssist: assist, go });
   } catch (e) {
@@ -86,6 +91,7 @@ async function route() {
   } finally {
     clearTimeout(loading);
     el.removeAttribute("aria-busy");
+    if (seq === routeSeq) { el.classList.remove("hidden"); loadingMsg.classList.add("hidden"); }
   }
   window.scrollTo(0, 0);
   // Link direto para uma tarefa (#/tarefas?id=N: e-mail de atribuição, calendário).
