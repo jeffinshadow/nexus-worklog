@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from .. import db, people
 from ..deps import require_viewer
+from .dashboard import MONTH, parse_month
 from ..services import app_today, get_board, get_dashboard
 from .board import check_board_day
 from .export import time_csv
@@ -46,9 +47,9 @@ def user_board(user_id: int, day: Optional[date] = Query(default=None), viewer=D
 
 
 @router.get("/users/{user_id}/dashboard")
-def user_dashboard(user_id: int, viewer=Depends(require_viewer)):
+def user_dashboard(user_id: int, month: Optional[str] = MONTH, viewer=Depends(require_viewer)):
     _ensure_user(user_id)
-    return get_dashboard(user_id)
+    return get_dashboard(user_id, parse_month(month))
 
 
 @router.get("/users/{user_id}/projects")

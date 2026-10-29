@@ -255,14 +255,51 @@ def _recurring_tasks_and_completions(user_id: int, since: date, until: date):
     return tasks, completions
 
 
-def get_dashboard(user_id: int) -> dict:
-    """Dashboard: a retrospectiva (o "hoje" fica na tela Hoje e no resumo)."""
+def first_record_day(user_id: int) -> date:
+    """Primeiro dia com algo da pessoa (o lançamento retroativo vem antes da conta)."""
+    return db.query_one(
+        """SELECT LEAST((SELECT (created_at AT TIME ZONE %(tz)s)::date FROM users WHERE id = %(u)s),
+                        (SELECT min((created_at AT TIME ZONE %(tz)s)::date) FROM worklog_tasks WHERE user_id = %(u)s),
+                        (SELECT min(completed_date) FROM recurring_completions WHERE user_id = %(u)s),
+                        (SELECT min(day) FROM time_entries WHERE user_id = %(u)s)) AS d""",
+        {"tz": config.APP_TZ, "u": user_id})["d"] or app_today()
+
+
+def _month_end(m: date) -> date:
+    return m.replace(day=calendar.monthrange(m.year, m.month)[1])
+
+
+def get_dashboard(user_id: int, month: date | None = None) -> dict:
+    """Dashboard: a retrospectiva (o "hoje" fica na tela Hoje e no resumo).
+
+    Sem `month`: as janelas móveis (últimas 4 semanas / 30 dias), com o backlog
+    e as sequências de agora. Com `month` (dia 1): o mês inteiro (o corrente até
+    hoje); backlog e sequência só existem para o mês corrente, porque são do
+    momento e não se reconstroem no passado."""
     today = app_today()
     mask = work_mask(user_id)
+    if month is None:
+        win = {"heat_start": week_start(today) - timedelta(days=(_HEAT_WEEKS - 1) * 7), "heat_from": None,
+               "adh_start": today - timedelta(days=_ADHERENCE_DAYS - 1),
+               "tp_start": week_start(today) - timedelta(days=(_THROUGHPUT_WEEKS - 1) * 7),
+               "proj_start": today - timedelta(days=_PROJECT_DAYS - 1), "end": today, "now": True}
+    else:
+        end = min(_month_end(month), today)
+        win = {"heat_start": week_start(month), "heat_from": month, "adh_start": month,
+               "tp_start": week_start(month), "proj_start": month, "end": end, "now": end == today}
     tasks, completions = _recurring_tasks_and_completions(
-        user_id, today - timedelta(days=_STREAK_LOOKBACK), today
+        user_id, min(win["heat_start"], win["adh_start"]) - timedelta(days=_STREAK_LOOKBACK), win["end"]
     )
-    return get_dashboard_analytics(user_id, tasks, completions, mask, today)
+    out = get_dashboard_analytics(user_id, tasks, completions, mask, today, win)
+    first = first_record_day(user_id).replace(day=1)
+    months, m = [], today.replace(day=1)
+    while m >= first:
+        months.append(m.strftime("%Y-%m"))
+        m = (m - timedelta(days=1)).replace(day=1)
+    out["period"] = {"month": month.strftime("%Y-%m") if month else None,
+                     "start": win["adh_start"], "end": win["end"], "now": win["now"]}
+    out["months"] = months  # do mais recente ao primeiro registro
+    return out
 
 
 # Janelas dos gráficos analíticos (em dias / semanas, sempre no fuso do app).
@@ -293,7 +330,7 @@ def _current_streak(dates: set, today: date, mask: int, t: dict) -> int:
     return streak
 
 
-def get_dashboard_analytics(user_id: int, tasks, completions, mask: int, today: date) -> dict:
+def get_dashboard_analytics(user_id: int, tasks, completions, mask: int, today: date, win: dict) -> dict:
     """Séries e recortes analíticos do dashboard.
 
     Recebe as recorrentes e as conclusões já lidas por get_dashboard e deriva
@@ -303,15 +340,16 @@ def get_dashboard_analytics(user_id: int, tasks, completions, mask: int, today: 
     fuso do app; `today` é a referência única.
     """
     tz = config.APP_TZ
-    tp_start = week_start(today) - timedelta(days=(_THROUGHPUT_WEEKS - 1) * 7)
+    end = win["end"]  # último dia da janela (hoje, ou o fim do mês escolhido)
+    tp_start = win["tp_start"]
     pont = db.query_all(
         """
         SELECT (completed_at AT TIME ZONE %s)::date AS done_d
           FROM worklog_tasks
          WHERE user_id = %s AND status = 'done' AND completed_at IS NOT NULL
-           AND (completed_at AT TIME ZONE %s)::date >= %s
+           AND (completed_at AT TIME ZONE %s)::date BETWEEN %s AND %s
         """,
-        (tz, user_id, tz, tp_start),
+        (tz, user_id, tz, max(tp_start, win["heat_from"] or tp_start), end),
     )
     projects = db.query_all(
         """
@@ -321,12 +359,12 @@ def get_dashboard_analytics(user_id: int, tasks, completions, mask: int, today: 
           LEFT JOIN LATERAL (SELECT w.project_id AS pid UNION
                              SELECT x.project_id FROM worklog_task_projects x WHERE x.task_id = w.id) tp ON true
           LEFT JOIN projects p ON p.id = tp.pid
-         WHERE e.user_id = %s AND e.day > %s
+         WHERE e.user_id = %s AND e.day BETWEEN %s AND %s
          GROUP BY p.name, p.color ORDER BY minutes DESC
         """,
-        (user_id, today - timedelta(days=_PROJECT_DAYS)),
+        (user_id, win["proj_start"], end),
     )
-    backlog = db.query_one(
+    backlog = None if not win["now"] else db.query_one(
         """
         SELECT
           count(*) FILTER (WHERE status = 'todo')::int        AS todo,
@@ -352,13 +390,17 @@ def get_dashboard_analytics(user_id: int, tasks, completions, mask: int, today: 
     # 1) Heatmap: série diária (done, slots) das últimas _HEAT_WEEKS semanas.
     #    week_start(today) é um domingo, então heat_start também é domingo:
     #    cada coluna do calendário é uma semana começando no domingo.
-    heat_start = week_start(today) - timedelta(days=(_HEAT_WEEKS - 1) * 7)
+    heat_start = win["heat_start"]
     heat_days = []
     d = heat_start
     tasks_done_on: dict[date, set] = {}
     for c in completions:
         tasks_done_on.setdefault(c["completed_date"], set()).add(c["task_id"])
-    while d <= today:
+    while d <= end:
+        if win["heat_from"] and d < win["heat_from"]:  # semana que começa no mês anterior
+            heat_days.append({"date": d, "slots": 0, "done": 0, "out": True})
+            d += timedelta(days=1)
+            continue
         due_ids = {t["id"] for t in tasks if t["start_d"] <= d <= t["end_d"] and is_due(t, d, mask)}
         feitos = tasks_done_on.get(d, set())
         # Feito fora da agenda não entra (é extra). Dia sem nada devido = quadro vazio.
@@ -366,11 +408,11 @@ def get_dashboard_analytics(user_id: int, tasks, completions, mask: int, today: 
         d += timedelta(days=1)
 
     # 2) Ranking de aderência por tarefa (últimos _ADHERENCE_DAYS) + streak atual.
-    win_start = today - timedelta(days=_ADHERENCE_DAYS - 1)
+    win_start = win["adh_start"]
     task_rows = []
     for t in tasks:
         s = max(win_start, t["start_d"])
-        e = min(today, t["end_d"])
+        e = min(end, t["end_d"])
         dts = dates_by_task.get(t["id"], set())
         slots = _due_between(t, s, e, mask)
         if e == today and is_due(t, today, mask) and today not in dts:
@@ -380,14 +422,14 @@ def get_dashboard_analytics(user_id: int, tasks, completions, mask: int, today: 
         done = sum(1 for dd in dts if s <= dd <= e and is_due(t, dd, mask))
         task_rows.append({
             "label": t["label"], "slots": slots, "done": done,
-            "streak": _current_streak(dts, today, mask, t),
+            "streak": _current_streak(dts, today, mask, t) if win["now"] else None,
         })
     task_rows.sort(key=lambda r: (r["done"] / r["slots"], r["done"]))  # a mais pulada primeiro (retro)
 
     # 3) Vazão: tarefas concluídas por semana (últimas _THROUGHPUT_WEEKS).
     week_counts: dict[date, int] = {}
     wk = tp_start
-    while wk <= today:
+    while wk <= end:
         week_counts[wk] = 0
         wk += timedelta(days=7)
     for p in pont:
@@ -401,7 +443,7 @@ def get_dashboard_analytics(user_id: int, tasks, completions, mask: int, today: 
         "task_adherence": {"tasks": task_rows},
         "throughput": {"weeks": throughput},
         "projects": {"items": projects},
-        "backlog": {
+        "backlog": None if backlog is None else {
             "todo": backlog["todo"],
             "in_progress": backlog["in_progress"],
             "blocked": backlog["blocked"],
@@ -693,12 +735,6 @@ def get_week_summary(user_id: int, back: int) -> dict:
         week = _compact(get_report_range(user_id, ws, we, inputs=inputs, with_open=False))
         prev = _compact(get_report_range(user_id, prev_s, prev_s + timedelta(days=6), inputs=inputs, with_open=False))
         week["previous"] = {k: prev[k] for k in ("recurring_done", "recurring_total", "pontual_done", "minutes", "start", "end")}
-    # Até a semana do primeiro registro (o lançamento retroativo vem antes da conta).
-    first = db.query_one(
-        """SELECT LEAST((SELECT (created_at AT TIME ZONE %(tz)s)::date FROM users WHERE id = %(u)s),
-                        (SELECT min((created_at AT TIME ZONE %(tz)s)::date) FROM worklog_tasks WHERE user_id = %(u)s),
-                        (SELECT min(completed_date) FROM recurring_completions WHERE user_id = %(u)s),
-                        (SELECT min(day) FROM time_entries WHERE user_id = %(u)s)) AS d""",
-        {"tz": config.APP_TZ, "u": user_id})["d"] or today
+    first = first_record_day(user_id)  # até a semana do primeiro registro
     oldest = min(WEEKS_BACK_MAX, max(0, (week_start(today) - week_start(min(first, today))).days // 7))
     return {"today": today, "back": back, "oldest": oldest, "week": week}

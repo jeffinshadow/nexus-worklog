@@ -1,40 +1,82 @@
 import { api } from "./api.js";
-import { h, clear, shortDate } from "./dom.js";
+import { h, icon, clear, shortDate } from "./dom.js";
+import { errorToast } from "./ui.js";
 import { projectBars } from "./summary.js";
 import { retroCard } from "./assistant.js";
 
 const NS = "http://www.w3.org/2000/svg";
 const MONTHS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+const MONTHS_LONG = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+
+// Período escolhido (fica enquanto a aba estiver aberta): null = últimos 30 dias,
+// ou "AAAA-MM". As setas andam por [null, mês corrente, mês anterior, ...].
+let month = null;
+const monthName = (m) => MONTHS_LONG[Number(m.slice(5)) - 1] + " de " + m.slice(0, 4);
+// Como o período entra nas frases: "nos últimos 30 dias" / "em setembro".
+function periodPhrase(p) {
+  return p && p.month ? "em " + MONTHS_LONG[Number(p.month.slice(5)) - 1] : "nos últimos 30 dias";
+}
 
 // Todas as agregações vêm do backend (/dashboard). O frontend só desenha — SVG na mão,
 // sem libs, coerente com a CSP rígida.
 export async function mount(root, opts = {}) {
-  const dashUrl = opts.dashUrl || "/dashboard";
-  const data = await api.get(dashUrl);
-  const a = data || {};
+  const base = opts.dashUrl || "/dashboard";
+  let a;
+  try {
+    a = (await api.get(month ? `${base}?month=${month}` : base)) || {};
+  } catch (e) {
+    if (!month) throw e;
+    month = null; // mês que deixou de existir (outra pessoa, outro período): volta ao padrão
+    a = (await api.get(base)) || {};
+  }
+  const p = a.period || {};
+  const mes = p.month ? MONTHS_LONG[Number(p.month.slice(5)) - 1] : null;
+  const ph = periodPhrase(p);
 
   clear(root);
   // Retrospectiva: o "hoje" e a semana ficam na tela Hoje. A leitura do
   // assistente só na própria (o admin vendo outra pessoa não recebe "sua rotina").
   if (!opts.dashUrl && opts.setAssist) opts.setAssist(retroCard(a, opts.me));
   root.append(
+    periodNav(a, () => mount(root, opts), root),
     section("Rotinas · consistência", [
       h("div", { class: "consist-grid" },
-        chartCard("Aderência diária", "Últimas 4 semanas — % das rotinas feitas nos dias da agenda.", heatmap(a.heatmap), "compact heat"),
-        chartCard("Aderência por rotina", "Últimos 30 dias — dias feitos ÷ dias da agenda de cada rotina.", taskRanking(a.task_adherence), "grow"),
+        chartCard("Aderência diária", (mes ? `${cap(mes)}` : "Últimas 4 semanas") + " — % das rotinas feitas nos dias da agenda.", heatmap(a.heatmap), "compact heat"),
+        chartCard("Aderência por rotina", (mes ? `${cap(mes)}` : "Últimos 30 dias") + " — dias feitos ÷ dias da agenda de cada rotina.", taskRanking(a.task_adherence, ph), "grow"),
       ),
     ]),
     section("Tarefas · fluxo", [
       h("div", { class: "chart-grid fluxo-grid" },
-        chartCard("Concluídas por semana", "Vazão das últimas 4 semanas.", throughput(a.throughput)),
-        chartCard("Tempo por projeto", "Horas apontadas nos últimos 30 dias. Tarefa em mais de um projeto conta em cada um.", projectTime(a.projects)),
+        chartCard("Concluídas por semana", mes ? `Semanas de ${mes} (as das pontas começam ou terminam no mês vizinho).` : "Vazão das últimas 4 semanas.", throughput(a.throughput, ph)),
+        chartCard("Tempo por projeto", `Horas apontadas ${ph}. Tarefa em mais de um projeto conta em cada um.`, projectTime(a.projects, ph)),
       ),
     ]),
-    section("Backlog · saúde", [
-      backlogHealth(a.backlog),
-    ])
+    a.backlog
+      ? section("Backlog · saúde", [backlogHealth(a.backlog)])
+      : h("p", { class: "chart-note dash-past-note", text: "Backlog e sequências são do momento: aparecem em “Últimos 30 dias” e no mês corrente." })
   );
+}
+
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+// ‹ Últimos 30 dias › — as setas voltam mês a mês até o primeiro registro.
+function periodNav(a, rerender, root) {
+  const steps = [null, ...(a.months || [])];
+  const i = Math.max(0, steps.indexOf(month));
+  const go = async (j) => {
+    if (j < 0 || j >= steps.length) return;
+    month = steps[j];
+    root.classList.add("refreshing");
+    try { await rerender(); } catch (e) { errorToast(e); } finally { root.classList.remove("refreshing"); }
+  };
+  const p = a.period || {};
+  const label = !month ? "Últimos 30 dias" : monthName(month) + (p.now ? " · até hoje" : "");
+  const prev = h("button", { type: "button", class: "icon", title: "Período anterior", "aria-label": "Período anterior", onClick: () => go(i + 1) }, icon("left"));
+  const next = h("button", { type: "button", class: "icon", title: "Próximo período", "aria-label": "Próximo período", onClick: () => go(i - 1) }, icon("right"));
+  prev.disabled = i >= steps.length - 1;
+  next.disabled = i === 0;
+  return h("div", { class: "day-nav dash-period" }, prev, h("span", { class: "day-nav-label", "aria-live": "polite", text: label }), next);
 }
 
 // ---------------------------------------------------------------- estrutura --
@@ -117,9 +159,9 @@ function heatColor(d) {
 
 function heatmap(hm) {
   if (!hm || !hm.days || !hm.days.length || hm.days.every((d) => d.slots === 0))
-    return emptyBox("sem rotinas ainda");
-  const days = hm.days; // 4 semanas, começando num domingo
-  const start = parseISO(days[0].date);
+    return emptyBox(month ? "nenhuma rotina na agenda neste mês" : "sem rotinas ainda");
+  const days = hm.days; // semanas inteiras, começando num domingo
+  const lead = Math.max(0, days.findIndex((d) => !d.out)); // dias do mês anterior na 1ª coluna
   const cols = Math.ceil(days.length / 7);
   const cell = 24, gap = 3, step = cell + gap;
   const padL = 34, padT = 21; // espaço para os rótulos (dia da semana e mês) em 12px
@@ -136,7 +178,8 @@ function heatmap(hm) {
   // Rótulos de mês (quando a coluna inicia um mês diferente da anterior).
   let prevMonth = -1;
   for (let col = 0; col < cols; col++) {
-    const dt = new Date(start.getTime() + col * 7 * 86400000);
+    // 1º dia visível da coluna (na primeira, o 1º dia do mês)
+    const dt = parseISO(days[Math.min(days.length - 1, col * 7 + (col ? 0 : lead))].date);
     if (dt.getMonth() !== prevMonth) {
       s.appendChild(textEl(padL + col * step, padT - 6, MONTHS[dt.getMonth()], "heat-axis"));
       prevMonth = dt.getMonth();
@@ -148,6 +191,7 @@ function heatmap(hm) {
   }
 
   days.forEach((d, i) => {
+    if (d.out) return; // semana que começa no mês anterior: o dia fica em branco
     const col = Math.floor(i / 7), row = i % 7;
     const { fill, op, empty } = heatColor(d);
     const r = rect(padL + col * step, padT + row * step, cell, cell, fill, { rx: 2 });
@@ -175,9 +219,9 @@ function heatLegend() {
 
 // -------------------------------------------------- ranking por tarefa (HTML) --
 
-function taskRanking(ta) {
+function taskRanking(ta, ph = "nos últimos 30 dias") {
   const tasks = (ta && ta.tasks) || [];
-  if (!tasks.length) return emptyBox("nenhuma rotina vigente nos últimos 30 dias");
+  if (!tasks.length) return emptyBox(`nenhuma rotina vigente ${ph}`);
   const rows = tasks.map((t) => {
     const pct = Math.round((t.done / t.slots) * 100);
     const fill = h("span", { class: "rank-fill" });
@@ -237,7 +281,7 @@ function verticalBars(items, opts = {}) {
 
 // --------------------------------------------------------------- throughput --
 
-function throughput(tp) {
+function throughput(tp, ph = "nos últimos 30 dias") {
   const weeks = (tp && tp.weeks) || [];
   if (!weeks.length) return emptyBox("sem dados");
   const total = weeks.reduce((a, w) => a + w.done, 0);
@@ -247,7 +291,7 @@ function throughput(tp) {
     title: `semana de ${shortDate(w.week_start)}: ${w.done} concluída(s)`,
   }));
   const chart = verticalBars(items, { color: "var(--primary)" });
-  if (total === 0) return h("div", { class: "fluxo-body" }, chart, h("p", { class: "chart-note", text: "nenhuma tarefa concluída nas últimas 4 semanas" }));
+  if (total === 0) return h("div", { class: "fluxo-body" }, chart, h("p", { class: "chart-note", text: month ? `nenhuma tarefa concluída ${ph}` : "nenhuma tarefa concluída nas últimas 4 semanas" }));
   return h("div", { class: "fluxo-body" }, chart);
 }
 
@@ -307,8 +351,8 @@ function agingRow(label, count, color) {
 
 // ------------------------------------------------------------ tempo/projeto --
 
-function projectTime(pt) {
+function projectTime(pt, ph = "nos últimos 30 dias") {
   const items = (pt && pt.items) || [];
-  if (!items.length) return emptyBox("nada apontado nos últimos 30 dias");
+  if (!items.length) return emptyBox(`nada apontado ${ph}`);
   return h("div", { class: "fluxo-body" }, ...projectBars(items));
 }

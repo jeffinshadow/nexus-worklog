@@ -999,3 +999,6 @@ dialog.help-dialog > .dialog-actions { position: sticky; bottom: -24px; margin: 
 .notice-sub { padding: 10px 0 14px 30px; border-bottom: 1px solid var(--outline-variant); }
 .notice-sub .field { margin: 10px 0 4px; max-width: 420px; }
 .notice-sub.off { opacity: .5; }
+/* Retrospectiva: navegação entre "últimos 30 dias" e os meses anteriores */
+.dash-period { max-width: 360px; margin: 0 0 18px; }
+.dash-past-note { margin-top: 8px; }
