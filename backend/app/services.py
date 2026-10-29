@@ -507,9 +507,11 @@ def get_report_range(user_id: int, start: date, end: date, project: dict | None 
         time_by_date.setdefault(e["day"], []).append(e)
 
     # Cumprimento por recorrente no período (devidas x feitas, + extras).
+    # marks: um caractere por dia do período (a matriz do PDF): D feita,
+    # M perdida, E extra, O fora da agenda, P hoje pendente, espaço = não vigente.
     per_rec = {t["id"]: {"label": t["label"], "freq": t["freq"], "weekdays": t["weekdays"],
                          "month_day": t["month_day"], "interval_days": t["interval_days"],
-                         "due": 0, "done": 0, "extra": 0} for t in tasks}
+                         "due": 0, "done": 0, "extra": 0, "marks": ""} for t in tasks}
 
     series, days = [], []
     total_done = total_slots = total_extra = 0
@@ -517,19 +519,28 @@ def get_report_range(user_id: int, start: date, end: date, project: dict | None 
     while d <= end:
         done_ids = done_by_date.get(d, set())
         vigentes = [t for t in tasks if t["start_d"] <= d <= t["end_d"]]
+        for t in tasks:
+            if not t["start_d"] <= d <= t["end_d"]:
+                per_rec[t["id"]]["marks"] += " "
         rec, extras = [], []
         for t in vigentes:
             st = per_rec[t["id"]]
             feito = t["id"] in done_ids
+            devida = is_due(t, d, mask)
             if d == hoje and not feito:
+                st["marks"] += "P" if devida else "O"
                 continue  # hoje ainda dá tempo: pendente não é falta
-            if is_due(t, d, mask):
+            if devida:
                 st["due"] += 1
                 st["done"] += feito
+                st["marks"] += "D" if feito else "M"
                 rec.append({"label": t["label"], "done": feito, "extra": False, "note": notes.get((d, t["id"]))})
             elif feito:
                 st["extra"] += 1
+                st["marks"] += "E"
                 extras.append({"label": t["label"], "done": True, "extra": True, "note": notes.get((d, t["id"]))})
+            else:
+                st["marks"] += "O"
         n_done = sum(1 for r in rec if r["done"])
         pont = pont_by_date.get(d, [])
         tempo = time_by_date.get(d, [])
