@@ -364,6 +364,8 @@ class PrefsIn(BaseModel):
     weekly: bool = False
     weekly_hour: int = Field(default=8, ge=0, le=23)
     show_titles: bool = True
+    weekly_pdf: bool = False                 # o relatório da semana em PDF, anexado
+    weekly_cc: Optional[EmailStr] = None     # cópia do resumo semanal (gestor, cliente)
 
 
 class FeedIn(BaseModel):

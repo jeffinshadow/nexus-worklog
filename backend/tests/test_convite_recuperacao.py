@@ -5,7 +5,7 @@ import pytest
 
 from app import db, mailer
 from app.routers import auth as auth_mod
-from conftest import ADMIN_EMAIL, Api, SENHA_PADRAO, uid_de
+from conftest import ADMIN_EMAIL, ADMIN_PW, Api, SENHA_PADRAO, uid_de
 
 SENHA_NOVA = "Senha-Nova-Do-Link-1"
 
@@ -73,6 +73,19 @@ def test_reenviar_convite_invalida_o_anterior(admin, caixa):
     # Quem já aceitou não recebe outro.
     Api().post("/auth/invite/accept", {"token": _token(novo["invite_url"], "convite"), "password": SENHA_NOVA})
     assert admin.post(f"/admin/users/{uid}/invite").status_code == 400
+
+
+def test_convite_vencido_e_faxina(admin, caixa):
+    admin.post("/admin/users", {"email": "nova@example.com"})
+    conta = lambda: next(u for u in admin.get("/admin/users").json() if u["email"] == "nova@example.com")
+    assert conta()["invite_pending"] and not conta()["invite_expired"]
+    db.execute("UPDATE auth_links SET expires_at = now() - interval '1 minute', created_at = now() - interval '40 days'")
+    assert conta()["invite_expired"]
+    Api().login(ADMIN_EMAIL, ADMIN_PW)  # o login faz a faxina dos links velhos
+    assert db.query_one("SELECT count(*) AS n FROM auth_links")["n"] == 0
+    uid = conta()["id"]
+    assert admin.post(f"/admin/users/{uid}/invite").json()["emailed"]  # reenviar volta a valer
+    assert not conta()["invite_expired"]
 
 
 def test_convite_sem_email_continua_com_senha_temporaria(admin):
@@ -153,3 +166,15 @@ def test_semanas_anteriores(usuario):
     uma = usuario.get("/summary/week?back=1").json()["week"]
     assert uma["previous"]["pontual_done"] == 1 and uma["pontual_done"] == 0
     assert usuario.get("/summary/week?back=999").status_code == 422
+
+
+def test_mcp_semana_passada(usuario):
+    from conftest import Bearer, criar_chave, texto
+    tid = usuario.post("/worklog", {"title": "Feita há uma semana", "status": "done"}).json()["id"]
+    db.execute("""UPDATE worklog_tasks SET created_at = now() - interval '7 days', completed_at = now() - interval '7 days'
+                   WHERE id = %s""", (tid,))
+    b = Bearer(criar_chave(usuario)["token"])
+    r = b.tool("get_week", weeks_ago=1)
+    assert not r["isError"] and "Feita há uma semana" in texto(r) and "semana anterior" in texto(r)
+    assert b.tool("get_week", weeks_ago=-1)["isError"]
+    assert "Não há registros" in texto(b.tool("get_week", weeks_ago=50))

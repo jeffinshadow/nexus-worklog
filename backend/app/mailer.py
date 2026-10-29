@@ -19,12 +19,16 @@ def configured() -> bool:
     return bool(config.SMTP_HOST)
 
 
-def send(to: str, subject: str, text: str, html: str | None = None) -> None:
+def send(to: str, subject: str, text: str, html: str | None = None,
+         attachments: list[tuple[str, bytes, str]] | None = None, cc: str | None = None) -> None:
+    """attachments: [(nome do arquivo, bytes, "tipo/subtipo")]; cc: uma cópia visível."""
     if not configured():
         raise MailError("e-mail não configurado no servidor (SMTP_HOST)")
     msg = EmailMessage()
     msg["From"] = config.MAIL_FROM
     msg["To"] = to
+    if cc:
+        msg["Cc"] = cc
     msg["Subject"] = subject
     msg["Date"] = formatdate(localtime=True)
     domain = parseaddr(config.MAIL_FROM)[1].rpartition("@")[2] or "localhost"
@@ -35,6 +39,9 @@ def send(to: str, subject: str, text: str, html: str | None = None) -> None:
     msg.set_content(text)
     if html:
         msg.add_alternative(html, subtype="html")
+    for name, data, mime in attachments or []:
+        maintype, _, subtype = mime.partition("/")
+        msg.add_attachment(data, maintype=maintype, subtype=subtype, filename=name)
 
     try:
         if config.SMTP_PORT == 465:

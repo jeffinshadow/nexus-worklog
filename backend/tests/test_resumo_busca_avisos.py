@@ -152,10 +152,11 @@ class Caixa:
     def __init__(self, falha=False):
         self.enviados, self.falha = [], falha
 
-    def __call__(self, to, subject, text, html):
+    def __call__(self, to, subject, text, html, attachments=None, cc=None):
         if self.falha:
             raise RuntimeError("smtp fora do ar")
-        self.enviados.append({"to": to, "subject": subject, "text": text, "html": html})
+        self.enviados.append({"to": to, "subject": subject, "text": text, "html": html,
+                              "attachments": attachments or [], "cc": cc})
 
 
 def _proxima(d: date, weekday: int) -> date:
@@ -230,6 +231,44 @@ def test_aviso_da_tarde_e_semanal(usuario):
     assert "Revisar fila" in caixa.enviados[1]["text"] and caixa.enviados[1]["subject"].startswith("Faltam 1 rotina")
     terca = segunda + timedelta(days=1)
     assert all(k != "weekly" for _, k, _ in notify.run_once(datetime(terca.year, terca.month, terca.day, 9, 0), caixa))
+
+
+def test_semanal_com_pdf_e_copia(usuario):
+    uid = uid_de(usuario)
+    hoje = dia_hoje(usuario)
+    rid = usuario.post("/recurring", {"label": "Revisar fila"}).json()["id"]
+    recuar_criacao(rid, 10)
+    r = usuario.c.put("/api/notifications", json={"weekly": True, "weekly_hour": 8, "weekly_pdf": True,
+                                                  "weekly_cc": "Gestor@Example.com"}, headers=usuario._h())
+    assert r.status_code == 200 and r.json()["weekly_cc"] == "gestor@example.com" and r.json()["weekly_pdf"]
+    assert usuario.c.put("/api/notifications", json={"weekly_cc": "não é e-mail"}, headers=usuario._h()).status_code == 422
+    segunda = _proxima(hoje, 0)
+    caixa = Caixa()
+    assert notify.run_once(datetime(segunda.year, segunda.month, segunda.day, 8, 5), caixa) == [(uid, "weekly", "sent")]
+    m = caixa.enviados[0]
+    assert m["cc"] == "gestor@example.com"
+    nome, pdf, tipo = m["attachments"][0]
+    assert nome.startswith("relatorio-semana-") and pdf[:4] == b"%PDF" and tipo == "application/pdf"
+    assert "anexado" in m["text"] and "verificações devidas" in m["text"]  # a abertura do relatório
+    # Desligado: sem anexo e sem cópia.
+    usuario.c.put("/api/notifications", json={"weekly": True, "weekly_hour": 8}, headers=usuario._h())
+    seguinte = segunda + timedelta(days=7)
+    notify.run_once(datetime(seguinte.year, seguinte.month, seguinte.day, 8, 5), caixa)
+    assert caixa.enviados[1]["attachments"] == [] and caixa.enviados[1]["cc"] is None
+
+
+def test_teste_da_semana_vai_so_para_a_pessoa(usuario, monkeypatch):
+    from app import mailer
+    enviados = []
+    monkeypatch.setattr(mailer, "configured", lambda: True)
+    monkeypatch.setattr(mailer, "send", lambda to, subject, text, html=None, attachments=None, cc=None:
+                        enviados.append((to, subject, attachments, cc)))
+    usuario.c.put("/api/notifications", json={"weekly": True, "weekly_pdf": True, "weekly_cc": "gestor@example.com"},
+                  headers=usuario._h())
+    assert usuario.post("/notifications/test?kind=weekly").status_code == 200  # mesmo com a semana vazia
+    to, subject, attachments, cc = enviados[0]
+    assert to == usuario.me["email"] and cc is None and subject.startswith("[teste] Sua semana")
+    assert attachments[0][1][:4] == b"%PDF"
 
 
 def test_busca_pela_ia(usuario):

@@ -49,7 +49,10 @@ async function mountUsers(root) {
     h("div", { class: "panel-head" }, h("h2", { text: "Contas" }), h("div", { class: "spacer" }), inviteBtn),
     ...users.map((u) => h("div", { class: "list-row" }, avatar(u, "sm"),
       h("div", { class: "t" }, h("span", { text: u.display_name ? `${u.display_name} · ${u.email}` : u.email }),
-        h("small", {}, roleNames(u.roles), u.invite_pending ? h("span", { class: "chip today pending-chip", text: "convite pendente" }) : null)),
+        h("small", {}, roleNames(u.roles), u.invite_pending
+          ? h("span", { class: "chip pending-chip " + (u.invite_expired ? "late" : "today"), text: u.invite_expired ? "convite vencido" : "convite pendente",
+              title: u.invite_expired ? "O link de 7 dias venceu: reenvie o convite" : "Aguardando a pessoa criar a senha" })
+          : null)),
       // Quem ainda não aceitou o convite recebe outro link; os demais, senha temporária.
       u.invite_pending
         ? h("button", { type: "button", class: "btn btn-text btn-sm", text: "Reenviar convite", onClick: () => onResend(u) })

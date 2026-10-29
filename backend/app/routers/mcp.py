@@ -42,8 +42,8 @@ SUPPORTED_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26"]
 SERVER_INFO = {"name": "nexus-worklog", "title": "Nexus Worklog", "version": "2.0.0"}
 INSTRUCTIONS = (
     "Nexus Worklog: o registro do dia de trabalho do usuário. Use get_today para "
-    "ver o dia (rotinas e tarefas abertas) e get_summary para a daily/retro (ontem e a "
-    "semana, com tempo por projeto). Registre o que o usuário contar com "
+    "ver o dia (rotinas e tarefas abertas), get_summary para a daily/retro (ontem e a "
+    "semana, com tempo por projeto) e get_week para semanas passadas. Registre o que o usuário contar com "
     "create_task/update_task/complete_task, log_time e add_note; marque rotinas com "
     "set_recurring (com note = evidência); get_handoff dá a passagem de turno. Para medir o tempo enquanto o usuário trabalha, use start_timer/stop_timer; "
     "procedimentos repetidos têm modelos (list_templates, create_from_template). "
@@ -317,25 +317,38 @@ def _recurring_rows(rows: list) -> list[str]:
             for r in rows]
 
 
+def _summary_block(title, x, prev=None, prev_label="mesma parte da semana passada"):
+    out = [title]
+    rec = f"{x['recurring_done']}/{x['recurring_total']}" if x["recurring_total"] else "nenhuma devida"
+    out.append(f"  rotinas {rec}" + (f" (+{x['recurring_extra']} extra)" if x["recurring_extra"] else "")
+               + f" · {x['pontual_done']} tarefa(s) concluída(s) · {_dur(x['minutes']) if x['minutes'] else 'nada'} apontado")
+    if prev:
+        out.append(f"  {prev_label}: {prev['pontual_done']} concluída(s), {_dur(prev['minutes'])} apontado")
+    out += [f"  - {d['title']}" + (f" {{{d['project']}}}" if d["project"] else "") for d in x["deliveries"][:15]]
+    out += [f"  tempo em {p['name'] or 'sem projeto'}: {_dur(p['minutes'])}" for p in x["projects"] if p["minutes"]]
+    if x["missed"]:
+        out.append("  rotinas que ficaram para trás: " + ", ".join(x["missed"]))
+    return out
+
+
 def t_get_summary(ctx, args):
     s = services.get_summary(ctx["user_id"])
-
-    def block(title, x, prev=None):
-        out = [title]
-        rec = f"{x['recurring_done']}/{x['recurring_total']}" if x["recurring_total"] else "nenhuma devida"
-        out.append(f"  rotinas {rec}" + (f" (+{x['recurring_extra']} extra)" if x["recurring_extra"] else "")
-                   + f" · {x['pontual_done']} tarefa(s) concluída(s) · {_dur(x['minutes']) if x['minutes'] else 'nada'} apontado")
-        if prev:
-            out.append(f"  mesma parte da semana passada: {prev['pontual_done']} concluída(s), {_dur(prev['minutes'])} apontado")
-        out += [f"  - {d['title']}" + (f" {{{d['project']}}}" if d["project"] else "") for d in x["deliveries"][:15]]
-        out += [f"  tempo em {p['name'] or 'sem projeto'}: {_dur(p['minutes'])}" for p in x["projects"] if p["minutes"]]
-        if x["missed"]:
-            out.append("  rotinas que ficaram para trás: " + ", ".join(x["missed"]))
-        return out
-
     last = s["last_day"]
-    return "\n".join(block(f"Desde o último dia útil ({last['start'].isoformat()} a {last['end'].isoformat()}):", last)
-                     + [""] + block(f"Semana até hoje (desde {s['week']['start'].isoformat()}):", s["week"], s["week"]["previous"]))
+    return "\n".join(_summary_block(f"Desde o último dia útil ({last['start'].isoformat()} a {last['end'].isoformat()}):", last)
+                     + [""] + _summary_block(f"Semana até hoje (desde {s['week']['start'].isoformat()}):", s["week"], s["week"]["previous"]))
+
+
+def t_get_week(ctx, args):
+    back = int(args.get("weeks_ago", 1))
+    if not 0 <= back <= services.WEEKS_BACK_MAX:
+        raise ToolError(f"weeks_ago vai de 0 (esta semana) a {services.WEEKS_BACK_MAX}")
+    r = services.get_week_summary(ctx["user_id"], back)
+    w = r["week"]
+    if back > r["oldest"]:
+        return f"Não há registros tão antigos: o primeiro é de {r['oldest']} semana(s) atrás."
+    titulo = ("Semana até hoje" if back == 0 else f"Semana de {w['start'].isoformat()} a {w['end'].isoformat()}")
+    return "\n".join(_summary_block(titulo + ":", w, w["previous"],
+                                     "mesma parte da semana passada" if back == 0 else "semana anterior"))
 
 
 def t_start_timer(ctx, args):
@@ -522,6 +535,10 @@ TOOLS = {
                                        "description": "Como foi resolvido (tarefa concluída; null apaga)"}}}),
     "get_summary": (t_get_summary, False, "Resumo para a daily/retro: o último dia útil e a semana até hoje (rotinas, tarefas concluídas, tempo por projeto, o que ficou para trás).",
                     {"type": "object", "properties": {}}),
+    "get_week": (t_get_week, False, "Resumo de uma semana passada (domingo a sábado), comparada com a anterior: "
+                 "rotinas, tarefas concluídas, tempo por projeto. weeks_ago=1 é a semana passada.",
+                 {"type": "object", "properties": {"weeks_ago": {"type": "integer", "minimum": 0, "default": 1,
+                                                                 "description": "Quantas semanas atrás (0 = esta)"}}}),
     "get_task": (t_get_task, False, "Tarefa completa: checklist, anotações e tempo apontado.",
                  {"type": "object", "required": ["task_id"], "properties": {"task_id": {"type": "integer"}}}),
     "search": (t_search, False, "Busca em tarefas (título, descrição, anotações, checklist, apontamentos), rotinas e projetos. Ignora acentos.",

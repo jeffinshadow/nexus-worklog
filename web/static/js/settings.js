@@ -336,14 +336,27 @@ async function notices() {
     return { key, on, hour, el: h("div", { class: "notice-row" },
       h("label", { class: "notice-main" }, on, h("span", {}, h("strong", { text: title }), h("small", { text: help }))), hour) };
   });
+  // Semanal: o PDF anexado e uma cópia (gestor, cliente) — só valem com o resumo da semana ligado.
+  const weekly = rows.find((r) => r.key === "weekly");
+  const pdf = h("input", { type: "checkbox" });
+  pdf.checked = !!p.weekly_pdf;
+  const cc = h("input", { type: "email", maxlength: "254", value: p.weekly_cc || "", placeholder: "ex.: gestor@empresa.com.br (opcional)",
+    autocomplete: "off", "aria-label": "Mandar cópia do resumo semanal para" });
+  const weeklyExtra = h("div", { class: "notice-sub" },
+    h("label", { class: "weekday-option" }, pdf, h("span", { text: "Anexar o relatório da semana em PDF (o mesmo de Relatórios, com os títulos das tarefas)" })),
+    field("Mandar cópia para (gestor, cliente)", cc),
+    h("p", { class: "dialog-note", text: "A cópia recebe o mesmo e-mail, com o PDF se estiver ligado. Use só com quem já acompanha o seu trabalho." }));
+  const syncWeekly = () => { pdf.disabled = cc.disabled = !weekly.on.checked; weeklyExtra.classList.toggle("off", !weekly.on.checked); };
+  weekly.on.addEventListener("change", syncWeekly);
+  syncWeekly();
   const titles = h("input", { type: "checkbox" });
   titles.checked = p.show_titles;
   const save = h("button", { type: "button", class: "btn btn-primary", text: "Salvar avisos" });
   save.addEventListener("click", async () => {
-    const body = { show_titles: titles.checked };
+    const body = { show_titles: titles.checked, weekly_pdf: pdf.checked, weekly_cc: cc.value.trim() || null };
     for (const r of rows) { body[r.key] = r.on.checked; body[`${r.key}_hour`] = Number(r.hour.value); }
     try { await api.put("/notifications", body); toast("Avisos salvos."); }
-    catch (e) { errorToast(e, "Falha ao salvar."); }
+    catch (e) { errorToast(e, e.status === 422 ? "O e-mail da cópia não parece válido." : "Falha ao salvar."); }
   });
   const test = h("button", { type: "button", class: "btn btn-ghost" }, icon("mail"), "Mandar um teste");
   test.disabled = !p.mail_configured;
@@ -353,6 +366,16 @@ async function notices() {
     catch (e) { errorToast(e, "Falha no envio."); }
     finally { setTimeout(() => { test.disabled = false; }, 4000); }
   });
+  // A semana passada como sairia na segunda (só para você; a cópia não recebe). Salve antes.
+  const testWeek = h("button", { type: "button", class: "btn btn-ghost", title: "A semana passada como sairia na segunda, só para você (salve antes)" },
+    icon("reports"), "Testar a semana");
+  testWeek.disabled = !p.mail_configured;
+  testWeek.addEventListener("click", async () => {
+    testWeek.disabled = true;
+    try { const r = await api.post("/notifications/test?kind=weekly"); toast(`Semana enviada para ${r.to}.`); }
+    catch (e) { errorToast(e, "Falha no envio."); }
+    finally { setTimeout(() => { testWeek.disabled = false; }, 4000); }
+  });
   const KIND_PT = { morning: "seu dia", evening: "fim do dia", weekly: "semana", test: "teste" };
   const recent = p.recent.filter((r) => r.ok !== null || r.error !== "nada a avisar");
   return h("div", { class: "settings-grid" },
@@ -361,9 +384,9 @@ async function notices() {
       h("p", { class: "help" }, "Enviados para ", h("strong", { class: "mono", text: p.email }),
         ". Sem rastreamento de abertura ou de cliques; só sai e-mail quando há algo a avisar."),
       p.mail_configured ? null : warnBox("O envio de e-mail ainda não está configurado neste servidor. Você pode deixar tudo escolhido; os avisos começam quando ele for ligado."),
-      ...rows.map((r) => r.el),
+      ...rows.flatMap((r) => (r === weekly ? [r.el, weeklyExtra] : [r.el])),
       h("label", { class: "weekday-option notice-titles" }, titles, h("span", { text: "Mostrar os títulos das tarefas no e-mail (desligado: só os números)" })),
-      h("div", { class: "row-actions" }, save, test)),
+      h("div", { class: "row-actions" }, save, test, testWeek)),
     recent.length ? h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Últimos envios" })),
       ...recent.map((r) => h("div", { class: "token-row" },

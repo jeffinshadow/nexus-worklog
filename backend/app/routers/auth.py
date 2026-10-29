@@ -88,6 +88,9 @@ def login(data: LoginIn, request: Request, response: Response):
     # para o recente; excluir de verdade nao pode durar para sempre no log).
     db.execute("DELETE FROM sessions WHERE expires_at <= now()")
     db.execute("DELETE FROM audit_log WHERE created_at < now() - interval '180 days'")
+    # Links de convite/senha já usados ou vencidos não servem para nada depois de um mês.
+    db.execute("""DELETE FROM auth_links WHERE created_at < now() - interval '30 days'
+                   AND (used_at IS NOT NULL OR expires_at <= now())""")
 
     return _start_session(user, response)
 

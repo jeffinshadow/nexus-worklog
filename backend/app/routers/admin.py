@@ -26,7 +26,12 @@ def _ensure_user(user_id: int) -> dict:
 @router.get("/users")
 def list_users(admin=Depends(require_admin)):
     rows = db.query_all(
-        f"""SELECT u.id, u.email, u.role, u.created_at, u.accepts_assignments_at, u.invite_pending, {roles.ROLES_SQL}
+        f"""SELECT u.id, u.email, u.role, u.created_at, u.accepts_assignments_at, u.invite_pending,
+                   -- convite pendente cujo link já venceu: o admin reenvia
+                   (u.invite_pending AND NOT EXISTS (
+                       SELECT 1 FROM auth_links l WHERE l.user_id = u.id AND l.kind = 'invite'
+                          AND l.used_at IS NULL AND l.expires_at > now())) AS invite_expired,
+                   {roles.ROLES_SQL}
               FROM users u ORDER BY lower(u.email)""")
     return [{**r, **people.profile(r["id"])} for r in rows]
 

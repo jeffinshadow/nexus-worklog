@@ -35,7 +35,7 @@ CATCH_UP_HOURS = 2
 
 def get_prefs(uid: int) -> dict:
     row = db.query_one(
-        """SELECT morning, morning_hour, evening, evening_hour, weekly, weekly_hour, show_titles
+        """SELECT morning, morning_hour, evening, evening_hour, weekly, weekly_hour, show_titles, weekly_pdf, weekly_cc
              FROM notification_prefs WHERE user_id = %s""", (uid,))
     return dict(row) if row else PrefsIn().model_dump()
 
@@ -59,6 +59,7 @@ class Mail:
     def __init__(self, subject: str, title: str, intro: str):
         self.subject, self.title, self.intro = subject, title, intro
         self.blocks: list[tuple[str, list[str]]] = []
+        self.attachments: list[tuple[str, bytes, str]] = []  # (arquivo, bytes, tipo)
 
     def block(self, heading: str, items: list[str], show_titles: bool):
         if not items:
@@ -152,16 +153,19 @@ def build_evening(uid: int, today: date, show: bool) -> Mail:
     return m
 
 
-def build_weekly(uid: int, today: date, show: bool) -> Mail:
+def _last_week(today: date) -> tuple[date, date]:
     end = week_start(today) - timedelta(days=1)  # sábado passado
-    start = end - timedelta(days=6)               # domingo anterior
+    return end - timedelta(days=6), end            # domingo anterior
+
+
+def build_weekly(uid: int, today: date, show: bool, force: bool = False) -> Mail:
+    """force: monta mesmo com a semana vazia (o teste pedido pela pessoa)."""
+    start, end = _last_week(today)
     r = get_report_range(uid, start, end)
     s = r["summary"]
-    pct = f"{round(100 * s['recurring_done'] / s['recurring_total'])}%" if s["recurring_total"] else "—"
-    intro = (f"Rotinas {s['recurring_done']}/{s['recurring_total']} ({pct}) · "
-             f"{s['pontual_done']} tarefa{'s' if s['pontual_done'] != 1 else ''} concluída{'s' if s['pontual_done'] != 1 else ''} · "
-             f"{_dur(s['minutes']) if s['minutes'] else 'nada'} apontado · {s['active_days']} dia{'s' if s['active_days'] != 1 else ''} com atividade.")
-    m = Mail(f"Sua semana · {start:%d/%m} a {end:%d/%m}", f"{profile(uid)['name']}, sua semana de {start:%d/%m} a {end:%d/%m}", intro)
+    # A mesma abertura do relatório em PDF: o período em texto corrido.
+    from .report_pdf import _lede
+    m = Mail(f"Sua semana · {start:%d/%m} a {end:%d/%m}", f"{profile(uid)['name']}, sua semana de {start:%d/%m} a {end:%d/%m}", _lede(r))
     m.block("Tarefas concluídas", [w["title"] + (f" [{w['project']}]" if w["project"] else "") for w in r["deliveries"]], show)
     m.block("Tempo por projeto", [f"{p['name'] or 'Sem projeto'}: {_dur(p['minutes'])}" for p in r["projects"] if p["minutes"]], show)
     m.block("Rotinas que ficaram para trás",
@@ -169,11 +173,22 @@ def build_weekly(uid: int, today: date, show: bool) -> Mail:
     b = get_board(uid, today)
     atrasadas = [t["title"] for t in b["in_progress"] if t["due_date"] and t["due_date"] < today]
     m.block("Atrasadas agora", atrasadas, show)
-    if m.empty and not s["active_days"]:
+    if m.empty and not s["active_days"] and not force:
         return m  # semana vazia e nada atrasado: não manda
     if m.empty:
         m.blocks.append(("Nenhuma tarefa concluída nem atrasada na semana.", []))
     return m
+
+
+def attach_week_pdf(m: Mail, uid: int, email: str, today: date) -> None:
+    """O relatório da semana passada em PDF, o mesmo da tela de Relatórios."""
+    from .people import label
+    from .report_pdf import build_report_pdf
+    start, end = _last_week(today)
+    data = get_report_range(uid, start, end)
+    pdf = build_report_pdf(label(uid, email), start, end, data, branding())
+    m.attachments.append((f"relatorio-semana-{start.isoformat()}-a-{end.isoformat()}.pdf", pdf, "application/pdf"))
+    m.blocks.append(("O relatório completo da semana está em PDF, anexado.", []))
 
 
 def _rotina_devida(uid: int, day: date, mask: int) -> bool:
@@ -205,14 +220,15 @@ def _finish(uid: int, kind: str, ref: date, ok: bool | None, error: str | None) 
                (ok, error, uid, kind, ref))
 
 
-def deliver(uid: int, email: str, kind: str, ref: date, mail: Mail, send=None) -> str:
+def deliver(uid: int, email: str, kind: str, ref: date, mail: Mail, send=None, cc: str | None = None) -> str:
     """Manda (ou registra que não havia nada). Devolve 'sent', 'empty' ou 'error'."""
     send = send or mailer.send
     if mail.empty:
         _finish(uid, kind, ref, None, "nada a avisar")
         return "empty"
+    extra = {k: v for k, v in (("attachments", mail.attachments), ("cc", cc)) if v}
     try:
-        send(email, mail.subject, mail.text(), mail.html())
+        send(email, mail.subject, mail.text(), mail.html(), **extra)
     except Exception as e:  # noqa: BLE001 — registra e segue para o próximo
         _finish(uid, kind, ref, False, str(e)[:300])
         log.warning("aviso %s para usuário %s falhou: %s", kind, uid, e)
@@ -227,7 +243,7 @@ def run_once(now: datetime, send=None) -> list[tuple[int, str, str]]:
     done = []
     users = db.query_all(
         """SELECT u.id, u.email, p.morning, p.morning_hour, p.evening, p.evening_hour,
-                  p.weekly, p.weekly_hour, p.show_titles
+                  p.weekly, p.weekly_hour, p.show_titles, p.weekly_pdf, p.weekly_cc
              FROM notification_prefs p JOIN users u ON u.id = p.user_id
             WHERE (p.morning OR p.evening OR p.weekly) AND NOT u.must_change_password""")
     for u in users:
@@ -253,7 +269,15 @@ def run_once(now: datetime, send=None) -> list[tuple[int, str, str]]:
                 log.exception("aviso %s para usuário %s não montou", kind, u["id"])
                 done.append((u["id"], kind, "error"))
                 continue
-            done.append((u["id"], kind, deliver(u["id"], u["email"], kind, today, mail, send)))
+            cc = None
+            if kind == "weekly" and not mail.empty:
+                if u["weekly_pdf"]:
+                    try:
+                        attach_week_pdf(mail, u["id"], u["email"], today)
+                    except Exception:  # noqa: BLE001 — o resumo sai mesmo sem o anexo
+                        log.exception("PDF da semana do usuário %s não montou", u["id"])
+                cc = u["weekly_cc"]
+            done.append((u["id"], kind, deliver(u["id"], u["email"], kind, today, mail, send, cc=cc)))
     return done
 
 

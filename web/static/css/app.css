@@ -995,3 +995,7 @@ dialog.help-dialog > .dialog-actions { position: sticky; bottom: -24px; margin: 
 .auth-card form .btn.full + .btn.full { margin-top: 8px; }
 .ok-text { color: var(--on-surface); background: var(--primary-container); border-radius: 12px; padding: 10px 12px; font-size: .86rem; line-height: 1.45; margin: 0 0 12px; }
 .pending-chip { margin-left: 8px; }
+/* Avisos: opções do resumo semanal (PDF e cópia), recuadas sob a linha dele. */
+.notice-sub { padding: 10px 0 14px 30px; border-bottom: 1px solid var(--outline-variant); }
+.notice-sub .field { margin: 10px 0 4px; max-width: 420px; }
+.notice-sub.off { opacity: .5; }
