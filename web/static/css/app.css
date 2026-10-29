@@ -1009,10 +1009,8 @@ dialog.help-dialog > .dialog-actions { position: sticky; bottom: -24px; margin: 
   color: inherit; text-decoration: none; transition: border-color .2s; }
 .proj-card:hover { border-color: rgba(82,148,226,.5); }
 .proj-card.archived { opacity: .65; }
-.proj-card-head, .proj-title { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-.proj-card-head h2, .proj-title h2 { font-size: 1.05rem; font-weight: 600; margin: 0; }
-.proj-title h2 { font-size: 1.35rem; }
-.proj-title .icon { margin-left: auto; }
+.proj-card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.proj-card-head h2 { font-size: 1.05rem; font-weight: 600; margin: 0; }
 .proj-card-meta { color: var(--dim); font-size: .84rem; margin: 8px 0 0; }
 .proj-archived { margin-top: 18px; }
 .proj-archived .proj-grid { margin-top: 10px; }
@@ -1044,3 +1042,14 @@ dialog.help-dialog > .dialog-actions { position: sticky; bottom: -24px; margin: 
 .obj-block.unassigned { border-style: dashed; }
 .chip.objective { display: inline-flex; align-items: center; gap: 4px; }
 .chip.objective .ico { width: 12px; height: 12px; }
+/* Projeto aberto: o título da página é o nome; aqui só a volta, a cor e o ⋮ */
+.proj-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.proj-bar .proj-back { margin: 0 0 0 -8px; }
+.proj-bar .proj-color { margin-left: auto; display: inline-flex; }
+.dialog-note.intro { margin: -8px 0 16px; }
+/* Tela Vencimentos no celular: nome numa linha, prazo e botões na de baixo */
+@media (max-width: 860px) {
+  .venc-row.venc-full { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .venc-row.venc-full > .t { flex: 1 1 100%; }
+  .venc-row.venc-full > .chip { margin-right: 100%; }  /* prazo sozinho; botões na linha de baixo */
+}

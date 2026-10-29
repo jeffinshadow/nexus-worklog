@@ -219,14 +219,19 @@ export async function openTask(taskId, onChange) {
       (ids) => save({ extra_project_ids: ids }));
     // Objetivo: só os do projeto principal (trocar o projeto tira do objetivo).
     const obj = h("select", { "aria-label": "Objetivo" });
-    fillObjectiveSelect(obj, t.project_id, t.objective_id).catch(() => {});
+    const objField = field("Objetivo", obj, "wide");
+    // Só aparece quando o projeto tem objetivos (sem projeto ou sem objetivos, não há o que escolher).
+    const syncObj = (pid, sel) => fillObjectiveSelect(obj, pid, sel)
+      .then((list) => objField.classList.toggle("hidden", !(list || []).length)).catch(() => {});
+    objField.classList.add("hidden");
+    syncObj(t.project_id, t.objective_id);
     obj.addEventListener("change", () => save({ objective_id: obj.value ? Number(obj.value) : null }));
     fillProjectSelect(proj, t.project_id, (v) => {
       const id = v ? Number(v) : null;
       if (id !== (cur.project_id || null)) save({ project_id: id }).then(() => {
         extras.sync();
         cur.objective_id = null;
-        fillObjectiveSelect(obj, id, null).catch(() => {});
+        syncObj(id, null);
       });
     }).catch(() => {});
 
@@ -246,7 +251,7 @@ export async function openTask(taskId, onChange) {
     afterHours.addEventListener("change", () => save({ after_hours: afterHours.checked }));
 
     grid.append(field("Status", status), field("Prazo", due), field("Projeto / cliente", proj), field("Prioridade", prio),
-      field("Objetivo", obj, "wide"),
+      objField,
       h("div", { class: "field wide" }, h("span", { class: "field-label", text: "Outros projetos" }), extras.el),
       h("div", { class: "field" }, h("label", { for: ticket.id, text: "Chamado" }),
         url ? h("div", { class: "with-link" }, ticket, h("a", { class: "icon", href: url, target: "_blank", rel: "noopener noreferrer", title: "Abrir o chamado", "aria-label": "Abrir o chamado" }, icon("right"))) : ticket),

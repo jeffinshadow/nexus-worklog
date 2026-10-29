@@ -21,7 +21,7 @@ function when(r) {
 
 function row(r, onChange, compact = false) {
   const w = when(r);
-  return h("div", { class: "list-row venc-row" },
+  return h("div", { class: "list-row venc-row" + (compact ? "" : " venc-full") },
     h("div", { class: "t" }, h("span", { text: r.label }),
       !compact && (r.note || r.project_name) ? h("small", { text: [r.project_name, r.note].filter(Boolean).join(" · ") }) : null),
     h("span", { class: "chip " + w.cls, text: w.text }),
@@ -92,11 +92,15 @@ export function openRenewal(r, onChange, renew = false) {
 }
 
 // Tela Vencimentos: lista completa e cadastro.
+// A ação "+ Vencimento" fica no cabeçalho da tela (no celular, o botão flutuante): newRenewal.
+export function newRenewal(rerender) {
+  openRenewal(null, rerender);
+}
+
 export async function renewalsPanel(rerender) {
   const list = await api.get("/renewals");
   const sec = h("section", { class: "panel" },
-    h("div", { class: "panel-head" }, icon("calendar"), h("h2", { text: "Vencimentos" }), h("div", { class: "spacer" }),
-      h("button", { type: "button", class: "btn btn-primary btn-sm", onClick: () => openRenewal(null, rerender) }, icon("add"), "Novo")),
+    h("div", { class: "panel-head" }, icon("calendar"), h("h2", { text: "Vencimentos" })),
     h("p", { class: "help", text: "Certificados, licenças, domínios, garantias e contratos. Avisam no Hoje, no e-mail da manhã e no calendário a partir dos dias de antecedência de cada um. O Nexus não consulta nada de fora: vale a data informada aqui." }));
   if (!list.length) sec.append(h("p", { class: "empty", text: "Nenhum vencimento cadastrado ainda." }));
   for (const r of list) sec.append(row(r, rerender));

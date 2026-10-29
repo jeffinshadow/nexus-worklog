@@ -86,7 +86,7 @@ try:
     check("lista mostra o projeto", wait(f"[...document.querySelectorAll('.proj-card h2')].some(e => e.textContent === {json.dumps(PROJ)})"))
     shot("o01-lista")
     ev(f"[...document.querySelectorAll('.proj-card')].find(c => c.textContent.includes({json.dumps(PROJ)})).click()")
-    check("abre o projeto", wait("!!document.querySelector('.proj-title')"))
+    check("abre o projeto (título da página = nome)", wait(f"!!document.querySelector('.proj-bar') && document.getElementById('page-title').textContent === {json.dumps(PROJ)}"))
 
     # Objetivos pela tela.
     for nome in ("Login", "Pagamentos", "Relatórios"):

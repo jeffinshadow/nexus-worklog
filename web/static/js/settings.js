@@ -199,11 +199,12 @@ async function templatesPanel(rerender) {
   const rows = list.length ? list.map((t) => h("div", { class: "token-row" },
     h("span", { class: "token-name", text: t.name }),
     h("div", { class: "actions" },
-      h("button", { type: "button", class: "btn btn-ghost btn-sm", text: "Editar", onClick: () => editTemplate(t, rerender) }),
-      h("button", { type: "button", class: "btn btn-danger btn-sm", text: "Excluir", onClick: async () => {
+      // Lápis e lixeira, como nas outras listas (Vencimentos, checklist).
+      h("button", { type: "button", class: "icon", title: "Editar", "aria-label": "Editar " + t.name, onClick: () => editTemplate(t, rerender) }, icon("edit")),
+      h("button", { type: "button", class: "icon", title: "Excluir", "aria-label": "Excluir " + t.name, onClick: async () => {
         if (!(await confirmDialog({ title: `Excluir o modelo “${t.name}”?`, text: "As tarefas já criadas com ele continuam.", confirm: "Excluir", danger: true }))) return;
         try { await api.del(`/templates/${t.id}`); toast("Modelo excluído."); rerender(); } catch (e) { errorToast(e); }
-      } })),
+      } }, icon("trash"))),
     h("span", { class: "token-meta", text: [t.title, t.checklist.length ? `${t.checklist.length} itens no checklist` : "sem checklist", t.after_hours ? "plantão" : ""].filter(Boolean).join(" · ") })))
     : [h("p", { class: "empty", text: "Nenhum modelo ainda." })];
   return h("div", { class: "settings-grid" },

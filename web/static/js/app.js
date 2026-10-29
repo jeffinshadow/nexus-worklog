@@ -11,7 +11,7 @@ import * as settings from "./settings.js";
 import * as admin from "./admin.js";
 import * as equipe from "./equipe.js";
 import * as atribuir from "./atribuir.js";
-import { renewalsPanel } from "./renewals.js";
+import { newRenewal, renewalsPanel } from "./renewals.js";
 import * as search from "./search.js";
 import { highlight } from "./search.js";
 import { loadBranding } from "./branding.js";
@@ -32,7 +32,7 @@ const VIEWS = {
   hoje: { title: "Hoje", need: "user", mount: (el, ctx) => today.mount(el, ctx) },
   tarefas: { title: "Tarefas", need: "user", mount: (el, ctx) => board.mount(el, ctx) },
   projetos: { title: "Projetos", need: "user", mount: (el, ctx) => projetos.mount(el, ctx) },
-  vencimentos: { title: "Vencimentos", need: "user", eyebrow: "certificados · licenças · domínios · garantias", mount: (el) => mountRenewals(el) },
+  vencimentos: { title: "Vencimentos", need: "user", eyebrow: "certificados · licenças · domínios · garantias", mount: (el, ctx) => mountRenewals(el, ctx) },
   dashboard: { title: "Retrospectiva", need: "user", eyebrow: "rotinas · fluxo · tempo · backlog", mount: (el, ctx) => dashboard.mount(el, { me: ctx.me, setAssist: ctx.setAssist }) },
   relatorios: { title: "Relatórios", need: "user", eyebrow: "PDF · exportar dados", mount: (el, ctx) => reports.mount(el, { me: ctx.me }) },
   historico: { title: "Histórico", eyebrow: "o que mudou, por quem", mount: (el) => history.mount(el) },
@@ -177,7 +177,9 @@ async function logout() {
 }
 
 // Vencimentos: item próprio no menu (importante demais para ficar em Configurações).
-async function mountRenewals(el) {
+async function mountRenewals(el, ctx) {
+  // Ação principal no cabeçalho, como nas outras telas (no celular vira o botão flutuante).
+  ctx.setActions(h("button", { type: "button", class: "btn btn-primary", "data-fab": "", onClick: () => newRenewal(render) }, icon("add"), "Vencimento"));
   const render = async () => {
     const panel = await renewalsPanel(render);
     clear(el);

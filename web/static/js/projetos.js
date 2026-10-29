@@ -86,7 +86,10 @@ async function mountProject(root, ctx, pid) {
   const refresh = () => mountProject(root, ctx, pid);
   const today = localDay(new Date().toISOString());
   const p = o.project;
-  ctx.setEyebrow("projeto");
+  // O título da página é o projeto aberto (como o detalhe de qualquer item); a lista volta pelo link.
+  ctx.setEyebrow("projeto" + (p.archived ? " · arquivado" : ""));
+  for (const id of ["page-title", "appbar-title"]) document.getElementById(id).textContent = p.name;
+  document.title = `${p.name} · Nexus Worklog`;
   ctx.setActions(
     h("button", { type: "button", class: "btn btn-ghost", onClick: () => openWorklog(refresh, { project_id: pid }) }, icon("add"), "Tarefa"),
     h("button", { type: "button", class: "btn btn-primary", "data-fab": "", onClick: () => editObjective(pid, null, refresh) }, icon("add"), "Objetivo"));
@@ -102,8 +105,8 @@ async function mountProject(root, ctx, pid) {
     ["Excluir projeto", "trash", () => deleteProject(p)],
   ]));
   root.append(h("div", { class: "proj-head" },
-    h("a", { class: "btn btn-text btn-sm proj-back", href: "#/projetos" }, icon("left"), "Projetos"),
-    h("div", { class: "proj-title" }, dot, h("h2", { text: p.name }), p.archived ? h("span", { class: "chip", text: "arquivado" }) : null, projMenu),
+    h("div", { class: "proj-bar" }, h("a", { class: "btn btn-text btn-sm proj-back", href: "#/projetos" }, icon("left"), "Todos os projetos"),
+      h("span", { class: "proj-color" }, dot), projMenu),
     progress(o.totals.done, o.totals.total),
     h("p", { class: "proj-card-meta", text: o.objectives.length
       ? `${o.objectives.length} objetivo${o.objectives.length > 1 ? "s" : ""} · ${o.totals.objectives_open} em aberto · na ordem de execução`
@@ -353,7 +356,7 @@ function editObjective(pid, ob, refresh) {
   due.value = ob?.due_date || "";
   const err = h("p", { class: "error-text" });
   const form = h("form", {}, h("h2", { text: ob ? "Editar objetivo" : "Novo objetivo" }),
-    !ob ? h("p", { class: "dialog-note", text: "Uma demanda principal do projeto. Entra no fim da ordem de execução; depois é só arrastar." }) : null,
+    !ob ? h("p", { class: "dialog-note intro", text: "Uma demanda principal do projeto. Entra no fim da ordem de execução; depois é só arrastar." }) : null,
     field("Objetivo", title), field("Descrição", desc), field("Prazo (opcional)", due), err,
     h("div", { class: "dialog-actions" },
       h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),

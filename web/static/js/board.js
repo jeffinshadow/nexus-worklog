@@ -192,7 +192,13 @@ export function openWorklog(onDone, opts = {}) {
   extraBox.append(extras.el);
   // Objetivo: os do projeto escolhido (aberto pela tela do projeto, já vem com ele).
   const objSel = document.getElementById("wl-objective");
-  const syncObjectives = (sel = null) => fillObjectiveSelect(objSel, pickedProject(), sel).catch(() => {});
+  // Sem projeto, a linha some; o objetivo só aparece se o projeto tiver objetivos.
+  const syncObjectives = (sel = null) => {
+    document.getElementById("wl-project-more").classList.toggle("hidden", !pickedProject());
+    return fillObjectiveSelect(objSel, pickedProject(), sel)
+      .then((list) => document.getElementById("wl-objective-wrap").classList.toggle("hidden", !(list || []).length))
+      .catch(() => {});
+  };
   // Já vem com o projeto padrão (Configurações > Conta), ou o da tela de onde veio; "Sem projeto" tira.
   const projReady = fillProjectSelect(projSel, opts.project_id || (session.me && session.me.default_project_id) || null,
     () => { extras.sync(); syncObjectives(); })
