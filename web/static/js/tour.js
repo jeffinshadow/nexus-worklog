@@ -224,7 +224,7 @@ const STOPS = [
     "Marque o que conferiu. O bloquinho anota a evidência e o alerta transforma um achado em tarefa. As setas voltam até 7 dias para marcar o que ficou para trás."],
   [["#assist-slot > *"], "O assistente",
     "A saudação, o que pede atenção (atrasadas, bloqueadas há dias) e, à tarde, o resumo do dia. Ele cabe numa linha e se desliga em Configurações > Conta."],
-  [["[data-fab]"], "Tarefa completa",
+  [["[data-fab]", "#fab"], "Tarefa completa",
     "Quando precisa de mais: prazo, prioridade, projetos, chamado, checklist e tempo. Atalho: tecla n. Depois, tudo se edita no próprio detalhe da tarefa (o lápis ao lado do título)."],
   [["#page-actions .btn-ghost"], "Passagem de turno",
     "No fim do turno, um texto pronto com o que fica aberto, o que está bloqueado e por quê, e o que foi feito. É só colar no chat da equipe."],
@@ -244,7 +244,10 @@ function visible(el) {
 
 function walk() {
   return new Promise((resolve) => {
-    if (!/^#\/hoje\b/.test(location.hash) && location.hash !== "" && location.hash !== "#/") location.hash = "#/hoje";
+    // Sempre um Hoje recém-montado (com o que o tour acabou de criar): de outra
+    // tela, troca a rota; já no Hoje, monta de novo.
+    if (/^#\/hoje\b/.test(location.hash)) dispatchEvent(new HashChangeEvent("hashchange"));
+    else location.hash = "#/hoje";
     const zoom = () => parseFloat(getComputedStyle(document.body).zoom) || 1;
     const spot = h("div", { class: "tour-spot", "aria-hidden": "true" });
     const title = h("h2", { id: "tour-pop-title" });
@@ -308,17 +311,20 @@ function walk() {
       pop.style.left = left + "px";
       pop.style.top = top + "px";
     }
+    // O alvo é procurado na hora: a tela pode ter sido montada de novo no meio.
+    const find = (sels) => sels.map((s) => document.querySelector(s)).find(visible);
     function show(n) {
       if (n < 0 || n >= stops.length) { if (n >= stops.length) done(); return; }
       i = n;
-      const [el, t, body] = stops[i];
-      target = el;
+      const [sels, t, body] = stops[i];
+      const el = find(sels);
+      target = el || null;
       title.textContent = t;
       text.textContent = body;
       count.textContent = `${i + 1} de ${stops.length}`;
       prev.disabled = i === 0;
       next.textContent = i === stops.length - 1 ? "Concluir" : "Próximo";
-      el.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+      if (el) el.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
       requestAnimationFrame(place);
       setTimeout(place, 350); // depois da rolagem suave
       next.focus();
@@ -327,15 +333,16 @@ function walk() {
     next.addEventListener("click", () => show(i + 1));
     layer.addEventListener("click", (ev) => { if (ev.target === layer) next.focus(); }); // clique fora não fecha por engano
 
-    // A tela Hoje monta depois da troca de rota: espera os alvos aparecerem.
-    let tries = 0;
+    // Espera o Hoje aparecer montado (a tela da visita anterior fica no DOM,
+    // escondida: só existir não basta). Pronto em duas olhadas seguidas.
+    const view = document.getElementById("view-hoje");
+    const ready = () => !view.classList.contains("hidden") && !view.hasAttribute("aria-busy")
+      && visible(view.querySelector(".quick-row input"));
+    let tries = 0, streak = 0;
     (function wait() {
-      const ready = document.querySelector("#view-hoje .quick-row input");
-      if (!ready && tries++ < 40) { setTimeout(wait, 100); return; }
-      stops = STOPS.map(([sels, t, body]) => {
-        const el = sels.map((s) => document.querySelector(s)).find(visible);
-        return el ? [el, t, body] : null;
-      }).filter(Boolean);
+      streak = ready() ? streak + 1 : 0;
+      if (streak < 2 && tries++ < 80) { setTimeout(wait, 150); return; }
+      stops = STOPS.filter(([sels]) => find(sels));
       if (!stops.length) { resolve(); return; }
       document.body.append(layer);
       addEventListener("resize", place);
