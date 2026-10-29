@@ -61,6 +61,13 @@ try:
         return ev(f"fetch('/api/auth/me').then(r=>r.json()).then(m=>fetch('/api{path}',{{method:'{method}',headers:{{'Content-Type':'application/json','X-CSRF-Token':m.csrf_token}},"
                   f"body:{json.dumps(json.dumps(body)) if body is not None else 'undefined'}}})).then(async r=>({{s:r.status,j:await r.json().catch(()=>null)}}))")
 
+    def drop_project(pid):  # o projeto e as tarefas dele (excluir só o projeto deixa as tarefas soltas na conta)
+        o = api("GET", f"/projects/{pid}/overview")["j"]
+        for b in o["objectives"] + [o["unassigned"]]:
+            for t in b["tasks"] + b["done_tasks"]:
+                api("DELETE", f"/worklog/{t['id']}")
+        api("DELETE", f"/projects/{pid}")
+
     def btn(texto, scope="document"):
         return f"[...{scope}.querySelectorAll('button')].find(b => b.textContent.trim() === {json.dumps(texto)} && b.offsetParent)"
 
@@ -77,7 +84,7 @@ try:
     ev(f"fetch('/api/auth/login',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{email:{json.dumps(EMAIL)},password:{json.dumps(PW)}}})}})")
     for x in api("GET", "/projects?include_archived=true")["j"]:  # limpa execução anterior
         if x["name"] == PROJ:
-            api("DELETE", f"/projects/{x['id']}")
+            drop_project(x["id"])
     pid = api("POST", "/projects", {"name": PROJ})["j"]["id"]
 
     cmd("Page.navigate", url=B + "/index.html#/projetos"); time.sleep(2.5)
@@ -222,7 +229,7 @@ try:
     # Configurações > Projetos (link antigo) leva à tela nova.
     cmd("Page.navigate", url=B + "/index.html#/config?aba=projetos"); time.sleep(2.5)
     check("link antigo leva a Projetos", ev("location.hash") == "#/projetos", ev("location.hash"))
-    api("DELETE", f"/projects/{pid}")
+    drop_project(pid)
 finally:
     p.terminate()
     print("OK:", len(ok)); print("FALHAS:", falhas or "nenhuma"); print("ERROS JS:", erros or "nenhum")
