@@ -190,7 +190,7 @@ async function mountRenewals(el) {
 function mountMore(el) {
   clear(el);
   const items = [
-    ["projetos", "folder", "Projetos"],
+    ["projetos", "route", "Projetos"],
     ["vencimentos", "calendar", "Vencimentos"],
     ["dashboard", "dashboard", "Retrospectiva"],
     ["historico", "history", "Histórico"],

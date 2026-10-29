@@ -137,10 +137,8 @@ function objectiveBlock(ob, index, o, pid, today, refresh) {
     } catch (e) { add.disabled = false; errorToast(e, "Erro ao criar a tarefa."); }
   });
 
-  const doneList = h("div", { class: "obj-done hidden" }, ...data.done_tasks.map((t) =>
-    h("div", { class: "obj-task done" },
-      h("span", { class: "obj-check-done", "aria-hidden": "true" }, icon("check")),
-      h("button", { type: "button", class: "card-open", text: t.title, onClick: () => openTask(t.id, refresh) }))));
+  const doneList = h("div", { class: "obj-done hidden" }, ...data.done_tasks.map((t) => doneRow(t, oid, o, pid, refresh)));
+  if (!phone()) dragSource(doneList, refresh);
   const doneToggle = data.done ? h("button", { type: "button", class: "btn btn-text btn-sm obj-done-toggle", "aria-expanded": "false",
     text: `${data.done} concluída${data.done > 1 ? "s" : ""}`,
     onClick: () => { const hide = doneList.classList.toggle("hidden"); doneToggle.setAttribute("aria-expanded", String(!hide)); } }) : null;
@@ -176,6 +174,20 @@ function objectiveBlock(ob, index, o, pid, today, refresh) {
   return sec;
 }
 
+// Concluída: também muda de objetivo (arrastando para outro bloco ou pelo ⋮).
+function doneRow(t, oid, o, pid, refresh) {
+  const grip = h("button", { type: "button", class: "icon grip only-desk", title: "Arrastar para outro objetivo", "aria-label": `Arrastar ${t.title}`, tabindex: "-1" }, icon("grip"));
+  const menuBtn = h("button", { type: "button", class: "icon", title: "Objetivo", "aria-label": `Objetivo de ${t.title}` }, icon("more-v"));
+  menuBtn.addEventListener("click", () => actionsMenu(menuBtn, t.title, [
+    ["Abrir", "right", () => openTask(t.id, refresh)],
+    ["Mover para outro objetivo…", "folder", () => moveTo(t, oid, o, pid, refresh)],
+  ]));
+  return h("div", { class: "obj-task done", "data-task": String(t.id), "data-done": "" }, grip,
+    h("span", { class: "obj-check-done", "aria-hidden": "true" }, icon("check")),
+    h("div", { class: "t" }, h("button", { type: "button", class: "card-open", text: t.title, onClick: () => openTask(t.id, refresh) })),
+    menuBtn);
+}
+
 function taskRow(t, i, tasks, oid, o, pid, today, refresh) {
   // Na tela do projeto, projeto e objetivo já estão no contexto: sem essas etiquetas.
   const chips = taskChips({ ...t, project_name: null, extra_projects: [], objective_title: null }, today);
@@ -201,7 +213,13 @@ function taskRow(t, i, tasks, oid, o, pid, today, refresh) {
 function moveTo(t, oid, o, pid, refresh) {
   const destinos = [...o.objectives.map((x) => [x.title, x.id]), ["Sem objetivo", null]].filter(([, id]) => id !== oid);
   if (!destinos.length) { toast("Crie outro objetivo antes."); return; }
-  sheet(`Mover “${t.title}” para`, destinos.map(([nome, id]) => [nome, id === null ? "folder" : "check", () => {
+  sheet(`Mover “${t.title}” para`, destinos.map(([nome, id]) => [nome, id === null ? "folder" : "check", async () => {
+    if (t.status === "done") { // concluída: só troca o objetivo (a fila das abertas fica como está)
+      try { await api.patch(`/worklog/${t.id}`, { objective_id: id }); toast(`Movida para ${nome}.`); }
+      catch (e) { errorToast(e, "Não foi possível mover."); }
+      refresh();
+      return;
+    }
     const alvo = id === null ? o.unassigned : o.objectives.find((x) => x.id === id);
     orderTasks(pid, id, [...alvo.tasks.map((x) => x.id), t.id], refresh, `Movida para ${nome}.`);
   }]));
@@ -238,15 +256,26 @@ function afterEl(container, y, selector) {
   return best;
 }
 
-function dragTasks(list, pid, refresh) {
-  list.addEventListener("dragstart", (ev) => {
+// Origem do arrasto: linhas abertas e concluídas (só a alça inicia; o resto da
+// linha continua clicável e selecionável).
+function dragSource(container, refresh) {
+  container.addEventListener("dragstart", (ev) => {
     const row = ev.target.closest && ev.target.closest(".obj-task[data-task]");
     if (!row || dragging) return;
-    dragging = { kind: "task", el: row };
+    dragging = { kind: "task", el: row, done: row.hasAttribute("data-done"), refresh };
     row.classList.add("dragging");
     ev.dataTransfer.effectAllowed = "move";
     ev.dataTransfer.setData("text/plain", row.dataset.task);
   });
+  for (const row of container.querySelectorAll(".obj-task[data-task]")) {
+    const grip = row.querySelector(".grip");
+    grip.addEventListener("pointerdown", () => { row.draggable = true; });
+    row.addEventListener("dragend", () => { row.draggable = false; });
+  }
+}
+
+function dragTasks(list, pid, refresh) {
+  dragSource(list, refresh);
   list.addEventListener("dragover", (ev) => {
     if (dragging?.kind !== "task") return;
     ev.preventDefault();
@@ -254,28 +283,30 @@ function dragTasks(list, pid, refresh) {
     const after = afterEl(list, ev.clientY, ".obj-task[data-task]");
     if (after) list.insertBefore(dragging.el, after); else list.append(dragging.el);
   });
-  list.addEventListener("drop", (ev) => {
+  list.addEventListener("drop", async (ev) => {
     if (dragging?.kind !== "task") return;
     ev.preventDefault();
-    const ids = [...list.querySelectorAll(".obj-task[data-task]")].map((r) => Number(r.dataset.task));
     const oid = list.dataset.objective === "" ? null : Number(list.dataset.objective);
     dragging.dropped = true;
+    if (dragging.done) { // concluída: muda o objetivo e volta para as concluídas do bloco novo
+      try { await api.patch(`/worklog/${dragging.el.dataset.task}`, { objective_id: oid }); }
+      catch (e) { errorToast(e, "Não foi possível mover."); }
+      refresh();
+      return;
+    }
+    const ids = [...list.querySelectorAll(".obj-task[data-task]:not([data-done])")].map((r) => Number(r.dataset.task));
     orderTasks(pid, oid, ids, refresh);
   });
-  list.addEventListener("dragend", () => {
-    if (dragging?.kind !== "task") return;
-    const dropped = dragging.dropped;
-    dragging.el.classList.remove("dragging");
-    dragging = null;
-    if (!dropped) refresh(); // soltou fora: volta como estava
-  });
-  // Só a alça inicia o arrasto (o resto da linha continua clicável e selecionável).
-  for (const row of list.querySelectorAll(".obj-task[data-task]")) {
-    const grip = row.querySelector(".grip");
-    grip.addEventListener("pointerdown", () => { row.draggable = true; });
-    row.addEventListener("dragend", () => { row.draggable = false; });
-  }
 }
+
+// Fim do arrasto de tarefa (de qualquer origem): soltou fora, volta como estava.
+document.addEventListener("dragend", () => {
+  if (dragging?.kind !== "task") return;
+  const { dropped, refresh } = dragging;
+  dragging.el.classList.remove("dragging");
+  dragging = null;
+  if (!dropped) refresh();
+});
 
 function dragObjectives(blocks, pid, refresh) {
   blocks.addEventListener("dragstart", (ev) => {

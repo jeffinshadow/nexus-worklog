@@ -168,6 +168,33 @@ try:
     check("1 concluída recolhida", wait("!!document.querySelector('.obj-block[data-id] .obj-done-toggle')"))
     shot("o02-projeto")
 
+    # Concluída também muda de objetivo: pelo ⋮ (para "Sem objetivo").
+    ev("document.querySelector('.obj-block[data-id] .obj-done-toggle').click()"); time.sleep(.4)
+    feita = ev("document.querySelector('.obj-block[data-id] .obj-done .card-open').textContent")
+    ev("document.querySelector('.obj-block[data-id] .obj-done [aria-label^=\"Objetivo de\"]').click()"); time.sleep(.6)
+    menu_item("Mover para outro objetivo…"); time.sleep(.6)
+    menu_item("Sem objetivo"); time.sleep(1.8)
+    ov = api("GET", f"/projects/{pid}/overview")["j"]
+    check("concluída movida pelo ⋮", any(t["title"] == feita for t in ov["unassigned"]["done_tasks"]), feita)
+    if not mob:  # e arrastando para um objetivo
+        ev("document.querySelector('.obj-block.unassigned .obj-done-toggle').click()"); time.sleep(.4)
+        tid_feita = next(t["id"] for t in ov["unassigned"]["done_tasks"] if t["title"] == feita)
+        alvo = ov["objectives"][1]["id"]
+        ev(f"""(() => {{
+          const src = document.querySelector(".obj-task[data-task='{tid_feita}']"); const list = document.querySelector(".obj-tasks[data-objective='{alvo}']");
+          src.querySelector('.grip').dispatchEvent(new PointerEvent('pointerdown', {{bubbles: true}}));
+          const dt = new DataTransfer();
+          src.dispatchEvent(new DragEvent('dragstart', {{bubbles: true, dataTransfer: dt}}));
+          const y = list.getBoundingClientRect().bottom - 2;
+          list.dispatchEvent(new DragEvent('dragover', {{bubbles: true, cancelable: true, dataTransfer: dt, clientY: y}}));
+          list.dispatchEvent(new DragEvent('drop', {{bubbles: true, cancelable: true, dataTransfer: dt, clientY: y}}));
+          src.dispatchEvent(new DragEvent('dragend', {{bubbles: true, dataTransfer: dt}}));
+        }})()""")
+        time.sleep(1.8)
+        ov = api("GET", f"/projects/{pid}/overview")["j"]
+        check("concluída arrastada para objetivo", any(t["id"] == tid_feita for t in ov["objectives"][1]["done_tasks"]))
+        check("abertas do destino intactas", [t["title"] for t in ov["objectives"][1]["tasks"]] == ["Recuperar senha"])
+
     # Detalhe da tarefa: campo Objetivo e etiqueta.
     ev("document.querySelectorAll('.obj-block')[0].querySelector('.obj-task[data-task] .card-open').click()"); time.sleep(1.6)
     check("etiqueta do objetivo no detalhe", ev("!!document.querySelector('dialog[open] .chip.objective')"))
