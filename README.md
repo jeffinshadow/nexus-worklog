@@ -20,11 +20,17 @@ para leitura, o quadro, a retrospectiva e os relatórios de cada pessoa).
   pra hoje, o que saiu ontem, o resumo do dia e por onde começar. Avisa tarefa
   bloqueada há dias, prazo de amanhã e tempo esquecido, e copia o texto da
   daily. Cada aviso tem o próprio X; tudo é calculado a partir dos registros da
-  pessoa, sem IA chamada a cada tela.
+  pessoa, sem IA chamada a cada tela. As abertas filtram por "vence hoje"
+  (com as atrasadas) ou "prioritárias", e o resumo da semana volta semana a
+  semana, cada uma comparada com a anterior. No primeiro acesso, um **tour
+  guiado** configura o essencial (nome, dias úteis, projetos, projeto padrão,
+  rotinas) e mostra a tela; a Ajuda reabre.
 - **Rotinas** — verificações que se repetem (backups, alertas, fila…), com agenda:
   dias úteis, dias da semana, mensal (inclui "último dia") ou a cada N dias.
   Marcação até 7 dias para trás; feito fora da agenda conta como *extra*.
-- **Tarefas** — status, prioridade, prazo, projeto/cliente, checklist,
+- **Tarefas** — status, prioridade, prazo, projeto/cliente (uma tarefa pode
+  atender **mais de um projeto**: aparece em cada um, com o tempo inteiro em
+  cada um; e há um **projeto padrão** por pessoa para o que é criado sem projeto), checklist,
   anotações e apontamento de tempo; **cronômetro** (um por pessoa, vale em
   qualquer aparelho); **número do chamado** (GLPI, TomTicket, Jira…) que vira
   link; **plantão** fora do horário, com o tempo separado no relatório; e
@@ -38,7 +44,7 @@ para leitura, o quadro, a retrospectiva e os relatórios de cada pessoa).
   exigida por rotina. Impedimento parado há dias vira lembrete com "Cobrei", ou
   com um dia combinado para cobrar (no Hoje, no calendário e no e-mail da manhã).
   CSV de plantão (horas do mês) e CSV de rotinas e evidências (auditoria). Registro rápido
-  entende `@projeto #chamado !plantão !alta ^amanhã !bloq motivo — 45min`; o detalhe da tarefa copia um resumo pronto para o chamado ou o cliente.
+  entende `@projeto #chamado !plantão !alta ^amanhã !bloq motivo — 45min` (dois `@`, dois projetos); o detalhe da tarefa copia um resumo pronto para o chamado ou o cliente.
 - **Vencimentos e base de conhecimento** — certificados, licenças, domínios e
   garantias avisam com antecedência (Hoje, e-mail da manhã, calendário); ao
   concluir, "como resolveu?" vira texto que a busca encontra — e a tarefa nova
@@ -46,16 +52,23 @@ para leitura, o quadro, a retrospectiva e os relatórios de cada pessoa).
 - **Atribuição** — quem aceita (Configurações › Conta) recebe tarefas de um
   atribuidor pelo app ou pela IA, com aviso por e-mail; a tarefa passa a ser
   dela, e quem atribuiu acompanha o status e recebe um e-mail quando ela é concluída.
-- **Relatórios** — PDF por período, por projeto ou do projeto inteiro;
-  exportação em CSV (planilha) e JSON (backup).
+- **Relatórios** — PDF por período, por projeto ou do projeto inteiro, em
+  estilo editorial: o período em texto corrido, os números, o ritmo, a
+  **matriz de rotinas** (um ponto por dia) e o diário. Pode ir toda segunda
+  anexado ao resumo semanal por e-mail, com cópia opcional (gestor, cliente).
+  Exportação em CSV (planilha) e JSON (backup).
 - **Retrospectiva** (aderência das rotinas, vazão, tempo por projeto, backlog),
   **histórico com desfazer**, **busca** sem acento (inclusive por `#chamado`),
   **feed de calendário (ICS)**, **avisos por e-mail** (opt-in), **lembrete** no
   app depois de X minutos sem registro, **atalhos de teclado** (`n`, `/`, `s`,
   `?`…), perfil com nome e foto e **identidade visual** configurável pelo admin.
+- **Contas** — com e-mail configurado, o admin convida por **link** (7 dias,
+  uso único; a pessoa cria a senha e já entra) e o login tem **esqueci a
+  senha** (link de 1 hora). Sem e-mail, senha temporária trocada no 1º acesso.
 - **IA** — chaves de API e servidor **MCP** (`/mcp`): a IA registra, anota,
   aponta e cronometra o que você contar, com tudo marcado no histórico pelo nome
-  da chave. Comandos prontos para o resumo da semana e para a daily. Para
+  da chave. Comandos prontos para o resumo da semana e para a daily; `get_week`
+  traz semanas passadas. Para
   lançar o que já aconteceu: `created_at`/`completed_at`, `external_ref` (não
   duplica) e `list_tasks` por período.
 
@@ -136,6 +149,9 @@ docker compose -f docker-compose.test.yml run --rm --build tests
 
 Postgres descartável (tmpfs), projeto compose separado — nunca encosta nos dados reais.
 
+Testes de ponta a ponta no navegador (tour, convite e senha por e-mail, PDFs),
+contra a homologação: veja [`tools/e2e/README.md`](tools/e2e/README.md).
+
 ## Deploy
 
 `./deploy.sh` na VM: confere o `.env`, faz `pg_dump` verificado do banco, `git
@@ -159,7 +175,10 @@ incidente e outra quando volta. Logs com rotação (10 MB × 5 por serviço).
 - **Senhas** Argon2id (perfil OWASP, no máximo 2 cálculos simultâneos — sob
   carga responde 503 em vez de travar), mínimo 10 caracteres; login limitado
   por IP (todas as tentativas; IPv6 por /64) e por e-mail (só as falhas, que
-  vão para o log); troca de senha limitada e diferente da atual.
+  vão para o log); troca de senha limitada e diferente da atual. Links de
+  convite e de senha nova: uso único, só o HMAC no banco, o token no `#` da
+  URL (fora dos logs); "esqueci a senha" responde igual com ou sem conta e tem
+  limite por IP e por e-mail.
 - **Sessão** server-side: o banco guarda só o HMAC do token; cookie
   `__Host-session` (`HttpOnly; Secure; SameSite=Strict`), prazo fixo
   (`SESSION_TTL_DAYS`). Histórico guardado por 180 dias.
