@@ -19,7 +19,9 @@ def list_projects(include_archived: bool = False, user=Depends(active_user)):
         f"""
         SELECT p.id, p.name, p.color, p.archived, p.created_at,
                count(w.id) FILTER (WHERE w.status <> 'done')::int AS open_tasks,
-               count(w.id)::int AS total_tasks
+               count(w.id)::int AS total_tasks,
+               count(w.id) FILTER (WHERE w.status = 'done')::int AS done_tasks,
+               (SELECT count(*) FROM project_objectives o WHERE o.project_id = p.id)::int AS objectives
           FROM projects p
           LEFT JOIN worklog_tasks w ON w.project_id = p.id
             OR w.id IN (SELECT x.task_id FROM worklog_task_projects x WHERE x.project_id = p.id)
@@ -74,6 +76,12 @@ def delete_project(project_id: int, user=Depends(active_user_csrf)):
     uid = user["user_id"]
     if not db.query_one("SELECT 1 FROM projects WHERE id = %s AND user_id = %s", (project_id, uid)):
         raise HTTPException(status_code=404, detail="não encontrado")
+    # Os objetivos vão junto (CASCADE); guardamos com as tarefas deles para o desfazer.
+    objectives = db.query_all(
+        "SELECT id, project_id, title, description, due_date, position, created_at FROM project_objectives WHERE project_id = %s",
+        (project_id,))
+    for o in objectives:
+        o["tasks"] = db.query_all("SELECT id, exec_position FROM worklog_tasks WHERE objective_id = %s", (o["id"],))
     extra_tasks = [r["task_id"] for r in db.query_all(
         "SELECT task_id FROM worklog_task_projects WHERE project_id = %s", (project_id,))]
     # Tarefa com outros projetos não fica "sem projeto": o primeiro extra vira o principal.
@@ -98,5 +106,6 @@ def delete_project(project_id: int, user=Depends(active_user_csrf)):
         "SELECT id FROM worklog_tasks WHERE user_id = %s AND project_id IS NULL AND id = ANY(%s)",
         (user["user_id"], tasks))]
     row["promoted"], row["extra_task_ids"] = promoted, extra_tasks
+    row["objectives"] = objectives
     audit.record(user, "project.delete", "project", project_id, before=row)
     return {"ok": True}

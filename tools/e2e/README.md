@@ -18,6 +18,7 @@ Pré-requisitos (na máquina que roda o navegador):
 | `e2e_tour.py SAIDA desktop\|mobile` | tour guiado (configuração + passeio), filtro do Hoje, vários projetos, projeto padrão |
 | `tour_paradas.py desktop\|mobile` | o passeio mostra todas as paradas abrindo a Ajuda de outras telas |
 | `e2e_convite.py SAIDA desktop\|mobile` | convite por link, esqueci a senha (Mailpit), confirmação de senha, semanas do resumo |
+| `e2e_objetivos.py SAIDA desktop\|mobile` | menu Projetos, objetivos em ordem, tarefas vinculadas, arrastar (computador) e ⋮ (celular), status e progresso |
 | `pdfs_exemplo.py SAIDA` | baixa o PDF da semana, do mês e de um projeto (ver com `pdftoppm -png`) |
 
 `SAIDA` é a pasta das capturas. Cada roteiro imprime `OK`, `FALHAS` e os erros de

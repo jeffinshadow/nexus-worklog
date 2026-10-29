@@ -99,6 +99,7 @@ TASK_COUNTS = """
     (SELECT count(*) FROM task_checklist c WHERE c.task_id = w.id AND c.done)::int AS check_done,
     (SELECT count(*) FROM task_notes n WHERE n.task_id = w.id)::int AS notes_count,
     (SELECT COALESCE(sum(t.minutes), 0) FROM time_entries t WHERE t.task_id = w.id)::int AS minutes,
+    (SELECT o.title FROM project_objectives o WHERE o.id = w.objective_id) AS objective_title,
     """ + EXTRA_PROJECTS
 
 # Tarefa `w` no projeto %s: o principal ou um dos extras.

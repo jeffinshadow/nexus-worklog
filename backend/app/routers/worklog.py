@@ -10,6 +10,7 @@ from .. import audit, db
 from ..deps import active_user, active_user_csrf
 from ..schemas import ChecklistIn, ChecklistUpdate, FinishIn, NoteIn, TimeIn, WorklogIn, WorklogUpdate
 from .assign import notify_assigner
+from .objectives import check_objective, next_position, objective_project
 from ..services import is_work_day, work_mask
 from ..services import ASSIGNER_NAME, EXTRA_PROJECTS, app_today, app_tz, default_project, set_extra_projects, task_retro_days
 
@@ -139,9 +140,14 @@ def create(data: WorklogIn, response: Response, user=Depends(active_user_csrf)):
     if data.external_ref and (found := _by_ref(uid, data.external_ref)):
         response.status_code = 200
         return {"id": found["id"], "existing": True}
-    # Sem projeto informado (nem null): o padrão da pessoa (Configurações > Conta).
-    project_id = data.project_id if "project_id" in data.model_fields_set else default_project(uid)
+    # Com objetivo e sem projeto: o projeto do objetivo. Sem projeto informado
+    # (nem null): o padrão da pessoa (Configurações > Conta).
+    if data.objective_id is not None and "project_id" not in data.model_fields_set:
+        project_id = objective_project(uid, data.objective_id)
+    else:
+        project_id = data.project_id if "project_id" in data.model_fields_set else default_project(uid)
     _check_project(uid, project_id)
+    check_objective(uid, data.objective_id, project_id)
     now = datetime.now(timezone.utc)
     created_at = resolve_created(data.created_at, now)
     completed_at = resolve_completed(data.completed_at, created_at, now) if data.status == "done" else None
@@ -150,8 +156,8 @@ def create(data: WorklogIn, response: Response, user=Depends(active_user_csrf)):
             """
             INSERT INTO worklog_tasks (user_id, title, description, status, due_date, created_at, completed_at,
                                        project_id, priority, ticket, after_hours, external_ref,
-                                       blocked_reason, blocked_at, follow_up_on, resolution)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                       blocked_reason, blocked_at, follow_up_on, resolution, objective_id, exec_position)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
             (uid, data.title, data.description, data.status, data.due_date, created_at, completed_at,
@@ -159,7 +165,8 @@ def create(data: WorklogIn, response: Response, user=Depends(active_user_csrf)):
              _reason(data.blocked_reason) if data.status == "blocked" else None,
              now if data.status == "blocked" else None,
              follow_up_day(uid, data.follow_up_on) if data.status == "blocked" else None,
-             ((data.resolution or "").strip() or None) if data.status == "done" else None),
+             ((data.resolution or "").strip() or None) if data.status == "done" else None,
+             data.objective_id, next_position(uid, project_id, data.objective_id)),
         )
     except UniqueViolation:  # duas chamadas iguais ao mesmo tempo: a segunda devolve a primeira
         response.status_code = 200
@@ -217,6 +224,7 @@ def detail(task_id: int, user=Depends(active_user)):
         SELECT w.id, w.title, w.description, w.status, w.due_date, w.created_at, w.completed_at,
                w.priority, w.project_id, w.ticket, w.after_hours, w.external_ref, w.assigned_by, w.assigned_at,
                w.blocked_reason, w.blocked_at, w.follow_up_on, w.resolution,
+               w.objective_id, (SELECT o.title FROM project_objectives o WHERE o.id = w.objective_id) AS objective_title,
                p.name AS project_name, p.color AS project_color, """ + ASSIGNER_NAME + ", " + EXTRA_PROJECTS + """
           FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
          WHERE w.id = %s AND w.user_id = %s
@@ -264,6 +272,17 @@ def update(task_id: int, data: WorklogUpdate, user=Depends(active_user_csrf)):
         fields.append("project_id = %s")
         values.append(data.project_id)
     extras = data.extra_project_ids is not None
+    # Objetivo: só do projeto principal. Trocar o projeto tira do objetivo que
+    # não é dele; a tarefa vai para o fim da fila do bloco novo.
+    final_project = data.project_id if "project_id" in sent else before["project_id"]
+    if "objective_id" in sent:
+        check_objective(user["user_id"], data.objective_id, final_project)
+        if data.objective_id != before["objective_id"]:
+            fields += ["objective_id = %s", "exec_position = %s"]
+            values += [data.objective_id, next_position(user["user_id"], final_project, data.objective_id)]
+    elif "project_id" in sent and final_project != before["project_id"]:
+        fields += ["objective_id = NULL", "exec_position = %s"]
+        values.append(next_position(user["user_id"], final_project, None))
     if data.priority is not None:
         fields.append("priority = %s")
         values.append(data.priority)

@@ -2,9 +2,9 @@
 // gestão em Configurações. A cor vem da API e entra via CSSOM (CSP ok).
 import { api } from "./api.js";
 import { h, icon, clear, field } from "./dom.js";
-import { confirmDialog, errorToast, toast, undoLatest, busy } from "./ui.js";
+import { errorToast, toast } from "./ui.js";
 
-const PALETA = ["#5294E2", "#81C995", "#FDD663", "#C58AF9", "#F28B82", "#78D9EC", "#F6AE6B", "#A1A1A8"];
+export const PALETA = ["#5294E2", "#81C995", "#FDD663", "#C58AF9", "#F28B82", "#78D9EC", "#F6AE6B", "#A1A1A8"];
 
 let cache = null;
 
@@ -13,7 +13,7 @@ export async function listProjects(force = false) {
   return cache;
 }
 
-function invalidateProjects() {
+export function invalidateProjects() {
   cache = null;
 }
 
@@ -127,8 +127,23 @@ export async function fillProjectSelect(select, selectedId, onPick) {
   };
 }
 
+// O seletor de objetivo (nova tarefa e detalhe): os do projeto, na ordem.
+export async function fillObjectiveSelect(select, projectId, selectedId) {
+  // Chamadas seguidas (o projeto carregou, depois trocou): só a última preenche,
+  // e as opções só são trocadas depois que a lista chega (nada duplicado).
+  const my = (select._seq = (select._seq || 0) + 1);
+  const list = projectId ? await api.get(`/projects/${projectId}/objectives`).catch(() => []) : [];
+  if (my !== select._seq) return list;
+  clear(select);
+  select.append(h("option", { value: "", text: projectId ? "Sem objetivo" : "Escolha um projeto antes" }));
+  select.disabled = !projectId;
+  list.forEach((ob, i) => select.append(h("option", { value: String(ob.id), text: `${i + 1}. ${ob.title}` })));
+  select.value = selectedId && list.some((x) => x.id === selectedId) ? String(selectedId) : "";
+  return list;
+}
+
 // Pergunta o nome num diálogo próprio (sem prompt() do navegador).
-function askName() {
+export function askName() {
   return new Promise((resolve) => {
     let value = null;
     const input = h("input", { type: "text", maxlength: "60", required: "required", placeholder: "Ex.: Loja Vila Velha" });
@@ -144,83 +159,4 @@ function askName() {
     dlg.showModal();
     input.focus();
   });
-}
-
-// ------------------------------------------------- aba em Configurações --
-
-export async function projectsPanel(rerender) {
-  const list = await api.get("/projects?include_archived=true");
-  const name = h("input", { type: "text", maxlength: "60", required: "required", placeholder: "Ex.: Loja Vila Velha" });
-  const err = h("p", { class: "error-text" });
-  const form = h("form", { class: "inline-form" },
-    field("Novo projeto ou cliente", name),
-    h("button", { type: "submit", class: "btn btn-primary" }, icon("add"), "Criar"));
-  form.addEventListener("submit", busy(async (ev) => {
-    ev.preventDefault();
-    err.textContent = "";
-    try {
-      await api.post("/projects", { name: name.value.trim() });
-      invalidateProjects();
-      rerender();
-    } catch (e) {
-      err.textContent = e.message || "Falha ao criar.";
-    }
-  }));
-
-  const save = async (p, patch, msg) => {
-    try {
-      await api.patch(`/projects/${p.id}`, patch);
-      invalidateProjects();
-      if (msg) toast(msg);
-      rerender();
-    } catch (e) {
-      errorToast(e, "Falha ao salvar.");
-    }
-  };
-
-  const rows = list.map((p) => {
-    const swatches = h("div", { class: "swatches", role: "radiogroup", "aria-label": "Cor de " + p.name },
-      ...PALETA.map((c) => {
-        const b = h("button", {
-          type: "button", class: "swatch", role: "radio", title: c, "aria-label": c,
-          "aria-checked": c.toLowerCase() === (p.color || "").toLowerCase() ? "true" : "false",
-          onClick: () => save(p, { color: c }),
-        });
-        b.style.background = c;
-        return b;
-      }));
-    const input = h("input", { type: "text", maxlength: "60", value: p.name, "aria-label": "Nome do projeto" });
-    input.addEventListener("change", () => {
-      const v = input.value.trim();
-      if (v && v !== p.name) save(p, { name: v }, "Renomeado.");
-      else input.value = p.name;
-    });
-    const dot = h("span", { class: "dot big" });
-    dot.style.background = p.color;
-    return h("div", { class: "project-row" + (p.archived ? " inactive" : "") },
-      dot, input,
-      h("span", { class: "token-meta", text: `${p.open_tasks} abertas · ${p.total_tasks} no total${p.archived ? " · arquivado" : ""}` }),
-      swatches,
-      h("div", { class: "actions" },
-        h("button", { type: "button", class: "btn btn-ghost btn-sm", text: p.archived ? "Reativar" : "Arquivar",
-          onClick: () => save(p, { archived: !p.archived }, p.archived ? "Projeto reativado." : "Arquivado: some dos seletores, as tarefas continuam.") }),
-        h("button", { type: "button", class: "icon", title: "Excluir", "aria-label": "Excluir " + p.name, onClick: async () => {
-          if (!(await confirmDialog({ title: `Excluir “${p.name}”?`, text: "As tarefas continuam: ficam sem projeto, ou no outro projeto que tiverem. Dá para desfazer pelo histórico.", confirm: "Excluir", danger: true }))) return;
-          try {
-            await api.del(`/projects/${p.id}`);
-            invalidateProjects();
-            rerender();
-            toast("Projeto excluído.", { action: "Desfazer", onAction: () => undoLatest("project", p.id, () => { invalidateProjects(); rerender(); }) });
-          } catch (e) { errorToast(e); }
-        } }, icon("trash"))));
-  });
-
-  return h("div", { class: "settings-grid" },
-    h("section", { class: "panel" },
-      h("div", { class: "panel-head" }, icon("folder"), h("h2", { text: "Projetos e clientes" })),
-      h("p", { class: "help", text: "Agrupe as tarefas por cliente ou projeto: filtre o quadro, veja o tempo apontado e tire o relatório só daquele projeto." }),
-      form, err),
-    h("section", { class: "panel" },
-      h("div", { class: "panel-head" }, h("h2", { text: "Meus projetos" }), h("span", { class: "count", text: String(list.filter((p) => !p.archived).length) + " ativos" })),
-      ...(list.length ? rows : [h("p", { class: "empty", text: "Nenhum projeto ainda." })])));
 }

@@ -24,6 +24,7 @@ UNDOABLE = {
     "note.create", "note.delete", "checklist.create", "checklist.update", "checklist.delete",
     "time.create", "time.delete", "project.create", "project.update", "project.delete",
     "renewal.create", "renewal.update", "renewal.renew", "renewal.delete",
+    "objective.create", "objective.update", "objective.delete",
 }
 
 ACTION_LABELS = {
@@ -54,6 +55,9 @@ ACTION_LABELS = {
     "assistant.update": "alterou o assistente",
     "tickets.update": "alterou o endereço dos chamados",
     "default_project.update": "alterou o projeto padrão",
+    "objective.create": "criou o objetivo",
+    "objective.update": "editou o objetivo",
+    "objective.delete": "excluiu o objetivo",
     "timer.start": "iniciou o cronômetro em",
     "timer.discard": "descartou o cronômetro de",
     "template.create": "criou o modelo",
@@ -217,6 +221,15 @@ def _usuario_existente(user_id):
     return user_id if db.query_one("SELECT 1 FROM users WHERE id = %s", (user_id,)) else None
 
 
+def _objetivo_valido(uid: int, objective_id, project_id):
+    """Ao desfazer, o objetivo pode ter sido excluído (ou a tarefa estar noutro projeto)."""
+    if objective_id is None:
+        return None
+    ok = db.query_one("SELECT 1 FROM project_objectives WHERE id = %s AND user_id = %s AND project_id IS NOT DISTINCT FROM %s",
+                      (objective_id, uid, project_id))
+    return objective_id if ok else None
+
+
 def _restore_worklog(uid: int, snap: dict) -> None:
     db.execute(
         """UPDATE worklog_tasks
@@ -231,6 +244,10 @@ def _restore_worklog(uid: int, snap: dict) -> None:
     )
     if "extra_project_ids" in snap:  # registros de antes dos projetos extras não têm a lista
         set_extra_projects(uid, snap["id"], snap["extra_project_ids"])
+    if "objective_id" in snap:  # idem para os objetivos
+        proj = db.query_one("SELECT project_id FROM worklog_tasks WHERE id = %s", (snap["id"],))["project_id"]
+        db.execute("UPDATE worklog_tasks SET objective_id = %s, exec_position = %s WHERE id = %s AND user_id = %s",
+                   (_objetivo_valido(uid, snap["objective_id"], proj), snap.get("exec_position"), snap["id"], uid))
 
 
 def _restore_recurring(uid: int, snap: dict) -> None:
@@ -255,6 +272,20 @@ def _gone() -> HTTPException:
 
 
 # Reinserção dos filhos de uma tarefa (desfazer exclusão), com o id original.
+def _put_objective(uid: int, o: dict) -> None:
+    """Recria o objetivo (mesmo id) e devolve a ele as tarefas que ainda estão no
+    projeto sem objetivo, na ordem que tinham."""
+    db.execute(
+        """INSERT INTO project_objectives (id, user_id, project_id, title, description, due_date, position, created_at)
+           OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (id) DO NOTHING""",
+        (o["id"], uid, o["project_id"], o["title"], o.get("description"), o.get("due_date"), o.get("position") or 0,
+         o.get("created_at")))
+    for t in o.get("tasks") or []:
+        db.execute("""UPDATE worklog_tasks SET objective_id = %s, exec_position = %s
+                       WHERE id = %s AND user_id = %s AND project_id = %s AND objective_id IS NULL""",
+                   (o["id"], t.get("exec_position"), t["id"], uid, o["project_id"]))
+
+
 def _put_note(uid: int, task_id: int, n: dict) -> None:
     db.execute("""INSERT INTO task_notes (id, task_id, user_id, body, actor, token_name, created_at)
                   OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s, %s, %s)""",
@@ -324,6 +355,10 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
              before.get("follow_up_on"), before.get("resolution")),
         )
         set_extra_projects(uid, eid, before.get("extra_project_ids"))
+        if before.get("objective_id"):
+            proj = _projeto_existente(uid, before.get("project_id"))
+            db.execute("UPDATE worklog_tasks SET objective_id = %s, exec_position = %s WHERE id = %s",
+                       (_objetivo_valido(uid, before["objective_id"], proj), before.get("exec_position"), eid))
         for n in kids.get("notes", []):
             _put_note(uid, eid, n)
         for c in kids.get("checklist", []):
@@ -408,6 +443,18 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
                OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
             (eid, uid, before["label"], before["expires_on"], before["warn_days"],
              _projeto_existente(uid, before.get("project_id")), before.get("note"), before.get("renew_months")))
+    elif a == "objective.create":
+        # As tarefas que entraram nele depois voltam para "Sem objetivo" (o FK cuida).
+        db.execute("DELETE FROM project_objectives WHERE id = %s AND user_id = %s", (eid, uid))
+    elif a == "objective.update":
+        if not db.execute("""UPDATE project_objectives SET title = %s, description = %s, due_date = %s, updated_at = now()
+                              WHERE id = %s AND user_id = %s""",
+                          (before["title"], before["description"], before["due_date"], eid, uid)):
+            raise HTTPException(status_code=409, detail="o objetivo não existe mais")
+    elif a == "objective.delete":
+        if not db.query_one("SELECT 1 FROM projects WHERE id = %s AND user_id = %s", (before["project_id"], uid)):
+            raise HTTPException(status_code=409, detail="o projeto do objetivo não existe mais")
+        _put_objective(uid, before)
     elif a == "project.create":
         # Com tarefas no projeto, arquiva em vez de apagar (não tira de ninguém).
         if db.query_one("SELECT 1 FROM worklog_tasks WHERE project_id = %s LIMIT 1", (eid,)) or \
@@ -444,6 +491,8 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
                 WHERE w.user_id = %s AND w.id = ANY(%s) AND w.project_id IS NOT NULL AND w.project_id <> %s
                ON CONFLICT DO NOTHING""",
             (eid, uid, before.get("extra_task_ids") or [], eid))
+        for o in before.get("objectives") or []:  # os objetivos voltam, com as tarefas deles
+            _put_objective(uid, o)
 
     db.execute("UPDATE audit_log SET undone_at = now() WHERE id = %s", (history_id,))
     audit.record(user, "undo", row["entity"], eid, before=after, after={"undid": history_id, "action": a})

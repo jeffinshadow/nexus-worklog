@@ -7,7 +7,7 @@ import { api } from "./api.js";
 import { h, icon, clear, addDays, shortDate, dateTime, field, localDateTime } from "./dom.js";
 import { errorToast, modal, toast, undoLatest, busy, sheet, syncRail, growFrom } from "./ui.js";
 import { finishTask, deleteTask, followUpDay, isOverdue, ticketUrl, taskChips } from "./board.js";
-import { extraProjectsField, fillProjectSelect } from "./projects.js";
+import { extraProjectsField, fillObjectiveSelect, fillProjectSelect } from "./projects.js";
 import { session } from "./session.js";
 import { timerButton, timerState, startTimer, stopTimer } from "./timer.js";
 
@@ -217,9 +217,17 @@ export async function openTask(taskId, onChange) {
     // Demanda que atende mais de uma frente: outros projetos além do principal.
     const extras = extraProjectsField((t.extra_projects || []).map((p) => p.id), () => cur.project_id || null,
       (ids) => save({ extra_project_ids: ids }));
+    // Objetivo: só os do projeto principal (trocar o projeto tira do objetivo).
+    const obj = h("select", { "aria-label": "Objetivo" });
+    fillObjectiveSelect(obj, t.project_id, t.objective_id).catch(() => {});
+    obj.addEventListener("change", () => save({ objective_id: obj.value ? Number(obj.value) : null }));
     fillProjectSelect(proj, t.project_id, (v) => {
       const id = v ? Number(v) : null;
-      if (id !== (cur.project_id || null)) save({ project_id: id }).then(() => extras.sync());
+      if (id !== (cur.project_id || null)) save({ project_id: id }).then(() => {
+        extras.sync();
+        cur.objective_id = null;
+        fillObjectiveSelect(obj, id, null).catch(() => {});
+      });
     }).catch(() => {});
 
     const prio = h("select", { "aria-label": "Prioridade" },
@@ -238,6 +246,7 @@ export async function openTask(taskId, onChange) {
     afterHours.addEventListener("change", () => save({ after_hours: afterHours.checked }));
 
     grid.append(field("Status", status), field("Prazo", due), field("Projeto / cliente", proj), field("Prioridade", prio),
+      field("Objetivo", obj, "wide"),
       h("div", { class: "field wide" }, h("span", { class: "field-label", text: "Outros projetos" }), extras.el),
       h("div", { class: "field" }, h("label", { for: ticket.id, text: "Chamado" }),
         url ? h("div", { class: "with-link" }, ticket, h("a", { class: "icon", href: url, target: "_blank", rel: "noopener noreferrer", title: "Abrir o chamado", "aria-label": "Abrir o chamado" }, icon("right"))) : ticket),

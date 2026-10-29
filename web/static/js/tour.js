@@ -154,7 +154,7 @@ function setup(me) {
       }
       input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); add(input.value); } });
       paintChips();
-      return frame("Para quem ou em que frente você trabalha?", "Projetos agrupam as tarefas: clientes, filiais, sistemas ou frentes da equipe. Com eles você filtra o quadro, vê o tempo de cada um e tira o relatório só daquele projeto. Uma tarefa pode estar em mais de um.",
+      return frame("Para quem ou em que frente você trabalha?", "Projetos agrupam as tarefas: clientes, filiais, sistemas ou frentes da equipe. Com eles você filtra o quadro, vê o tempo de cada um e tira o relatório só daquele projeto. No menu Projetos, cada um ganha objetivos em ordem de execução.",
         [chips, h("div", { class: "inline-form" }, field("Novo projeto", input),
           h("button", { type: "button", class: "btn btn-ghost", onClick: () => add(input.value) }, icon("add"), "Adicionar")), err],
         async () => { if (input.value.trim()) await add(input.value); },
@@ -230,6 +230,8 @@ const STOPS = [
     "No fim do turno, um texto pronto com o que fica aberto, o que está bloqueado e por quê, e o que foi feito. É só colar no chat da equipe."],
   [['#nav [data-view="tarefas"]', '#tabbar [data-view="tarefas"]'], "Tarefas",
     "O quadro com tudo o que está aberto, filtro por projeto e o detalhe de cada tarefa: anotações, checklist, cronômetro e o “como resolveu”, que entra na busca."],
+  [['#nav [data-view="projetos"]'], "Projetos",
+    "Cada projeto com os objetivos (as demandas principais) na ordem de execução e as tarefas de cada um. Arraste para mudar a ordem; o progresso de cada objetivo se calcula sozinho."],
   [['#nav [data-view="relatorios"]', '#tabbar [data-view="relatorios"]', '#tabbar [data-view="mais"]'], "Relatórios e retrospectiva",
     "O PDF do período ou de um projeto inteiro, para prestar contas. A Retrospectiva mostra a semana em números, e o Histórico guarda cada mudança, com desfazer."],
   [["#btn-help", '#tabbar [data-view="mais"]'], "Ajuda",

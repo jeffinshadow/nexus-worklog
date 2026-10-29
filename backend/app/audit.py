@@ -47,7 +47,7 @@ def record(ctx: dict, action: str, entity: str, entity_id, before=None, after=No
 # Snapshots usados no antes/depois (e restaurados pelo desfazer).
 _WORKLOG_COLS = ("id, title, description, status, due_date, created_at, completed_at, "
                  "project_id, priority, ticket, after_hours, external_ref, assigned_by, assigned_at, "
-                 "blocked_reason, blocked_at, assigner_notified_at, follow_up_on, resolution, "
+                 "blocked_reason, blocked_at, assigner_notified_at, follow_up_on, resolution, objective_id, exec_position, "
                  "(SELECT COALESCE(array_agg(x.project_id ORDER BY x.project_id), '{}') FROM worklog_task_projects x"
                  " WHERE x.task_id = worklog_tasks.id) AS extra_project_ids")
 _RECURRING_COLS = ("id, label, position, active, created_at, deactivated_at, "

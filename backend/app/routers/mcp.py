@@ -97,6 +97,8 @@ def _task_line(t: dict, today: date) -> str:
     if t.get("project_name"):
         nomes = [t["project_name"]] + [x["name"] for x in t.get("extra_projects") or []]
         parts.append("{" + " + ".join(nomes) + "}")
+    if t.get("objective_title"):
+        parts.append(f"[objetivo: {t['objective_title']}]")
     if t.get("due_date") and t["status"] != "done":
         due = t["due_date"]
         parts.append(f"prazo {due.isoformat()}" + (" (ATRASADA)" if due < today else ""))
@@ -125,6 +127,25 @@ def _resolve_project(uid: int, value):
     return row["id"]
 
 
+def _resolve_objective(uid: int, value, project_id=None):
+    """Objetivo por id ou título (sem diferenciar maiúsculas); com o projeto
+    conhecido, só entre os dele. None = sem objetivo."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, int) or (isinstance(value, str) and value.isdigit()):
+        rows = db.query_all("SELECT id, project_id FROM project_objectives WHERE id = %s AND user_id = %s", (int(value), uid))
+    else:
+        rows = db.query_all("SELECT id, project_id FROM project_objectives WHERE user_id = %s AND lower(title) = lower(%s)",
+                            (uid, str(value).strip()))
+    if project_id is not None:
+        rows = [r for r in rows if r["project_id"] == project_id]
+    if not rows:
+        raise ToolError(f"objetivo “{value}” não existe{' nesse projeto' if project_id else ''} (veja list_objectives)")
+    if len(rows) > 1:
+        raise ToolError(f"há mais de um objetivo “{value}”: informe o projeto")
+    return rows[0]["id"]
+
+
 def _prio(value):
     if value is None:
         return None
@@ -141,6 +162,8 @@ def _task_args(uid: int, args: dict) -> dict:
     args = dict(args)
     if "project" in args:
         args["project_id"] = _resolve_project(uid, args.pop("project"))
+    if "objective" in args:
+        args["objective_id"] = _resolve_objective(uid, args.pop("objective"), args.get("project_id"))
     if "extra_projects" in args:
         args["extra_project_ids"] = [_resolve_project(uid, v) for v in args.pop("extra_projects") or [] if v not in (None, "")]
     if "priority" in args:
@@ -302,6 +325,28 @@ def t_log_time(ctx, args):
 def t_list_projects(ctx, args):
     rows = project_routes.list_projects(include_archived=False, user=ctx)
     return "\n".join(f"#{p['id']} {p['name']} ({p['open_tasks']} abertas)" for p in rows) or "(nenhum projeto)"
+
+
+def t_list_objectives(ctx, args):
+    from .objectives import overview
+    pid = _resolve_project(ctx["user_id"], args.get("project"))
+    if pid is None:
+        raise ToolError("informe o projeto (veja list_projects)")
+    o = overview(pid, user=ctx)
+    nomes = {"todo": "não iniciado", "in_progress": "em andamento", "done": "concluído"}
+    linhas = [f"Projeto {o['project']['name']}: {o['totals']['done']}/{o['totals']['total']} tarefas concluídas. "
+              "Objetivos na ordem de execução:"]
+    for i, ob in enumerate(o["objectives"], 1):
+        prazo = f", prazo {ob['due_date'].isoformat()}" if ob["due_date"] else ""
+        linhas.append(f"{i}. #{ob['id']} {ob['title']} — {nomes[ob['status']]}, {ob['done']}/{ob['total']}{prazo}")
+        linhas += [f"   - #{t['id']} {t['title']}" for t in ob["tasks"][:15]]
+    sem = o["unassigned"]["tasks"]
+    if sem:
+        linhas.append("Sem objetivo:")
+        linhas += [f"   - #{t['id']} {t['title']}" for t in sem[:15]]
+    if not o["objectives"]:
+        linhas.append("(nenhum objetivo ainda)")
+    return "\n".join(linhas)
 
 
 def t_list_recurring(ctx, args):
@@ -503,6 +548,7 @@ TOOLS = {
                         "project": {"type": ["string", "null"],
                                     "description": "Nome do projeto/cliente (veja list_projects). Omitido: o projeto padrão da pessoa, se houver"},
                         "extra_projects": EXTRA_PROJECTS,
+                        "objective": {"type": ["string", "null"], "description": "Objetivo do projeto (título ou id; veja list_objectives). null tira do objetivo"},
                         "priority": {"type": "string", "enum": ["alta", "normal", "baixa"], "default": "normal"},
                         "ticket": {"type": ["string", "null"], "maxLength": 40, "description": "Número do chamado (GLPI, TomTicket...)"},
                         "after_hours": {"type": "boolean", "default": False, "description": "Plantão / fora do horário"},
@@ -524,6 +570,7 @@ TOOLS = {
                         "due_date": {**DATE, "type": ["string", "null"]},
                         "project": {"type": ["string", "null"]},
                         "extra_projects": EXTRA_PROJECTS,
+                        "objective": {"type": ["string", "null"], "description": "Objetivo do projeto (título ou id; veja list_objectives). null tira do objetivo"},
                         "priority": {"type": "string", "enum": ["alta", "normal", "baixa"]},
                         "ticket": {"type": ["string", "null"], "maxLength": 40},
                         "after_hours": {"type": "boolean"},
@@ -559,6 +606,10 @@ TOOLS = {
                      "day": DATE, "note": {"type": "string", "maxLength": 200}}}),
     "list_projects": (t_list_projects, False, "Lista os projetos/clientes do usuário.",
                       {"type": "object", "properties": {}}),
+    "list_objectives": (t_list_objectives, False,
+                        "Objetivos de um projeto, na ordem de execução, com status, progresso e as tarefas abertas de cada um.",
+                        {"type": "object", "required": ["project"], "properties": {
+                            "project": {"type": "string", "description": "Nome ou id do projeto"}}}),
     "complete_task": (t_complete_task, True, "Marca uma tarefa como concluída (agora, ou na data informada).",
                       {"type": "object", "required": ["task_id"], "properties": {
                           "task_id": {"type": "integer"},

@@ -3,6 +3,7 @@ import { api, toLogin } from "./api.js";
 import { h, icon, clear, setTimeZone, matchPasswords } from "./dom.js";
 import * as today from "./today.js";
 import * as board from "./board.js";
+import * as projetos from "./projetos.js";
 import * as dashboard from "./dashboard.js";
 import * as reports from "./reports.js";
 import * as history from "./history.js";
@@ -30,6 +31,7 @@ let me = null;
 const VIEWS = {
   hoje: { title: "Hoje", need: "user", mount: (el, ctx) => today.mount(el, ctx) },
   tarefas: { title: "Tarefas", need: "user", mount: (el, ctx) => board.mount(el, ctx) },
+  projetos: { title: "Projetos", need: "user", mount: (el, ctx) => projetos.mount(el, ctx) },
   vencimentos: { title: "Vencimentos", need: "user", eyebrow: "certificados · licenças · domínios · garantias", mount: (el) => mountRenewals(el) },
   dashboard: { title: "Retrospectiva", need: "user", eyebrow: "rotinas · fluxo · tempo · backlog", mount: (el, ctx) => dashboard.mount(el, { me: ctx.me, setAssist: ctx.setAssist }) },
   relatorios: { title: "Relatórios", need: "user", eyebrow: "PDF · exportar dados", mount: (el, ctx) => reports.mount(el, { me: ctx.me }) },
@@ -56,6 +58,11 @@ function setActions(...nodes) {
   const fab = document.getElementById("fab");
   fab.classList.toggle("hidden", !main);
   fab.onclick = main ? () => main.click() : null;
+  // O rótulo é o da ação principal da tela ("Tarefa", "Objetivo", "Projeto"...).
+  if (main) {
+    document.getElementById("fab-label").textContent = main.textContent.trim();
+    fab.setAttribute("aria-label", main.getAttribute("aria-label") || main.textContent.trim());
+  }
 }
 
 async function route() {
@@ -183,6 +190,7 @@ async function mountRenewals(el) {
 function mountMore(el) {
   clear(el);
   const items = [
+    ["projetos", "folder", "Projetos"],
     ["vencimentos", "calendar", "Vencimentos"],
     ["dashboard", "dashboard", "Retrospectiva"],
     ["historico", "history", "Histórico"],
@@ -220,10 +228,11 @@ function showHelp() {
     sec("today", "Onde fica cada coisa", list([
       ...(user ? [["Hoje", "Rotinas do dia, tarefas em aberto (com filtro) e o registro rápido."],
         ["Tarefas", "O quadro completo e o detalhe de cada tarefa: anotações, checklist, cronômetro, tempo."],
+        ["Projetos", "Cada projeto com os objetivos em ordem de execução e as tarefas de cada um."],
         ["Retrospectiva", "A semana e o mês em números."],
         ["Relatórios", "PDF do período ou de um projeto, e a exportação dos dados."]] : []),
       ["Histórico", "Tudo o que mudou, com desfazer."],
-      ["Configurações", user ? "Projetos, modelos, avisos, calendário, IA e a sua conta (projeto padrão, dias úteis)." : "IA e API, e a sua conta."],
+      ["Configurações", user ? "Modelos, avisos, calendário, IA e a sua conta (projeto padrão, dias úteis)." : "IA e API, e a sua conta."],
     ])),
     user ? sec("add", "Registro rápido (no Hoje)",
       h("p", { class: "help", text: "Escreva o que fez e aperte Enter. Marcadores opcionais no fim, em qualquer ordem:" }),

@@ -3,7 +3,7 @@
 import { api } from "./api.js";
 import { h, icon, clear, addDays, shortDate, localDay, localDateTime, daysBetween } from "./dom.js";
 import { confirmDialog, errorToast, toast, undoLatest, busy, modal, sheet, navBadge, popupMenu } from "./ui.js";
-import { extraProjectsField, fillProjectSelect, listProjects, projectChips } from "./projects.js";
+import { extraProjectsField, fillObjectiveSelect, fillProjectSelect, listProjects, projectChips } from "./projects.js";
 import { openTask, openTaskId, duration, parseDuration } from "./task.js";
 import { boardLine } from "./assistant.js";
 import { session } from "./session.js";
@@ -57,6 +57,7 @@ export function taskChips(t, today) {
     else chips.push(h("span", { class: "chip", text: "prazo " + shortDate(t.due_date) }));
   }
   chips.push(...projectChips(t));
+  if (t.objective_title) chips.push(h("span", { class: "chip objective", title: "Objetivo" }, icon("target"), t.objective_title));
   if (t.ticket) chips.push(ticketChip(t.ticket));
   if (t.assigned_by_name) chips.push(h("span", { class: "chip assigned", title: "Atribuída por " + t.assigned_by_name, text: "de " + t.assigned_by_name }));
   if (t.after_hours) chips.push(h("span", { class: "chip after-hours", title: "Plantão / fora do horário", text: "plantão" }));
@@ -189,9 +190,13 @@ export function openWorklog(onDone, opts = {}) {
   const extras = extraProjectsField([], pickedProject, () => {});
   clear(extraBox);
   extraBox.append(extras.el);
-  // Já vem com o projeto padrão (Configurações > Conta); "Sem projeto" tira.
-  const projReady = fillProjectSelect(projSel, (session.me && session.me.default_project_id) || null, () => extras.sync())
-    .then(() => extras.sync()).catch(() => {});
+  // Objetivo: os do projeto escolhido (aberto pela tela do projeto, já vem com ele).
+  const objSel = document.getElementById("wl-objective");
+  const syncObjectives = (sel = null) => fillObjectiveSelect(objSel, pickedProject(), sel).catch(() => {});
+  // Já vem com o projeto padrão (Configurações > Conta), ou o da tela de onde veio; "Sem projeto" tira.
+  const projReady = fillProjectSelect(projSel, opts.project_id || (session.me && session.me.default_project_id) || null,
+    () => { extras.sync(); syncObjectives(); })
+    .then(() => { extras.sync(); return syncObjectives(opts.objective_id || null); }).catch(() => {});
   const ticket = document.getElementById("wl-ticket");
   const after = document.getElementById("wl-after");
   // Datas retroativas: "Concluída em" aparece com o status Concluída (vazio =
@@ -273,6 +278,7 @@ export function openWorklog(onDone, opts = {}) {
       await projReady;
       if (t.project_id && [...projSel.options].some((o) => o.value === String(t.project_id))) projSel.value = String(t.project_id);
       extras.sync();
+      syncObjectives();
     };
     tplWrap.classList.remove("hidden");
   }).catch(() => {});
@@ -294,6 +300,7 @@ export function openWorklog(onDone, opts = {}) {
       priority: Number(document.getElementById("wl-prio").value),
       project_id: pickedProject(),
       extra_project_ids: extras.ids(),
+      objective_id: objSel.value ? Number(objSel.value) : null,
       ticket: ticket.value.trim() || null,
       after_hours: after.checked,
     };

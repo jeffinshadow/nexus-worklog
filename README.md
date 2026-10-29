@@ -25,6 +25,10 @@ para leitura, o quadro, a retrospectiva e os relatórios de cada pessoa).
   semana, cada uma comparada com a anterior. No primeiro acesso, um **tour
   guiado** configura o essencial (nome, dias úteis, projetos, projeto padrão,
   rotinas) e mostra a tela; a Ajuda reabre.
+- **Projetos e objetivos** — cada projeto tem objetivos (as demandas
+  principais) em ordem de execução, cada um com as suas tarefas, também em
+  ordem; arrasta para reordenar (no celular, pelo ⋮). Progresso e status do
+  objetivo saem das tarefas; o que não tem objetivo fica em "Sem objetivo".
 - **Rotinas** — verificações que se repetem (backups, alertas, fila…), com agenda:
   dias úteis, dias da semana, mensal (inclui "último dia") ou a cada N dias.
   Marcação até 7 dias para trás; feito fora da agenda conta como *extra*.

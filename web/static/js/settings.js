@@ -2,11 +2,10 @@
 import { api } from "./api.js";
 import { h, icon, clear, dateTime, field, matchPasswords } from "./dom.js";
 import { codeBox, confirmDialog, errorToast, modal, toast, warnBox, busy } from "./ui.js";
-import { defaultProjectPanel, fillProjectSelect, projectsPanel } from "./projects.js";
+import { defaultProjectPanel, fillProjectSelect } from "./projects.js";
 import { avatar, squarePhoto } from "./profile.js";
 
 const TABS = [
-  ["projetos", "Projetos"],
   ["modelos", "Modelos"],
   ["avisos", "Avisos"],
   ["calendario", "Calendário"],
@@ -22,8 +21,9 @@ const DAYS = [
 ];
 
 export async function mount(root, ctx) {
-  // A aba de vencimentos virou item do menu: link antigo vai para a tela nova.
+  // Vencimentos e Projetos viraram itens do menu: link antigo vai para a tela nova.
   if (/aba=vencimentos/.test(location.hash)) { location.hash = "#/vencimentos"; return; }
+  if (/aba=projetos/.test(location.hash)) { location.hash = "#/projetos"; return; }
   // Conta sem registro próprio (só Admin/Visualizador/Atribuidor): só IA/API e Conta.
   const isUser = (ctx.me.roles || []).includes("user");
   const tabs = isUser ? TABS : TABS.filter(([k]) => k === "ia" || k === "conta");
@@ -64,8 +64,7 @@ export async function mount(root, ctx) {
   }
 
   async function fill(body) {
-    if (active === "projetos") body.append(await projectsPanel(() => render()));
-    else if (active === "modelos") body.append(await templatesPanel(() => render()));
+    if (active === "modelos") body.append(await templatesPanel(() => render()));
     else if (active === "avisos") body.append(await notices());
     else if (active === "calendario") body.append(await calendarFeed(() => render()));
     else if (active === "ia") body.append(...aiHelp(), await tokens(() => render()));

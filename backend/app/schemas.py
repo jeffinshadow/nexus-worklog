@@ -196,6 +196,7 @@ class WorklogIn(BaseModel):
     due_date: Optional[date] = None
     project_id: Optional[int] = None  # ausente = o projeto padrão da pessoa
     extra_project_ids: list[int] = Field(default_factory=list, max_length=10)  # além do principal
+    objective_id: Optional[int] = None  # objetivo do projeto principal (sem projeto: vem do objetivo)
     priority: int = Field(default=2, ge=1, le=3)  # 1 alta, 2 normal, 3 baixa
     ticket: Optional[str] = Ticket          # número no sistema de chamados
     after_hours: bool = False               # plantão / fora do horário
@@ -227,6 +228,7 @@ class WorklogUpdate(BaseModel):
     due_date: Optional[date] = None
     project_id: Optional[int] = None  # enviado como null = tirar do projeto
     extra_project_ids: Optional[list[int]] = Field(default=None, max_length=10)  # troca a lista inteira
+    objective_id: Optional[int] = None  # null = tirar do objetivo
     priority: Optional[int] = Field(default=None, ge=1, le=3)
     ticket: Optional[str] = Ticket     # null ou vazio = tirar o chamado
     after_hours: Optional[bool] = None
@@ -327,6 +329,27 @@ Color = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
 class ProjectIn(BaseModel):
     name: str = Field(min_length=1, max_length=60)
     color: Optional[str] = Color
+
+
+class ObjectiveIn(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+    description: Optional[str] = Field(default=None, max_length=500)
+    due_date: Optional[date] = None
+
+
+class ObjectiveUpdate(BaseModel):
+    title: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    description: Optional[str] = Field(default=None, max_length=500)  # null apaga
+    due_date: Optional[date] = None                                   # null apaga
+
+
+class OrderIn(BaseModel):
+    ids: list[int] = Field(max_length=500)  # na ordem de execução
+
+
+class TaskOrderIn(BaseModel):
+    objective_id: Optional[int] = None      # null = "Sem objetivo"
+    task_ids: list[int] = Field(max_length=500)
 
 
 class ProjectUpdate(BaseModel):

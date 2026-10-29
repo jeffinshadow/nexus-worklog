@@ -1002,3 +1002,45 @@ dialog.help-dialog > .dialog-actions { position: sticky; bottom: -24px; margin: 
 /* Retrospectiva: navegação entre "últimos 30 dias" e os meses anteriores */
 .dash-period { max-width: 360px; margin: 0 0 18px; }
 .dash-past-note { margin-top: 8px; }
+
+/* -------------------------------------------- Projetos: objetivos em ordem -- */
+.proj-grid { display: grid; gap: var(--gap); grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.proj-card { display: block; padding: 18px 20px; border-radius: 18px; border: 1px solid var(--outline-variant); background: var(--surface-container);
+  color: inherit; text-decoration: none; transition: border-color .2s; }
+.proj-card:hover { border-color: rgba(82,148,226,.5); }
+.proj-card.archived { opacity: .65; }
+.proj-card-head, .proj-title { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.proj-card-head h2, .proj-title h2 { font-size: 1.05rem; font-weight: 600; margin: 0; }
+.proj-title h2 { font-size: 1.35rem; }
+.proj-title .icon { margin-left: auto; }
+.proj-card-meta { color: var(--dim); font-size: .84rem; margin: 8px 0 0; }
+.proj-archived { margin-top: 18px; }
+.proj-archived .proj-grid { margin-top: 10px; }
+.proj-head { margin-bottom: 20px; }
+.proj-back { margin: 0 0 8px -8px; }
+.obj-progress { display: flex; align-items: center; gap: 10px; }
+.obj-progress .progress { flex: 1; margin: 0; }
+.obj-progress-l { color: var(--dim); font-size: .78rem; white-space: nowrap; }
+.obj-list { display: flex; flex-direction: column; gap: var(--gap); margin-bottom: var(--gap); }
+.obj-block .obj-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.obj-block .obj-head h3 { font-size: 1rem; font-weight: 600; margin: 0; }
+.obj-block .obj-head > .icon:last-child { margin-left: auto; }
+.obj-n { display: inline-grid; place-items: center; min-width: 22px; height: 22px; border-radius: 6px; background: var(--primary-container); color: var(--on-surface); font-size: .76rem; }
+.obj-status.in_progress { border-color: rgba(82,148,226,.5); color: var(--primary); }
+.obj-status.done { border-color: rgba(129,201,149,.5); color: var(--success); }
+.obj-desc { color: var(--on-surface-variant); font-size: .88rem; margin: 0 0 10px; }
+.obj-sub { color: var(--dim); font-size: .84rem; }
+.obj-block .obj-progress { margin-bottom: 10px; }
+.obj-tasks { min-height: 8px; }
+.obj-task { display: flex; align-items: center; gap: 6px; padding: 6px 0; border-bottom: 1px solid var(--outline-variant); background: var(--surface-container); }
+.obj-task .t { flex: 1; min-width: 0; }
+.obj-task.dragging, .obj-block.dragging { opacity: .45; }
+.obj-task.done { opacity: .7; }
+.obj-check-done { display: inline-grid; place-items: center; width: 40px; color: var(--success); }
+.obj-add { margin-top: 10px; }
+.obj-done-toggle { margin-top: 6px; }
+.grip { cursor: grab; color: var(--dim); }
+.grip:active { cursor: grabbing; }
+.obj-block.unassigned { border-style: dashed; }
+.chip.objective { display: inline-flex; align-items: center; gap: 4px; }
+.chip.objective .ico { width: 12px; height: 12px; }
