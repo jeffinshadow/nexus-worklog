@@ -115,3 +115,11 @@ export function daysBetween(a, b) {
   const t = (iso) => { const [y, m, d] = iso.split("-").map(Number); return Date.UTC(y, m - 1, d); };
   return Math.round((t(b) - t(a)) / 86400000);
 }
+
+// Senha + confirmação: o navegador recusa o envio enquanto as duas não baterem.
+export function matchPasswords(pw, confirm) {
+  const check = () => confirm.setCustomValidity(confirm.value && confirm.value !== pw.value ? "As senhas não são iguais." : "");
+  pw.addEventListener("input", check);
+  confirm.addEventListener("input", check);
+  return check;
+}

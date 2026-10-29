@@ -1,6 +1,6 @@
 // Configurações: projetos, modelos, avisos, calendário, IA e API (chaves), conta (perfil, assistente, chamados, dias úteis e senha).
 import { api } from "./api.js";
-import { h, icon, clear, dateTime, field } from "./dom.js";
+import { h, icon, clear, dateTime, field, matchPasswords } from "./dom.js";
 import { codeBox, confirmDialog, errorToast, modal, toast, warnBox, busy } from "./ui.js";
 import { defaultProjectPanel, fillProjectSelect, projectsPanel } from "./projects.js";
 import { avatar, squarePhoto } from "./profile.js";
@@ -598,17 +598,19 @@ function deleteAccount(isUser) {
 function account(me) {
   const cur = h("input", { type: "password", autocomplete: "current-password", required: "required", maxlength: "128" });
   const nova = h("input", { type: "password", autocomplete: "new-password", minlength: "10", required: "required", maxlength: "128" });
+  const nova2 = h("input", { type: "password", autocomplete: "new-password", minlength: "10", required: "required", maxlength: "128" });
+  matchPasswords(nova, nova2);
   const err = h("p", { class: "error-text" });
   const form = h("form", {},
     field("Senha atual", cur),
-    field("Nova senha (mínimo 10 caracteres)", nova),
+    h("div", { class: "field-row" }, field("Nova senha (mínimo 10 caracteres)", nova), field("Confirme a nova senha", nova2)),
     err, h("button", { type: "submit", class: "btn btn-primary", text: "Trocar senha" }));
   form.addEventListener("submit", busy(async (ev) => {
     ev.preventDefault();
     err.textContent = "";
     try {
       await api.post("/auth/change-password", { current_password: cur.value, new_password: nova.value });
-      cur.value = nova.value = "";
+      cur.value = nova.value = nova2.value = "";
       toast("Senha trocada. Outras sessões, chaves de API e o link do calendário foram encerrados.");
     } catch (e) {
       err.textContent = e.message || "Falha ao trocar.";

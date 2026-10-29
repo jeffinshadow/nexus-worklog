@@ -53,6 +53,8 @@ class Mail:
     reason = "Você recebe este aviso porque o ativou em Configurações > Avisos."
     settings_tab = "avisos"
     link = "/"
+    absolute = False      # link já completo (convite e senha: o token vai junto)
+    button = "Abrir o Nexus"
 
     def __init__(self, subject: str, title: str, intro: str):
         self.subject, self.title, self.intro = subject, title, intro
@@ -68,6 +70,10 @@ class Mail:
         self.blocks.append((heading, items[:LIST_MAX] + ([f"+ {extra} outras"] if extra > 0 else [])))
 
     @property
+    def href(self) -> str:
+        return self.link if self.absolute else config.APP_URL + self.link
+
+    @property
     def empty(self) -> bool:
         return not self.blocks
 
@@ -77,7 +83,7 @@ class Mail:
             out.append(heading)
             out += [f"  - {i}" for i in items]
             out.append("")
-        out += [f"Abrir o Nexus: {config.APP_URL}{self.link}", "", self.reason]
+        out += [f"{self.button}: {self.href}", "", self.reason]
         if self.settings_tab:  # aviso que não tem como desligar não promete isso
             out.append(f"Para desligar: {config.APP_URL}/index.html#/config?aba={self.settings_tab}")
         return "\n".join(out)
@@ -101,7 +107,7 @@ class Mail:
 <p style="margin:0 0 6px;font:600 20px/1.3 Arial,sans-serif;color:#18181b">{e(self.title)}</p>
 <p style="margin:0;font:14px/1.5 Arial,sans-serif;color:#52525b">{e(self.intro)}</p>
 {''.join(parts)}
-<p style="margin:26px 0 0"><a href="{e(config.APP_URL + self.link)}" style="display:inline-block;background:#5294E2;color:#0b0d10;text-decoration:none;font:600 14px/1 Arial,sans-serif;padding:12px 20px;border-radius:999px">Abrir o Nexus</a></p>
+<p style="margin:26px 0 0"><a href="{e(self.href)}" style="display:inline-block;background:#5294E2;color:#0b0d10;text-decoration:none;font:600 14px/1 Arial,sans-serif;padding:12px 20px;border-radius:999px">{e(self.button)}</a></p>
 </td></tr></table>
 <p style="max-width:560px;margin:14px auto 0;font:12px/1.5 Arial,sans-serif;color:#86868e">{e(self.reason)}
 {f'<a href="{e(config.APP_URL)}/index.html#/config?aba={e(self.settings_tab)}" style="color:#86868e">Mudar ou desligar</a>.' if self.settings_tab else ''}</p>

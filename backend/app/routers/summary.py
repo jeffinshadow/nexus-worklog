@@ -1,10 +1,10 @@
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from .. import people
 from ..deps import active_user
-from ..services import app_today, app_tz, get_board, get_summary, next_work_day, work_mask
+from ..services import WEEKS_BACK_MAX, app_today, app_tz, get_board, get_summary, get_week_summary, next_work_day, work_mask
 
 router = APIRouter(prefix="/api/summary", tags=["summary"])
 
@@ -12,6 +12,12 @@ router = APIRouter(prefix="/api/summary", tags=["summary"])
 @router.get("")
 def summary(user=Depends(active_user)):
     return get_summary(user["user_id"])
+
+
+@router.get("/week")
+def week(back: int = Query(default=0, ge=0, le=WEEKS_BACK_MAX), user=Depends(active_user)):
+    """Uma semana do resumo do Hoje (back semanas atrás), com a anterior para comparar."""
+    return get_week_summary(user["user_id"], back)
 
 
 TURNO = timedelta(hours=12)

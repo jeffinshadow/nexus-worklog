@@ -3,14 +3,17 @@
 Ver os registros e relatórios das pessoas saiu daqui: é do Visualizador de
 tarefas (routers/viewer.py).
 """
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 
-from .. import audit, db, people, roles
+from .. import audit, db, links, mailer, people, roles
 from ..deps import require_admin, require_admin_csrf
 from ..schemas import AppSettingsIn, DeleteUserIn, InviteIn, RolesIn
 from ..security import generate_temp_password, hash_password, revoke_access
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+log = logging.getLogger("uvicorn.error")
 
 
 def _ensure_user(user_id: int) -> dict:
@@ -23,30 +26,75 @@ def _ensure_user(user_id: int) -> dict:
 @router.get("/users")
 def list_users(admin=Depends(require_admin)):
     rows = db.query_all(
-        f"""SELECT u.id, u.email, u.role, u.created_at, u.accepts_assignments_at, {roles.ROLES_SQL}
+        f"""SELECT u.id, u.email, u.role, u.created_at, u.accepts_assignments_at, u.invite_pending, {roles.ROLES_SQL}
               FROM users u ORDER BY lower(u.email)""")
     return [{**r, **people.profile(r["id"])} for r in rows]
 
 
 @router.post("/users", status_code=201)
 def invite_user(data: InviteIn, admin=Depends(require_admin_csrf)):
-    """Cria a conta de um convidado com senha temporaria (mostrada uma unica vez
-    ao admin). O convidado troca a senha no primeiro login, como no reset.
-    Nasce com o papel Usuário; os outros se dão em Permissões."""
+    """Cria a conta de um convidado. Nasce com o papel Usuário; os outros se
+    dão em Permissões.
+
+    Com e-mail configurado: convite por link (vale 7 dias, uso único), mandado
+    por e-mail e mostrado ao admin para copiar; a pessoa cria a própria senha.
+    Sem e-mail: senha temporária (mostrada uma única vez ao admin), trocada no
+    primeiro login, como no reset."""
     email = data.email.lower()
     if db.query_one("SELECT 1 FROM users WHERE email = %s", (email,)):
         raise HTTPException(status_code=409, detail="e-mail já cadastrado")
+    by_link = mailer.configured()
     temp = generate_temp_password()
     db.execute(
-        """INSERT INTO users (email, password_hash, role, must_change_password)
-           VALUES (%s, %s, 'user', true)""",
-        (email, hash_password(temp)),
+        """INSERT INTO users (email, password_hash, role, must_change_password, invite_pending)
+           VALUES (%s, %s, 'user', %s, %s)""",
+        # no convite por link a senha é aleatória e ninguém a vê: só o link entra
+        (email, hash_password(generate_temp_password(32) if by_link else temp), not by_link, by_link),
     )
     novo = db.query_one("SELECT id FROM users WHERE email = %s", (email,))
     roles.grant(novo["id"], ["user"])
     audit.record({**admin, "actor": "admin"}, "user.invite", "user", novo["id"],
-                 after={"email": email, "by": admin["email"]}, user_id=novo["id"])
-    return {"email": email, "temp_password": temp}
+                 after={"email": email, "by": admin["email"], "link": by_link}, user_id=novo["id"])
+    if not by_link:
+        return {"email": email, "temp_password": temp}
+    return _send_invite(novo["id"], email, admin)
+
+
+def _invite_mail(email: str, by_name: str, link: str):
+    from ..notify import Mail  # import tardio: notify importa rotas
+    m = Mail("Convite para o Nexus Worklog", f"{by_name} convidou você para o Nexus",
+             "O Nexus guarda o seu dia de trabalho: rotinas, tarefas e o tempo de cada uma, com relatório pronto. "
+             "Crie a sua senha pelo botão abaixo. O convite vale por 7 dias e funciona uma vez só.")
+    m.blocks = [("A sua conta", [email])]
+    m.link, m.absolute, m.button = link, True, "Aceitar o convite"
+    m.reason, m.settings_tab = "Você recebe este e-mail porque um administrador do Nexus criou uma conta para você.", None
+    return m
+
+
+def _send_invite(uid: int, email: str, admin: dict) -> dict:
+    """Link novo (o anterior deixa de valer) e o e-mail. O admin sempre recebe o
+    link: se o e-mail não chegar, ele manda por outro canal."""
+    link = links.url("invite", links.issue(uid, "invite"))
+    try:
+        m = _invite_mail(email, people.profile(admin["user_id"])["name"], link)
+        mailer.send(email, m.subject, m.text(), m.html())
+        return {"email": email, "invite_url": link, "emailed": True}
+    except mailer.MailError as e:
+        log.warning("convite para %s não foi por e-mail: %s", email, e)
+        return {"email": email, "invite_url": link, "emailed": False}
+
+
+@router.post("/users/{user_id}/invite")
+def resend_invite(user_id: int, admin=Depends(require_admin_csrf)):
+    """Reenvia o convite de quem ainda não entrou (link novo, o velho para de valer)."""
+    target = _ensure_user(user_id)
+    if not db.query_one("SELECT 1 FROM users WHERE id = %s AND invite_pending", (user_id,)):
+        raise HTTPException(status_code=400, detail="essa conta já aceitou o convite")
+    if not mailer.configured():
+        raise HTTPException(status_code=400, detail="e-mail não configurado no servidor: use Redefinir senha")
+    audit.record({**admin, "actor": "admin"}, "user.invite_resend", "user", user_id,
+                 after={"email": target["email"], "by": admin["email"]}, user_id=user_id)
+    return _send_invite(user_id, target["email"], admin)
 
 
 @router.put("/users/{user_id}/roles")
@@ -124,7 +172,7 @@ def reset_password(user_id: int, admin=Depends(require_admin_csrf)):
 
     temp = generate_temp_password()
     db.execute(
-        "UPDATE users SET password_hash = %s, must_change_password = true WHERE id = %s",
+        "UPDATE users SET password_hash = %s, must_change_password = true, invite_pending = false WHERE id = %s",
         (hash_password(temp), user_id),
     )
     # Encerra TODAS as sessoes do alvo e corta os acessos que nao dependem da

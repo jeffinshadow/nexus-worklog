@@ -985,3 +985,13 @@ dialog.help-dialog { max-width: 600px; width: min(600px, calc(100vw / var(--ui-z
 /* A Ajuda rola; o Fechar fica sempre à vista no rodapé. */
 dialog.help-dialog > .dialog-actions { position: sticky; bottom: -24px; margin: 8px -24px -24px; padding: 12px 24px 16px;
   background: var(--surface-pop); border-top: 1px solid var(--outline-variant); }
+
+/* ------------------------------------------- login: senha nova e convite -- */
+.label-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.label-row label { margin-bottom: 6px; }
+.link-btn { border: 0; background: none; padding: 0; color: var(--primary); font: inherit; font-size: .8rem; cursor: pointer; margin-bottom: 6px; }
+.link-btn:hover { text-decoration: underline; }
+.auth-title { font-size: 1.2rem; font-weight: 600; letter-spacing: -.02em; margin: 0 0 6px; text-align: center; }
+.auth-card form .btn.full + .btn.full { margin-top: 8px; }
+.ok-text { color: var(--on-surface); background: var(--primary-container); border-radius: 12px; padding: 10px 12px; font-size: .86rem; line-height: 1.45; margin: 0 0 12px; }
+.pending-chip { margin-left: 8px; }

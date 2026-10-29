@@ -63,6 +63,16 @@ class ChangePasswordIn(BaseModel):
     new_password: str = _PW
 
 
+class ForgotIn(BaseModel):
+    email: EmailStr
+
+
+class LinkPasswordIn(BaseModel):
+    token: str = Field(min_length=20, max_length=100)
+    password: str = _PW
+    display_name: Optional[str] = Field(default=None, max_length=60)  # só no convite
+
+
 Freq = Literal["daily", "weekly", "monthly", "interval"]
 _PARAM = {"weekly": "weekdays", "monthly": "month_day", "interval": "interval_days"}
 

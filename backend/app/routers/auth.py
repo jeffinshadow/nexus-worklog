@@ -1,9 +1,11 @@
 import logging
+import threading
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
-from .. import audit, db, people, roles
+from .. import audit, db, links, mailer, people, roles
 from ..config import config
 from ..deps import (
     active_user_csrf,
@@ -13,7 +15,7 @@ from ..deps import (
     web_user_csrf,
     set_session_cookie,
 )
-from ..schemas import ChangePasswordIn, LoginIn, SettingsIn
+from ..schemas import ChangePasswordIn, ForgotIn, LinkPasswordIn, LoginIn, SettingsIn
 from ..services import app_today, app_tz, task_retro_days
 from .recurring import replace_routine
 from ..security import (
@@ -23,6 +25,8 @@ from ..security import (
     login_limiter,
     needs_rehash,
     new_token,
+    reset_email_limiter,
+    reset_limiter,
     revoke_access,
     token_hash,
     verify_password,
@@ -85,6 +89,10 @@ def login(data: LoginIn, request: Request, response: Response):
     db.execute("DELETE FROM sessions WHERE expires_at <= now()")
     db.execute("DELETE FROM audit_log WHERE created_at < now() - interval '180 days'")
 
+    return _start_session(user, response)
+
+
+def _start_session(user: dict, response: Response) -> dict:
     token = new_token()
     csrf = new_token()
     expires = datetime.now(timezone.utc) + timedelta(days=config.SESSION_TTL_DAYS)
@@ -95,6 +103,97 @@ def login(data: LoginIn, request: Request, response: Response):
     )
     set_session_cookie(response, token)
     return _public(user, csrf)
+
+
+# ------------------------------------------- convite e recuperação por e-mail --
+# Só existem com SMTP configurado. A tela de login pergunta em /options.
+
+@router.get("/options")
+def options():
+    """O que a tela de login oferece (público): "Esqueci a senha" só com e-mail."""
+    return {"email": mailer.configured()}
+
+
+def _reset_mail(email: str, link: str):
+    from ..notify import Mail  # import tardio: notify importa rotas
+    m = Mail("Redefinir a sua senha do Nexus", "Redefinir a senha",
+             "Alguém (provavelmente você) pediu para redefinir a senha desta conta. O link vale por 1 hora e funciona uma vez só.")
+    m.blocks = [("Não foi você?", ["Pode ignorar este e-mail: a senha atual continua valendo."])]
+    m.link, m.absolute, m.button = link, True, "Criar uma senha nova"
+    m.reason, m.settings_tab = f"Enviado para {email} a pedido da tela de login.", None
+    return m
+
+
+def _send_quiet(to: str, mail) -> None:
+    try:
+        mailer.send(to, mail.subject, mail.text(), mail.html())
+    except Exception as e:  # noqa: BLE001 — a resposta já foi dada (não revela se a conta existe)
+        log.warning("e-mail de recuperação falhou: %s", e)
+
+
+@router.post("/forgot")
+def forgot(data: ForgotIn, request: Request):
+    """Manda o link de nova senha. A resposta é sempre a mesma (não diz se o
+    e-mail tem conta) e o envio sai em segundo plano (o tempo também não diz)."""
+    if not mailer.configured():
+        raise HTTPException(status_code=400, detail="recuperação por e-mail indisponível: fale com o administrador")
+    email = data.email.lower()
+    if not reset_limiter.allow(f"ip:{client_ip(request)}") or not reset_email_limiter.allow(f"em:{email}"):
+        raise HTTPException(status_code=429, detail="muitos pedidos, tente mais tarde")
+    user = db.query_one("SELECT id, email FROM users WHERE email = %s", (email,))
+    if user:
+        link = links.url("reset", links.issue(user["id"], "reset"))
+        threading.Thread(target=_send_quiet, args=(user["email"], _reset_mail(user["email"], link)), daemon=True).start()
+        audit.record({"user_id": user["id"], "actor": "web"}, "password.forgot", "password", user["id"])
+    return {"ok": True}
+
+
+@router.get("/link")
+def link_info(kind: Literal["invite", "reset"], token: str, request: Request):
+    """Para quem abriu o link: de que conta é (ou 404 se venceu/foi usado)."""
+    if not login_limiter.allow(f"ip:{client_ip(request)}"):
+        raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
+    row = links.peek(token, kind)
+    if not row:
+        raise HTTPException(status_code=404, detail="link inválido, vencido ou já usado")
+    return {"email": row["email"], "display_name": row["display_name"]}
+
+
+def _set_password(uid: int, password: str) -> None:
+    db.execute("""UPDATE users SET password_hash = %s, must_change_password = false, invite_pending = false
+                   WHERE id = %s""", (hash_password(password), uid))
+
+
+@router.post("/invite/accept")
+def accept_invite(data: LinkPasswordIn, request: Request, response: Response):
+    """Convidado cria a própria senha (e o nome) e já entra."""
+    if not login_limiter.allow(f"ip:{client_ip(request)}"):
+        raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
+    uid = links.consume(data.token, "invite")
+    if not uid:
+        raise HTTPException(status_code=400, detail="convite inválido, vencido ou já usado: peça um novo ao administrador")
+    _set_password(uid, data.password)
+    nome = " ".join((data.display_name or "").split()) or None
+    if nome:
+        db.execute("UPDATE users SET display_name = %s WHERE id = %s", (nome, uid))
+    audit.record({"user_id": uid, "actor": "web"}, "user.invite_accept", "user", uid)
+    return _start_session(db.query_one("SELECT * FROM users WHERE id = %s", (uid,)), response)
+
+
+@router.post("/reset")
+def reset_by_link(data: LinkPasswordIn, request: Request, response: Response):
+    """Senha nova pelo link do e-mail: encerra as outras sessões e corta chaves
+    de API e calendário (como a troca de senha) e já entra."""
+    if not login_limiter.allow(f"ip:{client_ip(request)}"):
+        raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
+    uid = links.consume(data.token, "reset")
+    if not uid:
+        raise HTTPException(status_code=400, detail="link inválido, vencido ou já usado: peça outro na tela de login")
+    _set_password(uid, data.password)
+    db.execute("DELETE FROM sessions WHERE user_id = %s", (uid,))
+    revoke_access(uid)
+    audit.record({"user_id": uid, "actor": "web"}, "password.reset_link", "password", uid)
+    return _start_session(db.query_one("SELECT * FROM users WHERE id = %s", (uid,)), response)
 
 
 @router.post("/logout")

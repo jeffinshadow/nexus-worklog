@@ -661,3 +661,33 @@ def get_summary(user_id: int) -> dict:
     week["previous"] = {k: prev[k] for k in ("recurring_done", "recurring_total", "pontual_done", "minutes", "start", "end")}
     return {"today": today, "last_day": resumo(last, today - timedelta(days=1)), "week": week,
             "today_stats": resumo(today, today)}  # fechamento do dia
+
+
+WEEKS_BACK_MAX = 104  # dois anos de semanas no resumo do Hoje
+
+
+def get_week_summary(user_id: int, back: int) -> dict:
+    """Uma semana passada (back = 1 é a anterior), de domingo a sábado,
+    comparada com a semana inteira antes dela. back = 0 = a semana atual, igual
+    ao resumo do Hoje. `oldest` = quantas semanas dá para voltar (a partir da
+    primeiro registro da pessoa)."""
+    today = app_today()
+    if back == 0:
+        week = get_summary(user_id)["week"]
+    else:
+        ws = week_start(today) - timedelta(days=7 * back)
+        we = ws + timedelta(days=6)
+        prev_s = ws - timedelta(days=7)
+        inputs = _report_inputs(user_id, prev_s, we)
+        week = _compact(get_report_range(user_id, ws, we, inputs=inputs, with_open=False))
+        prev = _compact(get_report_range(user_id, prev_s, prev_s + timedelta(days=6), inputs=inputs, with_open=False))
+        week["previous"] = {k: prev[k] for k in ("recurring_done", "recurring_total", "pontual_done", "minutes", "start", "end")}
+    # Até a semana do primeiro registro (o lançamento retroativo vem antes da conta).
+    first = db.query_one(
+        """SELECT LEAST((SELECT (created_at AT TIME ZONE %(tz)s)::date FROM users WHERE id = %(u)s),
+                        (SELECT min((created_at AT TIME ZONE %(tz)s)::date) FROM worklog_tasks WHERE user_id = %(u)s),
+                        (SELECT min(completed_date) FROM recurring_completions WHERE user_id = %(u)s),
+                        (SELECT min(day) FROM time_entries WHERE user_id = %(u)s)) AS d""",
+        {"tz": config.APP_TZ, "u": user_id})["d"] or today
+    oldest = min(WEEKS_BACK_MAX, max(0, (week_start(today) - week_start(min(first, today))).days // 7))
+    return {"today": today, "back": back, "oldest": oldest, "week": week}

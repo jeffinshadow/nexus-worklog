@@ -134,6 +134,9 @@ class RateLimiter:
 # por e-mail (freia tentativa distribuida sem trancar a pessoa por 10 erros).
 login_limiter = RateLimiter(max_hits=10, window_seconds=300)
 login_email_limiter = RateLimiter(max_hits=100, window_seconds=300)
+# "Esqueci a senha": poucos pedidos por IP e por e-mail (não vira canal de spam).
+reset_limiter = RateLimiter(max_hits=5, window_seconds=900)
+reset_email_limiter = RateLimiter(max_hits=3, window_seconds=3600)
 # PDF: gerar e pesado (CPU, um processo so). Ate 6 por usuario por minuto.
 pdf_limiter = RateLimiter(max_hits=6, window_seconds=60)
 # Erros do navegador mandados ao log: poucos por pessoa (não vira canal de spam no log).

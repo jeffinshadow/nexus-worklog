@@ -1,6 +1,6 @@
 import { api } from "./api.js";
 import { h, icon, clear, field } from "./dom.js";
-import { codeBox, confirmDialog, errorToast, modal, toast, busy } from "./ui.js";
+import { codeBox, confirmDialog, errorToast, modal, toast, busy, warnBox } from "./ui.js";
 import { applyBranding } from "./branding.js";
 import { avatar } from "./profile.js";
 import { consentsPanel } from "./atribuir.js";
@@ -49,8 +49,11 @@ async function mountUsers(root) {
     h("div", { class: "panel-head" }, h("h2", { text: "Contas" }), h("div", { class: "spacer" }), inviteBtn),
     ...users.map((u) => h("div", { class: "list-row" }, avatar(u, "sm"),
       h("div", { class: "t" }, h("span", { text: u.display_name ? `${u.display_name} · ${u.email}` : u.email }),
-        h("small", { text: roleNames(u.roles) })),
-      h("button", { type: "button", class: "btn btn-text btn-sm", text: "Redefinir senha", onClick: () => onReset(String(u.id)) }),
+        h("small", {}, roleNames(u.roles), u.invite_pending ? h("span", { class: "chip today pending-chip", text: "convite pendente" }) : null)),
+      // Quem ainda não aceitou o convite recebe outro link; os demais, senha temporária.
+      u.invite_pending
+        ? h("button", { type: "button", class: "btn btn-text btn-sm", text: "Reenviar convite", onClick: () => onResend(u) })
+        : h("button", { type: "button", class: "btn btn-text btn-sm", text: "Redefinir senha", onClick: () => onReset(String(u.id)) }),
       h("button", { type: "button", class: "icon", title: "Excluir conta", "aria-label": "Excluir a conta de " + u.email, onClick: () => onDelete(u) }, icon("trash")))));
   root.append(h("div", { class: "settings-grid" }, list));
 
@@ -95,18 +98,27 @@ async function mountUsers(root) {
     }
   }
 
-  // ---- Novo usuário (convite): conta com senha temporária, troca no 1º login ----
-  function onInvite() {
+  async function onResend(u) {
+    try { showInvite(await api.post(`/admin/users/${u.id}/invite`)); }
+    catch (e) { errorToast(e, "Não foi possível reenviar."); }
+  }
+
+  // ---- Novo usuário (convite). Com e-mail no servidor: link por e-mail (a
+  // pessoa cria a senha); sem: senha temporária, trocada no 1º login ----
+  async function onInvite() {
+    const byLink = await api.get("/auth/options").then((o) => o.email).catch(() => false);
     const input = h("input", { type: "email", required: "required", autocomplete: "off" });
     const err = h("p", { class: "error-text" });
-    const submit = h("button", { type: "submit", class: "btn btn-primary", text: "Criar conta" });
+    const submit = h("button", { type: "submit", class: "btn btn-primary", text: byLink ? "Enviar convite" : "Criar conta" });
     const form = h(
       "form",
       {},
       h("label", { class: "field" }, "E-mail do convidado", input),
       h("p", {
         class: "dialog-note",
-        text: "A conta nasce com uma senha temporária, que o convidado troca no primeiro acesso.",
+        text: byLink
+          ? "O convidado recebe por e-mail um link para criar a própria senha (vale 7 dias, uso único). Você também vê o link, para mandar por outro canal se precisar."
+          : "A conta nasce com uma senha temporária, que o convidado troca no primeiro acesso. (Com e-mail configurado no servidor, o convite vai por link.)",
       }),
       err,
       h(
@@ -123,7 +135,7 @@ async function mountUsers(root) {
       try {
         const res = await api.post("/admin/users", { email: input.value.trim() });
         dlg.close();
-        showPassword(res.email, res.temp_password);
+        if (res.invite_url) showInvite(res); else showPassword(res.email, res.temp_password);
         mountUsers(root); // recarrega a lista com o novo usuário
       } catch (e) {
         err.textContent =
@@ -135,6 +147,17 @@ async function mountUsers(root) {
     }));
     const dlg = modal(h("h2", { text: "Novo usuário" }), form);
     input.focus();
+  }
+
+  function showInvite(res) {
+    const dlg = modal(
+      h("h2", { text: res.emailed ? "Convite enviado" : "Convite criado" }),
+      res.emailed
+        ? h("p", {}, "Mandamos o convite para ", h("strong", { text: res.email }), ". Se não chegar, mande este link por outro canal:")
+        : warnBox(`O e-mail para ${res.email} não saiu. Mande este link por outro canal (WhatsApp, chat):`),
+      codeBox(res.invite_url),
+      h("p", { class: "dialog-note", text: "Vale por 7 dias e funciona uma vez só. Reenviar gera um link novo e o anterior deixa de valer." }),
+      h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Pronto", onClick: () => dlg.close() })));
   }
 
   function showPassword(email, pw) {

@@ -39,7 +39,7 @@ def _banco_limpo():
         db.execute("INSERT INTO app_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING")
     main.seed_admin()
     for limiter in (security.login_limiter, security.login_email_limiter,
-                    security.pdf_limiter):
+                    security.pdf_limiter, security.reset_limiter, security.reset_email_limiter):
         limiter._hits.clear()
     yield
 
@@ -92,11 +92,17 @@ def admin():
 
 @pytest.fixture
 def novo_usuario(admin):
-    """Fábrica: convida pelo admin, faz o 1º login e troca a senha."""
+    """Fábrica: convida pelo admin, faz o 1º login e troca a senha (ou, com
+    e-mail ligado no teste, aceita o convite pelo link)."""
     def _criar(email="colega@example.com", senha=SENHA_PADRAO):
         r = admin.post("/admin/users", {"email": email})
         assert r.status_code == 201, r.text
         u = Api()
+        if "invite_url" in r.json():  # e-mail ligado no teste: convite por link
+            token = r.json()["invite_url"].split("#convite=")[1]
+            assert u.post("/auth/invite/accept", {"token": token, "password": senha}).status_code == 200
+            u.login(email, senha)
+            return u
         u.login(email, r.json()["temp_password"])
         r = u.post("/auth/change-password", {"current_password": r.json()["temp_password"], "new_password": senha})
         assert r.status_code == 200, r.text

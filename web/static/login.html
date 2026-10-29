@@ -13,8 +13,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Nexus">
   <link rel="preload" as="font" type="font/woff2" href="/fonts/GoogleSansFlex.woff2" crossorigin>
-  <link rel="stylesheet" href="/css/tokens.css?v=80">
-  <link rel="stylesheet" href="/css/app.css?v=80">
+  <link rel="stylesheet" href="/css/tokens.css?v=81">
+  <link rel="stylesheet" href="/css/app.css?v=81">
 </head>
 <body>
   <div class="auth-wrap">
@@ -32,19 +32,57 @@
           <input id="login-email" name="email" type="email" required autocomplete="username" maxlength="254">
         </div>
         <div class="field">
-          <label for="login-password">Senha</label>
+          <div class="label-row">
+            <label for="login-password">Senha</label>
+            <button type="button" class="link-btn hidden" id="go-forgot">Esqueci a senha</button>
+          </div>
           <input id="login-password" name="password" type="password" required autocomplete="current-password" maxlength="128">
         </div>
         <p class="error-text" id="login-error"></p>
         <button class="btn btn-primary full" type="submit">Entrar</button>
       </form>
 
+      <!-- Esqueci a senha (só com e-mail configurado no servidor). -->
+      <form id="form-forgot" class="hidden">
+        <h2 class="auth-title">Redefinir a senha</h2>
+        <p class="sub">Informe o e-mail da sua conta. Chega um link para criar uma senha nova (vale por 1 hora).</p>
+        <div class="field">
+          <label for="forgot-email">E-mail</label>
+          <input id="forgot-email" type="email" required autocomplete="username" maxlength="254">
+        </div>
+        <p class="error-text" id="forgot-error"></p>
+        <p class="ok-text hidden" id="forgot-ok" role="status"></p>
+        <button class="btn btn-primary full" type="submit">Enviar o link</button>
+        <button class="btn btn-text full" type="button" id="back-login">Voltar para entrar</button>
+      </form>
 
-      <p class="auth-foot">acesso por convite · peça ao administrador</p>
+      <!-- Link do e-mail: convite (#convite=) ou senha nova (#senha=). -->
+      <form id="form-link" class="hidden">
+        <h2 class="auth-title" id="link-title"></h2>
+        <p class="sub" id="link-sub"></p>
+        <input type="email" id="link-email" autocomplete="username" class="sr-only" tabindex="-1" aria-hidden="true">
+        <div class="field hidden" id="link-name-wrap">
+          <label for="link-name">Como você quer ser chamado</label>
+          <input id="link-name" type="text" maxlength="60" autocomplete="name">
+        </div>
+        <div class="field">
+          <label for="link-pw">Nova senha (mínimo 10 caracteres)</label>
+          <input id="link-pw" type="password" required minlength="10" maxlength="128" autocomplete="new-password">
+        </div>
+        <div class="field">
+          <label for="link-pw2">Confirme a nova senha</label>
+          <input id="link-pw2" type="password" required minlength="10" maxlength="128" autocomplete="new-password">
+        </div>
+        <p class="error-text" id="link-error"></p>
+        <button class="btn btn-primary full" type="submit" id="link-submit"></button>
+        <button class="btn btn-text full hidden" type="button" id="link-back">Ir para entrar</button>
+      </form>
+
+      <p class="auth-foot" id="auth-foot">acesso por convite · peça ao administrador</p>
     </div>
   </div>
 
-  <script type="module" src="/js/login.js?v=80"></script>
-  <script type="module" src="/js/pwa.js?v=80"></script>
+  <script type="module" src="/js/login.js?v=81"></script>
+  <script type="module" src="/js/pwa.js?v=81"></script>
 </body>
 </html>

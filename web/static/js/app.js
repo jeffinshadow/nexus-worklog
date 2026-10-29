@@ -1,6 +1,6 @@
 // Casca do app: sessão, rotas por hash (#/hoje, #/tarefas...), menu e títulos.
 import { api, toLogin } from "./api.js";
-import { h, icon, clear, setTimeZone } from "./dom.js";
+import { h, icon, clear, setTimeZone, matchPasswords } from "./dom.js";
 import * as today from "./today.js";
 import * as board from "./board.js";
 import * as dashboard from "./dashboard.js";
@@ -272,6 +272,7 @@ function renderWho() {
 function showChangePassword() {
   document.getElementById("view-change-password").classList.remove("hidden");
   document.getElementById("cp-logout").addEventListener("click", logout);
+  matchPasswords(document.getElementById("cp-new"), document.getElementById("cp-new2"));
   document.getElementById("form-change-password").addEventListener("submit", busy(async (ev) => {
     ev.preventDefault();
     const err = document.getElementById("cp-error");
