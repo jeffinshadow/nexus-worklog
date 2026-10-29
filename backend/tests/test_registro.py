@@ -220,7 +220,7 @@ def test_mcp_registro_rico(usuario):
 
     lista = texto(b.tool("list_tasks"))
     assert "{Loja}" in lista and "prioridade alta" in lista
-    assert "Loja (1 abertas)" in texto(b.tool("list_projects"))
+    assert "Loja (1 abertas, 0 objetivos)" in texto(b.tool("list_projects"))
 
     item = texto(b.tool("add_checklist_item", task_id=tid, label="Cabear"))
     iid = int(item.split("#")[1].split()[0])

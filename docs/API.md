@@ -129,9 +129,9 @@ Agenda: `daily` (dias úteis do dono) · `weekly` + `weekdays` (máscara) ·
 
 | Rota | | Corpo |
 | --- | --- | --- |
-| `GET /?include_archived=` | | com `open_tasks` e `total_tasks` |
-| `POST /` | W | `{name, color?}` — nome único por usuário (409) |
-| `PATCH /{id}` | W | `{name?, color?, archived?}` |
+| `GET /?include_archived=` | | com `description`, `open_tasks`, `total_tasks` e `objectives` |
+| `POST /` | W | `{name, color?, description?, external_ref?}` — nome único por usuário, sem diferenciar maiúsculas e acentos (409); `external_ref` repetido devolve o existente (200, `existing`) |
+| `PATCH /{id}` | W | `{name?, color?, description?, archived?}` — `description: null` apaga |
 | `DELETE /{id}` | W | as tarefas ficam sem projeto (o desfazer as devolve) |
 
 ## Relatórios, busca e exportação
@@ -227,10 +227,11 @@ JSON-RPC 2.0 sobre HTTP, **uma mensagem por requisição** (sem lote, sem SSE),
 `Authorization: Bearer nxs_…`. Versões: 2025-11-25, 2025-06-18, 2025-03-26.
 
 Leitura: `get_today`, `get_summary`, `get_handoff` (passagem de turno: abertas, bloqueadas, concluídas nas últimas 12 h, vencimentos no aviso), `list_renewals` (vencimentos), `find_similar` (já resolvi isso antes?), `list_tasks` (com `from`/`to`/`by` por período), `get_task`, `search`,
-`list_projects`, `list_recurring`, `list_templates`, `get_history`.
+`list_projects` (com objetivos e arquivados marcados), `list_objectives`, `list_recurring`, `list_templates`, `get_history`.
 Escrita (chave `write`): `create_task` (com `created_at`, `completed_at`, `external_ref`, `blocked_reason`, `follow_up_on`, `resolution`), `update_task` (com `completed_at`, `blocked_reason`, `follow_up_on`, `resolution`), `complete_task` (com `completed_at` e `resolution`),
 `add_note`, `add_checklist_item`, `set_checklist_item`, `log_time`, `start_timer`, `stop_timer`,
-`create_from_template`, `set_recurring` (`recurring_id`, `note` = evidência), `undo` (só ações da própria chave). A IA não exclui o que o usuário fez.
+`create_from_template`, `set_recurring` (`recurring_id`, `note` = evidência), `undo` (só ações da própria chave).
+Projetos e objetivos: `create_project` / `create_objective` (nome ou título repetido, sem diferenciar maiúsculas e acentos, ou `external_ref` repetido devolvem o existente; `position` 1 = primeiro), `update_project` (`archived` em vez de excluir), `update_objective` (com `position`), `reorder_objectives` (a lista completa; a ordem anterior vai pro histórico, com desfazer). O status do objetivo é automático (pelas tarefas). A IA não exclui o que o usuário fez, nem projetos e objetivos.
 Só com o papel de atribuidor: `list_assignable`, `list_assigned` e `assign_task` (`to` = U<id>, e-mail ou nome).
 
 Prompts (`prompts/list`, `prompts/get`): `resumo_semanal` (argumento `para`: gestor, time, cliente) e `daily`.

@@ -2,7 +2,8 @@
 tarefas vinculadas (também em ordem). A tarefa fica em um objetivo do seu
 projeto principal, ou em nenhum ("Sem objetivo"). Progresso e status do
 objetivo saem das tarefas: nada a marcar à mão."""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
+from psycopg.errors import UniqueViolation
 
 from .. import audit, db
 from ..deps import active_user, active_user_csrf
@@ -11,12 +12,13 @@ from ..services import ASSIGNER_NAME, TASK_COUNTS
 
 router = APIRouter(prefix="/api", tags=["objectives"])
 
-COLS = "id, project_id, title, description, due_date, position, created_at"
+COLS = "id, project_id, title, description, due_date, position, created_at, external_ref"
 DONE_SHOWN = 30  # concluídas por bloco (as mais recentes)
 
 
 def own_project(uid: int, project_id: int) -> dict:
-    row = db.query_one("SELECT id, name, color, archived FROM projects WHERE id = %s AND user_id = %s", (project_id, uid))
+    row = db.query_one("SELECT id, name, color, description, archived FROM projects WHERE id = %s AND user_id = %s",
+                       (project_id, uid))
     if not row:
         raise HTTPException(status_code=404, detail="projeto não encontrado")
     return row
@@ -115,16 +117,53 @@ def list_objectives(project_id: int, user=Depends(active_user)):
         (user["user_id"], project_id))
 
 
+def same_title(uid: int, project_id: int, title: str, other_than=None):
+    """Objetivo do projeto com esse título, sem diferenciar maiúsculas e acentos."""
+    return db.query_one(
+        f"""SELECT {COLS} FROM project_objectives
+             WHERE user_id = %s AND project_id = %s AND nx_fold(title) = nx_fold(%s) AND id IS DISTINCT FROM %s
+             ORDER BY (title = %s) DESC LIMIT 1""", (uid, project_id, title.strip(), other_than, title.strip()))
+
+
+def by_ref(uid: int, ref):
+    return ref and db.query_one(f"SELECT {COLS} FROM project_objectives WHERE user_id = %s AND external_ref = %s", (uid, ref))
+
+
+def order_of(uid: int, project_id: int) -> list[int]:
+    return [r["id"] for r in db.query_all(
+        "SELECT id FROM project_objectives WHERE user_id = %s AND project_id = %s ORDER BY position, id", (uid, project_id))]
+
+
+def _renumber(ids: list[int]) -> None:
+    for i, oid in enumerate(ids):
+        db.execute("UPDATE project_objectives SET position = %s WHERE id = %s", (i, oid))
+
+
 @router.post("/projects/{project_id}/objectives", status_code=201)
-def create_objective(project_id: int, data: ObjectiveIn, user=Depends(active_user_csrf)):
+def create_objective(project_id: int, data: ObjectiveIn, response: Response, user=Depends(active_user_csrf)):
+    """Novo objetivo, no fim da fila ou na posição pedida (1 = primeiro; os de
+    baixo descem). Com external_ref já usado, devolve o que existe (200)."""
     uid = user["user_id"]
     own_project(uid, project_id)
-    row = db.query_one(
-        f"""INSERT INTO project_objectives (user_id, project_id, title, description, due_date, position)
-            VALUES (%s, %s, %s, %s, %s,
-                    (SELECT COALESCE(max(position), -1) + 1 FROM project_objectives WHERE project_id = %s))
-            RETURNING {COLS}""",
-        (uid, project_id, data.title.strip(), (data.description or "").strip() or None, data.due_date, project_id))
+    if found := by_ref(uid, data.external_ref):
+        response.status_code = 200
+        return {**found, "existing": True}
+    if same_title(uid, project_id, data.title):
+        raise HTTPException(status_code=409, detail="já existe um objetivo com esse título no projeto")
+    ids = order_of(uid, project_id)
+    try:
+        row = db.query_one(
+            f"""INSERT INTO project_objectives (user_id, project_id, title, description, due_date, position, external_ref)
+                VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING {COLS}""",
+            (uid, project_id, data.title.strip(), (data.description or "").strip() or None, data.due_date,
+             len(ids), data.external_ref))
+    except UniqueViolation:  # duas chamadas iguais ao mesmo tempo: a segunda devolve a primeira
+        response.status_code = 200
+        return {**by_ref(uid, data.external_ref), "existing": True}
+    if data.position is not None and data.position <= len(ids):
+        ids.insert(data.position - 1, row["id"])
+        _renumber(ids)
+        row = own_objective(uid, row["id"])
     audit.record(user, "objective.create", "objective", row["id"], after=row)
     return row
 
@@ -139,6 +178,8 @@ def update_objective(objective_id: int, data: ObjectiveUpdate, user=Depends(acti
         "description": ((data.description or "").strip() or None) if "description" in sent else before["description"],
         "due_date": data.due_date if "due_date" in sent else before["due_date"],
     }
+    if same_title(uid, before["project_id"], new["title"], other_than=objective_id):
+        raise HTTPException(status_code=409, detail="já existe um objetivo com esse título no projeto")
     db.execute("""UPDATE project_objectives SET title = %s, description = %s, due_date = %s, updated_at = now()
                    WHERE id = %s AND user_id = %s""",
                (new["title"], new["description"], new["due_date"], objective_id, uid))
@@ -166,15 +207,18 @@ def delete_objective(objective_id: int, user=Depends(active_user_csrf)):
 
 @router.post("/projects/{project_id}/objectives/order")
 def order_objectives(project_id: int, data: OrderIn, user=Depends(active_user_csrf)):
-    """Ordem de execução dos objetivos (a lista inteira, na ordem nova)."""
+    """Ordem de execução dos objetivos (a lista inteira, na ordem nova). A ordem
+    anterior fica no histórico, com desfazer."""
     uid = user["user_id"]
-    own_project(uid, project_id)
-    ids = {r["id"] for r in db.query_all("SELECT id FROM project_objectives WHERE user_id = %s AND project_id = %s",
-                                         (uid, project_id))}
-    if set(data.ids) != ids or len(data.ids) != len(ids):
+    project = own_project(uid, project_id)
+    ids = order_of(uid, project_id)
+    if set(data.ids) != set(ids) or len(data.ids) != len(ids):
         raise HTTPException(status_code=400, detail="mande todos os objetivos do projeto, cada um uma vez")
-    for i, oid in enumerate(data.ids):
-        db.execute("UPDATE project_objectives SET position = %s WHERE id = %s", (i, oid))
+    if data.ids == ids:
+        return {"ok": True}
+    _renumber(data.ids)
+    audit.record(user, "objective.order", "objective_order", project_id,
+                 before={"name": project["name"], "ids": ids}, after={"name": project["name"], "ids": data.ids})
     return {"ok": True}
 
 

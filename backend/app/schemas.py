@@ -326,15 +326,36 @@ class TimerIn(BaseModel):
 Color = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
 
 
+Ref = Field(default=None, min_length=1, max_length=120)  # chave externa (idempotência)
+
+
+def _ref(value):
+    return (value or "").strip() or None
+
+
 class ProjectIn(BaseModel):
     name: str = Field(min_length=1, max_length=60)
     color: Optional[str] = Color
+    description: Optional[str] = Field(default=None, max_length=500)
+    external_ref: Optional[str] = Ref
+
+    @model_validator(mode="after")
+    def _norm(self):
+        self.external_ref = _ref(self.external_ref)
+        return self
 
 
 class ObjectiveIn(BaseModel):
     title: str = Field(min_length=1, max_length=120)
     description: Optional[str] = Field(default=None, max_length=500)
     due_date: Optional[date] = None
+    position: Optional[int] = Field(default=None, ge=1)  # 1 = primeiro; ausente = no fim da fila
+    external_ref: Optional[str] = Ref
+
+    @model_validator(mode="after")
+    def _norm(self):
+        self.external_ref = _ref(self.external_ref)
+        return self
 
 
 class ObjectiveUpdate(BaseModel):
@@ -355,6 +376,7 @@ class TaskOrderIn(BaseModel):
 class ProjectUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=60)
     color: Optional[str] = Color
+    description: Optional[str] = Field(default=None, max_length=500)  # null apaga
     archived: Optional[bool] = None
 
 

@@ -24,7 +24,7 @@ UNDOABLE = {
     "note.create", "note.delete", "checklist.create", "checklist.update", "checklist.delete",
     "time.create", "time.delete", "project.create", "project.update", "project.delete",
     "renewal.create", "renewal.update", "renewal.renew", "renewal.delete",
-    "objective.create", "objective.update", "objective.delete",
+    "objective.create", "objective.update", "objective.delete", "objective.order",
 }
 
 ACTION_LABELS = {
@@ -58,6 +58,7 @@ ACTION_LABELS = {
     "objective.create": "criou o objetivo",
     "objective.update": "editou o objetivo",
     "objective.delete": "excluiu o objetivo",
+    "objective.order": "reordenou os objetivos de",
     "timer.start": "iniciou o cronômetro em",
     "timer.discard": "descartou o cronômetro de",
     "template.create": "criou o modelo",
@@ -215,6 +216,13 @@ def _ref_livre(uid: int, ref):
     return None if db.query_one("SELECT 1 FROM worklog_tasks WHERE user_id = %s AND external_ref = %s", (uid, ref)) else ref
 
 
+def _ref_livre_em(tabela: str, uid: int, ref):
+    """Idem para projetos e objetivos."""
+    if not ref:
+        return None
+    return None if db.query_one(f"SELECT 1 FROM {tabela} WHERE user_id = %s AND external_ref = %s", (uid, ref)) else ref
+
+
 def _usuario_existente(user_id):
     if user_id is None:
         return None
@@ -276,10 +284,11 @@ def _put_objective(uid: int, o: dict) -> None:
     """Recria o objetivo (mesmo id) e devolve a ele as tarefas que ainda estão no
     projeto sem objetivo, na ordem que tinham."""
     db.execute(
-        """INSERT INTO project_objectives (id, user_id, project_id, title, description, due_date, position, created_at)
-           OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (id) DO NOTHING""",
+        """INSERT INTO project_objectives (id, user_id, project_id, title, description, due_date, position, created_at,
+                                          external_ref)
+           OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (id) DO NOTHING""",
         (o["id"], uid, o["project_id"], o["title"], o.get("description"), o.get("due_date"), o.get("position") or 0,
-         o.get("created_at")))
+         o.get("created_at"), _ref_livre_em("project_objectives", uid, o.get("external_ref"))))
     for t in o.get("tasks") or []:
         db.execute("""UPDATE worklog_tasks SET objective_id = %s, exec_position = %s
                        WHERE id = %s AND user_id = %s AND project_id = %s AND objective_id IS NULL""",
@@ -451,6 +460,13 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
                               WHERE id = %s AND user_id = %s""",
                           (before["title"], before["description"], before["due_date"], eid, uid)):
             raise HTTPException(status_code=409, detail="o objetivo não existe mais")
+    elif a == "objective.order":
+        # A ordem anterior volta; objetivo criado depois fica no fim, na ordem atual.
+        atual = [r["id"] for r in db.query_all(
+            "SELECT id FROM project_objectives WHERE user_id = %s AND project_id = %s ORDER BY position, id", (uid, eid))]
+        antes = [i for i in before["ids"] if i in atual]
+        for i, oid in enumerate(antes + [i for i in atual if i not in antes]):
+            db.execute("UPDATE project_objectives SET position = %s WHERE id = %s AND user_id = %s", (i, oid, uid))
     elif a == "objective.delete":
         if not db.query_one("SELECT 1 FROM projects WHERE id = %s AND user_id = %s", (before["project_id"], uid)):
             raise HTTPException(status_code=409, detail="o projeto do objetivo não existe mais")
@@ -465,15 +481,16 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
     elif a == "project.update":
         if db.query_one("SELECT 1 FROM projects WHERE user_id = %s AND name = %s AND id <> %s", (uid, before["name"], eid)):
             raise HTTPException(status_code=409, detail="já existe um projeto com esse nome")
-        db.execute("UPDATE projects SET name = %s, color = %s, archived = %s WHERE id = %s AND user_id = %s",
-                   (before["name"], before["color"], before["archived"], eid, uid))
+        db.execute("UPDATE projects SET name = %s, color = %s, description = %s, archived = %s WHERE id = %s AND user_id = %s",
+                   (before["name"], before["color"], before.get("description"), before["archived"], eid, uid))
     elif a == "project.delete":
         if db.query_one("SELECT 1 FROM projects WHERE user_id = %s AND name = %s", (uid, before["name"])):
             raise HTTPException(status_code=409, detail="já existe um projeto com esse nome")
         db.execute(
-            """INSERT INTO projects (id, user_id, name, color, archived)
-               OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s)""",
-            (eid, uid, before["name"], before["color"], before["archived"]))
+            """INSERT INTO projects (id, user_id, name, color, description, archived, external_ref)
+               OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+            (eid, uid, before["name"], before["color"], before.get("description"), before["archived"],
+             _ref_livre_em("projects", uid, before.get("external_ref"))))
         # As tarefas que estavam nele voltam (se ninguém as pôs em outro projeto).
         db.execute("UPDATE worklog_tasks SET project_id = %s WHERE user_id = %s AND project_id IS NULL AND id = ANY(%s)",
                    (eid, uid, before.get("task_ids") or []))

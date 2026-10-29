@@ -151,8 +151,8 @@ class Bearer:
             body["params"] = params
         return self.c.post("/mcp", json=body, headers={**self.h, **(headers or {})})
 
-    def tool(self, name, **args):
-        r = self.rpc("tools/call", {"name": name, "arguments": args})
+    def tool(self, _tool, **args):  # _tool: a ferramenta pode ter um argumento "name"
+        r = self.rpc("tools/call", {"name": _tool, "arguments": args})
         assert r.status_code == 200, r.text
         return r.json()["result"]
 

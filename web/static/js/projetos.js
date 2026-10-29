@@ -99,7 +99,7 @@ async function mountProject(root, ctx, pid) {
   dot.style.background = p.color || "var(--dim)";
   const projMenu = h("button", { type: "button", class: "icon", title: "Ações do projeto", "aria-label": "Ações do projeto" }, icon("more-v"));
   projMenu.addEventListener("click", () => actionsMenu(projMenu, p.name, [
-    ["Renomear e cor", "edit", () => editProject(p, refresh)],
+    ["Editar projeto", "edit", () => editProject(p, refresh)],
     [p.archived ? "Reativar" : "Arquivar", "folder", () => saveProject(p, { archived: !p.archived },
       p.archived ? "Projeto reativado." : "Arquivado: some dos seletores, as tarefas continuam.", refresh)],
     ["Excluir projeto", "trash", () => deleteProject(p)],
@@ -107,6 +107,7 @@ async function mountProject(root, ctx, pid) {
   root.append(h("div", { class: "proj-head" },
     h("div", { class: "proj-bar" }, h("a", { class: "btn btn-text btn-sm proj-back", href: "#/projetos" }, icon("left"), "Todos os projetos"),
       h("span", { class: "proj-color" }, dot), projMenu),
+    p.description ? h("p", { class: "proj-desc", text: p.description }) : null,
     progress(o.totals.done, o.totals.total),
     h("p", { class: "proj-card-meta", text: o.objectives.length
       ? `${o.objectives.length} objetivo${o.objectives.length > 1 ? "s" : ""} · ${o.totals.objectives_open} em aberto · na ordem de execução`
@@ -393,6 +394,8 @@ async function saveProject(p, patch, msg, refresh) {
 
 function editProject(p, refresh) {
   const name = h("input", { type: "text", maxlength: "60", required: "required", value: p.name });
+  const desc = h("textarea", { rows: "3", maxlength: "500", placeholder: "Do que se trata (opcional)" });
+  desc.value = p.description || "";
   let color = p.color;
   const swatches = h("div", { class: "swatches", role: "radiogroup", "aria-label": "Cor" }, ...PALETA.map((c) => {
     const b = h("button", { type: "button", class: "swatch", role: "radio", title: c, "aria-label": c,
@@ -405,14 +408,14 @@ function editProject(p, refresh) {
     return b;
   }));
   const err = h("p", { class: "error-text" });
-  const form = h("form", {}, h("h2", { text: "Projeto" }), field("Nome do projeto ou cliente", name),
+  const form = h("form", {}, h("h2", { text: "Projeto" }), field("Nome do projeto ou cliente", name), field("Descrição", desc),
     h("div", { class: "field" }, h("span", { class: "field-label", text: "Cor" }), swatches), err,
     h("div", { class: "dialog-actions" },
       h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
       h("button", { type: "submit", class: "btn btn-primary", text: "Salvar" })));
   form.addEventListener("submit", busy(async () => {
     try {
-      await api.patch(`/projects/${p.id}`, { name: name.value.trim(), color });
+      await api.patch(`/projects/${p.id}`, { name: name.value.trim(), description: desc.value.trim() || null, color });
       invalidateProjects();
       dlg.close();
       refresh();

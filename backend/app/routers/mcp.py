@@ -8,7 +8,8 @@ SDK: o protocolo cabe neste arquivo.
 Autenticação: só chave de API (Authorization: Bearer nxs_...). As ferramentas
 chamam as mesmas funções das rotas REST, então herdam validação, isolamento
 por usuário e histórico (registrado com actor="mcp" e o nome da chave).
-Chave "read" só enxerga as ferramentas de leitura. A IA não exclui tarefas.
+Chave "read" só enxerga as ferramentas de leitura. A IA não exclui tarefas,
+projetos nem objetivos (arquivar o projeto, sim).
 """
 from datetime import date, datetime, timezone
 from urllib.parse import urlsplit
@@ -22,10 +23,11 @@ from .. import db, deps, services
 from ..config import config
 from ..labels import PRIO_PT, STATUS_PT
 from ..labels import dur as _dur
-from ..schemas import (AssignIn, ChecklistIn, ChecklistUpdate, FinishIn, NoteIn, TimeIn, TimerIn, ToggleIn, WorklogIn,
-                       WorklogUpdate)
+from ..schemas import (AssignIn, ChecklistIn, ChecklistUpdate, FinishIn, NoteIn, ObjectiveIn, ObjectiveUpdate, OrderIn,
+                       ProjectIn, ProjectUpdate, TimeIn, TimerIn, ToggleIn, WorklogIn, WorklogUpdate)
 from . import assign as assign_routes
 from . import history as history_routes
+from . import objectives as objective_routes
 from . import projects as project_routes
 from . import renewals as renewal_routes
 from . import search as search_routes
@@ -47,6 +49,8 @@ INSTRUCTIONS = (
     "create_task/update_task/complete_task, log_time e add_note; marque rotinas com "
     "set_recurring (com note = evidência); get_handoff dá a passagem de turno. Para medir o tempo enquanto o usuário trabalha, use start_timer/stop_timer; "
     "procedimentos repetidos têm modelos (list_templates, create_from_template). "
+    "Projetos e objetivos (as demandas do projeto, em ordem de execução): create_project/update_project, "
+    "create_objective/update_objective e reorder_objectives; confira com list_projects e list_objectives. "
     "Datas no formato AAAA-MM-DD, no fuso " + config.APP_TZ + ". Rotinas "
     "aceitam até 7 dias para trás; marcar uma rotina fora da agenda dela conta como extra. "
     "Para lançar algo que já aconteceu, informe created_at/completed_at (data ou data e hora) "
@@ -114,13 +118,13 @@ def _task_line(t: dict, today: date) -> str:
 
 
 def _resolve_project(uid: int, value):
-    """Projeto por id ou nome (sem diferenciar maiúsculas). None = sem projeto."""
+    """Projeto por id ou nome (sem diferenciar maiúsculas e acentos). None = sem projeto."""
     if value is None or value == "":
         return None
     if isinstance(value, int) or (isinstance(value, str) and value.isdigit()):
         row = db.query_one("SELECT id FROM projects WHERE id = %s AND user_id = %s", (int(value), uid))
     else:
-        row = db.query_one("SELECT id FROM projects WHERE user_id = %s AND lower(name) = lower(%s)", (uid, str(value).strip()))
+        row = project_routes.same_name(uid, str(value))
     if not row:
         nomes = [p["name"] for p in db.query_all("SELECT name FROM projects WHERE user_id = %s AND NOT archived ORDER BY name", (uid,))]
         raise ToolError(f"projeto “{value}” não existe. Projetos: {', '.join(nomes) or '(nenhum)'}")
@@ -128,14 +132,14 @@ def _resolve_project(uid: int, value):
 
 
 def _resolve_objective(uid: int, value, project_id=None):
-    """Objetivo por id ou título (sem diferenciar maiúsculas); com o projeto
-    conhecido, só entre os dele. None = sem objetivo."""
+    """Objetivo por id ou título (sem diferenciar maiúsculas e acentos); com o
+    projeto conhecido, só entre os dele. None = sem objetivo."""
     if value is None or value == "":
         return None
     if isinstance(value, int) or (isinstance(value, str) and value.isdigit()):
         rows = db.query_all("SELECT id, project_id FROM project_objectives WHERE id = %s AND user_id = %s", (int(value), uid))
     else:
-        rows = db.query_all("SELECT id, project_id FROM project_objectives WHERE user_id = %s AND lower(title) = lower(%s)",
+        rows = db.query_all("SELECT id, project_id FROM project_objectives WHERE user_id = %s AND nx_fold(title) = nx_fold(%s)",
                             (uid, str(value).strip()))
     if project_id is not None:
         rows = [r for r in rows if r["project_id"] == project_id]
@@ -322,9 +326,120 @@ def t_log_time(ctx, args):
     return f"Apontado {_dur(row['minutes'])} em {row['day'].isoformat()} na tarefa #{args['task_id']}."
 
 
+def _project_line(p: dict) -> str:
+    return f"#{p['id']} {p['name']}" + (" [arquivado]" if p["archived"] else "")
+
+
 def t_list_projects(ctx, args):
-    rows = project_routes.list_projects(include_archived=False, user=ctx)
-    return "\n".join(f"#{p['id']} {p['name']} ({p['open_tasks']} abertas)" for p in rows) or "(nenhum projeto)"
+    rows = project_routes.list_projects(include_archived=True, user=ctx)
+    out = []
+    for p in rows:
+        n = p["objectives"]
+        line = _project_line(p) + f" ({p['open_tasks']} abertas, {n} objetivo{'' if n == 1 else 's'})"
+        out.append(line + (f" — {p['description']}" if p["description"] else ""))
+    return "\n".join(out) or "(nenhum projeto)"
+
+
+def _fields(args: dict, names: tuple) -> dict:
+    return {k: args[k] for k in names if k in args}
+
+
+def t_create_project(ctx, args):
+    uid = ctx["user_id"]
+    data = _call(ProjectIn, **_fields(args, ("name", "description", "external_ref")))
+    if found := project_routes.by_ref(uid, data.external_ref):
+        return "Já existia (external_ref repetido), nada duplicado: " + _project_line(found)
+    if found := project_routes.same_name(uid, data.name):
+        dica = " (use update_project com archived=false para reativar)" if found["archived"] else ""
+        return "Já existia (mesmo nome), nada duplicado: " + _project_line(found) + dica
+    row = _call(project_routes.create_project, data, Response(), user=ctx)
+    return "Criado: " + _project_line(row)
+
+
+def t_update_project(ctx, args):
+    pid = _resolve_project(ctx["user_id"], args.get("project"))
+    if pid is None:
+        raise ToolError("informe o projeto (nome ou id; veja list_projects)")
+    data = _call(ProjectUpdate, **_fields(args, ("name", "description", "archived")))
+    if not data.model_fields_set:
+        raise ToolError("nada a mudar: envie name, description ou archived")
+    return "Atualizado: " + _project_line(_call(project_routes.update_project, pid, data, user=ctx))
+
+
+AUTO_STATUS = ("o status do objetivo é automático (sai das tarefas: não iniciado, em andamento, concluído); "
+               "para mudá-lo, conclua ou reabra as tarefas dele")
+
+
+def _objective_line(uid: int, ob: dict) -> str:
+    order = objective_routes.order_of(uid, ob["project_id"])
+    prazo = f", prazo {ob['due_date'].isoformat()}" if ob.get("due_date") else ""
+    return f"{order.index(ob['id']) + 1}. #{ob['id']} {ob['title']}{prazo}"
+
+
+def _project_arg(uid: int, args: dict) -> int:
+    pid = _resolve_project(uid, args.get("project"))
+    if pid is None:
+        raise ToolError("informe o projeto (nome ou id; veja list_projects)")
+    return pid
+
+
+def t_create_objective(ctx, args):
+    uid = ctx["user_id"]
+    if "status" in args:
+        raise ToolError(AUTO_STATUS)
+    pid = _project_arg(uid, args)
+    data = _call(ObjectiveIn, **_fields(args, ("title", "description", "due_date", "position", "external_ref")))
+    if found := objective_routes.by_ref(uid, data.external_ref):
+        return "Já existia (external_ref repetido), nada duplicado: " + _objective_line(uid, found)
+    if found := objective_routes.same_title(uid, pid, data.title):
+        return "Já existia (mesmo título no projeto), nada duplicado: " + _objective_line(uid, found)
+    row = _call(objective_routes.create_objective, pid, data, Response(), user=ctx)
+    return "Criado: " + _objective_line(uid, row)
+
+
+def _move(ctx, ob: dict, position: int) -> None:
+    ids = objective_routes.order_of(ctx["user_id"], ob["project_id"])
+    ids.remove(ob["id"])
+    ids.insert(max(0, min(int(position) - 1, len(ids))), ob["id"])
+    _call(objective_routes.order_objectives, ob["project_id"], OrderIn(ids=ids), user=ctx)
+
+
+def t_update_objective(ctx, args):
+    uid = ctx["user_id"]
+    if "status" in args:
+        raise ToolError(AUTO_STATUS)
+    pid = _resolve_project(uid, args.get("project"))
+    oid = _resolve_objective(uid, args.get("objective"), pid)
+    if oid is None:
+        raise ToolError("informe o objetivo (título ou id; veja list_objectives)")
+    fields = _fields(args, ("title", "description", "due_date"))
+    if not fields and "position" not in args:
+        raise ToolError("nada a mudar: envie title, description, due_date ou position")
+    if fields:
+        _call(objective_routes.update_objective, oid, _call(ObjectiveUpdate, **fields), user=ctx)
+    if "position" in args:
+        if not isinstance(args["position"], int) or args["position"] < 1:
+            raise ToolError("position é um inteiro a partir de 1 (1 = primeiro)")
+        _move(ctx, objective_routes.own_objective(uid, oid), args["position"])
+    return "Atualizado: " + _objective_line(uid, objective_routes.own_objective(uid, oid))
+
+
+def t_reorder_objectives(ctx, args):
+    uid = ctx["user_id"]
+    pid = _project_arg(uid, args)
+    order = args.get("order")
+    if not isinstance(order, list) or not order:
+        raise ToolError("order é a lista completa dos objetivos do projeto (ids ou títulos), na ordem nova")
+    ids = [_resolve_objective(uid, v, pid) for v in order]
+    if len(set(ids)) != len(ids):
+        raise ToolError("objetivo repetido na lista")
+    faltam = [o for o in objective_routes.list_objectives(pid, user=ctx) if o["id"] not in ids]
+    if faltam:
+        raise ToolError("faltam objetivos na lista (nada foi mudado): "
+                        + ", ".join(f"#{o['id']} {o['title']}" for o in faltam))
+    _call(objective_routes.order_objectives, pid, OrderIn(ids=ids), user=ctx)
+    titulos = {o["id"]: o["title"] for o in objective_routes.list_objectives(pid, user=ctx)}
+    return "Nova ordem:\n" + "\n".join(f"{i}. #{oid} {titulos[oid]}" for i, oid in enumerate(ids, 1))
 
 
 def t_list_objectives(ctx, args):
@@ -604,12 +719,62 @@ TOOLS = {
                      "task_id": {"type": "integer"},
                      "minutes": {"type": "integer", "minimum": 1, "maximum": 1440},
                      "day": DATE, "note": {"type": "string", "maxLength": 200}}}),
-    "list_projects": (t_list_projects, False, "Lista os projetos/clientes do usuário.",
+    "list_projects": (t_list_projects, False,
+                      "Lista os projetos/clientes do usuário, com tarefas abertas e quantidade de objetivos; "
+                      "os arquivados vêm no fim, marcados [arquivado].",
                       {"type": "object", "properties": {}}),
+    "create_project": (t_create_project, True,
+                       "Cria um projeto/cliente. O nome é único por usuário, sem diferenciar maiúsculas e acentos: "
+                       "se já existir, devolve o existente em vez de duplicar.",
+                       {"type": "object", "required": ["name"], "properties": {
+                           "name": {"type": "string", "minLength": 1, "maxLength": 60},
+                           "description": {"type": ["string", "null"], "maxLength": 500},
+                           "external_ref": {"type": "string", "maxLength": 120,
+                                            "description": "Chave sua para não duplicar: repetida, devolve o projeto que já existe"}}}),
+    "update_project": (t_update_project, True,
+                       "Edita um projeto: nome, descrição (null apaga) ou arquivado. Arquivar tira o projeto dos "
+                       "seletores e mantém tarefas, tempo e histórico (a IA não exclui projetos).",
+                       {"type": "object", "required": ["project"], "properties": {
+                           "project": {"type": "string", "description": "Nome ou id do projeto"},
+                           "name": {"type": "string", "minLength": 1, "maxLength": 60},
+                           "description": {"type": ["string", "null"], "maxLength": 500},
+                           "archived": {"type": "boolean"}}}),
     "list_objectives": (t_list_objectives, False,
                         "Objetivos de um projeto, na ordem de execução, com status, progresso e as tarefas abertas de cada um.",
                         {"type": "object", "required": ["project"], "properties": {
                             "project": {"type": "string", "description": "Nome ou id do projeto"}}}),
+    "create_objective": (t_create_objective, True,
+                         "Cria um objetivo (demanda principal) no projeto. O título é único no projeto: se já existir, "
+                         "devolve o existente. Status e progresso são AUTOMÁTICOS, calculados pelas tarefas vinculadas "
+                         "(não iniciado, em andamento, concluído): não há status a informar.",
+                         {"type": "object", "required": ["project", "title"], "properties": {
+                             "project": {"type": "string", "description": "Nome ou id do projeto"},
+                             "title": {"type": "string", "minLength": 1, "maxLength": 120},
+                             "description": {"type": ["string", "null"], "maxLength": 500},
+                             "due_date": {**DATE, "type": ["string", "null"], "description": "Prazo opcional (AAAA-MM-DD)"},
+                             "position": {"type": "integer", "minimum": 1,
+                                          "description": "Lugar na ordem de execução (1 = primeiro; os de baixo descem). Omitido: no fim"},
+                             "external_ref": {"type": "string", "maxLength": 120,
+                                              "description": "Chave sua para não duplicar: repetida, devolve o objetivo que já existe"}}}),
+    "update_objective": (t_update_objective, True,
+                         "Edita um objetivo: título, descrição, prazo (null apaga) ou posição na ordem de execução. "
+                         "O status é automático (pelas tarefas). Para refazer a ordem inteira, use reorder_objectives.",
+                         {"type": "object", "required": ["objective"], "properties": {
+                             "objective": {"type": "string", "description": "Título ou id do objetivo"},
+                             "project": {"type": "string", "description": "Nome ou id do projeto (obrigatório com título, se o título existir em mais de um projeto)"},
+                             "title": {"type": "string", "minLength": 1, "maxLength": 120},
+                             "description": {"type": ["string", "null"], "maxLength": 500},
+                             "due_date": {**DATE, "type": ["string", "null"]},
+                             "position": {"type": "integer", "minimum": 1, "description": "Novo lugar na ordem (1 = primeiro)"}}}),
+    "reorder_objectives": (t_reorder_objectives, True,
+                           "Refaz a ordem de execução dos objetivos de um projeto. Mande a lista COMPLETA (ids ou "
+                           "títulos) na ordem nova; se faltar ou repetir algum, nada muda. A ordem anterior fica no "
+                           "histórico e dá para desfazer (undo).",
+                           {"type": "object", "required": ["project", "order"], "properties": {
+                               "project": {"type": "string", "description": "Nome ou id do projeto"},
+                               "order": {"type": "array", "minItems": 1, "maxItems": 500,
+                                         "items": {"type": ["string", "integer"]},
+                                         "description": "Todos os objetivos do projeto, na ordem nova"}}}),
     "complete_task": (t_complete_task, True, "Marca uma tarefa como concluída (agora, ou na data informada).",
                       {"type": "object", "required": ["task_id"], "properties": {
                           "task_id": {"type": "integer"},

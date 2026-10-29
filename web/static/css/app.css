@@ -1027,6 +1027,7 @@ dialog.help-dialog > .dialog-actions { position: sticky; bottom: -24px; margin: 
 .obj-status.in_progress { border-color: rgba(82,148,226,.5); color: var(--primary); }
 .obj-status.done { border-color: rgba(129,201,149,.5); color: var(--success); }
 .obj-desc { color: var(--on-surface-variant); font-size: .88rem; margin: 0 0 10px; }
+.proj-desc { color: var(--on-surface-variant); margin: 0 0 12px; max-width: 70ch; }
 .obj-sub { color: var(--dim); font-size: .84rem; }
 .obj-block .obj-progress { margin-bottom: 10px; }
 .obj-tasks { min-height: 8px; }
