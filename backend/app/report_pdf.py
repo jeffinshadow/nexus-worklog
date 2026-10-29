@@ -38,6 +38,9 @@ ACCENT_SOFT = (232, 240, 251)
 OK = (52, 150, 90)
 BAD = (214, 76, 66)
 WARN = (196, 140, 16)
+WHITE = (255, 255, 255)
+BAD_SOFT = (253, 236, 234)
+WARN_SOFT = (253, 245, 222)
 
 M = 16  # margem lateral (mm)
 
@@ -194,22 +197,68 @@ class _Report(FPDF):
     def lines(self, text: str, w: float, h: float) -> int:
         return len(self.multi_cell(w, h, _s(text), dry_run=True, output="LINES")) or 1
 
+    # ---- peças do app no papel: etiqueta (chip), painel, faísca do assistente
+    def pill(self, x, y, text, color=INK2, border=LINE, fill=WHITE, dot=None, max_w=None, h=4.6, size=6.6,
+             right=False) -> float:
+        """Etiqueta arredondada como os chips do app; devolve a largura.
+        right=True: x é a borda direita (alinha etiquetas de larguras diferentes)."""
+        self.set_font("label", "", size)
+        pad, dw = 1.9, (2.7 if dot else 0)
+        t = self.fit(text, max_w - 2 * pad - dw) if max_w else _s(text)
+        tw = self.get_string_width(t)
+        w = tw + 2 * pad + dw
+        if right:
+            x -= w
+        self.set_draw_color(*border)
+        self.set_line_width(0.22)
+        self.fill(fill)
+        self.rect(x, y, w, h, style="DF", round_corners=True, corner_radius=h / 2)
+        if dot:
+            self.dot(x + pad, y + h / 2 - 0.8, 1.6, dot)
+        self.set_text_color(*color)
+        self.text_at(x + pad + dw, y, tw + 0.6, h, t)
+        return w
+
+    def panel(self, x, y, w, h, r=3.2, border=LINE, fill=None):
+        """Contorno de cartão (o conteúdo já foi desenhado; sem fill não cobre nada)."""
+        self.set_draw_color(*border)
+        self.set_line_width(0.25)
+        if fill:
+            self.fill(fill)
+        self.rect(x, y, w, h, style="DF" if fill else "D", round_corners=True, corner_radius=r)
+
+    def spark(self, cx, cy, r, color):
+        """A faísca de quatro pontas do assistente."""
+        k = r * 0.28
+        pts = [(cx, cy - r), (cx + k, cy - k), (cx + r, cy), (cx + k, cy + k),
+               (cx, cy + r), (cx - k, cy + k), (cx - r, cy), (cx - k, cy - k)]
+        self.fill(color)
+        self.set_draw_color(*color)
+        self.polygon(pts, style="F")
+
+    def bar_up(self, x, y, w, h, color, r=0.9):
+        """Barra do gráfico com o topo arredondado e a base reta."""
+        r = min(r, w / 2, h)
+        self.box(x, y, w, h, color, r=r)
+        if h > r:
+            self.box(x, y + h - r, w, r, color)
+
 
 # ------------------------------------------------------------------ blocos --
 
 def _cover(pdf: _Report, user_email: str, data: dict) -> None:
-    band_h = 46
-    pdf.box(0, 0, pdf.w, band_h, BAND)
-    # Linha azul com brilho (a mesma assinatura do login), em degradê manual.
+    # Cartão escuro arredondado (como os painéis do app) com a linha azul do login.
+    cx, cy, cw_, band_h = 10, 10, pdf.w - 20, 35
+    pdf.box(cx, cy, cw_, band_h, BAND, r=5)
     steps = 120
     for i in range(steps):
         t = i / (steps - 1)
         a = max(0.0, 1 - abs(t - 0.58) / 0.5) ** 1.4
         col = tuple(round(BAND[k] + (ACCENT[k] - BAND[k]) * a) for k in range(3))
-        pdf.box(pdf.w * i / steps, band_h - 0.6, pdf.w / steps + 0.2, 0.6, col)
+        pdf.box(cx + 6 + (cw_ - 12) * i / steps, cy + band_h - 3.2, (cw_ - 12) / steps + 0.2, 0.5, col)
 
     brand = pdf.brand
-    x, y, mark_h = M, 14, 15
+    x, y, mark_h = M, 18, 14
     w = 0.0
     for logo in (brand.get("logo"), (ASSETS / "dragon-mark.svg").read_bytes()):
         if not logo:
@@ -229,9 +278,9 @@ def _cover(pdf: _Report, user_email: str, data: dict) -> None:
 
     rx, rw = pdf.w - M - 110, 110
     pdf.font("labelb", 7, ACCENT_MID)
-    pdf.text_at(rx, 12, rw, 4, "RELATÓRIO DE ATIVIDADES" + (" · PROJETO" if data.get("project") else ""), "R")
-    pdf.font("sanss", 17, (255, 255, 255))
-    pdf.text_at(rx, 17, rw, 8, data.get("project") or _period(data["start"], data["end"]), "R")
+    pdf.text_at(rx, 16, rw, 4, "RELATÓRIO DE ATIVIDADES" + (" · PROJETO" if data.get("project") else ""), "R")
+    pdf.font("sanss", 17, WHITE)
+    pdf.text_at(rx, 20.5, rw, 8, data.get("project") or _period(data["start"], data["end"]), "R")
     pdf.font("label", 7.6, (161, 161, 168))
     if data.get("whole_project"):
         escopo = "últimos 3 anos do projeto" if data.get("project_truncated") else "projeto completo"
@@ -240,8 +289,27 @@ def _cover(pdf: _Report, user_email: str, data: dict) -> None:
         sub = f"{_period(data['start'], data['end'])} · {user_email}"
     else:
         sub = user_email
-    pdf.text_at(rx, 27, rw, 4, sub, "R")
-    pdf.set_y(band_h + 9)
+    pdf.text_at(rx, 29.5, rw, 4, sub, "R")
+    pdf.set_y(cy + band_h + 6)
+    _assistant(pdf, data)
+
+
+def _assistant(pdf: _Report, data: dict) -> None:
+    """A fala do assistente (a mesma frase da prévia em Relatórios), em pílula azul clara."""
+    s = data["summary"]
+    parts = [f"{s['pontual_done']} tarefa{'s' if s['pontual_done'] != 1 else ''} concluída{'s' if s['pontual_done'] != 1 else ''}"]
+    if s["minutes"]:
+        parts.append(f"{_dur(s['minutes'])} apontadas")
+    if s["recurring_total"] and not data.get("project"):
+        parts.append(f"{round(100 * s['recurring_done'] / s['recurring_total'])}% das rotinas cumpridas")
+    texto = ("Este período tem " + (", ".join(parts[:-1]) + " e " + parts[-1] if len(parts) > 1 else parts[0])
+             + (f", em {s['active_days']} dia{'s' if s['active_days'] != 1 else ''} com atividade." if s["active_days"] else "."))
+    y, h = pdf.get_y(), 11
+    pdf.box(M, y, pdf.cw, h, ACCENT_SOFT, r=h / 2)
+    pdf.spark(M + 6, y + h / 2, 2.4, ACCENT)
+    pdf.font("sans", 8.6, INK)
+    pdf.text_at(M + 11, y, pdf.cw - 16, h, pdf.fit(texto, pdf.cw - 16))
+    pdf.set_y(y + h + 6)
 
 
 def _kpis(pdf: _Report, data: dict) -> None:
@@ -269,7 +337,7 @@ def _kpis(pdf: _Report, data: dict) -> None:
     y = pdf.get_y()
     for i, (label, value, sub, pct) in enumerate(tiles):
         x = M + i * (w + gap)
-        pdf.box(x, y, w, h, TILE, r=2.6)
+        pdf.panel(x, y, w, h, r=3.2, fill=WHITE)
         pdf.font("labelb", 6.6, DIM)
         pdf.text_at(x + 4.5, y + 4, w - 9, 3.5, label.upper())
         pdf.font("sanss", 20, INK)
@@ -289,8 +357,9 @@ def _kpis(pdf: _Report, data: dict) -> None:
 def _section(pdf: _Report, title: str, note: str = "", need: float = 18, prio_legend: bool = False) -> None:
     pdf.room(need + 12)
     y = pdf.get_y()
+    pdf.box(M, y + 0.7, 1.3, 4.6, ACCENT, r=0.65)
     pdf.font("sanss", 12, INK)
-    pdf.text_at(M, y, 120, 6, title)
+    pdf.text_at(M + 3.6, y, 120, 6, title)
     right = pdf.w - M
     if prio_legend:
         pdf.font("label", 7, DIM)
@@ -339,8 +408,9 @@ def _chart(pdf: _Report, data: dict) -> None:
     else:
         top = max([p["recurring_done"] + p["pontual"] for p in series] + [1]) * 1.12
 
-    # grade leve
+    # grade leve: o pico e a metade
     pdf.hline(y0 + h - h / 1.12, LINE, x0, x0 + w, 0.15)
+    pdf.hline(y0 + h - h / 2.24, (240, 240, 244), x0, x0 + w, 0.15)
     pdf.font("label", 6.2, DIM)
     peak = top / 1.12
     pdf.text_at(x0, y0 - 3.6, 60, 3, ("pico " + _dur(round(peak * 60))) if use_time else f"pico {round(peak)} itens/{gran}")
@@ -353,14 +423,17 @@ def _chart(pdf: _Report, data: dict) -> None:
         if use_time:
             bh = h * (p["minutes"] / 60) / top
             if bh:
-                pdf.box(cx - bw / 2, y0 + h - bh, bw, bh, ACCENT, r=min(0.8, bw / 2))
+                pdf.bar_up(cx - bw / 2, y0 + h - bh, bw, bh, ACCENT)
         else:
             r_h = h * p["recurring_done"] / top
             p_h = h * p["pontual"] / top
             if r_h:
-                pdf.box(cx - bw / 2, y0 + h - r_h, bw, r_h, ACCENT_MID, r=0.6 if not p_h else 0)
+                if p_h:
+                    pdf.box(cx - bw / 2, y0 + h - r_h, bw, r_h, ACCENT_MID)
+                else:
+                    pdf.bar_up(cx - bw / 2, y0 + h - r_h, bw, r_h, ACCENT_MID)
             if p_h:
-                pdf.box(cx - bw / 2, y0 + h - r_h - p_h, bw, p_h, ACCENT, r=0)
+                pdf.bar_up(cx - bw / 2, y0 + h - r_h - p_h, bw, p_h, ACCENT)
         if i % label_every == 0:
             pdf.font("label", 5.8, DIM)
             if gran == "mês":
@@ -382,11 +455,8 @@ def _chart(pdf: _Report, data: dict) -> None:
         items.append(("dia não útil", (238, 238, 242)))
     lx = x0
     for label, col in items:
-        pdf.box(lx, ly + 0.8, 2.6, 2.6, col, r=0.6)
-        pdf.font("sans", 7, INK2)
-        pdf.text_at(lx + 4, ly, 50, 4, label)
-        lx += 6 + pdf.get_string_width(_s(label)) + 5
-    pdf.set_y(ly + 10)
+        lx += pdf.pill(lx, ly, label, INK2, dot=col) + 2.5
+    pdf.set_y(ly + 11)
 
 
 def _row_y(pdf: _Report, y: float, h: float, flow: bool) -> float:
@@ -458,15 +528,18 @@ def _overview(pdf: _Report, data: dict) -> None:
         projects = []  # num relatório de projeto, o bloco seria uma linha só
     if not stats and not projects:
         return
-    need = 8 + max(len(stats) * 12.5, len(projects) * 10)
+    need = 18 + max(len(stats) * 12.5, len(projects) * 10)
     pdf.room(min(need, 60))
     y = pdf.get_y()
     if stats and projects and y + need <= pdf.h - pdf.b_margin:
         # cabe na página: rotinas e projetos lado a lado
-        col = (pdf.cw - 10) / 2
-        y1 = _recurring_block(pdf, stats, M, col, y)
-        y2 = _projects_block(pdf, projects, M + col + 10, col, y, multi=data.get("multi_project"))
-        pdf.set_y(max(y1, y2) + 6)
+        col, pad = (pdf.cw - 6) / 2, 5
+        y1 = _recurring_block(pdf, stats, M + pad, col - 2 * pad, y + pad)
+        y2 = _projects_block(pdf, projects, M + col + 6 + pad, col - 2 * pad, y + pad, multi=data.get("multi_project"))
+        bottom = max(y1, y2) + pad - 3
+        pdf.panel(M, y, col, bottom - y)
+        pdf.panel(M + col + 6, y, col, bottom - y)
+        pdf.set_y(bottom + 9)
         return
     # não cabe (muitas rotinas): um bloco embaixo do outro, quebrando por linha
     if stats:
@@ -493,9 +566,7 @@ def _project_tag(pdf: _Report, name, color, x, y, w) -> None:
         pdf.font("label", 7, DIM)
         pdf.text_at(x, y, w, 4, "—")
         return
-    pdf.dot(x, y + 1.05, 2, _hex(color))
-    pdf.font("sans", 7.6, INK2)
-    pdf.text_at(x + 3.2, y, w - 3.2, 4, pdf.fit(name, w - 4))
+    pdf.pill(x, y - 0.2, name, INK, dot=_hex(color), max_w=w - 1)
 
 
 def _deliveries(pdf: _Report, data: dict) -> None:
@@ -573,8 +644,8 @@ def _open(pdf: _Report, data: dict) -> None:
             _table_head(pdf, cols)
         y = pdf.get_y()
         st_col = {"blocked": BAD, "in_progress": ACCENT}.get(r["status"], INK2)
-        pdf.font("label", 7.2, st_col)
-        pdf.text_at(M, y, 24, 4.2, _STATUS.get(r["status"], r["status"]))
+        pdf.pill(M, y - 0.2, _STATUS.get(r["status"], r["status"]), st_col,
+                 border={"blocked": (240, 180, 175), "in_progress": ACCENT_MID}.get(r["status"], LINE))
         x = M + 24
         if r["priority"] == 1:
             pdf.dot(x - 2.6, y + 1.4, 1.5, WARN)
@@ -585,19 +656,22 @@ def _open(pdf: _Report, data: dict) -> None:
             _project_tag(pdf, r["project"], r["project_color"], x, y, wp)
             x += wp
         if r["due_date"]:
-            late = r["due_date"] < today
-            pdf.font("labelb" if late else "label", 7.4, BAD if late else (WARN if r["due_date"] == today else INK2))
-            txt = ("atrasada · " if late else "hoje · " if r["due_date"] == today else "") + _d(r["due_date"])
+            late, hoje = r["due_date"] < today, r["due_date"] == today
+            txt = ("atrasada · " if late else "hoje · " if hoje else "prazo ") + _d(r["due_date"])
+            pdf.set_font("label", "", 6.6)
+            pw = pdf.get_string_width(_s(txt)) + 3.8
+            pdf.pill(x + 28 - pw, y - 0.2, txt, BAD if late else WARN if hoje else INK2,
+                     border=(240, 180, 175) if late else (232, 205, 140) if hoje else LINE,
+                     fill=BAD_SOFT if late else WARN_SOFT if hoje else WHITE)
         else:
             pdf.font("label", 7.4, DIM)
-            txt = "—"
-        pdf.text_at(x, y, 28, 4.2, txt, "R")
+            pdf.text_at(x, y, 28, 4.2, "—", "R")
         x += 28
         pdf.font("label", 7.4, INK2)
         pdf.text_at(x, y, 15, 4.2, f"{r['check_done']}/{r['check_total']}" if r["check_total"] else "—", "R")
-        pdf.set_y(y + 5.4)
+        pdf.set_y(y + 5.8)
         pdf.hline(pdf.get_y(), LINE)
-        pdf.set_y(pdf.get_y() + 1.6)
+        pdf.set_y(pdf.get_y() + 1.8)
     if len(rows) > limit:
         pdf.font("sans", 7.6, DIM)
         pdf.text_at(M, pdf.get_y(), 100, 4, f"+ {len(rows) - limit} outras")
@@ -659,14 +733,12 @@ def _diary(pdf: _Report, data: dict) -> None:
         pdf.room(min(est, 40))
         y = pdf.get_y()
         page0 = pdf.page_no()
-        # coluna da data
-        pdf.font("sanss", 17, INK)
-        pdf.text_at(M, y - 0.6, 22, 7, str(d.day))
-        pdf.font("labelb", 6.4, DIM)
-        pdf.text_at(M, y + 6.6, 22, 3, f"{DIAS_CURTOS[d.weekday()]} · {MESES[d.month - 1]}")
-        if not day["work_day"]:
-            pdf.font("label", 5.8, WARN)
-            pdf.text_at(M, y + 10, 22, 3, "não útil")
+        # coluna da data: bloquinho de calendário (dia não útil em amarelo claro)
+        pdf.box(M, y - 1, 17, 14, WARN_SOFT if not day["work_day"] else TILE, r=2.6)
+        pdf.font("sanss", 14, INK)
+        pdf.text_at(M, y - 0.2, 17, 7, str(d.day), "C")
+        pdf.font("labelb", 6, WARN if not day["work_day"] else DIM)
+        pdf.text_at(M, y + 7, 17, 3, f"{DIAS_CURTOS[d.weekday()]} · {MESES[d.month - 1]}", "C")
 
         # resumo da linha
         pdf.set_y(y)
@@ -709,7 +781,8 @@ def _diary(pdf: _Report, data: dict) -> None:
                 pdf.text_at(xr - 14, yy, 14, 4.4, _dur(w["minutes"]), "R")
                 xr -= 16
             if show_proj and w["project"]:
-                _project_tag(pdf, w["project"], w["project_color"], xr - 38, yy + 0.2, 38)
+                pdf.pill(xr if w["minutes"] else gx + gw - 16, yy - 0.1, w["project"], INK,
+                         dot=_hex(w["project_color"]), max_w=38, right=True)
             pdf.set_y(yy + 5)
 
         if day["time"]:
@@ -723,9 +796,11 @@ def _diary(pdf: _Report, data: dict) -> None:
                 pdf.set_xy(gx + 14, yy)
                 pdf.multi_cell(gw - 14, 4.2, _s(txt), new_x="LMARGIN", new_y="NEXT")
         # Se o dia quebrou de página, o "y" inicial era da página anterior.
-        end_y = max(pdf.get_y(), y + 13) if pdf.page_no() == page0 else pdf.get_y()
-        pdf.set_y(end_y + 1.5)
-        pdf.hline(pdf.get_y(), LINE)
+        end_y = max(pdf.get_y(), y + 14) if pdf.page_no() == page0 else pdf.get_y()
+        if pdf.page_no() == page0 and end_y > y + 15:  # linha do tempo sob o bloquinho
+            pdf.box(M + 8.2, y + 14.5, 0.6, end_y - y - 15, LINE)
+        pdf.set_y(end_y + 3)
+        pdf.hline(pdf.get_y(), LINE, x1=gx)
         pdf.set_y(pdf.get_y() + 4)
 
 
@@ -750,7 +825,7 @@ def build_report_pdf(user_email: str, start: date, end: date, data: dict, brandi
     _kpis(pdf, data)
 
     if not data["days"] and not data["open"]:
-        pdf.box(M, pdf.get_y(), pdf.cw, 22, TILE, r=2.6)
+        pdf.box(M, pdf.get_y(), pdf.cw, 22, TILE, r=3.2)
         pdf.font("sans", 10, INK2)
         pdf.text_at(M, pdf.get_y() + 7, pdf.cw, 8, "Nenhuma atividade registrada no período.", "C")
         return bytes(pdf.output())
