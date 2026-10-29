@@ -21,6 +21,7 @@ import { session } from "./session.js";
 import { initTimer, stopTimer, timerState } from "./timer.js";
 import { openWorklog } from "./board.js";
 import { openTask, closeSidePanel } from "./task.js";
+import { startTour } from "./tour.js";
 import { modal, busy, initTooltips, syncRail, calmMotion } from "./ui.js";
 
 let me = null;
@@ -208,6 +209,8 @@ function showHelp() {
     h("p", { class: "help", text: "Tarefas, rotinas e tempo ficam em Hoje e Tarefas; a Retrospectiva e os Relatórios mostram o período. Tudo que muda fica no Histórico, com desfazer." }),
     has("user") ? h("p", { class: "help", text: "Atalhos: n nova tarefa, / buscar, h t r l trocam de tela, s para o cronômetro, ? mostra todos." }) : null,
     has("user") ? h("p", { class: "help", text: "Registro rápido (no Hoje), marcadores no fim: @Projeto #chamado !plantão !alta ^hoje, ^amanhã, ^sex ou ^25/10 (prazo) e !bloq motivo (por último); “— 45min” já conclui com o tempo." }) : null,
+    has("user") ? h("p", { class: "help" }, h("button", { type: "button", class: "btn btn-ghost btn-sm", onClick: () => { dlg.close(); startTour(me); } },
+      icon("help"), "Fazer o tour guiado"), " configurar o Nexus e conhecer a tela em poucos minutos.") : null,
     h("p", { class: "help" }, "Manual de uso, tela por tela: ", h("a", { href: "https://shadow.tec.br/nexus-manual.html", target: "_blank", rel: "noopener noreferrer", text: "shadow.tec.br/nexus-manual" }), "."),
     me.support_contact ? h("p", { class: "help" }, "Suporte: ", h("strong", { text: me.support_contact })) : h("p", { class: "dialog-note", text: "Dúvidas ou problemas: fale com quem administra o Nexus na sua equipe." }),
     h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Fechar", onClick: () => dlg.close() })));
@@ -391,6 +394,8 @@ async function boot() {
   });
   window.addEventListener("hashchange", route);
   route();
+  // Primeiro acesso: o tour guiado abre sozinho (uma vez; a Ajuda reabre).
+  if (has("user") && !me.tour_done_at) setTimeout(() => startTour(me), 700);
 }
 
 boot();

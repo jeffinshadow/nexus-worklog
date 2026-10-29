@@ -28,7 +28,7 @@ export async function mount(root, opts = {}) {
     section("Tarefas · fluxo", [
       h("div", { class: "chart-grid fluxo-grid" },
         chartCard("Concluídas por semana", "Vazão das últimas 4 semanas.", throughput(a.throughput)),
-        chartCard("Tempo por projeto", "Horas apontadas nos últimos 30 dias.", projectTime(a.projects)),
+        chartCard("Tempo por projeto", "Horas apontadas nos últimos 30 dias. Tarefa em mais de um projeto conta em cada um.", projectTime(a.projects)),
       ),
     ]),
     section("Backlog · saúde", [

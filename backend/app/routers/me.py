@@ -13,7 +13,7 @@ from .. import audit, db, people, roles
 from ..deps import clear_session_cookie
 from ..security import login_limiter, verify_password
 from ..deps import web_active, web_active_csrf
-from ..schemas import AssistantIn, ConsentIn, DeleteMeIn, ProfileIn, TicketUrlIn
+from ..schemas import AssistantIn, ConsentIn, DefaultProjectIn, DeleteMeIn, ProfileIn, TicketUrlIn, TourIn
 from ..services import running_timer
 
 router = APIRouter(prefix="/api/me", tags=["me"])
@@ -121,6 +121,30 @@ def put_ticket_url(data: TicketUrlIn, user=Depends(web_active_csrf)):
     db.execute("UPDATE users SET ticket_url = %s WHERE id = %s", (url, user["user_id"]))
     audit.record(user, "tickets.update", "user", user["user_id"], after={"ticket_url": url})
     return {"ticket_url": url}
+
+
+@router.put("/default-project")
+def put_default_project(data: DefaultProjectIn, user=Depends(web_active_csrf)):
+    """Projeto aplicado à tarefa criada sem projeto (no app, pela API, pela IA
+    ou recebida por atribuição). Só projeto ativo da própria pessoa."""
+    uid = user["user_id"]
+    if data.project_id is not None and not db.query_one(
+            "SELECT 1 FROM projects WHERE id = %s AND user_id = %s AND NOT archived", (data.project_id, uid)):
+        raise HTTPException(status_code=400, detail="projeto não encontrado")
+    before = db.query_one("SELECT default_project_id FROM users WHERE id = %s", (uid,))["default_project_id"]
+    db.execute("UPDATE users SET default_project_id = %s WHERE id = %s", (data.project_id, uid))
+    if before != data.project_id:
+        audit.record(user, "default_project.update", "user", uid,
+                     before={"default_project_id": before}, after={"default_project_id": data.project_id})
+    return {"default_project_id": data.project_id}
+
+
+@router.put("/tour")
+def put_tour(data: TourIn, user=Depends(web_active_csrf)):
+    """Tour guiado visto (ou pulado). false = abre de novo no próximo acesso."""
+    row = db.query_one("UPDATE users SET tour_done_at = CASE WHEN %s THEN now() END WHERE id = %s RETURNING tour_done_at",
+                       (data.done, user["user_id"]))
+    return {"tour_done_at": row["tour_done_at"]}
 
 
 @router.put("/assignments")

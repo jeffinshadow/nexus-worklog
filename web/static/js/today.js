@@ -13,6 +13,13 @@ import { timerButton } from "./timer.js";
 import { todayRenewals } from "./renewals.js";
 
 const LAST_PROJECT = "nexus.quick.project";
+const OPEN_FILTER = "nexus.today.filter";
+// Filtro das abertas: todas, as que vencem até hoje (atrasadas inclusas) ou só as de prioridade alta.
+const FILTERS = [
+  ["all", "Todas", () => true, "Nada em aberto."],
+  ["due", "Vence hoje", (t, today) => !!t.due_date && t.due_date <= today, "Nada vencendo hoje nem atrasado."],
+  ["prio", "Prioritárias", (t) => t.priority === 1, "Nenhuma tarefa de prioridade alta em aberto."],
+];
 
 // opts.day: dia das rotinas (padrão hoje); opts.focusQuick: volta o cursor ao
 // registro rápido (lote de itens seguidos); opts.summary: reaproveita o resumo.
@@ -110,7 +117,9 @@ export async function mount(root, ctx, opts = {}) {
 
   // ---- abertas + registro rápido (com projeto; com "— 15min" já sai concluída)
   const proj = h("select", { class: "select-sm", "aria-label": "Projeto do registro rápido" });
-  fillProjectSelect(proj, Number(sessionStorage.getItem(LAST_PROJECT)) || null)
+  // Último escolhido nesta aba; senão o projeto padrão (Configurações > Conta).
+  const lastProj = sessionStorage.getItem(LAST_PROJECT);
+  fillProjectSelect(proj, lastProj !== null ? Number(lastProj) || null : ctx.me.default_project_id || null)
     .then(() => proj.addEventListener("change", () => sessionStorage.setItem(LAST_PROJECT, proj.value)))
     .catch(() => {});
   const phone = matchMedia("(max-width: 860px)").matches;
@@ -160,9 +169,33 @@ export async function mount(root, ctx, opts = {}) {
         blocked.length ? `${blocked.length} bloqueada${blocked.length > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ") })),
     h("div", { class: "quick-row" }, quick, proj),
     phone ? h("p", { class: "quick-hint", text: "No fim: @projeto #chamado !alta ^amanhã — 15min" }) : null, hint);
-  if (!open.length) openPanel.append(h("p", { class: "empty", text: "Nada em aberto." }));
-  for (const t of open) {
-    openPanel.append(withMenu(h("div", { class: "list-row" },
+  // Filtro (fica na aba): o número de cada opção ajuda a decidir antes de clicar.
+  let filter = sessionStorage.getItem(OPEN_FILTER) || "all";
+  if (!FILTERS.some(([k]) => k === filter)) filter = "all";
+  const list = h("div", { class: "open-list" });
+  const seg = h("div", { class: "seg seg-sm open-filter", role: "group", "aria-label": "Filtrar as tarefas em aberto" },
+    ...FILTERS.map(([key, label, test]) => {
+      const n = open.filter((t) => test(t, today)).length;
+      return h("button", { type: "button", class: "chip-btn", "data-filter": key, "aria-pressed": String(key === filter),
+        "aria-selected": String(key === filter), text: key === "all" ? label : `${label} · ${n}`,
+        onClick: () => { filter = key; sessionStorage.setItem(OPEN_FILTER, key); paintOpen(); } });
+    }));
+  if (open.length) openPanel.append(seg);
+  openPanel.append(list);
+  function paintOpen() {
+    const [, , test, empty] = FILTERS.find(([k]) => k === filter);
+    for (const b of seg.children) {
+      const on = b.dataset.filter === filter;
+      b.setAttribute("aria-pressed", String(on));
+      b.setAttribute("aria-selected", String(on)); // mesmo visual do .seg
+    }
+    clear(list);
+    const shown = open.filter((t) => test(t, today));
+    if (!shown.length) list.append(h("p", { class: "empty", text: open.length ? empty : "Nada em aberto." }));
+    for (const t of shown) openRow(t);
+  }
+  function openRow(t) {
+    list.append(withMenu(h("div", { class: "list-row" },
       h("button", { type: "button", class: "icon", title: "Concluir", "aria-label": "Concluir " + t.title, onClick: () => finishTask(t, refresh) }, icon("check")),
       h("div", { class: "t" },
         h("button", { type: "button", class: "card-open", text: t.title, onClick: () => openTask(t.id, refresh) }),
@@ -170,6 +203,7 @@ export async function mount(root, ctx, opts = {}) {
       desk(timerButton(t, refresh)),
       moreButton(t, refresh)), t, refresh));
   }
+  paintOpen();
 
   // ---- concluídas hoje (com projeto e tempo, para conferir no fim do dia)
   const donePanel = h("section", { class: "panel t-done" },

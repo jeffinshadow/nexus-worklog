@@ -2,7 +2,7 @@
 import { api } from "./api.js";
 import { h, icon, clear, dateTime, field } from "./dom.js";
 import { codeBox, confirmDialog, errorToast, modal, toast, warnBox, busy } from "./ui.js";
-import { fillProjectSelect, projectsPanel } from "./projects.js";
+import { defaultProjectPanel, fillProjectSelect, projectsPanel } from "./projects.js";
 import { avatar, squarePhoto } from "./profile.js";
 
 const TABS = [
@@ -69,7 +69,7 @@ export async function mount(root, ctx) {
     else if (active === "avisos") body.append(await notices());
     else if (active === "calendario") body.append(await calendarFeed(() => render()));
     else if (active === "ia") body.append(...aiHelp(), await tokens(() => render()));
-    else if (isUser) body.append(profilePanel(ctx.me, render), assignmentsPanel(ctx.me), assistantPanel(ctx.me), ticketsPanel(ctx.me), workDays(ctx.me), shortcutsPanel(), account(ctx.me), deleteAccount(isUser));
+    else if (isUser) body.append(profilePanel(ctx.me, render), assignmentsPanel(ctx.me), assistantPanel(ctx.me), defaultProjectPanel(ctx.me, (r) => meChanged(ctx.me, r)), ticketsPanel(ctx.me), workDays(ctx.me), shortcutsPanel(), account(ctx.me), deleteAccount(isUser));
     else body.append(profilePanel(ctx.me, render), account(ctx.me), deleteAccount(isUser));
   }
   await render();

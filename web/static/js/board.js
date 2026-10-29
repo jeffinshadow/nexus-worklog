@@ -3,7 +3,7 @@
 import { api } from "./api.js";
 import { h, icon, clear, addDays, shortDate, localDay, localDateTime, daysBetween } from "./dom.js";
 import { confirmDialog, errorToast, toast, undoLatest, busy, modal, sheet, navBadge, popupMenu } from "./ui.js";
-import { fillProjectSelect, listProjects, projectChip } from "./projects.js";
+import { extraProjectsField, fillProjectSelect, listProjects, projectChips } from "./projects.js";
 import { openTask, openTaskId, duration, parseDuration } from "./task.js";
 import { boardLine } from "./assistant.js";
 import { session } from "./session.js";
@@ -56,8 +56,7 @@ export function taskChips(t, today) {
     else if (t.due_date === today) chips.push(h("span", { class: "chip today", text: "vence hoje" }));
     else chips.push(h("span", { class: "chip", text: "prazo " + shortDate(t.due_date) }));
   }
-  const pc = projectChip(t);
-  if (pc) chips.push(pc);
+  chips.push(...projectChips(t));
   if (t.ticket) chips.push(ticketChip(t.ticket));
   if (t.assigned_by_name) chips.push(h("span", { class: "chip assigned", title: "Atribuída por " + t.assigned_by_name, text: "de " + t.assigned_by_name }));
   if (t.after_hours) chips.push(h("span", { class: "chip after-hours", title: "Plantão / fora do horário", text: "plantão" }));
@@ -185,7 +184,14 @@ export function openWorklog(onDone, opts = {}) {
   const timeInput = document.getElementById("wl-time");
   timeInput.value = "";
   const projSel = document.getElementById("wl-project");
-  const projReady = fillProjectSelect(projSel, null).catch(() => {});
+  const pickedProject = () => (projSel.value && projSel.value !== "__new" ? Number(projSel.value) : null);
+  const extraBox = document.getElementById("wl-extra");
+  const extras = extraProjectsField([], pickedProject, () => {});
+  clear(extraBox);
+  extraBox.append(extras.el);
+  // Já vem com o projeto padrão (Configurações > Conta); "Sem projeto" tira.
+  const projReady = fillProjectSelect(projSel, (session.me && session.me.default_project_id) || null, () => extras.sync())
+    .then(() => extras.sync()).catch(() => {});
   const ticket = document.getElementById("wl-ticket");
   const after = document.getElementById("wl-after");
   // Datas retroativas: "Concluída em" aparece com o status Concluída (vazio =
@@ -266,6 +272,7 @@ export function openWorklog(onDone, opts = {}) {
       after.checked = t.after_hours;
       await projReady;
       if (t.project_id && [...projSel.options].some((o) => o.value === String(t.project_id))) projSel.value = String(t.project_id);
+      extras.sync();
     };
     tplWrap.classList.remove("hidden");
   }).catch(() => {});
@@ -285,7 +292,8 @@ export function openWorklog(onDone, opts = {}) {
       status: document.getElementById("wl-status").value,
       due_date: document.getElementById("wl-due").value || null,
       priority: Number(document.getElementById("wl-prio").value),
-      project_id: projSel.value && projSel.value !== "__new" ? Number(projSel.value) : null,
+      project_id: pickedProject(),
+      extra_project_ids: extras.ids(),
       ticket: ticket.value.trim() || null,
       after_hours: after.checked,
     };

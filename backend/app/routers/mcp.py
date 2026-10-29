@@ -57,6 +57,8 @@ INSTRUCTIONS = (
 STATUS = list(STATUS_PT)
 PRIO = {nome: n for n, nome in PRIO_PT.items()}  # "alta" -> 1
 DATE = {"type": "string", "format": "date", "description": "Data AAAA-MM-DD"}
+EXTRA_PROJECTS = {"type": "array", "items": {"type": "string"}, "maxItems": 10,
+                  "description": "Outros projetos além do principal (a tarefa atende mais de uma frente); a lista substitui a anterior"}
 WHEN = {"type": "string", "description": "Data (AAAA-MM-DD) ou data e hora (AAAA-MM-DDTHH:MM), fuso " + config.APP_TZ + ". Nunca no futuro; até o limite retroativo da conta"}
 
 
@@ -93,7 +95,8 @@ def _task_line(t: dict, today: date) -> str:
     if t.get("priority") == 1:
         parts.append("(prioridade alta)")
     if t.get("project_name"):
-        parts.append(f"{{{t['project_name']}}}")
+        nomes = [t["project_name"]] + [x["name"] for x in t.get("extra_projects") or []]
+        parts.append("{" + " + ".join(nomes) + "}")
     if t.get("due_date") and t["status"] != "done":
         due = t["due_date"]
         parts.append(f"prazo {due.isoformat()}" + (" (ATRASADA)" if due < today else ""))
@@ -138,6 +141,8 @@ def _task_args(uid: int, args: dict) -> dict:
     args = dict(args)
     if "project" in args:
         args["project_id"] = _resolve_project(uid, args.pop("project"))
+    if "extra_projects" in args:
+        args["extra_project_ids"] = [_resolve_project(uid, v) for v in args.pop("extra_projects") or [] if v not in (None, "")]
     if "priority" in args:
         args["priority"] = _prio(args["priority"])
     return args
@@ -482,7 +487,9 @@ TOOLS = {
                         "description": {"type": ["string", "null"], "maxLength": 300},
                         "status": {"type": "string", "enum": STATUS, "default": "todo"},
                         "due_date": {**DATE, "type": ["string", "null"], "description": "Previsão de conclusão (AAAA-MM-DD)"},
-                        "project": {"type": ["string", "null"], "description": "Nome do projeto/cliente (veja list_projects)"},
+                        "project": {"type": ["string", "null"],
+                                    "description": "Nome do projeto/cliente (veja list_projects). Omitido: o projeto padrão da pessoa, se houver"},
+                        "extra_projects": EXTRA_PROJECTS,
                         "priority": {"type": "string", "enum": ["alta", "normal", "baixa"], "default": "normal"},
                         "ticket": {"type": ["string", "null"], "maxLength": 40, "description": "Número do chamado (GLPI, TomTicket...)"},
                         "after_hours": {"type": "boolean", "default": False, "description": "Plantão / fora do horário"},
@@ -503,6 +510,7 @@ TOOLS = {
                         "status": {"type": "string", "enum": STATUS},
                         "due_date": {**DATE, "type": ["string", "null"]},
                         "project": {"type": ["string", "null"]},
+                        "extra_projects": EXTRA_PROJECTS,
                         "priority": {"type": "string", "enum": ["alta", "normal", "baixa"]},
                         "ticket": {"type": ["string", "null"], "maxLength": 40},
                         "after_hours": {"type": "boolean"},

@@ -20,7 +20,9 @@ def list_projects(include_archived: bool = False, user=Depends(active_user)):
         SELECT p.id, p.name, p.color, p.archived, p.created_at,
                count(w.id) FILTER (WHERE w.status <> 'done')::int AS open_tasks,
                count(w.id)::int AS total_tasks
-          FROM projects p LEFT JOIN worklog_tasks w ON w.project_id = p.id
+          FROM projects p
+          LEFT JOIN worklog_tasks w ON w.project_id = p.id
+            OR w.id IN (SELECT x.task_id FROM worklog_task_projects x WHERE x.project_id = p.id)
          WHERE p.user_id = %s {'' if include_archived else 'AND NOT p.archived'}
          GROUP BY p.id
          ORDER BY p.archived, lower(p.name)
@@ -69,8 +71,22 @@ def update_project(project_id: int, data: ProjectUpdate, user=Depends(active_use
 
 @router.delete("/{project_id}")
 def delete_project(project_id: int, user=Depends(active_user_csrf)):
+    uid = user["user_id"]
+    if not db.query_one("SELECT 1 FROM projects WHERE id = %s AND user_id = %s", (project_id, uid)):
+        raise HTTPException(status_code=404, detail="não encontrado")
+    extra_tasks = [r["task_id"] for r in db.query_all(
+        "SELECT task_id FROM worklog_task_projects WHERE project_id = %s", (project_id,))]
+    # Tarefa com outros projetos não fica "sem projeto": o primeiro extra vira o principal.
+    promoted = db.query_all(
+        """UPDATE worklog_tasks w
+              SET project_id = (SELECT min(x.project_id) FROM worklog_task_projects x WHERE x.task_id = w.id)
+            WHERE w.user_id = %s AND w.project_id = %s
+              AND EXISTS (SELECT 1 FROM worklog_task_projects x WHERE x.task_id = w.id)
+        RETURNING w.id, w.project_id""", (uid, project_id))
+    for t in promoted:
+        db.execute("DELETE FROM worklog_task_projects WHERE task_id = %s AND project_id = %s", (t["id"], t["project_id"]))
     tasks = [r["id"] for r in db.query_all(
-        "SELECT id FROM worklog_tasks WHERE user_id = %s AND project_id = %s", (user["user_id"], project_id))]
+        "SELECT id FROM worklog_tasks WHERE user_id = %s AND project_id = %s", (uid, project_id))]
     row = db.query_one(
         "DELETE FROM projects WHERE id = %s AND user_id = %s RETURNING id, name, color, archived",
         (project_id, user["user_id"]),
@@ -81,5 +97,6 @@ def delete_project(project_id: int, user=Depends(active_user_csrf)):
     row["task_ids"] = [r["id"] for r in db.query_all(
         "SELECT id FROM worklog_tasks WHERE user_id = %s AND project_id IS NULL AND id = ANY(%s)",
         (user["user_id"], tasks))]
+    row["promoted"], row["extra_task_ids"] = promoted, extra_tasks
     audit.record(user, "project.delete", "project", project_id, before=row)
     return {"ok": True}

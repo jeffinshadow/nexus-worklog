@@ -909,3 +909,36 @@ body.rail .nav a:active, body.rail .sidebar .nav-link:active { transform: scale(
   *, ::before, ::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
   .loading-bar::before { animation: none !important; width: 100%; opacity: .5; }
 }
+
+/* ------------------------------------- filtro do Hoje e outros projetos -- */
+.open-filter { margin: 2px 0 6px; }
+.field-label { display: block; font-size: .8rem; color: var(--on-surface-variant); margin-bottom: 6px; }
+.props > .field .field-label { font-size: .78rem; }
+.extra-projects { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 32px; }
+.extra-projects .hint { color: var(--dim); font-size: .84rem; }
+.extra-projects .select-sm { width: auto; }
+.chip-x { border: 0; background: transparent; color: inherit; padding: 0; margin: 0 -4px 0 0; width: 18px; height: 18px;
+  display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; cursor: pointer; }
+.chip-x:hover { background: var(--outline-variant); }
+.chip-x .ico { width: 12px; height: 12px; }
+
+/* ------------------------------------------------------------ tour guiado -- */
+dialog.tour-dialog { max-width: 560px; width: min(560px, calc(100vw / var(--ui-zoom) - 32px)); }
+.tour-step { display: block; font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--primary); margin: 0 0 8px; }
+dialog .tour-intro { margin: 0 0 14px; line-height: 1.5; }
+.tour-hero { display: flex; justify-content: center; margin: 4px 0 14px; }
+.tour-actions .tour-skip { margin-right: auto; }
+.tour-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+.tour-chips:empty { display: none; }
+.tour-suggest { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; border-style: dashed; }
+.tour-suggest .ico { width: 12px; height: 12px; }
+.tour-picks { margin: 0 0 12px; }
+.tour-layer { position: fixed; inset: 0; z-index: 95; }
+.tour-shade { position: fixed; background: rgba(0,0,0,.66); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+.tour-spot { position: fixed; border-radius: 12px; outline: 2px solid var(--primary); outline-offset: 0; pointer-events: none; }
+.tour-pop { position: fixed; width: min(380px, calc(100vw / var(--ui-zoom) - 32px)); padding: 18px 20px; border-radius: 16px;
+  background: var(--surface-pop); border: 1px solid var(--line-2); box-shadow: 0 12px 40px rgba(0,0,0,.45); }
+.tour-pop h2 { font-size: 1.05rem; font-weight: 600; margin: 0 0 8px; }
+.tour-pop p { color: var(--on-surface-variant); font-size: .9rem; line-height: 1.5; margin: 0; }
+.tour-pop .dialog-actions { margin-top: 16px; }
+@media (max-width: 480px) { .tour-actions { flex-wrap: wrap; } }

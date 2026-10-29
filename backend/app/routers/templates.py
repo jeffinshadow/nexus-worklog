@@ -78,13 +78,15 @@ def delete_template(tid: int, user=Depends(active_user_csrf)):
 
 @router.post("/{tid}/use", status_code=201)
 def use_template(tid: int, user=Depends(active_user_csrf)):
-    """Cria a tarefa do modelo (e o checklist). Projeto arquivado/excluído: sai sem projeto."""
+    """Cria a tarefa do modelo (e o checklist). Modelo sem projeto (ou com um
+    arquivado/excluído): a tarefa vai para o projeto padrão, se houver."""
     t = _own(user["user_id"], tid)
     project = t["project_id"]
     if project and not db.query_one("SELECT 1 FROM projects WHERE id = %s AND NOT archived", (project,)):
         project = None
     res = create(WorklogIn(title=t["title"], description=t["description"], priority=t["priority"],
-                           project_id=project, after_hours=t["after_hours"]), Response(), user=user)
+                           after_hours=t["after_hours"], **({"project_id": project} if project else {})),
+                 Response(), user=user)
     for label in t["checklist"]:
         add_item(res["id"], ChecklistIn(label=label), user=user)
     return {"id": res["id"], "checklist": len(t["checklist"])}

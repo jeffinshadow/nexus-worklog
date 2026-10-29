@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from .. import audit, db
 from ..labels import dur
-from ..services import RETRO_DAYS, app_today, board_day_range
+from ..services import RETRO_DAYS, app_today, board_day_range, set_extra_projects
 from .worklog import check_day_total
 from ..deps import active_user, active_user_csrf
 
@@ -53,6 +53,7 @@ ACTION_LABELS = {
     "profile.avatar_reset": "removeu a foto de perfil",
     "assistant.update": "alterou o assistente",
     "tickets.update": "alterou o endereço dos chamados",
+    "default_project.update": "alterou o projeto padrão",
     "timer.start": "iniciou o cronômetro em",
     "timer.discard": "descartou o cronômetro de",
     "template.create": "criou o modelo",
@@ -224,6 +225,8 @@ def _restore_worklog(uid: int, snap: dict) -> None:
          snap.get("priority") or 2, snap.get("ticket"), bool(snap.get("after_hours")),
          snap.get("blocked_reason"), snap.get("blocked_at"), snap.get("follow_up_on"), snap.get("resolution"), snap["id"], uid),
     )
+    if "extra_project_ids" in snap:  # registros de antes dos projetos extras não têm a lista
+        set_extra_projects(uid, snap["id"], snap["extra_project_ids"])
 
 
 def _restore_recurring(uid: int, snap: dict) -> None:
@@ -316,6 +319,7 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
              before.get("blocked_reason"), before.get("blocked_at"), before.get("assigner_notified_at"),
              before.get("follow_up_on"), before.get("resolution")),
         )
+        set_extra_projects(uid, eid, before.get("extra_project_ids"))
         for n in kids.get("notes", []):
             _put_note(uid, eid, n)
         for c in kids.get("checklist", []):
@@ -402,7 +406,8 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
              _projeto_existente(uid, before.get("project_id")), before.get("note"), before.get("renew_months")))
     elif a == "project.create":
         # Com tarefas no projeto, arquiva em vez de apagar (não tira de ninguém).
-        if db.query_one("SELECT 1 FROM worklog_tasks WHERE project_id = %s LIMIT 1", (eid,)):
+        if db.query_one("SELECT 1 FROM worklog_tasks WHERE project_id = %s LIMIT 1", (eid,)) or \
+                db.query_one("SELECT 1 FROM worklog_task_projects WHERE project_id = %s LIMIT 1", (eid,)):
             db.execute("UPDATE projects SET archived = true WHERE id = %s AND user_id = %s", (eid, uid))
         else:
             db.execute("DELETE FROM projects WHERE id = %s AND user_id = %s", (eid, uid))
@@ -421,6 +426,20 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
         # As tarefas que estavam nele voltam (se ninguém as pôs em outro projeto).
         db.execute("UPDATE worklog_tasks SET project_id = %s WHERE user_id = %s AND project_id IS NULL AND id = ANY(%s)",
                    (eid, uid, before.get("task_ids") or []))
+        # As que tinham outro projeto (um extra virou o principal) voltam como eram,
+        # se o principal não mudou depois; e onde ele era extra, volta a ser.
+        for t in before.get("promoted") or []:
+            if db.query_one("SELECT 1 FROM worklog_tasks WHERE id = %s AND user_id = %s AND project_id = %s",
+                            (t["id"], uid, t["project_id"])):
+                db.execute("UPDATE worklog_tasks SET project_id = %s WHERE id = %s", (eid, t["id"]))
+                db.execute("INSERT INTO worklog_task_projects (task_id, project_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                           (t["id"], t["project_id"]))
+        db.execute(
+            """INSERT INTO worklog_task_projects (task_id, project_id)
+               SELECT w.id, %s FROM worklog_tasks w
+                WHERE w.user_id = %s AND w.id = ANY(%s) AND w.project_id IS NOT NULL AND w.project_id <> %s
+               ON CONFLICT DO NOTHING""",
+            (eid, uid, before.get("extra_task_ids") or [], eid))
 
     db.execute("UPDATE audit_log SET undone_at = now() WHERE id = %s", (history_id,))
     audit.record(user, "undo", row["entity"], eid, before=after, after={"undid": history_id, "action": a})

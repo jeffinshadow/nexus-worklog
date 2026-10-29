@@ -85,13 +85,52 @@ def _due_between(t: dict, start: date, end: date, mask: int) -> int:
     return n
 
 
-# Contadores de uma tarefa `w` (checklist, anotações, tempo): um lugar só para
-# o quadro, o relatório e a exportação.
+# Projetos além do principal ([{id, name, color}], por nome): as etiquetas
+# "+ Filial" e o tempo por projeto, que conta a tarefa inteira em cada um.
+EXTRA_PROJECTS = """(SELECT COALESCE(json_agg(json_build_object('id', xp.id, 'name', xp.name, 'color', xp.color)
+                                      ORDER BY lower(xp.name)), '[]'::json)
+       FROM worklog_task_projects x JOIN projects xp ON xp.id = x.project_id
+      WHERE x.task_id = w.id) AS extra_projects"""
+
+# Contadores de uma tarefa `w` (checklist, anotações, tempo) e os projetos
+# extras: um lugar só para o quadro, o relatório e a exportação.
 TASK_COUNTS = """
     (SELECT count(*) FROM task_checklist c WHERE c.task_id = w.id)::int AS check_total,
     (SELECT count(*) FROM task_checklist c WHERE c.task_id = w.id AND c.done)::int AS check_done,
     (SELECT count(*) FROM task_notes n WHERE n.task_id = w.id)::int AS notes_count,
-    (SELECT COALESCE(sum(t.minutes), 0) FROM time_entries t WHERE t.task_id = w.id)::int AS minutes"""
+    (SELECT COALESCE(sum(t.minutes), 0) FROM time_entries t WHERE t.task_id = w.id)::int AS minutes,
+    """ + EXTRA_PROJECTS
+
+# Tarefa `w` no projeto %s: o principal ou um dos extras.
+IN_PROJECT = """(w.project_id = %s OR EXISTS (SELECT 1 FROM worklog_task_projects x
+                                             WHERE x.task_id = w.id AND x.project_id = %s))"""
+
+
+def default_project(user_id: int) -> int | None:
+    """Projeto padrão da pessoa (Configurações > Conta), se ainda ativo."""
+    row = db.query_one(
+        """SELECT p.id FROM users u JOIN projects p ON p.id = u.default_project_id AND p.user_id = u.id
+            WHERE u.id = %s AND NOT p.archived""", (user_id,))
+    return row["id"] if row else None
+
+
+def set_extra_projects(user_id: int, task_id: int, ids) -> None:
+    """Troca os projetos extras da tarefa. Sem principal não há extras; o
+    principal não se repete; só projetos da pessoa (os da tarefa valem)."""
+    principal = db.query_one("SELECT project_id FROM worklog_tasks WHERE id = %s AND user_id = %s",
+                             (task_id, user_id))["project_id"]
+    ids = [] if principal is None else sorted({int(i) for i in ids or []} - {principal})
+    db.execute("DELETE FROM worklog_task_projects WHERE task_id = %s", (task_id,))
+    if ids:
+        db.execute(
+            """INSERT INTO worklog_task_projects (task_id, project_id)
+               SELECT %s, p.id FROM projects p WHERE p.user_id = %s AND p.id = ANY(%s)""",
+            (task_id, user_id, ids))
+
+
+def extra_project_ids(task_id: int) -> list[int]:
+    return [r["project_id"] for r in db.query_all(
+        "SELECT project_id FROM worklog_task_projects WHERE task_id = %s ORDER BY project_id", (task_id,))]
 
 # Quem atribuiu a tarefa (nome de exibição ou e-mail); NULL se foi a própria pessoa.
 ASSIGNER_NAME = """(SELECT COALESCE(a.display_name, a.email) FROM users a WHERE a.id = w.assigned_by) AS assigned_by_name"""
@@ -167,9 +206,9 @@ def get_board(user_id: int, day: date | None = None, project: int | None = None)
         r["note"] = feitas.get(r["id"])  # evidência da marcação nesse dia
     filtro_proj, params = "", [user_id]
     if project is not None:
-        filtro_proj = " AND w.project_id IS NULL" if project == 0 else " AND w.project_id = %s"
+        filtro_proj = " AND w.project_id IS NULL" if project == 0 else " AND " + IN_PROJECT
         if project:
-            params.append(project)
+            params += [project, project]
     def cols(extra=""):
         return """
         SELECT w.id, w.title, w.description, w.status, w.due_date, w.created_at, w.completed_at,
@@ -278,7 +317,10 @@ def get_dashboard_analytics(user_id: int, tasks, completions, mask: int, today: 
         """
         SELECT p.name, p.color, sum(e.minutes)::int AS minutes
           FROM time_entries e JOIN worklog_tasks w ON w.id = e.task_id
-          LEFT JOIN projects p ON p.id = w.project_id
+          -- a tarefa em dois projetos conta o tempo inteiro em cada um
+          LEFT JOIN LATERAL (SELECT w.project_id AS pid UNION
+                             SELECT x.project_id FROM worklog_task_projects x WHERE x.task_id = w.id) tp ON true
+          LEFT JOIN projects p ON p.id = tp.pid
          WHERE e.user_id = %s AND e.day > %s
          GROUP BY p.name, p.color ORDER BY minutes DESC
         """,
@@ -372,7 +414,7 @@ def get_dashboard_analytics(user_id: int, tasks, completions, mask: int, today: 
     }
 
 
-_PROJ_FILTER = " AND (%s::bigint IS NULL OR w.project_id = %s)"
+_PROJ_FILTER = " AND (%s::bigint IS NULL OR " + IN_PROJECT + ")"
 
 
 def _report_inputs(user_id: int, start: date, end: date, project: dict | None = None) -> dict:
@@ -394,17 +436,18 @@ def _report_inputs(user_id: int, start: date, end: date, project: dict | None = 
          WHERE w.user_id = %s AND w.status = 'done' AND w.completed_at IS NOT NULL
            AND (w.completed_at AT TIME ZONE %s)::date BETWEEN %s AND %s"""
         + _PROJ_FILTER + " ORDER BY w.completed_at",
-        (tz, user_id, tz, start, end, pid, pid),
+        (tz, user_id, tz, start, end, pid, pid, pid),
     )
     entries = db.query_all(
         """
-        SELECT e.day, e.minutes, e.note, w.title, w.after_hours, p.name AS project, p.color AS project_color
+        SELECT e.day, e.minutes, e.note, w.title, w.after_hours, p.name AS project, p.color AS project_color,
+               """ + EXTRA_PROJECTS + """
           FROM time_entries e
           JOIN worklog_tasks w ON w.id = e.task_id
           LEFT JOIN projects p ON p.id = w.project_id
          WHERE e.user_id = %s AND e.day BETWEEN %s AND %s"""
         + _PROJ_FILTER + " ORDER BY e.day, e.created_at",
-        (user_id, start, end, pid, pid),
+        (user_id, start, end, pid, pid, pid),
     )
     return {"mask": work_mask(user_id), "tasks": tasks, "completions": completions,
             "pontuais": pontuais, "entries": entries}
@@ -447,7 +490,7 @@ def get_report_range(user_id: int, start: date, end: date, project: dict | None 
           FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
          WHERE w.user_id = %s AND w.status <> 'done'"""
         + _PROJ_FILTER + " ORDER BY w.priority, COALESCE(w.due_date, DATE '9999-12-31'), w.created_at",
-        (user_id, pid, pid),
+        (user_id, pid, pid, pid),
     ) if with_open else []
 
     done_by_date: dict[date, set[int]] = {}
@@ -512,14 +555,20 @@ def get_report_range(user_id: int, start: date, end: date, project: dict | None 
 
     # Tempo e entregas por projeto.
     by_project: dict[str, dict] = {}
+    # A tarefa em mais de um projeto conta inteira em cada um (a soma pode
+    # passar do total; o relatório diz isso).
+    def each_project(r):
+        yield r["project"], r["project_color"]
+        for x in r.get("extra_projects") or []:
+            yield x["name"], x["color"]
     for e in entries:
-        k = e["project"] or ""
-        p = by_project.setdefault(k, {"name": e["project"], "color": e["project_color"], "minutes": 0, "done": 0})
-        p["minutes"] += e["minutes"]
+        for name, color in each_project(e):
+            p = by_project.setdefault(name or "", {"name": name, "color": color, "minutes": 0, "done": 0})
+            p["minutes"] += e["minutes"]
     for w in pontuais:
-        k = w["project"] or ""
-        p = by_project.setdefault(k, {"name": w["project"], "color": w["project_color"], "minutes": 0, "done": 0})
-        p["done"] += 1
+        for name, color in each_project(w):
+            p = by_project.setdefault(name or "", {"name": name, "color": color, "minutes": 0, "done": 0})
+            p["done"] += 1
 
     return {
         "start": start,
@@ -533,6 +582,7 @@ def get_report_range(user_id: int, start: date, end: date, project: dict | None 
         "series": series,
         "recurring_stats": sorted(per_rec.values(), key=lambda r: (-(r["due"] or 0), r["label"].lower())),
         "projects": sorted(by_project.values(), key=lambda p: (-p["minutes"], -p["done"])),
+        "multi_project": any(r.get("extra_projects") for r in [*entries, *pontuais]),
         "deliveries": pontuais,
         "open": abertas,
         "summary": {

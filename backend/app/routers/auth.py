@@ -38,7 +38,8 @@ def _public(row: dict, csrf: str) -> dict:
         "id": uid,
         "email": row["email"],
         **people.profile(uid),  # display_name, name, avatar
-        **(db.query_one("SELECT ticket_url, accepts_assignments_at FROM users WHERE id = %s", (uid,)) or {}),
+        **(db.query_one("SELECT ticket_url, accepts_assignments_at, default_project_id, tour_done_at FROM users WHERE id = %s",
+                        (uid,)) or {}),
         "assistant": people.assistant_prefs(uid),
         "role": row["role"],
         "roles": roles.of(uid),

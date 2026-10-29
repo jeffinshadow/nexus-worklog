@@ -11,7 +11,7 @@ from ..deps import active_user, active_user_csrf
 from ..schemas import ChecklistIn, ChecklistUpdate, FinishIn, NoteIn, TimeIn, WorklogIn, WorklogUpdate
 from .assign import notify_assigner
 from ..services import is_work_day, work_mask
-from ..services import ASSIGNER_NAME, app_today, app_tz, task_retro_days
+from ..services import ASSIGNER_NAME, EXTRA_PROJECTS, app_today, app_tz, default_project, set_extra_projects, task_retro_days
 
 router = APIRouter(prefix="/api/worklog", tags=["worklog"])
 items = APIRouter(prefix="/api", tags=["worklog"])  # rotas por id de anotação/item/tempo
@@ -139,7 +139,9 @@ def create(data: WorklogIn, response: Response, user=Depends(active_user_csrf)):
     if data.external_ref and (found := _by_ref(uid, data.external_ref)):
         response.status_code = 200
         return {"id": found["id"], "existing": True}
-    _check_project(uid, data.project_id)
+    # Sem projeto informado (nem null): o padrão da pessoa (Configurações > Conta).
+    project_id = data.project_id if "project_id" in data.model_fields_set else default_project(uid)
+    _check_project(uid, project_id)
     now = datetime.now(timezone.utc)
     created_at = resolve_created(data.created_at, now)
     completed_at = resolve_completed(data.completed_at, created_at, now) if data.status == "done" else None
@@ -153,7 +155,7 @@ def create(data: WorklogIn, response: Response, user=Depends(active_user_csrf)):
             RETURNING id
             """,
             (uid, data.title, data.description, data.status, data.due_date, created_at, completed_at,
-             data.project_id, data.priority, data.ticket, data.after_hours, data.external_ref,
+             project_id, data.priority, data.ticket, data.after_hours, data.external_ref,
              _reason(data.blocked_reason) if data.status == "blocked" else None,
              now if data.status == "blocked" else None,
              follow_up_day(uid, data.follow_up_on) if data.status == "blocked" else None,
@@ -162,6 +164,8 @@ def create(data: WorklogIn, response: Response, user=Depends(active_user_csrf)):
     except UniqueViolation:  # duas chamadas iguais ao mesmo tempo: a segunda devolve a primeira
         response.status_code = 200
         return {"id": _by_ref(uid, data.external_ref)["id"], "existing": True}
+    if data.extra_project_ids:
+        set_extra_projects(uid, row["id"], data.extra_project_ids)
     audit.record(user, "worklog.create", "worklog", row["id"],
                  after=audit.worklog_snapshot(row["id"], uid))
     return {"id": row["id"]}
@@ -213,7 +217,7 @@ def detail(task_id: int, user=Depends(active_user)):
         SELECT w.id, w.title, w.description, w.status, w.due_date, w.created_at, w.completed_at,
                w.priority, w.project_id, w.ticket, w.after_hours, w.external_ref, w.assigned_by, w.assigned_at,
                w.blocked_reason, w.blocked_at, w.follow_up_on, w.resolution,
-               p.name AS project_name, p.color AS project_color, """ + ASSIGNER_NAME + """
+               p.name AS project_name, p.color AS project_color, """ + ASSIGNER_NAME + ", " + EXTRA_PROJECTS + """
           FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
          WHERE w.id = %s AND w.user_id = %s
         """,
@@ -259,6 +263,7 @@ def update(task_id: int, data: WorklogUpdate, user=Depends(active_user_csrf)):
         _check_project(user["user_id"], data.project_id)
         fields.append("project_id = %s")
         values.append(data.project_id)
+    extras = data.extra_project_ids is not None
     if data.priority is not None:
         fields.append("priority = %s")
         values.append(data.priority)
@@ -297,16 +302,21 @@ def update(task_id: int, data: WorklogUpdate, user=Depends(active_user_csrf)):
         fields.append("completed_at = %s")
         values.append(resolve_completed(data.completed_at, before["created_at"], datetime.now(timezone.utc)))
 
-    if not fields:
+    if not fields and not extras:
         raise HTTPException(status_code=400, detail="nada para atualizar")
     if data.status == "done":
         stop_timer_of(user, task_id)
 
-    values += [task_id, user["user_id"]]
-    db.execute(
-        f"UPDATE worklog_tasks SET {', '.join(fields)} WHERE id = %s AND user_id = %s",
-        tuple(values),
-    )
+    if fields:
+        values += [task_id, user["user_id"]]
+        db.execute(
+            f"UPDATE worklog_tasks SET {', '.join(fields)} WHERE id = %s AND user_id = %s",
+            tuple(values),
+        )
+    # Trocou o principal: os extras se ajustam (sem repetir; sem principal, nenhum).
+    if extras or "project_id" in sent:
+        set_extra_projects(user["user_id"], task_id,
+                           data.extra_project_ids if extras else before["extra_project_ids"])
     audit.record(user, "worklog.update", "worklog", task_id, before=before,
                  after=audit.worklog_snapshot(task_id, user["user_id"]))
     if final_status == "done" and before["status"] != "done":

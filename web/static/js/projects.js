@@ -25,6 +25,76 @@ export function projectChip(t) {
   return h("span", { class: "chip project" }, dot, t.project_name);
 }
 
+// Etiquetas de todos os projetos da tarefa: o principal e os extras.
+export function projectChips(t) {
+  const extras = (t.extra_projects || []).map((p) => projectChip({ project_name: p.name, project_color: p.color }));
+  return [projectChip(t), ...extras].filter(Boolean);
+}
+
+// Outros projetos da tarefa (além do principal): etiquetas com × e um seletor
+// "+ outro projeto". getPrincipal() diz o principal atual (ele não aparece na
+// lista; sem principal, não há extras). onChange(ids) a cada mudança.
+// Devolve { el, ids(), sync() } — sync() depois de trocar o principal.
+export function extraProjectsField(initial, getPrincipal, onChange) {
+  let ids = [...(initial || [])];
+  const el = h("div", { class: "extra-projects" });
+  async function paint() {
+    const list = await listProjects().catch(() => []);
+    const principal = getPrincipal();
+    ids = ids.filter((id) => id !== principal);
+    clear(el);
+    if (!principal) {
+      el.append(h("span", { class: "hint", text: "Escolha o projeto principal antes." }));
+      return;
+    }
+    for (const id of ids) {
+      const p = list.find((x) => x.id === id) || { id, name: "(projeto arquivado)", color: null };
+      const chip = projectChip({ project_name: p.name, project_color: p.color });
+      chip.append(h("button", { type: "button", class: "chip-x", title: "Tirar " + p.name, "aria-label": "Tirar o projeto " + p.name,
+        onClick: () => { ids = ids.filter((x) => x !== id); paint(); onChange(ids); } }, icon("close")));
+      el.append(chip);
+    }
+    const rest = list.filter((p) => p.id !== principal && !ids.includes(p.id));
+    if (!rest.length || ids.length >= 10) return;
+    const add = h("select", { class: "select-sm", "aria-label": "Adicionar outro projeto" },
+      h("option", { value: "", text: ids.length ? "+ mais um" : "+ outro projeto" }),
+      ...rest.map((p) => h("option", { value: String(p.id), text: p.name })));
+    add.addEventListener("change", () => {
+      if (!add.value) return;
+      ids = [...ids, Number(add.value)];
+      paint();
+      onChange(ids);
+    });
+    el.append(add);
+  }
+  paint();
+  return { el, ids: () => ids, sync: paint };
+}
+
+// Projeto padrão (Configurações > Conta): vai para a tarefa criada sem projeto.
+export function defaultProjectPanel(me, onSaved) {
+  const sel = h("select", { "aria-label": "Projeto padrão" });
+  const fill = async () => {
+    const list = await listProjects();
+    clear(sel);
+    sel.append(h("option", { value: "", text: "Nenhum (a tarefa fica sem projeto)" }),
+      ...list.map((p) => h("option", { value: String(p.id), text: p.name })));
+    sel.value = list.some((p) => p.id === me.default_project_id) ? String(me.default_project_id) : "";
+  };
+  fill().catch(() => {});
+  sel.addEventListener("change", async () => {
+    try {
+      const r = await api.put("/me/default-project", { project_id: sel.value ? Number(sel.value) : null });
+      if (onSaved) onSaved(r);
+      toast(r.default_project_id ? "Projeto padrão salvo." : "Sem projeto padrão.");
+    } catch (e) { errorToast(e); fill().catch(() => {}); }
+  });
+  return h("section", { class: "panel" },
+    h("div", { class: "panel-head" }, h("h2", { text: "Projeto padrão" })),
+    h("p", { class: "help", text: "Quando você cria uma tarefa sem escolher projeto, ela entra neste. Vale também para o registro rápido, os modelos sem projeto, a IA e as tarefas que você recebe por atribuição." }),
+    field("Projeto padrão", sel));
+}
+
 // Preenche um <select> com "Sem projeto", os projetos e "+ Novo projeto…".
 // O novo projeto é criado na hora e fica selecionado.
 // onPick(valor): chamado quando o usuário escolhe um projeto (ou cria um novo).
@@ -135,7 +205,7 @@ export async function projectsPanel(rerender) {
         h("button", { type: "button", class: "btn btn-ghost btn-sm", text: p.archived ? "Reativar" : "Arquivar",
           onClick: () => save(p, { archived: !p.archived }, p.archived ? "Projeto reativado." : "Arquivado: some dos seletores, as tarefas continuam.") }),
         h("button", { type: "button", class: "icon", title: "Excluir", "aria-label": "Excluir " + p.name, onClick: async () => {
-          if (!(await confirmDialog({ title: `Excluir “${p.name}”?`, text: "As tarefas continuam, só ficam sem projeto. Dá para desfazer pelo histórico.", confirm: "Excluir", danger: true }))) return;
+          if (!(await confirmDialog({ title: `Excluir “${p.name}”?`, text: "As tarefas continuam: ficam sem projeto, ou no outro projeto que tiverem. Dá para desfazer pelo histórico.", confirm: "Excluir", danger: true }))) return;
           try {
             await api.del(`/projects/${p.id}`);
             invalidateProjects();

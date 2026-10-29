@@ -15,7 +15,7 @@ from ..config import config
 from ..deps import require_assigner, require_assigner_csrf, require_people_list
 from ..labels import PRIO_PT
 from ..schemas import AssignIn
-from ..services import app_today, app_tz
+from ..services import app_today, app_tz, default_project
 
 router = APIRouter(prefix="/api/assign", tags=["assign"])
 log = logging.getLogger("uvicorn.error")
@@ -79,10 +79,10 @@ def assign(data: AssignIn, user=Depends(require_assigner_csrf)):
         raise HTTPException(status_code=403, detail="essa pessoa não aceitou receber tarefas atribuídas")
     row = db.query_one(
         """INSERT INTO worklog_tasks (user_id, title, description, due_date, priority, ticket, after_hours,
-                                      assigned_by, assigned_at)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, now()) RETURNING id""",
+                                      assigned_by, assigned_at, project_id)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, now(), %s) RETURNING id""",
         (target["id"], data.title, data.description, data.due_date, data.priority, data.ticket,
-         data.after_hours, user["user_id"]),
+         data.after_hours, user["user_id"], default_project(target["id"])),  # o projeto padrão de quem recebe
     )
     tid = row["id"]
     by_name = people.profile(user["user_id"])["name"]

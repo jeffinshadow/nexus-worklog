@@ -423,7 +423,8 @@ def _recurring_block(pdf: _Report, stats: list, x: float, w: float, y: float, fl
     return y
 
 
-def _projects_block(pdf: _Report, projects: list, x: float, w: float, y: float, flow: bool = False) -> float:
+def _projects_block(pdf: _Report, projects: list, x: float, w: float, y: float, flow: bool = False,
+                    multi: bool = False) -> float:
     pdf.font("sanss", 10, INK)
     pdf.text_at(x, y, w, 5, "Projetos")
     pdf.font("label", 6.6, DIM)
@@ -443,6 +444,10 @@ def _projects_block(pdf: _Report, projects: list, x: float, w: float, y: float, 
         if p["minutes"]:
             pdf.box(x, y + 6, w * p["minutes"] / top, 1.1, col, r=0.55)
         y += 10
+    if multi:  # a soma das linhas passa do total: explica
+        pdf.font("label", 6.4, DIM)
+        pdf.text_at(x, y - 1, w, 4, "Tarefa em mais de um projeto conta inteira em cada um.")
+        y += 4
     return y
 
 
@@ -460,7 +465,7 @@ def _overview(pdf: _Report, data: dict) -> None:
         # cabe na página: rotinas e projetos lado a lado
         col = (pdf.cw - 10) / 2
         y1 = _recurring_block(pdf, stats, M, col, y)
-        y2 = _projects_block(pdf, projects, M + col + 10, col, y)
+        y2 = _projects_block(pdf, projects, M + col + 10, col, y, multi=data.get("multi_project"))
         pdf.set_y(max(y1, y2) + 6)
         return
     # não cabe (muitas rotinas): um bloco embaixo do outro, quebrando por linha
@@ -468,7 +473,7 @@ def _overview(pdf: _Report, data: dict) -> None:
         y = _recurring_block(pdf, stats, M, pdf.cw, y, flow=True) + 6
     if projects:
         y = _row_y(pdf, y, 18, True)
-        y = _projects_block(pdf, projects, M, pdf.cw, y, flow=True) + 6
+        y = _projects_block(pdf, projects, M, pdf.cw, y, flow=True, multi=data.get("multi_project")) + 6
     pdf.set_y(y)
 
 

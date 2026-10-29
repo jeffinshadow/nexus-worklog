@@ -10,7 +10,7 @@ from ..deps import active_user
 from ..security import pdf_limiter
 from .branding import branding
 from ..report_pdf import build_report_pdf
-from ..services import app_today, get_report_range
+from ..services import IN_PROJECT, app_today, get_report_range
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -26,13 +26,14 @@ def project_first_day(user_id: int, project_id: int) -> date:
         """
         SELECT LEAST(
           (SELECT (created_at AT TIME ZONE %s)::date FROM projects WHERE id = %s),
-          (SELECT min((created_at AT TIME ZONE %s)::date) FROM worklog_tasks WHERE project_id = %s AND user_id = %s),
-          (SELECT min((completed_at AT TIME ZONE %s)::date) FROM worklog_tasks WHERE project_id = %s AND user_id = %s),
+          (SELECT min((w.created_at AT TIME ZONE %s)::date) FROM worklog_tasks w WHERE """ + IN_PROJECT + """ AND w.user_id = %s),
+          (SELECT min((w.completed_at AT TIME ZONE %s)::date) FROM worklog_tasks w WHERE """ + IN_PROJECT + """ AND w.user_id = %s),
           (SELECT min(e.day) FROM time_entries e JOIN worklog_tasks w ON w.id = e.task_id
-            WHERE w.project_id = %s AND e.user_id = %s)
+            WHERE """ + IN_PROJECT + """ AND e.user_id = %s)
         ) AS d
         """,
-        (tz, project_id, tz, project_id, user_id, tz, project_id, user_id, project_id, user_id),
+        (tz, project_id, tz, project_id, project_id, user_id, tz, project_id, project_id, user_id,
+         project_id, project_id, user_id),
     )
     return min(row["d"] or app_today(), app_today())
 

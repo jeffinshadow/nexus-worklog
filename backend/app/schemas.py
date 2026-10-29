@@ -184,7 +184,8 @@ class WorklogIn(BaseModel):
     description: Optional[str] = Field(default=None, max_length=300)
     status: Status = "todo"
     due_date: Optional[date] = None
-    project_id: Optional[int] = None
+    project_id: Optional[int] = None  # ausente = o projeto padrão da pessoa
+    extra_project_ids: list[int] = Field(default_factory=list, max_length=10)  # além do principal
     priority: int = Field(default=2, ge=1, le=3)  # 1 alta, 2 normal, 3 baixa
     ticket: Optional[str] = Ticket          # número no sistema de chamados
     after_hours: bool = False               # plantão / fora do horário
@@ -215,6 +216,7 @@ class WorklogUpdate(BaseModel):
     status: Optional[Status] = None
     due_date: Optional[date] = None
     project_id: Optional[int] = None  # enviado como null = tirar do projeto
+    extra_project_ids: Optional[list[int]] = Field(default=None, max_length=10)  # troca a lista inteira
     priority: Optional[int] = Field(default=None, ge=1, le=3)
     ticket: Optional[str] = Ticket     # null ou vazio = tirar o chamado
     after_hours: Optional[bool] = None
@@ -290,6 +292,14 @@ class TemplateIn(BaseModel):
         if not self.name or not self.title:
             raise ValueError("nome e título não podem ficar em branco")
         return self
+
+
+class DefaultProjectIn(BaseModel):
+    project_id: Optional[int] = None  # null = nenhum (tarefa sem projeto fica sem)
+
+
+class TourIn(BaseModel):
+    done: bool  # false = reabrir no próximo acesso
 
 
 class TicketUrlIn(BaseModel):
