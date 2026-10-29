@@ -203,17 +203,49 @@ function mountMore(el) {
   );
 }
 
-// Ajuda: atalhos, onde está o guia e a quem recorrer (contato do Admin > Geral).
+// Ajuda em seções: começar (tour e manual), onde fica cada coisa, marcadores do
+// registro rápido, atalhos (só no computador) e a quem recorrer (Admin > Geral).
 function showHelp() {
+  const user = has("user");
+  const sec = (ic, title, ...body) => h("section", { class: "help-sec" }, h("h3", {}, icon(ic), h("span", { text: title })), ...body);
+  const list = (rows) => h("dl", { class: "help-list" }, ...rows.flatMap(([k, v, code]) =>
+    [h("dt", {}, code ? h("code", { text: k }) : k), h("dd", { text: v })]));
+  const desk = !matchMedia("(max-width: 860px)").matches;
   const dlg = modal(h("h2", { text: "Ajuda" }),
-    h("p", { class: "help", text: "Tarefas, rotinas e tempo ficam em Hoje e Tarefas; a Retrospectiva e os Relatórios mostram o período. Tudo que muda fica no Histórico, com desfazer." }),
-    has("user") ? h("p", { class: "help", text: "Atalhos: n nova tarefa, / buscar, h t r l trocam de tela, s para o cronômetro, ? mostra todos." }) : null,
-    has("user") ? h("p", { class: "help", text: "Registro rápido (no Hoje), marcadores no fim: @Projeto #chamado !plantão !alta ^hoje, ^amanhã, ^sex ou ^25/10 (prazo) e !bloq motivo (por último); “— 45min” já conclui com o tempo." }) : null,
-    has("user") ? h("p", { class: "help" }, h("button", { type: "button", class: "btn btn-ghost btn-sm", onClick: () => { dlg.close(); startTour(me); } },
-      icon("help"), "Fazer o tour guiado"), " configurar o Nexus e conhecer a tela em poucos minutos.") : null,
-    h("p", { class: "help" }, "Manual de uso, tela por tela: ", h("a", { href: "https://shadow.tec.br/nexus-manual.html", target: "_blank", rel: "noopener noreferrer", text: "shadow.tec.br/nexus-manual" }), "."),
-    me.support_contact ? h("p", { class: "help" }, "Suporte: ", h("strong", { text: me.support_contact })) : h("p", { class: "dialog-note", text: "Dúvidas ou problemas: fale com quem administra o Nexus na sua equipe." }),
+    sec("spark", "Começar",
+      h("div", { class: "help-start" },
+        user ? h("button", { type: "button", class: "btn btn-primary btn-sm", onClick: () => { dlg.close(); startTour(me); } }, icon("help"), "Fazer o tour guiado") : null,
+        h("a", { class: "btn btn-ghost btn-sm", href: "https://shadow.tec.br/nexus-manual.html", target: "_blank", rel: "noopener noreferrer" }, icon("reports"), "Manual, tela por tela")),
+      user ? h("p", { class: "help-example dialog-note", text: "O tour configura o seu Nexus (nome, dias úteis, projetos, rotinas) e mostra a tela Hoje em poucos minutos." }) : null),
+    sec("today", "Onde fica cada coisa", list([
+      ...(user ? [["Hoje", "Rotinas do dia, tarefas em aberto (com filtro) e o registro rápido."],
+        ["Tarefas", "O quadro completo e o detalhe de cada tarefa: anotações, checklist, cronômetro, tempo."],
+        ["Retrospectiva", "A semana e o mês em números."],
+        ["Relatórios", "PDF do período ou de um projeto, e a exportação dos dados."]] : []),
+      ["Histórico", "Tudo o que mudou, com desfazer."],
+      ["Configurações", user ? "Projetos, modelos, avisos, calendário, IA e a sua conta (projeto padrão, dias úteis)." : "IA e API, e a sua conta."],
+    ])),
+    user ? sec("add", "Registro rápido (no Hoje)",
+      h("p", { class: "help", text: "Escreva o que fez e aperte Enter. Marcadores opcionais no fim, em qualquer ordem:" }),
+      list([
+        ["@Projeto", "projeto; um segundo @ põe a tarefa nos dois", true],
+        ["#4821", "número do chamado", true],
+        ["!alta", "prioridade alta", true],
+        ["!plantão", "fora do horário", true],
+        ["^amanhã", "prazo: ^hoje, ^sex, ^25/10…", true],
+        ["!bloq motivo", "bloqueada, aguardando o motivo (sempre por último)", true],
+        ["— 45min", "já conclui, com o tempo apontado", true],
+      ]),
+      h("p", { class: "help-example" }, "Ex.: ", h("code", { text: "Troca do switch @Matriz #4821 — 45min" }))) : null,
+    user && desk ? sec("key", "Atalhos de teclado", list([
+      ["n", "nova tarefa", true], ["/", "buscar", true], ["h t r l", "Hoje, Tarefas, Retrospectiva, Relatórios", true],
+      ["s", "parar o cronômetro", true], ["?", "ver todos os atalhos", true],
+    ])) : null,
+    sec("mail", "Suporte", me.support_contact
+      ? h("p", { class: "help" }, "Fale com ", h("strong", { text: me.support_contact }), ".")
+      : h("p", { class: "help", text: "Dúvidas ou problemas: fale com quem administra o Nexus na sua equipe." })),
     h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Fechar", onClick: () => dlg.close() })));
+  dlg.classList.add("help-dialog");
 }
 
 // Erros de JavaScript vão para o log do servidor (sem terceiros). Poucos por página.

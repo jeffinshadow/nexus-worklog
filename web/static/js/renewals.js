@@ -21,7 +21,7 @@ function when(r) {
 
 function row(r, onChange, compact = false) {
   const w = when(r);
-  return h("div", { class: "list-row" },
+  return h("div", { class: "list-row venc-row" },
     h("div", { class: "t" }, h("span", { text: r.label }),
       !compact && (r.note || r.project_name) ? h("small", { text: [r.project_name, r.note].filter(Boolean).join(" · ") }) : null),
     h("span", { class: "chip " + w.cls, text: w.text }),

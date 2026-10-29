@@ -187,9 +187,11 @@ export function confirmDialog({ title, text, confirm = "Confirmar", danger = fal
 export function toast(message, opts = {}) {
   const box = document.getElementById("toasts");
   if (!box) return;
-  const el = h("div", { class: "toast" + (opts.error ? " error" : ""), role: "status" }, h("span", { text: message }));
   // Uma ação (action/onAction) ou várias (actions: [[rótulo, fn], ...]).
   const actions = opts.actions || (opts.action ? [[opts.action, opts.onAction]] : []);
+  const long = String(message).length > 48; // não cabe numa linha de pílula
+  const el = h("div", { class: "toast" + (opts.error ? " error" : "") + (long ? " long" : "") + (actions.length ? " has-actions" : ""), role: "status",
+    title: long ? message : null }, h("span", { text: message }));
   for (const [label, fn] of actions) {
     el.append(h("button", {
       type: "button", class: "btn btn-ghost btn-sm", text: label,
