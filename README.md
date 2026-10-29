@@ -29,6 +29,8 @@ para leitura, o quadro, a retrospectiva e os relatórios de cada pessoa).
   principais) em ordem de execução, cada um com as suas tarefas, também em
   ordem; arrasta para reordenar (no celular, pelo ⋮). Progresso e status do
   objetivo saem das tarefas; o que não tem objetivo fica em "Sem objetivo".
+  O projeto tem descrição opcional; nome de projeto e título de objetivo não
+  se repetem (sem diferenciar maiúsculas e acentos).
 - **Rotinas** — verificações que se repetem (backups, alertas, fila…), com agenda:
   dias úteis, dias da semana, mensal (inclui "último dia") ou a cada N dias.
   Marcação até 7 dias para trás; feito fora da agenda conta como *extra*.
@@ -74,7 +76,12 @@ para leitura, o quadro, a retrospectiva e os relatórios de cada pessoa).
   da chave. Comandos prontos para o resumo da semana e para a daily; `get_week`
   traz semanas passadas. Para
   lançar o que já aconteceu: `created_at`/`completed_at`, `external_ref` (não
-  duplica) e `list_tasks` por período.
+  duplica) e `list_tasks` por período. A IA também monta projetos:
+  `create_project`, `update_project` (arquiva, não exclui), `create_objective`
+  (com posição), `update_objective` e `reorder_objectives` (a lista inteira; a
+  ordem anterior fica no histórico, com desfazer). Nome ou título repetido
+  devolve o que já existe; o status do objetivo continua automático. A IA não
+  exclui tarefa, projeto nem objetivo.
 
 ## Telas
 
