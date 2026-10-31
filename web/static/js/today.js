@@ -251,6 +251,12 @@ function editEvidence(r, day, refresh) {
   const input = h("input", { type: "text", maxlength: "200", value: r.note || "", placeholder: "ex.: backup OK, 2,1 TB, 0 erros",
     required: r.require_note ? "required" : null });
   const err = h("p", { class: "error-text" });
+  // Foto ainda subindo: o "Salvar" espera (fechar antes cortaria o envio).
+  photoBox.addEventListener("photo-busy", (ev) => {
+    const btn = form.querySelector("button[type=submit]");
+    btn.disabled = ev.detail;
+    btn.textContent = ev.detail ? "Enviando a foto…" : "Salvar";
+  });
   const form = h("form", {}, h("h2", { text: "Evidência" }),
     h("p", { class: "dialog-note", text: `${r.label}: o que foi conferido. Aparece no relatório em PDF e na exportação.${r.require_note ? " Esta rotina só é marcada com a evidência." : ""}` }),
     h("label", { class: "field" }, "Evidência", input), photoBox, err,

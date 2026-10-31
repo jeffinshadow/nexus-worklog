@@ -68,10 +68,14 @@ export const photoUrl = (id) => `/api/photos/${id}`;
 // Grade de miniaturas + "Adicionar foto". onChange: recarregar quem mostra.
 export function photoGrid(photos, { path, onChange, label = "Fotos" }) {
   const input = h("input", { type: "file", accept: "image/*", multiple: "multiple", class: "hidden", "aria-label": "Escolher fotos" });
+  // Enquanto envia, avisa quem está em volta (o diálogo da evidência segura o "Salvar").
+  const busyEvent = (on) => grid.dispatchEvent(new CustomEvent("photo-busy", { detail: on, bubbles: true }));
   const add = async (files) => {
     if (!files || ![...files].some(isImage)) return;
     toast("Enviando foto…");
-    if (await upload(path, files)) { toast("Foto adicionada."); onChange(); }
+    busyEvent(true);
+    try { if (await upload(path, files)) { toast("Foto adicionada."); onChange(); } }
+    finally { busyEvent(false); }
   };
   input.addEventListener("change", () => { add(input.files); input.value = ""; });
   const grid = h("div", { class: "photo-grid" },

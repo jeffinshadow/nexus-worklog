@@ -4,7 +4,7 @@ import { api } from "./api.js";
 import { h, icon, clear, addDays, shortDate, localDay, localDateTime, daysBetween } from "./dom.js";
 import { confirmDialog, errorToast, toast, undoLatest, busy, modal, sheet, navBadge, popupMenu } from "./ui.js";
 import { extraProjectsField, fillObjectiveSelect, fillProjectSelect, listProjects, projectChips } from "./projects.js";
-import { openTask, openTaskId, duration, parseDuration } from "./task.js";
+import { openTask, openTaskId, editingTaskId, duration, parseDuration } from "./task.js";
 import { boardLine } from "./assistant.js";
 import { session } from "./session.js";
 import { timerButton, timerState, startTimer, stopTimer } from "./timer.js";
@@ -122,6 +122,7 @@ export function moreButton(t, onDone) {
 export function withMenu(el, t, onDone) {
   el.dataset.taskId = String(t.id);
   if (openTaskId() === t.id) el.classList.add("selected");
+  if (editingTaskId() === t.id) el.classList.add("editing");
   el.addEventListener("contextmenu", (ev) => {
     if (ev.target.closest("a, input, select, textarea")) return; // nesses, o menu do navegador
     ev.preventDefault();
@@ -486,7 +487,8 @@ function askResolution(t, onDone) {
   area.focus();
 }
 
-export async function finishTask(t, onDone) {
+export async function finishTask(t, onDone, { fromEdit = false } = {}) {
+  if (!fromEdit && editingTaskId() === t.id) { toast("Termine a edição da tarefa (Pronto) antes de concluir."); return; }
   try {
     const r = await api.post(`/worklog/${t.id}/finish`);
     onDone && onDone();

@@ -361,7 +361,7 @@ async function notices() {
   save.addEventListener("click", async () => {
     const body = { show_titles: titles.checked, weekly_pdf: pdf.checked, weekly_cc: cc.value.trim() || null };
     for (const r of rows) { body[r.key] = r.on.checked; body[`${r.key}_hour`] = Number(r.hour.value); }
-    try { await api.put("/notifications", body); toast("Avisos salvos."); }
+    try { await api.put("/notifications", body); toast("Avisos salvos."); setDirty(false); }
     catch (e) { errorToast(e, e.status === 422 ? "O e-mail da cópia não parece válido." : "Falha ao salvar."); }
   });
   const test = h("button", { type: "button", class: "btn btn-ghost" }, icon("mail"), "Mandar um teste");
@@ -382,17 +382,27 @@ async function notices() {
     catch (e) { errorToast(e, "Falha no envio."); }
     finally { setTimeout(() => { testWeek.disabled = false; }, 4000); }
   });
+  // Os testes saem com o que está salvo: com alteração pendente, esperam o "Salvar avisos".
+  const testTitles = [test.title || "", testWeek.title || ""];
+  const setDirty = (dirty) => {
+    for (const [i, b] of [test, testWeek].entries()) {
+      b.disabled = dirty || !p.mail_configured;
+      b.title = dirty ? "Salve os avisos antes de testar" : testTitles[i];
+    }
+  };
   const KIND_PT = { morning: "seu dia", evening: "fim do dia", weekly: "semana", test: "teste" };
   const recent = p.recent.filter((r) => r.ok !== null || r.error !== "nada a avisar");
-  return h("div", { class: "settings-grid" },
-    h("section", { class: "panel" },
+  const mailPanel = h("section", { class: "panel" },
       h("div", { class: "panel-head" }, icon("mail"), h("h2", { text: "Avisos por e-mail" })),
       h("p", { class: "help" }, "Enviados para ", h("strong", { class: "mono", text: p.email }),
         ". Sem rastreamento de abertura ou de cliques; só sai e-mail quando há algo a avisar."),
       p.mail_configured ? null : warnBox("O envio de e-mail ainda não está configurado neste servidor. Você pode deixar tudo escolhido; os avisos começam quando ele for ligado."),
       ...rows.flatMap((r) => (r === weekly ? [r.el, weeklyExtra] : [r.el])),
       h("label", { class: "weekday-option notice-titles" }, titles, h("span", { text: "Mostrar os títulos das tarefas no e-mail (desligado: só os números)" })),
-      h("div", { class: "row-actions" }, save, test, testWeek)),
+      h("div", { class: "row-actions" }, save, test, testWeek));
+  for (const ev of ["input", "change"]) mailPanel.addEventListener(ev, (e) => { if (!e.target.closest(".row-actions")) setDirty(true); });
+  return h("div", { class: "settings-grid" },
+    mailPanel,
     recent.length ? h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Últimos envios" })),
       ...recent.map((r) => h("div", { class: "token-row" },

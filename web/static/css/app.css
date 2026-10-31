@@ -630,6 +630,9 @@ mark { background: rgba(82,148,226,.28); color: var(--on-surface); border-radius
 .offline-bar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 860px) { .offline-bar { top: calc(56px + env(safe-area-inset-top)); font-size: .8rem; } }
 
+/* Tarefa em edição no detalhe: o concluir dela (cartão, linha, detalhe) esmaece até o "Pronto". */
+.editing button[aria-label^="Concluir"] { opacity: .38; pointer-events: none; }
+.task-dialog button[aria-label="Concluir"]:disabled, .task-main-actions .btn:disabled { opacity: .38; cursor: not-allowed; }
 /* Avisos do canto (lembrete, convites) não cobrem o detalhe aberto ao lado. */
 @media (min-width: 861px) { body.has-side .idle-card { right: calc(460px + 24px); } }
 @media (min-width: 861px) and (max-width: 1199px) { body.has-side .idle-card { right: calc(420px + 24px); } }

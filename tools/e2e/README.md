@@ -26,6 +26,7 @@ Pré-requisitos (na máquina que roda o navegador):
 | `e2e_passkey.py SAIDA` | passkey com o autenticador virtual do Chrome: cadastrar, entrar pelo botão e pela sugestão do campo, remover (a homologação precisa de `APP_URL=http://localhost:8090`) |
 | `e2e_fotos.py SAIDA` | foto grande reduzida a 1600 px em WebP, print colado, visualizador, excluir e desfazer, evidência da rotina, compartilhar com foto. Em `SAIDA`: `foto-grande.jpg` e `print.png` (ex.: `magick -size 3000x2000 plasma:fractal foto-grande.jpg`) |
 | `e2e_sem_sinal.py SAIDA` | desliga o nginx da homologação no meio (`NEXUS_E2E_SSH`), faz as seis ações sem servidor, religa e confere que tudo chegou, sem duplicar |
+| `e2e_edicao.py SAIDA` | concluir espera o Pronto da edição (detalhe, cartão, menu; o status Concluída dentro da edição vale), testes de e-mail esperam salvar, evidência espera a foto |
 | `pdfs_exemplo.py SAIDA` | baixa o PDF da semana, do mês e de um projeto (ver com `pdftoppm -png`) |
 
 `SAIDA` é a pasta das capturas. Cada roteiro imprime `OK`, `FALHAS` e os erros de

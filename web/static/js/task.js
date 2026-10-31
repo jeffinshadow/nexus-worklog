@@ -36,6 +36,16 @@ function actorBadge(row) {
 // Tarefa aberta no painel lateral (computador): o quadro marca o cartão dela.
 let sideTaskId = null, sideOwner = null;
 export const openTaskId = () => sideTaskId;
+// Tarefa em edição no detalhe: concluir (aqui, no cartão, na linha, no menu)
+// espera o "Pronto" — a conclusão não sai com um campo pela metade.
+let editingId = null;
+export const editingTaskId = () => editingId;
+const EDIT_HINT = "Termine a edição (Pronto) para concluir";
+function markEditing(id) {
+  editingId = id;
+  for (const el of document.querySelectorAll("[data-task-id], .obj-task[data-task]"))
+    el.classList.toggle("editing", id !== null && Number(el.dataset.taskId || el.dataset.task) === id);
+}
 function markSelected() {
   for (const el of document.querySelectorAll("[data-task-id]"))
     el.classList.toggle("selected", Number(el.dataset.taskId) === sideTaskId);
@@ -72,6 +82,7 @@ export async function openTask(taskId, onChange) {
   };
   dlg.addEventListener("close", () => {
     dlg.remove();
+    if (editing && editingId === taskId) markEditing(null);
     if (side) {
       document.removeEventListener("keydown", onKey);
       // O "close" chega depois; se outro painel já abriu, ele é o dono agora.
@@ -124,9 +135,9 @@ export async function openTask(taskId, onChange) {
     // Lápis ao lado do título: entra na edição; "Pronto" volta (e busca do
     // servidor o que mudou, para as etiquetas saírem certas).
     const toggle = editing
-      ? h("button", { type: "button", class: "btn btn-ghost btn-sm edit-toggle", onClick: async () => { await pending; editing = false; render(); } }, icon("check"), "Pronto")
+      ? h("button", { type: "button", class: "btn btn-ghost btn-sm edit-toggle", onClick: async () => { await pending; editing = false; markEditing(null); render(); } }, icon("check"), "Pronto")
       : h("button", { type: "button", class: "icon edit-toggle", title: "Editar a tarefa", "aria-label": "Editar a tarefa",
-          onClick: () => { editing = true; refocus = "Título"; paint(); } }, icon("edit"));
+          onClick: () => { editing = true; markEditing(t.id); refocus = "Título"; paint(); } }, icon("edit"));
 
     const remove = async () => { if (await deleteTask(t, onChange)) dlg.close(); };
     const head = h("div", { class: "task-head" },
@@ -135,10 +146,11 @@ export async function openTask(taskId, onChange) {
       h("div", { class: "task-tools" },
         timerButton(t, after),
         t.status !== "done"
-          ? h("button", { type: "button", class: "icon", title: "Concluir", "aria-label": "Concluir", onClick: () => finishTask(t, after) }, icon("check"))
+          ? h("button", { type: "button", class: "icon", title: editing ? EDIT_HINT : "Concluir", "aria-label": "Concluir", disabled: editing ? "disabled" : null,
+              onClick: () => finishTask(t, after) }, icon("check"))
           : null,
-        h("button", { type: "button", class: "icon", title: "Copiar resumo (para o chamado ou o cliente)", "aria-label": "Copiar resumo", onClick: () => copySummary(t) }, icon("copy")),
-        h("button", { type: "button", class: "icon", title: "Salvar como modelo", "aria-label": "Salvar como modelo", onClick: () => saveAsTemplate(t) }, icon("list")),
+        h("button", { type: "button", class: "icon", title: "Copiar resumo (para o chamado ou o cliente)", "aria-label": "Copiar resumo", onClick: async () => { await pending; copySummary(cur); } }, icon("copy")),
+        h("button", { type: "button", class: "icon", title: "Salvar como modelo", "aria-label": "Salvar como modelo", onClick: async () => { await pending; saveAsTemplate(cur); } }, icon("list")),
         h("button", { type: "button", class: "icon", title: "Excluir", "aria-label": "Excluir", onClick: remove }, icon("trash")),
         h("button", { type: "button", class: "icon", title: "Fechar", "aria-label": "Fechar", onClick: () => dlg.close() }, icon("close"))));
 
@@ -152,15 +164,16 @@ export async function openTask(taskId, onChange) {
         "aria-label": expanded ? "Voltar ao painel" : "Expandir para ler", "aria-pressed": String(expanded),
         onClick: () => expand(!expanded) }, icon(expanded ? "shrink" : "expand")) : null,
       h("button", { type: "button", class: "icon", title: "Mais ações", "aria-label": "Mais ações", onClick: () => sheet(t.title, [
-        ["Copiar resumo (para o chamado ou o cliente)", "copy", () => copySummary(t)],
-        ["Salvar como modelo", "list", () => saveAsTemplate(t)],
+        ["Copiar resumo (para o chamado ou o cliente)", "copy", async () => { await pending; copySummary(cur); }],
+        ["Salvar como modelo", "list", async () => { await pending; saveAsTemplate(cur); }],
         ["Excluir tarefa", "trash", remove],
       ]) }, icon("more-v")));
     const running = (timerState() || {}).task_id === t.id;
     const mainActs = t.status === "done" ? null : h("div", { class: "task-main-actions" },
       h("button", { type: "button", class: "btn btn-ghost" + (running ? " timer-on" : ""), onClick: () => (running ? stopTimer(after) : startTimer(t, after)) },
         icon(running ? "stop" : "play"), running ? "Parar cronômetro" : "Cronômetro"),
-      h("button", { type: "button", class: "btn btn-primary", onClick: () => finishTask(t, after) }, icon("check"), "Concluir"));
+      h("button", { type: "button", class: "btn btn-primary", title: editing ? EDIT_HINT : null, disabled: editing ? "disabled" : null,
+        onClick: () => finishTask(t, after) }, icon("check"), "Concluir"));
 
     body.append(...[appbar, head, mainActs, editing ? details(t, today) : null, checklist(t), photosSection(t, touch), timePanel(t, today), notesPanel(t)].filter(Boolean));
     if (title) requestAnimationFrame(() => grow(title)); // a altura só existe com o campo na tela (e o painel aberto)
@@ -221,7 +234,7 @@ export async function openTask(taskId, onChange) {
     status.value = t.status;
     status.addEventListener("change", () => {
       // Concluir pelo status = o mesmo concluir dos botões (com "Como resolveu?").
-      if (status.value === "done") { refocus = "Status"; finishTask(t, after); }
+      if (status.value === "done") { refocus = "Status"; finishTask(t, after, { fromEdit: true }); }
       else save({ status: status.value }, true);
     });
 

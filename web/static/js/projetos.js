@@ -6,7 +6,7 @@ import { api } from "./api.js";
 import { h, icon, clear, field, shortDate, localDay } from "./dom.js";
 import { busy, confirmDialog, errorToast, modal, popupMenu, sheet, toast, undoLatest } from "./ui.js";
 import { finishTask, openWorklog, taskChips } from "./board.js";
-import { openTask } from "./task.js";
+import { editingTaskId, openTask } from "./task.js";
 import { PALETA, askName, invalidateProjects } from "./projects.js";
 
 const STATUS = { todo: "não iniciado", in_progress: "em andamento", done: "concluído" };
@@ -205,7 +205,7 @@ function taskRow(t, i, tasks, oid, o, pid, today, refresh) {
     i < ids.length - 1 ? ["Descer na ordem", "right", () => move(1)] : null,
     ["Mover para outro objetivo…", "folder", () => moveTo(t, oid, o, pid, refresh)],
   ]));
-  const row = h("div", { class: "obj-task", "data-task": String(t.id) }, grip,
+  const row = h("div", { class: "obj-task" + (editingTaskId() === t.id ? " editing" : ""), "data-task": String(t.id) }, grip,
     h("button", { type: "button", class: "icon", title: "Concluir", "aria-label": "Concluir " + t.title, onClick: () => finishTask(t, refresh) }, icon("check")),
     h("div", { class: "t" },
       h("button", { type: "button", class: "card-open", text: t.title, onClick: () => openTask(t.id, refresh) }),
