@@ -31,11 +31,11 @@ try:
     cmd("Runtime.enable")
     w,h_,mob=(390,844,True) if modo=="mobile" else (1440,1000,False)
     cmd("Emulation.setDeviceMetricsOverride",width=w,height=h_,deviceScaleFactor=1,mobile=mob)
-    cmd("Page.navigate",url=B+"/login.html"); time.sleep(1)
+    cmd("Page.navigate",url=B+"/login"); time.sleep(1)
     csrf=ev("fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'"+_cred('NEXUS_E2E_USER')[0]+"',password:'"+_cred('NEXUS_E2E_USER')[1]+"'})}).then(r=>r.json()).then(j=>j.csrf_token)")
     ev(f"fetch('/api/me/tour',{{method:'PUT',headers:{{'Content-Type':'application/json','X-CSRF-Token':{json.dumps(csrf)}}},body:JSON.stringify({{done:true}})}})")
     def passeio(cenario, antes):
-        cmd("Page.navigate",url=B+"/index.html#/hoje"); time.sleep(2.5)
+        cmd("Page.navigate",url=B+"/#/hoje"); time.sleep(2.5)
         for js, t in antes: ev(js); time.sleep(t)
         ok=ev("""(() => { const b=[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Fazer o tour guiado')&&b.offsetParent); if(!b) return false; b.click(); return true; })()""")
         if not ok: print("DEBUG", ev("JSON.stringify([...document.querySelectorAll('dialog[open]')].map(d => d.className + ' | ' + [...d.querySelectorAll('button')].map(b => b.textContent.trim() + ':' + !!b.offsetParent).join(',')))"))

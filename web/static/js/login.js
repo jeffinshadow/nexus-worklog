@@ -18,7 +18,7 @@ function show(id) {
 
 // Volta à tela que pediu o login (link de e-mail ou calendário): só rotas do app (#/...).
 const next = new URLSearchParams(location.search).get("next") || "";
-const destino = "/index.html" + (/^#\/[\w\-?=&%.]*$/.test(next) ? next : "");
+const destino = "/" + (/^#\/[\w\-?=&%.]*$/.test(next) ? next : "");
 
 $("form-login").addEventListener("submit", async (ev) => {
   ev.preventDefault();
@@ -111,7 +111,7 @@ async function openLink(kind, token) {
       const body = { token, password: $("link-pw").value };
       if (invite) body.display_name = $("link-name").value.trim() || null;
       await api.post(invite ? "/auth/invite/accept" : "/auth/reset", body);
-      location.href = "/index.html";
+      location.href = "/";
     } catch (e) {
       err.textContent = e.message || "Não foi possível salvar.";
       if (btn) btn.disabled = false;

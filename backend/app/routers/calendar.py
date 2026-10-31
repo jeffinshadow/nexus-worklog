@@ -131,7 +131,7 @@ def build_ics(uid: int, include_recurring: bool, cal_name: str) -> str:
         desc = f"Status: {STATUS_PT.get(t['status'], t['status'])} · prioridade {PRIO_PT.get(t['priority'], 'normal')}"
         # Sem a descrição: o feed vai para Google/Apple/Microsoft — só o necessário.
         extra = [f"CATEGORIES:{_esc(t['project'])}"] if t["project"] else []
-        extra.append(f"URL:{config.APP_URL}/index.html#/tarefas?id={t['id']}")  # abre a tarefa no app
+        extra.append(f"URL:{config.APP_URL}/#/tarefas?id={t['id']}")  # abre a tarefa no app
         if t["priority"] == 1:
             extra.append("PRIORITY:1")
         event(f"task-{t['id']}", t["due_date"], summary, desc, extra)
@@ -143,11 +143,11 @@ def build_ics(uid: int, include_recurring: bool, cal_name: str) -> str:
         # Sem o motivo (fornecedor, cliente): o feed vai para calendários de terceiros.
         event(f"followup-{t['id']}", t["follow_up_on"], f"Cobrar: {t['title']}",
               "Tarefa bloqueada com dia combinado para cobrar.",
-              [f"URL:{config.APP_URL}/index.html#/tarefas?id={t['id']}"])
+              [f"URL:{config.APP_URL}/#/tarefas?id={t['id']}"])
 
     # Vencimentos: no dia de vencer e no dia de começar a avisar.
     from .renewals import list_for
-    link = [f"URL:{config.APP_URL}/index.html#/vencimentos"]  # onde se clica "Renovei"
+    link = [f"URL:{config.APP_URL}/#/vencimentos"]  # onde se clica "Renovei"
     for r in list_for(uid):
         event(f"renewal-{r['id']}", r["expires_on"], f"Vence: {r['label']}", "Vencimento cadastrado no Nexus.", link)
         event(f"renewal-warn-{r['id']}", r["warn_from"],

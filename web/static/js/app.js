@@ -174,7 +174,7 @@ function go(name) {
 
 async function logout() {
   try { await api.post("/auth/logout"); } catch { /* ignora */ }
-  location.href = "/login.html";
+  location.href = "/login";
 }
 
 // Vencimentos: item próprio no menu (importante demais para ficar em Configurações).
@@ -226,7 +226,7 @@ function showHelp() {
     sec("spark", "Começar",
       h("div", { class: "help-start" },
         user ? h("button", { type: "button", class: "btn btn-primary btn-sm", onClick: () => { dlg.close(); startTour(me); } }, icon("help"), "Fazer o tour guiado") : null,
-        h("a", { class: "btn btn-ghost btn-sm", href: "https://shadow.tec.br/nexus-manual.html", target: "_blank", rel: "noopener noreferrer" }, icon("reports"), "Manual, tela por tela")),
+        h("a", { class: "btn btn-ghost btn-sm", href: "https://shadow.tec.br/nexus-manual", target: "_blank", rel: "noopener noreferrer" }, icon("reports"), "Manual, tela por tela")),
       user ? h("p", { class: "help-example dialog-note", text: "O tour configura o seu Nexus (nome, dias úteis, projetos, rotinas) e mostra a tela Hoje em poucos minutos." }) : null),
     sec("today", "Onde fica cada coisa", list([
       ...(user ? [["Hoje", "Rotinas do dia, tarefas em aberto (com filtro) e o registro rápido."],

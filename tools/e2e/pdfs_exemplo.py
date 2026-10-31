@@ -27,7 +27,7 @@ try:
             r=json.loads(ws.recv())
             if r.get("id")==n[0]: return r.get("result",r)
     ev=lambda js: cmd("Runtime.evaluate",expression=js,returnByValue=True,awaitPromise=True)["result"].get("value")
-    cmd("Page.navigate",url=B+"/login.html"); time.sleep(1)
+    cmd("Page.navigate",url=B+"/login"); time.sleep(1)
     ev("fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'"+_cred('NEXUS_E2E_USER')[0]+"',password:'"+_cred('NEXUS_E2E_USER')[1]+"'})})")
     pid = {x['name']:x['id'] for x in ev("fetch('/api/projects').then(r=>r.json())")}
     d=date.today()

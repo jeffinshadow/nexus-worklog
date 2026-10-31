@@ -77,7 +77,7 @@ try:
     cmd("Page.enable"); cmd("Runtime.enable"); cmd("Log.enable")
     w, h_, sc, mob = (390, 844, 2, True) if modo == "mobile" else (1440, 1000, 1, False)
     cmd("Emulation.setDeviceMetricsOverride", width=w, height=h_, deviceScaleFactor=sc, mobile=mob)
-    cmd("Page.navigate", url=B + "/login.html"); time.sleep(1)
+    cmd("Page.navigate", url=B + "/login"); time.sleep(1)
     r = ev(f"fetch('/api/auth/login',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{email:'{EMAIL}',password:'{PW}'}})}}).then(r=>r.json())")
     # Estado conhecido: tour não visto, sem projeto padrão.
     api("PUT", "/me/tour", {"done": False}); api("PUT", "/me/default-project", {"project_id": None})
@@ -85,7 +85,7 @@ try:
     pid = {x["name"]: x["id"] for x in projs}
     print("projetos:", list(pid))
 
-    cmd("Page.navigate", url=B + "/index.html#/hoje")
+    cmd("Page.navigate", url=B + "/#/hoje")
     check("tour abre sozinho", wait("!!document.querySelector('dialog.tour-dialog[open]')", 8))
     time.sleep(.4); shot("t01-boas-vindas")
     click(btn("Começar"))
@@ -120,7 +120,7 @@ try:
     check("passeio fecha", wait("!document.querySelector('.tour-layer')"))
     me = api("GET", "/auth/me")["j"]
     check("tour marcado como visto", bool(me["tour_done_at"]))
-    cmd("Page.navigate", url=B + "/index.html#/hoje"); time.sleep(2.5)
+    cmd("Page.navigate", url=B + "/#/hoje"); time.sleep(2.5)
     check("tour não reabre", not ev("!!document.querySelector('dialog.tour-dialog[open]')"))
 
     # ---- filtro do Hoje
@@ -171,7 +171,7 @@ try:
 
     # ---- detalhe: editar extras
     tid = t["id"]
-    cmd("Page.navigate", url=B + f"/index.html#/tarefas"); time.sleep(2)
+    cmd("Page.navigate", url=B + f"/#/tarefas"); time.sleep(2)
     ev(f"import('/js/task.js').then(m => m.openTask({tid}, () => {{}}))"); time.sleep(1.2)
     shot("t50-detalhe-leitura")
     click("document.querySelector('dialog[open] .edit-toggle')"); time.sleep(.8)

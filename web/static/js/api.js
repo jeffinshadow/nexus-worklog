@@ -30,7 +30,7 @@ async function send(method, path, { body, type, timeout = 20000, publicCall = fa
 
   // 401 fora das rotas de auth = sessao expirou -> volta ao login.
   if (res.status === 401 && !publicCall && !path.startsWith("/auth/")) {
-    if (location.pathname !== "/login.html") toLogin();
+    if (location.pathname !== "/login") toLogin();
     throw new Error("nao autenticado");
   }
   if (!res.ok) {
@@ -54,7 +54,7 @@ async function send(method, path, { body, type, timeout = 20000, publicCall = fa
 // Login guardando a tela atual (#/...), para voltar a ela depois.
 export function toLogin() {
   const next = location.hash.startsWith("#/") ? "?next=" + encodeURIComponent(location.hash) : "";
-  location.href = "/login.html" + next;
+  location.href = "/login" + next;
 }
 
 async function request(method, path, body) {

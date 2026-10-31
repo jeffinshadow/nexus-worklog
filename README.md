@@ -12,7 +12,7 @@ acumuláveis, dados em **Admin › Permissões**: **Usuário** (o próprio regis
 tarefas a quem aceitou receber) e **Visualizador de tarefas** (consulta, só
 para leitura, o quadro, a retrospectiva e os relatórios de cada pessoa).
 
-**Manual de uso, tela por tela:** [shadow.tec.br/nexus-manual](https://shadow.tec.br/nexus-manual.html).
+**Manual de uso, tela por tela:** [shadow.tec.br/nexus-manual](https://shadow.tec.br/nexus-manual).
 
 ## O que faz
 

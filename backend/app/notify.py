@@ -86,7 +86,7 @@ class Mail:
             out.append("")
         out += [f"{self.button}: {self.href}", "", self.reason]
         if self.settings_tab:  # aviso que não tem como desligar não promete isso
-            out.append(f"Para desligar: {config.APP_URL}/index.html#/config?aba={self.settings_tab}")
+            out.append(f"Para desligar: {config.APP_URL}/#/config?aba={self.settings_tab}")
         return "\n".join(out)
 
     def html(self) -> str:
@@ -111,7 +111,7 @@ class Mail:
 <p style="margin:26px 0 0"><a href="{e(self.href)}" style="display:inline-block;background:#5294E2;color:#0b0d10;text-decoration:none;font:600 14px/1 Arial,sans-serif;padding:12px 20px;border-radius:999px">{e(self.button)}</a></p>
 </td></tr></table>
 <p style="max-width:560px;margin:14px auto 0;font:12px/1.5 Arial,sans-serif;color:#86868e">{e(self.reason)}
-{f'<a href="{e(config.APP_URL)}/index.html#/config?aba={e(self.settings_tab)}" style="color:#86868e">Mudar ou desligar</a>.' if self.settings_tab else ''}</p>
+{f'<a href="{e(config.APP_URL)}/#/config?aba={e(self.settings_tab)}" style="color:#86868e">Mudar ou desligar</a>.' if self.settings_tab else ''}</p>
 </td></tr></table></body></html>"""
 
 

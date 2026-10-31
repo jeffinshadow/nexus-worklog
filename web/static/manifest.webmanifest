@@ -4,7 +4,7 @@
   "description": "O registro do seu dia de trabalho — ShadowTec.",
   "lang": "pt-BR",
   "id": "/",
-  "start_url": "/index.html#/hoje",
+  "start_url": "/#/hoje",
   "scope": "/",
   "display": "standalone",
   "background_color": "#121213",

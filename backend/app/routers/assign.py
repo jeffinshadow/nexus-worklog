@@ -38,7 +38,7 @@ def _assignment_mail(task: dict, by_name: str):
              "Ela já está nas suas tarefas no Nexus.")
     m.reason = "Você recebe este e-mail porque aceitou receber tarefas atribuídas (Configurações > Conta)."
     m.settings_tab = "conta"
-    m.link = f"/index.html#/tarefas?id={task['id']}"
+    m.link = f"/#/tarefas?id={task['id']}"
     itens = [task["title"]]
     if task.get("description"):
         itens.append(task["description"])
@@ -117,7 +117,7 @@ def notify_assigner(task_id: int) -> None:
              "Ela aparece como concluída em Atribuir tarefas, no Nexus.")
     m.reason = "Você recebe este e-mail porque atribuiu esta tarefa pelo Nexus (um aviso por tarefa)."
     m.settings_tab = None
-    m.link = "/index.html#/atribuir"
+    m.link = "/#/atribuir"
     m.blocks = [("Tarefa", [row["title"], f"Concluída em {row['completed_at'].astimezone(app_tz()).strftime('%d/%m/%Y %H:%M')}"])]
     _spawn(to["email"], m)
 

@@ -610,7 +610,7 @@ function deleteAccount(isUser) {
     if (!ok) return;
     try {
       await api.post("/me/delete", { password: pw.value });
-      location.href = "/login.html";
+      location.href = "/login";
     } catch (e) { err.textContent = e.message || "Não foi possível excluir."; }
   }));
   return h("section", { class: "panel" }, h("div", { class: "panel-head" }, icon("trash"), h("h2", { text: "Excluir a conta" })), form);

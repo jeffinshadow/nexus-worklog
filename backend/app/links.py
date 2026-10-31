@@ -8,7 +8,7 @@ from .config import config
 from .security import new_token, token_hash
 
 TTL = {"invite": timedelta(days=7), "reset": timedelta(hours=1)}
-HASH_KEY = {"invite": "convite", "reset": "senha"}  # login.html#convite=... / #senha=...
+HASH_KEY = {"invite": "convite", "reset": "senha"}  # /login#convite=... / #senha=...
 
 
 def issue(user_id: int, kind: str) -> str:
@@ -21,7 +21,7 @@ def issue(user_id: int, kind: str) -> str:
 
 
 def url(kind: str, token: str) -> str:
-    return f"{config.APP_URL}/login.html#{HASH_KEY[kind]}={token}"
+    return f"{config.APP_URL}/login#{HASH_KEY[kind]}={token}"
 
 
 def peek(token: str, kind: str):

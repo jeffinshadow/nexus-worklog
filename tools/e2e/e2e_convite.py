@@ -91,7 +91,7 @@ class Browser:
         return False
 
     def login(self, email, pw):
-        self.go(B + "/login.html", 1)
+        self.go(B + "/login", 1)
         return self.ev(f"fetch('/api/auth/login',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{email:{json.dumps(email)},password:{json.dumps(pw)}}})}}).then(r=>r.status)")
 
     def api(self, method, path, body=None):
@@ -119,7 +119,7 @@ try:
             adm.api("POST", f"/admin/users/{u['id']}/delete", {"confirm_email": NOVO})
 
     # ---- convite pelo Admin
-    adm.go(B + "/index.html#/admin", 2.5)
+    adm.go(B + "/#/admin", 2.5)
     adm.ev("document.querySelector('dialog.tour-dialog')?.close()")
     adm.click(adm.btn("Novo usuário")); time.sleep(.8)
     check("diálogo diz que vai por link", adm.ev("document.querySelector('dialog[open]').textContent.includes('link para criar a própria senha')"))
@@ -139,7 +139,7 @@ try:
 
     # ---- convidado abre o link
     conv = Browser(9401 if modo == "desktop" else 9411)
-    conv.go(B + "/login.html#convite=" + token, 2)
+    conv.go(B + "/login#convite=" + token, 2)
     check("form do convite", conv.ev("!document.getElementById('form-link').classList.contains('hidden') && document.getElementById('link-sub').textContent.includes('" + NOVO + "')"))
     check("token sai da barra", conv.ev("location.hash === ''"))
     conv.fill("#link-name", "Convidado E2E")
@@ -149,17 +149,17 @@ try:
     conv.fill("#link-pw2", SENHA1)
     check("senhas iguais liberam", conv.ev("document.getElementById('form-link').checkValidity()"))
     conv.click("document.getElementById('link-submit')")
-    check("entrou no app", conv.wait("location.pathname === '/index.html' && !!document.querySelector('#app:not(.hidden)')", 10))
+    check("entrou no app", conv.wait("location.pathname === '/' && !!document.querySelector('#app:not(.hidden)')", 10))
     check("tour abre para o convidado", conv.wait("!!document.querySelector('dialog.tour-dialog[open]')", 6))
     me = conv.api("GET", "/auth/me")["j"]
     check("nome do convite salvo", me["display_name"] == "Convidado E2E", me.get("display_name"))
-    conv.go(B + "/login.html#convite=" + token, 2)
+    conv.go(B + "/login#convite=" + token, 2)
     check("link usado não vale", conv.ev("document.getElementById('link-sub').textContent.includes('venceu ou já foi usado')"))
     conv.shot("c04-convite-usado")
 
     # ---- esqueci a senha
     rec = Browser(9402 if modo == "desktop" else 9412)
-    rec.go(B + "/login.html", 2)
+    rec.go(B + "/login", 2)
     check("link esqueci aparece", rec.wait("!document.getElementById('go-forgot').classList.contains('hidden')"))
     rec.shot("c05-login")
     rec.fill("#login-email", NOVO)
@@ -172,17 +172,17 @@ try:
     msg = mailpit_last(NOVO)
     check("e-mail de senha chegou", bool(msg))
     rlink = re.search(r"#senha=([\w-]+)", msg["Text"]).group(1)
-    rec.go(B + "/login.html#senha=" + rlink, 2)
+    rec.go(B + "/login#senha=" + rlink, 2)
     check("form senha nova", rec.ev("document.getElementById('link-title').textContent") == "Crie uma senha nova")
     check("sem campo de nome", rec.ev("document.getElementById('link-name-wrap').classList.contains('hidden')"))
     rec.fill("#link-pw", SENHA2); rec.fill("#link-pw2", SENHA2)
     rec.shot("c07-senha-nova")
     rec.click("document.getElementById('link-submit')")
-    check("entrou com a senha nova", rec.wait("location.pathname === '/index.html'", 10))
+    check("entrou com a senha nova", rec.wait("location.pathname === '/'", 10))
     check("sessão do convite caiu", conv.ev("fetch('/api/auth/me').then(r => r.status)") == 401)
 
     # ---- confirmação na troca de senha (Conta)
-    rec.go(B + "/index.html#/config?aba=conta", 3)
+    rec.go(B + "/#/config?aba=conta", 3)
     rec.ev("document.querySelector('dialog.tour-dialog')?.close()")
     check("conta tem confirmação", rec.ev("[...document.querySelectorAll('label')].some(l => l.textContent === 'Confirme a nova senha')"))
     rec.ev("[...document.querySelectorAll('label')].find(l => l.textContent === 'Confirme a nova senha').scrollIntoView({block: 'center'})"); time.sleep(.3)
@@ -192,7 +192,7 @@ try:
     # ---- semanas do resumo (Marina)
     mar = Browser(9403 if modo == "desktop" else 9413)
     mar.login(*MARINA)
-    mar.go(B + "/index.html#/hoje", 3)
+    mar.go(B + "/#/hoje", 3)
     mar.ev("document.querySelector('dialog.tour-dialog')?.close()")
     mar.wait("!!document.querySelector('.sum-week')", 8)
     mar.ev("document.querySelector('.sum-week').scrollIntoView({block: 'center'})"); time.sleep(.4)

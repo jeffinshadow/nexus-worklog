@@ -80,14 +80,14 @@ try:
     cmd("Page.enable"); cmd("Runtime.enable")
     w, h_, mob = (390, 844, True) if modo == "mobile" else (1440, 1000, False)
     cmd("Emulation.setDeviceMetricsOverride", width=w, height=h_, deviceScaleFactor=2 if mob else 1, mobile=mob)
-    cmd("Page.navigate", url=B + "/login.html"); time.sleep(1)
+    cmd("Page.navigate", url=B + "/login"); time.sleep(1)
     ev(f"fetch('/api/auth/login',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{email:{json.dumps(EMAIL)},password:{json.dumps(PW)}}})}})")
     for x in api("GET", "/projects?include_archived=true")["j"]:  # limpa execução anterior
         if x["name"] == PROJ:
             drop_project(x["id"])
     pid = api("POST", "/projects", {"name": PROJ})["j"]["id"]
 
-    cmd("Page.navigate", url=B + "/index.html#/projetos"); time.sleep(2.5)
+    cmd("Page.navigate", url=B + "/#/projetos"); time.sleep(2.5)
     ev("document.querySelector('dialog.tour-dialog')?.close()")
     check("menu Projetos", ev("!!document.querySelector('[data-view=projetos]')"))
     check("lista mostra o projeto", wait(f"[...document.querySelectorAll('.proj-card h2')].some(e => e.textContent === {json.dumps(PROJ)})"))
@@ -227,7 +227,7 @@ try:
     check("excluir objetivo devolve as tarefas", "Recuperar senha" in ev("[...document.querySelector('.obj-block.unassigned').querySelectorAll('.card-open')].map(b => b.textContent).join('|')"))
     shot("o04-sem-objetivo")
     # Configurações > Projetos (link antigo) leva à tela nova.
-    cmd("Page.navigate", url=B + "/index.html#/config?aba=projetos"); time.sleep(2.5)
+    cmd("Page.navigate", url=B + "/#/config?aba=projetos"); time.sleep(2.5)
     check("link antigo leva a Projetos", ev("location.hash") == "#/projetos", ev("location.hash"))
     drop_project(pid)
 finally:
