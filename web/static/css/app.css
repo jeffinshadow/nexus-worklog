@@ -791,9 +791,13 @@ dialog.sheet .menu-list > :last-child { border-bottom: 0; }
     background: rgba(18,18,19,.94); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
     border-bottom: 1px solid transparent; transition: border-color .2s; }
   .appbar.show { border-bottom-color: var(--outline-variant); }
-  .lockup--bar { --lock-fs: 1.06rem; flex: 1; min-width: 0; text-decoration: none; }
-  .lockup--bar .lockup-mark { height: 2.1rem; max-width: 3.6rem; }
-  .appbar-title { display: none; flex: 1; min-width: 0; font-size: 1.1rem; font-weight: 600; letter-spacing: -.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Nome numa linha só; o nome da tela usa a mesma letra da marca (peso, tamanho, espaçamento). */
+  .appbar { --bar-fs: 1.3rem; }
+  .lockup--bar { --lock-fs: var(--bar-fs); flex: 1; min-width: 0; text-decoration: none; }
+  .lockup--bar .lockup-mark { height: 1.55em; max-width: 2.7em; }
+  .lockup--bar .lockup-type { flex-direction: row; align-items: baseline; gap: .28em; line-height: 1; white-space: nowrap; min-width: 0; overflow: hidden; }
+  .appbar-title { display: none; flex: 1; min-width: 0; font-size: var(--bar-fs); font-weight: 700; letter-spacing: -.02em; line-height: 1;
+    color: var(--on-surface); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .appbar.show .lockup--bar { flex: none; }
   .appbar.show .lockup--bar .lockup-type { display: none; }
   .appbar.show .appbar-title { display: block; animation: fade-in .15s var(--ease); }
