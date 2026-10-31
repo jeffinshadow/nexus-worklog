@@ -6,6 +6,7 @@ import { api } from "./api.js";
 import { h, icon, nowInTz } from "./dom.js";
 import { errorToast, toast } from "./ui.js";
 import { appBadge } from "./instalar.js";
+import { closeRoutine } from "./notificacoes.js";
 
 const SOON_MIN = 10;          // aviso silencioso antes do horário
 const SNOOZE_MS = 10 * 60000; // "Adiar 10 min"
@@ -13,6 +14,7 @@ const RING_MS = 5000;         // intervalo entre os toques
 const SOUND_KEY = "nexus.lembrete.som";
 
 let items = [];
+let today = "";
 let onChange = null;
 let tick = null, ring = null, lastFetch = 0;
 const snoozed = new Map();    // id → até quando (ms)
@@ -33,7 +35,9 @@ export function startReminders(refresh) {
 // Chamado quando uma rotina muda (marcou, editou o horário) para o aviso acompanhar.
 export async function refreshReminders() {
   lastFetch = Date.now(); // falhou: tenta de novo no próximo intervalo, sem martelar
-  try { items = (await api.get("/recurring/reminders")).items; } catch { return; }
+  try { ({ items, today } = await api.get("/recurring/reminders")); } catch { return; }
+  // Marcada (aqui, no celular ou pela IA): a notificação deste aparelho sai da bandeja.
+  for (const r of items) if (r.done) closeRoutine(r.id, today);
   check();
 }
 
@@ -82,6 +86,7 @@ async function markDone(r, note) {
   try {
     await api.post(`/recurring/${r.id}/toggle`, note ? { done: true, note } : { done: true });
     r.done = true;
+    closeRoutine(r.id, today);
     toast(`Rotina marcada: ${r.label}`);
     check(true);
     if (onChange) onChange();
@@ -113,7 +118,10 @@ function show(list, ringing) {
   icon(soundOn() ? "bell" : "bell-off"));
   const later = ringing
     ? h("button", { type: "button", class: "btn btn-ghost btn-sm", text: "Adiar 10 min", onClick: () => {
-      for (const r of list) snoozed.set(r.id, Date.now() + SNOOZE_MS);
+      for (const r of list) {
+        snoozed.set(r.id, Date.now() + SNOOZE_MS);
+        api.post(`/recurring/${r.id}/snooze`, { minutes: SNOOZE_MS / 60000 }).catch(() => {}); // os aparelhos também esperam
+      }
       check(true);
     } })
     : h("button", { type: "button", class: "btn btn-ghost btn-sm", text: "Ok", onClick: () => {

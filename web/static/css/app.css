@@ -620,6 +620,12 @@ mark { background: rgba(82,148,226,.28); color: var(--on-surface); border-radius
 .idle-card .assist-actions { margin-top: 10px; }
 @media (max-width: 860px) { .idle-card { right: 16px; bottom: calc(86px + env(safe-area-inset-bottom)); } }
 /* Convite para instalar o app (instalar.js): mesmo cartão do lembrete; some se um lembrete tocar. */
+/* Notificações nos aparelhos (notificacoes.js): o estado deste aparelho e a lista. */
+.push-here { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 14px; margin: 4px 0 12px;
+  border-radius: 12px; background: var(--surface-container-high); }
+.push-here p { flex: 1; min-width: 200px; margin: 0; font-size: .9rem; }
+.push-devices { margin-top: 18px; }
+.push-devices h3 { font-size: .9rem; font-weight: 600; margin: 0 0 6px; }
 .install-icon { width: 40px; height: 40px; border-radius: 10px; flex: none; }
 .install-steps { display: grid; gap: 10px; margin: 0 0 8px; padding-left: 1.3rem; line-height: 1.5; }
 .install-steps strong { display: inline-flex; align-items: center; gap: 4px; }

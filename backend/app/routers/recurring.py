@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 
-from .. import audit, db
+from .. import audit, db, push
 from ..deps import active_user, active_user_csrf
-from ..schemas import RecurringIn, RecurringUpdate, ToggleIn
+from ..schemas import RecurringIn, RecurringUpdate, SnoozeIn, ToggleIn
 from ..services import app_today, app_tz, is_due, recurring_vigente, rotinas, work_mask
 from .board import check_board_day
 
@@ -171,3 +171,11 @@ def toggle(task_id: int, data: ToggleIn, user=Depends(active_user_csrf)):
                      before={"day": today, "done": was, "note": old_note},
                      after={"day": today, "done": data.done, "note": new_note})
     return {"ok": True, "done": data.done, "day": today, "note": new_note}
+
+
+@router.post("/{task_id}/snooze")
+def snooze(task_id: int, data: SnoozeIn, user=Depends(active_user_csrf)):
+    """Adia o lembrete da rotina hoje (as notificações do aparelho esperam)."""
+    if not db.query_one("SELECT 1 FROM recurring_tasks WHERE id = %s AND user_id = %s AND active", (task_id, user["user_id"])):
+        raise HTTPException(status_code=404, detail="não encontrado")
+    return {"until": push.snooze(user["user_id"], task_id, data.minutes)}

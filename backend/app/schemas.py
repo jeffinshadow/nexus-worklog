@@ -125,6 +125,30 @@ class ToggleIn(BaseModel):
     note: Optional[str] = Field(default=None, max_length=200)
 
 
+class _PushKeys(BaseModel):
+    p256dh: str = Field(min_length=80, max_length=200)
+    auth: str = Field(min_length=16, max_length=100)
+
+
+class PushDeviceIn(BaseModel):
+    endpoint: str = Field(min_length=20, max_length=1000)
+    keys: _PushKeys
+    label: Optional[str] = Field(default=None, max_length=60)  # ex.: "Chrome · Android"
+
+
+class PushPrefsIn(BaseModel):
+    routine: bool = True
+    follow_up: bool = True
+    deadline: bool = True
+    assigned: bool = True
+    morning_hour: int = Field(default=8, ge=0, le=23)
+    hide_content: bool = False
+
+
+class SnoozeIn(BaseModel):
+    minutes: int = Field(default=10, ge=5, le=120)
+
+
 class TokenIn(BaseModel):
     name: str = Field(min_length=1, max_length=60)
     scope: Literal["read", "write"] = "write"

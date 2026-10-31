@@ -282,13 +282,21 @@ def run_once(now: datetime, send=None) -> list[tuple[int, str, str]]:
 
 
 async def scheduler() -> None:
-    """Loop do agendador (uma passada por minuto), dentro do backend."""
+    """Loop do agendador (uma passada por minuto), dentro do backend: os e-mails
+    (com SMTP configurado) e as notificações dos aparelhos (app/push.py)."""
+    from . import push
     tz = ZoneInfo(config.APP_TZ)
-    log.info("avisos por e-mail: agendador ativo (%s)", config.SMTP_HOST)
+    log.info("agendador ativo: e-mail %s, notificações nos aparelhos", config.SMTP_HOST or "desligado")
     while True:
+        now = datetime.now(tz)
+        if config.SMTP_HOST:
+            try:
+                await asyncio.to_thread(run_once, now)
+            except Exception:  # noqa: BLE001
+                log.exception("agendador de avisos falhou nesta passada")
         try:
-            await asyncio.to_thread(run_once, datetime.now(tz))
+            await asyncio.to_thread(push.run_once, now)
         except Exception:  # noqa: BLE001
-            log.exception("agendador de avisos falhou nesta passada")
-        await asyncio.sleep(60)
+            log.exception("agendador de notificações falhou nesta passada")
+        await asyncio.sleep(60 - datetime.now(tz).second)  # perto do início de cada minuto
 

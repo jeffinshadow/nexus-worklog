@@ -10,7 +10,7 @@ import threading
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from .. import audit, db, mailer, people
+from .. import audit, db, mailer, people, push
 from ..config import config
 from ..deps import require_assigner, require_assigner_csrf, require_people_list
 from ..labels import PRIO_PT
@@ -94,6 +94,7 @@ def assign(data: AssignIn, user=Depends(require_assigner_csrf)):
     emailed = mailer.configured()
     if emailed:
         _spawn(target["email"], _assignment_mail({**snap, "due_date": data.due_date}, by_name))
+    threading.Thread(target=push.notify_assigned, args=(target["id"], {"id": tid, "title": data.title}, by_name), daemon=True).start()
     return {"id": tid, "to": to_name, "emailed": emailed}
 
 

@@ -19,6 +19,7 @@ import { avatar } from "./profile.js";
 import { startIdle } from "./idle.js";
 import { startReminders } from "./lembretes.js";
 import { canOfferInstall, install, offerInstall, sharedTask, stashShare, takeShortcut } from "./instalar.js";
+import { offerNotifications, syncOnBoot } from "./notificacoes.js";
 import { configure as configureAssistant } from "./assistant.js";
 import { session } from "./session.js";
 import { initTimer, stopTimer, timerState } from "./timer.js";
@@ -461,7 +462,11 @@ async function boot() {
   if (shared) {
     openWorklog(route, shared);
     if (shared.note) toast("O texto compartilhado é longo: ao salvar, ele entra inteiro como anotação da tarefa.");
-  } else offerInstall(me);
+  } else {
+    offerInstall(me);        // no navegador: instalar
+    offerNotifications(me);  // já instalado: ligar as notificações deste aparelho
+  }
+  syncOnBoot();
   // Primeiro acesso: o tour guiado abre sozinho (uma vez; a Ajuda reabre).
   if (has("user") && !me.tour_done_at) setTimeout(() => startTour(me), 700);
 }

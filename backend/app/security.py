@@ -147,7 +147,9 @@ token_limiter = RateLimiter(max_hits=240, window_seconds=60)
 
 
 def revoke_access(user_id: int) -> None:
-    """Corta o que nao depende da senha: chaves de API e link do calendario.
+    """Corta o que nao depende da senha: chaves de API, link do calendario e as
+    notificacoes nos aparelhos.
     Usado na troca de senha e no reset pelo admin ("senha nova = acessos novos")."""
     db.execute("UPDATE api_tokens SET revoked_at = now() WHERE user_id = %s AND revoked_at IS NULL", (user_id,))
     db.execute("DELETE FROM calendar_feeds WHERE user_id = %s", (user_id,))
+    db.execute("DELETE FROM push_subscriptions WHERE user_id = %s", (user_id,))  # aparelho talvez perdido

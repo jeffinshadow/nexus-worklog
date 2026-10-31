@@ -4,6 +4,7 @@ import { h, icon, clear, dateTime, field, matchPasswords } from "./dom.js";
 import { codeBox, confirmDialog, errorToast, modal, toast, warnBox, busy } from "./ui.js";
 import { defaultProjectPanel, fillProjectSelect } from "./projects.js";
 import { avatar, squarePhoto } from "./profile.js";
+import { pushPanel } from "./notificacoes.js";
 
 const TABS = [
   ["modelos", "Modelos"],
@@ -65,7 +66,11 @@ export async function mount(root, ctx) {
 
   async function fill(body) {
     if (active === "modelos") body.append(await templatesPanel(() => render()));
-    else if (active === "avisos") body.append(await notices());
+    else if (active === "avisos") {
+      const grid = await notices();
+      grid.prepend(await pushPanel(() => render())); // notificações dos aparelhos primeiro; e-mail depois
+      body.append(grid);
+    }
     else if (active === "calendario") body.append(await calendarFeed(() => render()));
     else if (active === "ia") body.append(...aiHelp(), await tokens(() => render()));
     else if (isUser) body.append(profilePanel(ctx.me, render), assignmentsPanel(ctx.me), assistantPanel(ctx.me), defaultProjectPanel(ctx.me, (r) => meChanged(ctx.me, r)), ticketsPanel(ctx.me), workDays(ctx.me), shortcutsPanel(), account(ctx.me), deleteAccount(isUser));

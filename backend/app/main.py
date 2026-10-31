@@ -12,8 +12,8 @@ from pydantic import BaseModel, EmailStr, Field, TypeAdapter, ValidationError
 from . import db, notify, roles
 from .config import config
 from .routers import (admin, assign, auth, board, branding, calendar, dashboard, export, history, mcp, me,
-                      notifications, objectives, projects, recurring, renewals, reports, search, summary, templates, timer, tokens,
-                      viewer, worklog)
+                      notifications, objectives, projects, push, recurring, renewals, reports, search, summary, templates, timer,
+                      tokens, viewer, worklog)
 from .deps import web_active
 from .security import Busy, client_error_limiter, hash_password
 
@@ -54,7 +54,7 @@ async def lifespan(app: FastAPI):
     run_migrations()
     seed_admin()
     task = None
-    if config.SMTP_HOST and config.MAIL_SCHEDULER:
+    if config.MAIL_SCHEDULER:  # e-mails (se houver SMTP) e notificações dos aparelhos
         task = asyncio.create_task(notify.scheduler())
     yield
     if task:
@@ -100,6 +100,6 @@ def client_error(data: ClientErrorIn, user=Depends(web_active)):
 
 for module in (auth, recurring, worklog, board, dashboard, reports, admin, history, tokens, mcp, branding, projects,
                summary, search, export, calendar, notifications, me, timer, templates, viewer, assign, renewals,
-               objectives):
+               objectives, push):
     app.include_router(module.router)
 app.include_router(worklog.items)  # /api/notes, /api/checklist, /api/time

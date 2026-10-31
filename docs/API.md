@@ -98,9 +98,11 @@ Legenda: **S** = só sessão do app · **W** = exige escopo `write` (chave) ou C
 
 | Rota | | Corpo |
 | --- | --- | --- |
-| `POST /` | W | `{label, freq?, weekdays?, month_day?, interval_days?, require_note?}` — `require_note` = marcar exige evidência |
+| `POST /` | W | `{label, freq?, weekdays?, month_day?, interval_days?, require_note?, remind_at?}` — `require_note` = marcar exige evidência; `remind_at` (`HH:MM`) = horário do lembrete |
 | `PATCH /{id}` | W | `{label?, require_note?, freq?…}` — mudar a agenda exige `freq` + o parâmetro dela; se a rotina já tem passado, ela é encerrada hoje e uma nova (devolvida em `id`) começa hoje — uma ação só no histórico |
 | `DELETE /{id}` | W | remove daqui para a frente (o passado fica) |
+| `GET /reminders` | R | rotinas com horário devidas hoje: `{today, items: [{id, label, remind_at, require_note, done}]}` (o lembrete da tela) |
+| `POST /{id}/snooze` | W | `{minutes}` (5–120, padrão 10) — adia o lembrete de hoje; as notificações dos aparelhos esperam |
 | `POST /{id}/toggle` | W | `{done, day?, note?}` — `day` até 7 dias atrás e só quando a rotina existia; `note` (até 200) = evidência do que foi conferido (vai pro PDF e pro JSON; remarcar sem `note` mantém a anterior; `note` vazio apaga). Rotina com `require_note` só é marcada com evidência (400) |
 
 Agenda: `daily` (dias úteis do dono) · `weekly` + `weekdays` (máscara) ·
@@ -155,7 +157,7 @@ Agenda: `daily` (dias úteis do dono) · `weekly` + `weekdays` (máscara) ·
 | `GET /?limit=&entity=&entity_id=` | | quem fez (app, chave, IA, admin), o quê, `can_undo` |
 | `POST /{id}/undo` | W | só a ação mais recente de cada item; criação de tarefa que já tem filhos → 409 |
 
-## Calendário, avisos e chaves (só pelo app)
+## Calendário, avisos, notificações e chaves (só pelo app)
 
 | Rota | | Observação |
 | --- | --- | --- |
@@ -165,6 +167,10 @@ Agenda: `daily` (dias úteis do dono) · `weekly` + `weekdays` (máscara) ·
 | `GET /api/calendar/{nxc_…}.ics` | público (segredo no link) | prazos (dia inteiro, sem a descrição), dias de cobrar impedimentos (sem o motivo), vencimentos (dia de vencer e de começar a avisar) e rotinas (RRULE) |
 | `GET /api/notifications` · `PUT /api/notifications` | S (W) | `{morning, morning_hour, evening, evening_hour, weekly, weekly_hour, show_titles}` |
 | `POST /api/notifications/test` | S W | manda um teste para o e-mail da conta (503 sem SMTP) |
+| `GET /api/push?endpoint=` | S | chave pública VAPID, preferências e aparelhos (`current` = o do `endpoint`) |
+| `POST /api/push/devices` · `DELETE /api/push/devices/{id}` | S W | `{endpoint, keys: {p256dh, auth}, label?}` — só serviços de push dos navegadores (Google, Mozilla, Apple, Microsoft); o mesmo navegador com outra conta passa para quem entrou |
+| `PUT /api/push/prefs` | S W | `{routine, follow_up, deadline, assigned, morning_hour, hide_content}` |
+| `POST /api/push/test?device_id=` | S W | notificação de teste (502 se o serviço do aparelho recusar) |
 | `GET /api/tokens` · `POST /api/tokens` · `DELETE /api/tokens/{id}` | S (W) | `{name, scope, expires_in_days}`; até 20 ativas |
 
 ## Identidade visual
