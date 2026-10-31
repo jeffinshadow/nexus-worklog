@@ -84,6 +84,11 @@ para leitura, o quadro, a retrospectiva e os relatórios de cada pessoa).
   hora são) e guarda no aparelho o que for feito: registrar, concluir, anotar,
   marcar rotina e o cronômetro, com a hora em que aconteceu. Na volta da
   conexão, vai sozinho e na ordem, sem duplicar. Sair limpa tudo do aparelho.
+- **Tema claro e escuro** (Material 3) — segue o aparelho ou fica fixo pela
+  conta, com contraste AA medido em todo texto; no celular, controles com área
+  de toque de pelo menos 44 px.
+- **Pedido de convite** — com e-mail configurado, quem não tem conta pede pela
+  tela de entrar; o admin recebe e-mail e notificação e convida ou recusa em Admin.
 - **Passkeys** — entrar sem senha, com a digital, o rosto, o Windows Hello ou
   uma chave física (WebAuthn); a senha continua valendo.
 - **Contas** — com e-mail configurado, o admin convida por **link** (7 dias,
@@ -125,6 +130,9 @@ Capturas de uma conta de demonstração, com dados fictícios.
 
 ![Vencimentos com certificado, licença e domínio](docs/screenshots/08-vencimentos.webp)
 *Vencimentos — quantos dias faltam; “Virar tarefa” cria a renovação e “Renovei” informa a nova data.*
+
+![Tela Hoje no tema claro](docs/screenshots/10-claro.webp)
+*Tema claro — segue o tema do aparelho por padrão; em Configurações › Conta › Aparência, a pessoa fixa claro ou escuro. Contraste medido em todo texto (WCAG AA).*
 
 <p>
   <img src="docs/screenshots/06-celular.webp" width="300" alt="Tela Hoje no celular, com a barra do topo com a marca">
