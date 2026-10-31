@@ -1,7 +1,7 @@
 {
   "name": "Nexus Worklog",
   "short_name": "Nexus",
-  "description": "O registro do seu dia de trabalho — ShadowTec.",
+  "description": "O registro do dia de trabalho de quem faz TI: tarefas, rotinas, cronômetro e o relatório da semana.",
   "lang": "pt-BR",
   "id": "/",
   "start_url": "/#/hoje",
@@ -30,6 +30,91 @@
       "src": "/img/favicon.svg",
       "type": "image/svg+xml",
       "sizes": "any"
+    }
+  ],
+  "categories": [
+    "productivity",
+    "business"
+  ],
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  },
+  "shortcuts": [
+    {
+      "name": "Nova tarefa",
+      "short_name": "Nova tarefa",
+      "url": "/#/hoje?acao=nova",
+      "icons": [
+        {
+          "src": "/img/atalho-nova.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Registro rápido",
+      "short_name": "Registrar",
+      "url": "/#/hoje?acao=rapido",
+      "icons": [
+        {
+          "src": "/img/atalho-rapido.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Tarefas",
+      "short_name": "Tarefas",
+      "url": "/#/tarefas",
+      "icons": [
+        {
+          "src": "/img/atalho-tarefas.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+  "share_target": {
+    "action": "/",
+    "method": "GET",
+    "enctype": "application/x-www-form-urlencoded",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  },
+  "screenshots": [
+    {
+      "src": "/img/telas/hoje.webp",
+      "sizes": "1600x1000",
+      "type": "image/webp",
+      "form_factor": "wide",
+      "label": "Hoje: rotinas, tarefas em aberto e o assistente do dia"
+    },
+    {
+      "src": "/img/telas/projeto.webp",
+      "sizes": "1600x1703",
+      "type": "image/webp",
+      "form_factor": "wide",
+      "label": "Projeto com objetivos em ordem de execução"
+    },
+    {
+      "src": "/img/telas/cel-hoje.webp",
+      "sizes": "600x1298",
+      "type": "image/webp",
+      "form_factor": "narrow",
+      "label": "Registro rápido no celular"
+    },
+    {
+      "src": "/img/telas/cel-tarefa.webp",
+      "sizes": "600x1298",
+      "type": "image/webp",
+      "form_factor": "narrow",
+      "label": "Tarefa em tela cheia no celular"
     }
   ]
 }

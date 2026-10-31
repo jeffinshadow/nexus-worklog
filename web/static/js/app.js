@@ -18,13 +18,14 @@ import { loadBranding } from "./branding.js";
 import { avatar } from "./profile.js";
 import { startIdle } from "./idle.js";
 import { startReminders } from "./lembretes.js";
+import { canOfferInstall, install, offerInstall, sharedTask, stashShare, takeShortcut } from "./instalar.js";
 import { configure as configureAssistant } from "./assistant.js";
 import { session } from "./session.js";
 import { initTimer, stopTimer, timerState } from "./timer.js";
 import { openWorklog } from "./board.js";
 import { openTask, closeSidePanel } from "./task.js";
 import { startTour } from "./tour.js";
-import { modal, busy, initTooltips, initRailPeek, syncRail, calmMotion } from "./ui.js";
+import { modal, busy, initTooltips, initRailPeek, syncRail, calmMotion, toast } from "./ui.js";
 
 let me = null;
 
@@ -174,6 +175,7 @@ function go(name) {
 
 async function logout() {
   try { await api.post("/auth/logout"); } catch { /* ignora */ }
+  if ("clearAppBadge" in navigator) navigator.clearAppBadge().catch(() => {});
   location.href = "/login";
 }
 
@@ -226,7 +228,8 @@ function showHelp() {
     sec("spark", "Começar",
       h("div", { class: "help-start" },
         user ? h("button", { type: "button", class: "btn btn-primary btn-sm", onClick: () => { dlg.close(); startTour(me); } }, icon("help"), "Fazer o tour guiado") : null,
-        h("a", { class: "btn btn-ghost btn-sm", href: "https://shadow.tec.br/nexus-manual", target: "_blank", rel: "noopener noreferrer" }, icon("reports"), "Manual, tela por tela")),
+        h("a", { class: "btn btn-ghost btn-sm", href: "https://shadow.tec.br/nexus-manual", target: "_blank", rel: "noopener noreferrer" }, icon("reports"), "Manual, tela por tela"),
+        canOfferInstall() ? h("button", { type: "button", class: "btn btn-ghost btn-sm", onClick: () => { dlg.close(); install(); } }, icon("download"), "Instalar o app") : null),
       user ? h("p", { class: "help-example dialog-note", text: "O tour configura o seu Nexus (nome, dias úteis, projetos, rotinas) e mostra a tela Hoje em poucos minutos." }) : null),
     sec("today", "Onde fica cada coisa", list([
       ...(user ? [["Hoje", "Rotinas do dia, tarefas em aberto (com filtro) e o registro rápido."],
@@ -302,6 +305,7 @@ function showChangePassword() {
 }
 
 async function boot() {
+  stashShare(); // compartilhado de outro app: guarda antes de um eventual login
   loadBranding();
   try {
     me = await api.get("/auth/me");
@@ -439,8 +443,25 @@ async function boot() {
     ev.preventDefault();
     sc[1]();
   });
-  window.addEventListener("hashchange", route);
-  route();
+  // Atalho do ícone (#/hoje?acao=...): sai do endereço antes da tela montar.
+  const shortcut = () => {
+    const acao = takeShortcut();
+    return () => {
+      if (!has("user")) return;
+      if (acao === "nova") openWorklog(route);
+      else if (acao === "rapido") document.querySelector('#view-hoje [aria-label="Registrar tarefa rápida"]')?.focus();
+    };
+  };
+  window.addEventListener("hashchange", () => { const run = shortcut(); route().then(run); });
+  const run = shortcut();
+  await route();
+  run();
+  // Texto ou link compartilhado de outro app: abre a Nova tarefa já preenchida (salva só ao confirmar).
+  const shared = has("user") ? sharedTask() : null;
+  if (shared) {
+    openWorklog(route, shared);
+    if (shared.note) toast("O texto compartilhado é longo: ao salvar, ele entra inteiro como anotação da tarefa.");
+  } else offerInstall(me);
   // Primeiro acesso: o tour guiado abre sozinho (uma vez; a Ajuda reabre).
   if (has("user") && !me.tour_done_at) setTimeout(() => startTour(me), 700);
 }

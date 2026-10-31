@@ -13,8 +13,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Nexus">
   <link rel="preload" as="font" type="font/woff2" href="/fonts/GoogleSansFlex.woff2" crossorigin>
-  <link rel="stylesheet" href="/css/tokens.css?v=88">
-  <link rel="stylesheet" href="/css/app.css?v=88">
+  <link rel="stylesheet" href="/css/tokens.css?v=89">
+  <link rel="stylesheet" href="/css/app.css?v=89">
   <!-- Módulos baixados todos de uma vez (sem isso vêm em ondas, um import
        revelando o próximo). Módulo novo fora desta lista só carrega mais tarde. -->
   <link rel="modulepreload" href="/js/admin.js">
@@ -28,6 +28,7 @@
   <link rel="modulepreload" href="/js/equipe.js">
   <link rel="modulepreload" href="/js/history.js">
   <link rel="modulepreload" href="/js/idle.js">
+  <link rel="modulepreload" href="/js/instalar.js">
   <link rel="modulepreload" href="/js/lembretes.js">
   <link rel="modulepreload" href="/js/profile.js">
   <link rel="modulepreload" href="/js/projects.js">
@@ -87,6 +88,7 @@
     <symbol id="icon-send" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4Z"/></g></symbol>
     <symbol id="icon-help" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/></g></symbol>
     <symbol id="icon-alert" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/></g></symbol>
+    <symbol id="icon-share" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/></g></symbol>
     <symbol id="icon-bell" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></g></symbol>
     <symbol id="icon-bell-off" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M8.7 3A6 6 0 0 1 18 8c0 2.7.4 4.6 1 6M17 17H3s3-2 3-9a5.9 5.9 0 0 1 .3-1.9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0M2 2l20 20"/></g></symbol>
     <symbol id="icon-expand" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></g></symbol>
@@ -353,7 +355,7 @@
   <div class="timer-chip timer-mobile hidden" id="timer-mobile" role="status" aria-live="polite"></div>
   <button type="button" class="fab hidden" id="fab"><svg class="ico"><use href="#icon-add"></use></svg><span id="fab-label">Tarefa</span></button>
 
-  <script type="module" src="/js/app.js?v=88"></script>
-  <script type="module" src="/js/pwa.js?v=88"></script>
+  <script type="module" src="/js/app.js?v=89"></script>
+  <script type="module" src="/js/pwa.js?v=89"></script>
 </body>
 </html>

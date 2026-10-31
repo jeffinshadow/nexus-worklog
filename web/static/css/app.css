@@ -619,6 +619,11 @@ mark { background: rgba(82,148,226,.28); color: var(--on-surface); border-radius
 .idle-head p strong { color: var(--on-surface); }
 .idle-card .assist-actions { margin-top: 10px; }
 @media (max-width: 860px) { .idle-card { right: 16px; bottom: calc(86px + env(safe-area-inset-bottom)); } }
+/* Convite para instalar o app (instalar.js): mesmo cartão do lembrete; some se um lembrete tocar. */
+.install-icon { width: 40px; height: 40px; border-radius: 10px; flex: none; }
+.install-steps { display: grid; gap: 10px; margin: 0 0 8px; padding-left: 1.3rem; line-height: 1.5; }
+.install-steps strong { display: inline-flex; align-items: center; gap: 4px; }
+.install-steps .ico { width: 16px; height: 16px; }
 /* Lembrete das rotinas com horário (lembretes.js): por cima do de inatividade. */
 .rem-card { z-index: 91; }
 body:has(.rem-card) .idle-card:not(.rem-card) { display: none; }

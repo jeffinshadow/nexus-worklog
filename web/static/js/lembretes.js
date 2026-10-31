@@ -5,6 +5,7 @@
 import { api } from "./api.js";
 import { h, icon, nowInTz } from "./dom.js";
 import { errorToast, toast } from "./ui.js";
+import { appBadge } from "./instalar.js";
 
 const SOON_MIN = 10;          // aviso silencioso antes do horário
 const SNOOZE_MS = 10 * 60000; // "Adiar 10 min"
@@ -59,6 +60,7 @@ function check(force = false) {
   if (Date.now() - lastFetch > (ringing ? 60000 : 5 * 60000)) { refreshReminders(); return; }
   const now = minutesNow();
   const due = items.filter((r) => reminderState(r, now) === "due" && !(snoozed.get(r.id) > Date.now()));
+  appBadge("rotinas", items.filter((r) => reminderState(r, now) === "due").length); // no ícone, mesmo adiadas
   const soon = items.filter((r) => reminderState(r, now) === "soon" && !seenSoon.has(`${r.id}:${r.remind_at}`));
   const key = (due.length ? "due:" + due.map((r) => r.id).join(",") : soon.length ? "soon:" + soon.map((r) => r.id).join(",") : "") + (soundOn() ? "" : ":mudo");
   if (key === boxKey && !force) return;

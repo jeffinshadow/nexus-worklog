@@ -68,6 +68,11 @@ para leitura, o quadro, a retrospectiva e os relatórios de cada pessoa).
   **feed de calendário (ICS)**, **avisos por e-mail** (opt-in), **lembrete** no
   app depois de X minutos sem registro, **atalhos de teclado** (`n`, `/`, `s`,
   `?`…), perfil com nome e foto e **identidade visual** configurável pelo admin.
+- **App instalável** (PWA, sem loja) — no celular e no computador, com convite
+  para instalar (no iPhone, o passo a passo do Safari), **atalhos** no ícone
+  (nova tarefa, registro rápido, tarefas), **compartilhar para o Nexus** (texto
+  ou link de outro app vira uma nova tarefa preenchida) e o **número no ícone**
+  (atrasadas + rotinas na hora).
 - **Contas** — com e-mail configurado, o admin convida por **link** (7 dias,
   uso único; a pessoa cria a senha e já entra) e o login tem **esqueci a
   senha** (link de 1 hora). Sem e-mail, senha temporária trocada no 1º acesso.

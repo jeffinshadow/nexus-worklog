@@ -9,6 +9,7 @@ import { boardLine } from "./assistant.js";
 import { session } from "./session.js";
 import { timerButton, timerState, startTimer, stopTimer } from "./timer.js";
 import { refreshReminders } from "./lembretes.js";
+import { appBadge } from "./instalar.js";
 
 const WEEKDAYS_SHORT = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 const DONE_PAGE = 10;
@@ -146,6 +147,7 @@ export const desk = (el) => { if (el) el.classList.add("only-desk"); return el; 
 export const lateBadge = (open, today) => {
   const n = open.filter((t) => isOverdue(t, today)).length;
   navBadge("tarefas", n, n === 1 ? "1 tarefa atrasada" : `${n} tarefas atrasadas`);
+  appBadge("atrasadas", n);
 };
 
 // ------------------------------------------------------- diálogos (export) --
@@ -178,7 +180,7 @@ export async function deleteTask(t, onDone) {
 export function openWorklog(onDone, opts = {}) {
   const dlg = document.getElementById("dialog-worklog");
   document.getElementById("wl-title").value = opts.title || "";
-  document.getElementById("wl-desc").value = "";
+  document.getElementById("wl-desc").value = opts.description || "";
   document.getElementById("wl-status").value = "todo";
   document.getElementById("wl-due").value = "";
   document.getElementById("wl-prio").value = "2";
@@ -329,6 +331,8 @@ export function openWorklog(onDone, opts = {}) {
       try {
         for (const label of checklist) await api.post(`/worklog/${created.id}/checklist`, { label });
         if (minutes) await api.post(`/worklog/${created.id}/time`, { minutes });
+        // Texto compartilhado de outro app que não coube na descrição: vira anotação.
+        if (opts.note) await api.post(`/worklog/${created.id}/notes`, { body: opts.note });
       } catch (e) {
         toast(`Tarefa criada, mas ${minutes ? "o tempo ou " : ""}o checklist não foi salvo: ${e.message || "tente pelo detalhe"}.`, { error: true });
       }
