@@ -569,8 +569,8 @@ mark { background: color-mix(in srgb, var(--primary) 28%, transparent); color: v
 .avatar-md { width: 44px; height: 44px; font-size: .95rem; }
 .avatar-lg { width: 76px; height: 76px; font-size: 1.5rem; }
 /* Sem foto: silhueta azul sobre o tom de destaque, cortada embaixo pelo círculo. */
-.avatar-default { background: var(--primary-container); color: var(--primary-hi); overflow: hidden; place-items: end center; }
-.avatar-default .ico { width: 78%; height: 78%; margin-top: 22%; }
+.avatar-default { background: var(--primary-container); color: var(--primary-hi); overflow: hidden; place-items: center; }
+.avatar-default .ico { width: 100%; height: 100%; }  /* cabeça no terço de cima, ombros na borda de baixo (como o avatar padrão do sistema) */
 .profile-row { display: flex; gap: 18px; align-items: center; margin-bottom: 12px; }
 .profile-row .help { margin: 8px 0 0; }
 
@@ -1176,3 +1176,23 @@ dialog.help-dialog > .dialog-actions { position: sticky; bottom: -24px; margin: 
 .request-row.decided { opacity: .65; }
 .request-who { overflow-wrap: anywhere; }
 @media (max-width: 860px) { .request-row { flex-direction: column; } .request-actions { justify-content: flex-start; } }
+
+/* Celular: áreas de toque de pelo menos 44 px (Material 3 pede 48 de alvo). Controles
+   crescem de verdade; o que precisa continuar pequeno (x do chip, link do chamado,
+   título clicável, link no texto) ganha a área de toque em volta, sem mudar o desenho. */
+@media (max-width: 860px) {
+  .btn { height: 44px; }
+  .btn-sm { height: 40px; position: relative; }
+  .btn-sm::after { content: ""; position: absolute; inset: -2px 0; }
+  .seg button.chip-btn { min-height: 44px; }
+  button.icon, a.icon, .icon-btn, button.column-toggle { min-width: 44px; min-height: 44px; }
+  input:not([type=checkbox]):not([type=radio]):not([type=range]), select, .select-sm, .input-sm { min-height: 44px; }
+  .inline-edit.inline-desc { min-height: 44px; }
+  label.weekday-option { min-height: 44px; }
+  .lockup--bar { min-height: 44px; }
+  .chip-x, a.chip.ticket, .link-btn { position: relative; }
+  .chip-x::after { content: ""; position: absolute; inset: -13px; }
+  a.chip.ticket::after { content: ""; position: absolute; inset: -11px -4px; }
+  .link-btn::after { content: ""; position: absolute; inset: -14px -6px; }
+  .card-open { padding-block: 11px; margin-block: -11px; }
+}

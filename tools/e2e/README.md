@@ -28,6 +28,7 @@ Pré-requisitos (na máquina que roda o navegador):
 | `e2e_sem_sinal.py SAIDA` | desliga o nginx da homologação no meio (`NEXUS_E2E_SSH`), faz as seis ações sem servidor, religa e confere que tudo chegou, sem duplicar |
 | `e2e_edicao.py SAIDA` | concluir espera o Pronto da edição (detalhe, cartão, menu; o status Concluída dentro da edição vale), testes de e-mail esperam salvar, evidência espera a foto |
 | `e2e_tema_convite.py SAIDA` | pedido de convite na tela de login (e-mails pelo Mailpit), número no Admin e Convidar; tema da conta (claro, recarregar, automático); avatar padrão |
+| `auditoria_toque.py` | celular (390 px): lista todo controle com área de toque menor que 44 px, em todas as telas, no detalhe da tarefa, na nova tarefa e nos menus ⋮ (conta a área estendida por `::after`) |
 | `pdfs_exemplo.py SAIDA` | baixa o PDF da semana, do mês e de um projeto (ver com `pdftoppm -png`) |
 
 `SAIDA` é a pasta das capturas. Cada roteiro imprime `OK`, `FALHAS` e os erros de
