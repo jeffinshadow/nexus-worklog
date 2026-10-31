@@ -1,4 +1,4 @@
-# Shadow Nexus Worklog
+# Nexus Worklog
 
 Registro do dia de trabalho para profissionais de TI — suporte, infraestrutura,
 redes, segurança, desenvolvimento — e para quem precisa do relatório deles.
@@ -137,6 +137,11 @@ Flex self-hosted (OFL). PDF com fpdf2 e a mesma fonte.
 
 Pré-requisitos: Docker + Docker Compose.
 
+```bash
+git clone https://github.com/jeffinshadow/nexus-worklog
+cd nexus-worklog
+```
+
 1. `cp .env.example .env` (o `.env` **nunca** vai para o git) e preencha:
    - `SECRET_KEY` (32+ caracteres; menos que isso o backend não sobe):
      `python -c "import secrets; print(secrets.token_urlsafe(64))"`
@@ -173,7 +178,10 @@ limpa). O túnel: `cloudflared` como serviço systemd com o token em
 em profundidade).
 
 **O banco de produção é preservado**: migrações só adicionam; nunca
-`docker compose down -v`.
+`docker compose down -v`. O nome da pasta vira o nome do projeto do compose e,
+com ele, o do volume do banco: mantenha a mesma pasta entre deploys. Se precisar
+renomeá-la, fixe antes `COMPOSE_PROJECT_NAME` no `.env` com o nome antigo, ou o
+Nexus sobe com um banco vazio (o antigo continua no volume de antes).
 
 **Vigia de saúde** (opcional): `tools/vigia.sh` com o timer do systemd
 (`tools/nexus-vigia.service` e `.timer`, instruções no arquivo) confere a cada 5

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy do Shadow Nexus Worklog.
+# Deploy do Nexus Worklog.
 # Uso:
 #   ./deploy.sh          → verifica dependências e faz o deploy (não instala nada)
 #   ./deploy.sh --install → tenta instalar dependências que faltam (Debian/Ubuntu), depois faz deploy

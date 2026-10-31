@@ -1,6 +1,6 @@
 # Referência da API
 
-API REST do Shadow Nexus Worklog, sob **`/api`**, mais o servidor MCP em
+API REST do Nexus Worklog, sob **`/api`**, mais o servidor MCP em
 **`/mcp`**. O Swagger/OpenAPI fica **desligado de propósito** — esta página é a
 referência. Campos e limites exatos de cada corpo: os modelos Pydantic em
 `backend/app/schemas.py`. Corpos e respostas em JSON; datas `AAAA-MM-DD` no fuso
