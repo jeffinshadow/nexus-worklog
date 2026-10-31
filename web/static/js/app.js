@@ -20,6 +20,7 @@ import { startIdle } from "./idle.js";
 import { startReminders } from "./lembretes.js";
 import { canOfferInstall, install, offerInstall, sharedTask, stashShare, takeShortcut } from "./instalar.js";
 import { offerNotifications, syncOnBoot } from "./notificacoes.js";
+import { pendingCount, startQueue, wipe } from "./fila.js";
 import { configure as configureAssistant } from "./assistant.js";
 import { session } from "./session.js";
 import { initTimer, stopTimer, timerState } from "./timer.js";
@@ -174,8 +175,17 @@ function go(name) {
   location.hash = "#/" + name;
 }
 
+// Sair com coisas ainda na fila: elas se perdem (o aparelho pode ser de outra pessoa).
+async function confirmLeave(n) {
+  const { confirmDialog } = await import("./ui.js");
+  return confirmDialog({ title: "Sair sem enviar?", text: `${n} ${n > 1 ? "alterações feitas" : "alteração feita"} sem conexão ainda não ${n > 1 ? "foram" : "foi"} para o servidor. Saindo agora, ${n > 1 ? "elas se perdem" : "ela se perde"}.`, confirm: "Sair mesmo assim", danger: true });
+}
+
 async function logout() {
+  const n = pendingCount();
+  if (n && !(await confirmLeave(n))) return;
   try { await api.post("/auth/logout"); } catch { /* ignora */ }
+  await wipe();  // fila e leituras guardadas não ficam no aparelho
   if ("clearAppBadge" in navigator) navigator.clearAppBadge().catch(() => {});
   location.href = "/login";
 }
@@ -319,6 +329,10 @@ async function boot() {
   }
   api.setCsrf(me.csrf_token);
   setTimeZone(me.tz);
+  // Outra conta neste aparelho: nada do que ficou guardado da anterior serve.
+  try {
+    if (localStorage.getItem("nexus.uid") !== String(me.id)) { await wipe(); localStorage.setItem("nexus.uid", String(me.id)); }
+  } catch { /* sem armazenamento */ }
   if (me.must_change_password) {
     showChangePassword();
     return;
@@ -468,6 +482,7 @@ async function boot() {
     offerNotifications(me);  // já instalado: ligar as notificações deste aparelho
   }
   syncOnBoot();
+  startQueue(route);  // sem sinal: a fila do aparelho vai quando a conexão voltar
   // Primeiro acesso: o tour guiado abre sozinho (uma vez; a Ajuda reabre).
   if (has("user") && !me.tour_done_at) setTimeout(() => startTour(me), 700);
 }

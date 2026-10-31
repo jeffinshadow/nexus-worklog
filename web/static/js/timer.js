@@ -48,7 +48,13 @@ export function setTimer(t) {
 
 export async function startTimer(task, after = onChange) {
   try {
-    const r = await api.post("/timer/start", { task_id: task.id });
+    const r = await api.post("/timer/start", { task_id: task.id, title: task.title });
+    if (r.queued) {  // sem sinal: conta a partir de agora; o servidor recebe a hora do aparelho
+      setTimer({ task_id: task.id, title: task.title, started_at: new Date().toISOString() });
+      toast(`Cronômetro em «${task.title}» (sem conexão: vai quando voltar).`);
+      if (after) after();
+      return;
+    }
     setTimer(r.timer);
     toast(r.stopped ? `Cronômetro em «${task.title}». O anterior apontou ${duration(r.stopped.minutes)}.`
       : `Cronômetro iniciado em «${task.title}».`);
@@ -60,6 +66,7 @@ export async function stopTimer(after = onChange) {
   try {
     const r = await api.post("/timer/stop");
     setTimer(null);
+    if (r.queued) { toast("Cronômetro parado. O tempo é apontado quando a conexão voltar."); if (after) after(); return; }
     toast(r.stopped ? `Apontado: ${duration(r.stopped.minutes)}.` : "Cronômetro parado. O dia dele já tinha 24h apontadas, nada foi somado.");
     if (after) after();
   } catch (e) { errorToast(e, "Não foi possível parar o cronômetro."); }

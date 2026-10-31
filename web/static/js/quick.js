@@ -81,6 +81,10 @@ export async function quickRegister(text, project_id = null) {
     marks.due && "prazo " + marks.due.split("-").reverse().slice(0, 2).join("/"),
     marks.blocked !== null && (marks.blocked ? "bloqueada: " + marks.blocked : "bloqueada")].filter(Boolean);
   const com = extras.length ? ` (${extras.join(", ")})` : "";
+  if (created && created.queued) {  // sem sinal: o tempo vai junto quando a tarefa for criada
+    if (comTempo) await api.after(created.qid, "POST", "/worklog/{id}/time", { minutes });
+    return `Sem conexão: tarefa guardada${com}. Vai sozinha quando a conexão voltar.`;
+  }
   if (!comTempo) return `Tarefa registrada${com}.`;
   try {
     await api.post(`/worklog/${created.id}/time`, { minutes });

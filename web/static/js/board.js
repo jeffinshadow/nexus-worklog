@@ -10,7 +10,7 @@ import { session } from "./session.js";
 import { timerButton, timerState, startTimer, stopTimer } from "./timer.js";
 import { refreshReminders } from "./lembretes.js";
 import { appBadge } from "./instalar.js";
-import { upload } from "./fotos.js";
+import { prepare, upload } from "./fotos.js";
 
 const WEEKDAYS_SHORT = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 const DONE_PAGE = 10;
@@ -329,6 +329,17 @@ export function openWorklog(onDone, opts = {}) {
     if (btn) btn.disabled = true; // duplo clique criava a tarefa duas vezes
     try {
       const created = await api.post("/worklog", payload);
+      if (created && created.queued) {
+        // Sem sinal: o resto (checklist, tempo, anotação, fotos) vai junto quando a tarefa for criada.
+        for (const label of checklist) await api.after(created.qid, "POST", "/worklog/{id}/checklist", { label });
+        if (minutes) await api.after(created.qid, "POST", "/worklog/{id}/time", { minutes });
+        if (opts.note) await api.after(created.qid, "POST", "/worklog/{id}/notes", { body: opts.note });
+        for (const f of opts.files || []) await api.after(created.qid, "POST", "/worklog/{id}/photos", await prepare(f));
+        dlg.close();
+        toast("Sem conexão: tarefa guardada no aparelho. Vai sozinha quando a conexão voltar.");
+        onDone && onDone();
+        return;
+      }
       // A tarefa já existe: se checklist ou tempo falharem, não reenviar (duplicaria).
       try {
         for (const label of checklist) await api.post(`/worklog/${created.id}/checklist`, { label });
@@ -477,8 +488,9 @@ function askResolution(t, onDone) {
 
 export async function finishTask(t, onDone) {
   try {
-    await api.post(`/worklog/${t.id}/finish`);
+    const r = await api.post(`/worklog/${t.id}/finish`);
     onDone && onDone();
+    if (r && r.queued) { toast(`Concluída sem conexão: ${t.title}. Vai quando a conexão voltar.`); return; }
     // A base de conhecimento só cresce se for perguntada na hora de concluir.
     toast(`Concluída: ${t.title}`, { actions: [
       ["Como resolveu?", () => askResolution(t, onDone)],

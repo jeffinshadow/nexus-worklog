@@ -1,7 +1,8 @@
 // Service Worker: deixa o Nexus instalável, mostra as notificações do sistema
-// (app/push.py), mesmo com o app fechado, e recebe o "compartilhar" de outros
-// apps. O 'fetch' só atende esse envio; o resto vai pela rede, sem risco de
-// servir versão obsoleta (o cache continua no nginx).
+// (app/push.py), mesmo com o app fechado, recebe o "compartilhar" de outros
+// apps e segura o app sem sinal. Rede primeiro, sempre: com conexão, tudo vem
+// do servidor (nada de versão velha); a cópia guardada só aparece quando a rede
+// falha — e a resposta da API vem marcada (X-Nexus-Cache) para a tela avisar.
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
 
@@ -9,9 +10,41 @@ self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim(
 // no cache do aparelho e abre o app, que monta a nova tarefa (mesmo que precise
 // entrar antes). Até 10 fotos.
 const SHARE = 'nexus-compartilhado';
+const CASCO = 'nexus-casco';   // páginas, CSS, JS, fontes, ícones
+const DADOS = 'nexus-dados';   // as últimas leituras das telas principais
+// Leituras que valem sem sinal (as de abrir o dia). Relatórios, busca e admin, não.
+const API_OK = /^\/api\/(auth\/me|board|projects|branding|timer|recurring\/reminders|summary(\/[a-z]+)?|renewals|worklog\/\d+)$/;
+
+async function networkFirst(req, cacheName, timeout, mark) {
+  const cache = await caches.open(cacheName);
+  try {
+    const res = await fetch(req, { signal: AbortSignal.timeout(timeout) });
+    if (res.ok && res.type === 'basic') cache.put(req, res.clone());
+    return res;
+  } catch (e) {
+    const hit = (await cache.match(req)) || (req.mode === 'navigate' ? await cache.match('/') : null);
+    if (!hit) throw e;
+    if (!mark) return hit;
+    const headers = new Headers(hit.headers);
+    headers.set('X-Nexus-Cache', hit.headers.get('Date') || new Date().toUTCString());
+    return new Response(hit.body, { status: hit.status, headers });
+  }
+}
+
 self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
-  if (event.request.method !== 'POST' || url.pathname !== '/compartilhar') return;
+  const req = event.request;
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
+  if (req.method === 'GET') {
+    if (url.pathname.startsWith('/api/')) {
+      if (API_OK.test(url.pathname)) event.respondWith(networkFirst(req, DADOS, 8000, true));
+      return;  // o resto da API: só rede
+    }
+    if (url.pathname === '/login' || url.pathname === '/sw.js') return;
+    event.respondWith(networkFirst(req, CASCO, 10000, false));
+    return;
+  }
+  if (req.method !== 'POST' || url.pathname !== '/compartilhar') return;
   event.respondWith((async () => {
     const form = await event.request.formData();
     const cache = await caches.open(SHARE);

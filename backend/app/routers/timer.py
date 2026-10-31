@@ -4,26 +4,41 @@ Ao parar, o tempo vira um apontamento comum (mesmas regras do apontamento à
 mão: no dia em que começou, até 24h no dia). Concluir a tarefa com o
 cronômetro rodando nela também para e aponta.
 """
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from .. import audit, db
 from ..deps import active_user, active_user_csrf
-from ..schemas import TimeIn, TimerIn
+from ..schemas import TimeIn, TimerIn, TimerStopIn
 from ..services import app_tz, running_timer
 from .worklog import log_time
 
 router = APIRouter(prefix="/api/timer", tags=["timer"])
 
 
-def stop_running(user: dict, only_task: int | None = None):
+def client_time(at: Optional[datetime]) -> Optional[datetime]:
+    """Hora de uma ação feita sem sinal no aparelho e enviada depois: até 24 h
+    atrás (relógio adiantado vale como agora)."""
+    if at is None:
+        return None
+    now = datetime.now(timezone.utc)
+    at = at if at.tzinfo else at.replace(tzinfo=timezone.utc)
+    if at < now - timedelta(hours=24):
+        raise HTTPException(status_code=400, detail="o cronômetro feito sem conexão passou de 24 h; aponte o tempo à mão")
+    return min(at, now)
+
+
+def stop_running(user: dict, only_task: int | None = None, ended_at: datetime | None = None):
     """Para o cronômetro e aponta o tempo. Devolve o apontamento ou None.
-    only_task: só para se estiver rodando nessa tarefa."""
+    only_task: só para se estiver rodando nessa tarefa. ended_at: parou antes
+    de agora (feito sem sinal)."""
     t = db.query_one("SELECT task_id, started_at FROM task_timers WHERE user_id = %s", (user["user_id"],))
     if not t or (only_task is not None and t["task_id"] != only_task):
         return None
-    minutes = max(1, round((datetime.now(timezone.utc) - t["started_at"]).total_seconds() / 60))
+    end = max(ended_at or datetime.now(timezone.utc), t["started_at"])
+    minutes = max(1, round((end - t["started_at"]).total_seconds() / 60))
     day = t["started_at"].astimezone(app_tz()).date()
     # Cronômetro esquecido por dias não pode travar concluir/parar/trocar: aponta só
     # o que ainda cabe nas 24h daquele dia (dia cheio = descarta, sem erro).
@@ -52,8 +67,10 @@ def start(data: TimerIn, user=Depends(active_user_csrf)):
     current = running_timer(user["user_id"])
     if current and current["task_id"] == data.task_id:
         return {"timer": current, "stopped": None}
-    stopped = stop_running(user)  # trocar de tarefa aponta o tempo da anterior
-    db.execute("INSERT INTO task_timers (user_id, task_id) VALUES (%s, %s)", (user["user_id"], data.task_id))
+    at = client_time(data.at)
+    stopped = stop_running(user, ended_at=at)  # trocar de tarefa aponta o tempo da anterior
+    db.execute("INSERT INTO task_timers (user_id, task_id, started_at) VALUES (%s, %s, COALESCE(%s, now()))",
+               (user["user_id"], data.task_id, at))
     if task["status"] == "todo":  # quem começa a cronometrar está fazendo (edição comum, desfazível)
         db.execute("UPDATE worklog_tasks SET status = 'in_progress' WHERE id = %s AND user_id = %s",
                    (data.task_id, user["user_id"]))
@@ -65,11 +82,11 @@ def start(data: TimerIn, user=Depends(active_user_csrf)):
 
 
 @router.post("/stop")
-def stop(user=Depends(active_user_csrf)):
+def stop(data: Optional[TimerStopIn] = None, user=Depends(active_user_csrf)):
     if not running_timer(user["user_id"]):
         raise HTTPException(status_code=409, detail="nenhum cronômetro rodando")
     # stopped = None: o dia daquele cronômetro já tinha 24h apontadas (nada a somar).
-    return {"timer": None, "stopped": stop_running(user)}
+    return {"timer": None, "stopped": stop_running(user, ended_at=client_time(data.at if data else None))}
 
 
 @router.delete("")

@@ -620,6 +620,16 @@ mark { background: rgba(82,148,226,.28); color: var(--on-surface); border-radius
 .idle-card .assist-actions { margin-top: 10px; }
 @media (max-width: 860px) { .idle-card { right: 16px; bottom: calc(86px + env(safe-area-inset-bottom)); } }
 /* Convite para instalar o app (instalar.js): mesmo cartão do lembrete; some se um lembrete tocar. */
+/* Sem conexão (fila.js): barra fina no topo, com a fila e quando os dados são de antes. */
+.offline-bar { position: fixed; top: 0; left: 50%; transform: translateX(-50%); z-index: 95; display: flex; align-items: center; gap: 8px;
+  max-width: calc(100vw / var(--ui-zoom) - 24px); margin-top: 8px; padding: 6px 8px 6px 14px; border-radius: 999px; font-size: .84rem;
+  background: var(--surface-pop); color: var(--on-surface); border: 1px solid rgba(253,214,99,.45); box-shadow: 0 12px 30px -12px rgba(0,0,0,.8); }
+.offline-bar > .ico { width: 16px; height: 16px; color: var(--warning); flex: none; }
+.offline-bar.bad { border-color: rgba(242,139,130,.5); }
+.offline-bar.bad > .ico { color: var(--error); }
+.offline-bar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 860px) { .offline-bar { top: env(safe-area-inset-top); font-size: .8rem; } }
+
 /* Avisos do canto (lembrete, convites) não cobrem o detalhe aberto ao lado. */
 @media (min-width: 861px) { body.has-side .idle-card { right: calc(460px + 24px); } }
 @media (min-width: 861px) and (max-width: 1199px) { body.has-side .idle-card { right: calc(420px + 24px); } }

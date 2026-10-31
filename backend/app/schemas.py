@@ -1,4 +1,4 @@
-from datetime import date, time
+from datetime import date, datetime, time
 from typing import Literal, Optional
 
 from pydantic import BaseModel, EmailStr, Field, model_validator
@@ -348,6 +348,12 @@ class TicketUrlIn(BaseModel):
 
 class TimerIn(BaseModel):
     task_id: int
+    # Hora em que a pessoa iniciou no aparelho (feito sem sinal e enviado depois); até 24 h atrás.
+    at: Optional[datetime] = None
+
+
+class TimerStopIn(BaseModel):
+    at: Optional[datetime] = None  # hora em que parou, no aparelho (sem sinal)
 
 
 Color = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")

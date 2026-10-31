@@ -80,6 +80,10 @@ para leitura, o quadro, a retrospectiva e os relatórios de cada pessoa).
   colado (Ctrl+V) ou arrastado no computador, ou compartilhada de outro app.
   Reduzidas no aparelho (1600 px, sem EXIF/GPS), com miniatura, excluir com
   desfazer, cota por pessoa e exportação em .zip.
+- **Sem sinal** — o app abre com as telas da última visita (avisando de que
+  hora são) e guarda no aparelho o que for feito: registrar, concluir, anotar,
+  marcar rotina e o cronômetro, com a hora em que aconteceu. Na volta da
+  conexão, vai sozinho e na ordem, sem duplicar. Sair limpa tudo do aparelho.
 - **Passkeys** — entrar sem senha, com a digital, o rosto, o Windows Hello ou
   uma chave física (WebAuthn); a senha continua valendo.
 - **Contas** — com e-mail configurado, o admin convida por **link** (7 dias,

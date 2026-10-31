@@ -1,6 +1,8 @@
 // Wrapper de fetch para /api. Envia o cookie de sessao (same-origin) e o
 // header X-CSRF-Token nas mutacoes. Redireciona para o login em 401 de sessao.
 
+import { after as queueAfter, configure, enqueue, markFresh, markStale, overlay, queueable } from "./fila.js";
+
 let CSRF = null;
 
 // Mensagem para a tela, sempre em português: o detail do backend quando ele
@@ -57,8 +59,30 @@ export function toLogin() {
   location.href = "/login" + next;
 }
 
-async function request(method, path, body) {
+async function raw(method, path, body) {
   const res = await send(method, path, body === undefined ? {} : { body: JSON.stringify(body), type: "application/json" });
+  return res.status === 204 ? null : res.json().catch(() => null);
+}
+configure(raw);
+
+// Sem sinal, as ações da fila (fila.js) ficam guardadas e a resposta é
+// { queued: true, qid }; leituras servidas do cache avisam a barra e recebem
+// por cima o que está na fila.
+async function request(method, path, body) {
+  if (method === "POST" && path === "/worklog" && body && !body.external_ref)
+    body = { ...body, external_ref: "app-" + crypto.randomUUID() };  // reenviar nunca duplica
+  let res;
+  try {
+    res = await send(method, path, body === undefined ? {} : { body: JSON.stringify(body), type: "application/json" });
+  } catch (e) {
+    if (e.status === 0 && queueable(method, path)) return { queued: true, qid: await enqueue(method, path, body), id: null };
+    throw e;
+  }
+  if (method === "GET") {
+    const cached = res.headers.get("X-Nexus-Cache");
+    if (cached) { markStale(cached); return overlay(path.split("?")[0], await res.json().catch(() => null)); }
+    markFresh();
+  }
   return res.status === 204 ? null : res.json().catch(() => null);
 }
 
@@ -93,4 +117,6 @@ export const api = {
   upload,
   download,
   setCsrf: (token) => { CSRF = token; },
+  after: queueAfter,  // passo seguinte de uma criação que ficou na fila
+
 };

@@ -408,7 +408,7 @@ export async function openTask(taskId, onChange) {
     for (const n of t.notes) {
       sec.append(h("div", { class: "note" },
         h("div", { class: "note-meta" }, h("span", { class: "mono", text: dateTime(n.created_at) }), actorBadge(n),
-          h("button", { type: "button", class: "icon", title: "Excluir anotação", "aria-label": "Excluir anotação", onClick: async () => {
+          n.pending ? h("span", { class: "chip today", text: "esperando conexão" }) : h("button", { type: "button", class: "icon", title: "Excluir anotação", "aria-label": "Excluir anotação", onClick: async () => {
             try {
               await api.del(`/notes/${n.id}`);
               touch();
