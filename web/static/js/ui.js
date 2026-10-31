@@ -130,7 +130,7 @@ export function initTooltips() {
   let cur = null, timer = null;
   const hide = () => { clearTimeout(timer); cur = null; tip.classList.remove("show"); };
   const place = (el) => {
-    if (cur !== el || !el.isConnected) return;
+    if (cur !== el || !el.isConnected || !el.matches(SEL)) return; // ex.: o menu compacto abriu inteiro
     tip.textContent = el.dataset.tip;
     tip.classList.add("show");
     const r = el.getBoundingClientRect(), t = tip.getBoundingClientRect();
