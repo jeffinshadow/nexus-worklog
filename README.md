@@ -111,8 +111,8 @@ Capturas de uma conta de demonstração, com dados fictícios.
 ![Quadro de tarefas com chamados, plantão e o cronômetro no menu](docs/screenshots/02-tarefas.webp)
 *Tarefas — o número do chamado vira link, o plantão aparece em roxo, a bloqueada mostra o que aguarda e quando cobrar, e o cronômetro roda no menu.*
 
-![Detalhe de uma tarefa com checklist, tempo e anotações](docs/screenshots/03-tarefa.webp)
-*Detalhe da tarefa — checklist, apontamentos de tempo e anotações num lugar só.*
+![Detalhe de uma tarefa com checklist, fotos, tempo e anotações](docs/screenshots/03-tarefa.webp)
+*Detalhe da tarefa — checklist, fotos (câmera, print colado ou arrastado), apontamentos de tempo e anotações num lugar só; o botão no topo expande para ler com calma.*
 
 ![Retrospectiva com aderência, vazão, tempo por projeto e backlog](docs/screenshots/04-retrospectiva.webp)
 *Retrospectiva — aderência de cada rotina, vazão por semana, tempo por cliente e saúde do backlog, com uma leitura do assistente no topo.*
@@ -127,11 +127,11 @@ Capturas de uma conta de demonstração, com dados fictícios.
 *Vencimentos — quantos dias faltam; “Virar tarefa” cria a renovação e “Renovei” informa a nova data.*
 
 <p>
-  <img src="docs/screenshots/06-celular.webp" width="300" alt="Tela Hoje no celular">
+  <img src="docs/screenshots/06-celular.webp" width="300" alt="Tela Hoje no celular, com a barra do topo com a marca">
   <img src="docs/screenshots/07-relatorio.webp" width="420" alt="Primeira página do relatório em PDF">
 </p>
 
-*No celular, o mesmo assistente e o cronômetro acima da barra. Ao lado, a primeira página do relatório em PDF: indicadores, ritmo do período, rotinas, projetos e tarefas, com o plantão separado.*
+*No celular, a barra do topo com a marca, o mesmo assistente e o cronômetro acima da barra de baixo; instala como app, avisa com o app fechado e funciona sem sinal. Ao lado, a primeira página do relatório em PDF: indicadores, ritmo do período, rotinas, projetos e tarefas, com o plantão separado.*
 
 ## Arquitetura
 
