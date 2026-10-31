@@ -1,18 +1,13 @@
-// Quem é a pessoa na interface: a foto (ou as iniciais) e o preparo da foto
+// Quem é a pessoa na interface: a foto (ou o ícone de perfil) e o preparo da foto
 // antes do envio — recorte quadrado e redução no próprio navegador, o que
 // também descarta os metadados (inclusive a localização) da foto original.
-import { h } from "./dom.js";
+import { h, icon } from "./dom.js";
 
 export function avatar(p, size = "sm") {
   const cls = `avatar avatar-${size}`;
   if (p && p.avatar) return h("img", { class: cls, src: p.avatar, alt: "" });
-  const name = (p && p.name) || "?";
-  const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
-  let hash = 0;
-  for (const c of name) hash = (hash * 31 + c.charCodeAt(0)) >>> 0;
-  const el = h("span", { class: cls, "aria-hidden": "true", text: initials });
-  el.style.setProperty("--av-h", String(hash % 360)); // a mesma pessoa, sempre a mesma cor
-  return el;
+  // Sem foto: o ícone de perfil nas cores da interface (como nos apps do sistema).
+  return h("span", { class: cls + " avatar-default", "aria-hidden": "true" }, icon("person"));
 }
 
 const MAX_BYTES = 250 * 1024;

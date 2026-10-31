@@ -42,7 +42,7 @@ def _public(row: dict, csrf: str) -> dict:
         "id": uid,
         "email": row["email"],
         **people.profile(uid),  # display_name, name, avatar
-        **(db.query_one("SELECT ticket_url, accepts_assignments_at, default_project_id, tour_done_at FROM users WHERE id = %s",
+        **(db.query_one("SELECT ticket_url, accepts_assignments_at, default_project_id, tour_done_at, theme FROM users WHERE id = %s",
                         (uid,)) or {}),
         "assistant": people.assistant_prefs(uid),
         "role": row["role"],
@@ -114,7 +114,7 @@ def _start_session(user: dict, response: Response) -> dict:
 @router.get("/options")
 def options():
     """O que a tela de login oferece (público): "Esqueci a senha" só com e-mail."""
-    return {"email": mailer.configured()}
+    return {"email": mailer.configured(), "invite_request": mailer.configured()}
 
 
 def _reset_mail(email: str, link: str):

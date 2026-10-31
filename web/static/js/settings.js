@@ -74,8 +74,8 @@ export async function mount(root, ctx) {
     }
     else if (active === "calendario") body.append(await calendarFeed(() => render()));
     else if (active === "ia") body.append(...aiHelp(), await tokens(() => render()));
-    else if (isUser) body.append(profilePanel(ctx.me, render), assignmentsPanel(ctx.me), assistantPanel(ctx.me), defaultProjectPanel(ctx.me, (r) => meChanged(ctx.me, r)), ticketsPanel(ctx.me), workDays(ctx.me), shortcutsPanel(), account(ctx.me), await passkeysPanel(render), deleteAccount(isUser));
-    else body.append(profilePanel(ctx.me, render), account(ctx.me), await passkeysPanel(render), deleteAccount(isUser));
+    else if (isUser) body.append(profilePanel(ctx.me, render), themePanel(ctx.me), assignmentsPanel(ctx.me), assistantPanel(ctx.me), defaultProjectPanel(ctx.me, (r) => meChanged(ctx.me, r)), ticketsPanel(ctx.me), workDays(ctx.me), shortcutsPanel(), account(ctx.me), await passkeysPanel(render), deleteAccount(isUser));
+    else body.append(profilePanel(ctx.me, render), themePanel(ctx.me), account(ctx.me), await passkeysPanel(render), deleteAccount(isUser));
   }
   await render();
 }
@@ -633,6 +633,25 @@ function deleteAccount(isUser) {
 }
 
 // ------------------------------------------------------------------- conta --
+
+// Aparência: segue o aparelho (padrão) ou força claro/escuro; vale em todos os aparelhos da conta.
+function themePanel(me) {
+  const OPTS = [["auto", "Automático", "Segue o tema do aparelho"], ["light", "Claro", null], ["dark", "Escuro", null]];
+  const seg = h("div", { class: "seg", role: "radiogroup", "aria-label": "Tema" });
+  const paint = (cur) => { for (const b of seg.children) b.setAttribute("aria-checked", String(b.dataset.v === cur)); };
+  for (const [v, label, tip] of OPTS) {
+    seg.append(h("button", { type: "button", class: "chip-btn", role: "radio", "data-v": v, title: tip, text: label, onClick: async () => {
+      window.nexusTheme.set(v);  // na hora, neste aparelho
+      paint(v);
+      try { await api.put("/me/theme", { theme: v }); me.theme = v; } catch (e) { errorToast(e, "Não foi possível guardar o tema na conta."); }
+    } }));
+  }
+  paint(me.theme || "auto");
+  return h("section", { class: "panel" },
+    h("div", { class: "panel-head" }, icon("settings"), h("h2", { text: "Aparência" })),
+    h("p", { class: "help", text: "Automático acompanha o claro ou escuro do celular e do computador. Claro e Escuro forçam o tema em todos os seus aparelhos." }),
+    seg);
+}
 
 // Passkeys: entrar com digital, rosto, Windows Hello ou chave física, sem a senha.
 async function passkeysPanel(rerender) {

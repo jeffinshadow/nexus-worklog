@@ -46,8 +46,8 @@ try:
     shot("e3-painel")
     # sair e entrar com o botão
     ev("fetch('/api/auth/me').then(r=>r.json()).then(me=>fetch('/api/auth/logout',{method:'POST',headers:{'X-CSRF-Token':me.csrf_token}}))")
+    check("saiu", ev("fetch('/api/auth/me').then(r=>r.status)") == 401)  # antes do login: lá o autenticador virtual entra sozinho
     cmd("Page.navigate", url=B + "/login"); time.sleep(1.5)
-    check("saiu", ev("fetch('/api/auth/me').then(r=>r.status)") == 401)
     shot("e3-login")
     ev("document.getElementById('login-passkey').click()"); time.sleep(4)
     check("entrou com o botão", ev("location.pathname") == "/" and ev("fetch('/api/auth/me').then(r=>r.status)") == 200, ev("location.href"))

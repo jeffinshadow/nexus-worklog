@@ -13,7 +13,7 @@ from .. import audit, db, people, roles
 from ..deps import clear_session_cookie
 from ..security import login_limiter, verify_password
 from ..deps import web_active, web_active_csrf
-from ..schemas import AssistantIn, ConsentIn, DefaultProjectIn, DeleteMeIn, ProfileIn, TicketUrlIn, TourIn
+from ..schemas import AssistantIn, ConsentIn, DefaultProjectIn, DeleteMeIn, ProfileIn, ThemeIn, TicketUrlIn, TourIn
 from ..services import running_timer
 
 router = APIRouter(prefix="/api/me", tags=["me"])
@@ -137,6 +137,13 @@ def put_default_project(data: DefaultProjectIn, user=Depends(web_active_csrf)):
         audit.record(user, "default_project.update", "user", uid,
                      before={"default_project_id": before}, after={"default_project_id": data.project_id})
     return {"default_project_id": data.project_id}
+
+
+@router.put("/theme")
+def put_theme(data: ThemeIn, user=Depends(web_active_csrf)):
+    """Tema da interface (auto = o do aparelho). Vale em todos os aparelhos da conta."""
+    db.execute("UPDATE users SET theme = %s WHERE id = %s", (data.theme, user["user_id"]))
+    return {"theme": data.theme}
 
 
 @router.put("/tour")

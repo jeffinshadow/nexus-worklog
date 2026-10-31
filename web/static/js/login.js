@@ -10,7 +10,7 @@ import { cancelled, conditionalAvailable, login as passkeyLogin, supported as pa
 loadBranding();
 
 const $ = (id) => document.getElementById(id);
-const forms = ["form-login", "form-forgot", "form-link"];
+const forms = ["form-login", "form-forgot", "form-link", "form-request"];
 function show(id) {
   for (const f of forms) $(f).classList.toggle("hidden", f !== id);
   const first = $(id).querySelector("input:not(.sr-only)");
@@ -66,7 +66,39 @@ if (passkeySupported()) {
 }
 
 // ---- Esqueci a senha: o link só aparece se o servidor manda e-mail.
-api.get("/auth/options").then((o) => { if (o.email) $("go-forgot").classList.remove("hidden"); }).catch(() => {});
+api.get("/auth/options").then((o) => {
+  if (o.email) $("go-forgot").classList.remove("hidden");
+  if (o.invite_request) { $("go-request").classList.remove("hidden"); $("foot-ask").classList.add("hidden"); }
+}).catch(() => {});
+
+// ---- Pedido de convite: vai para o administrador (e-mail e Admin).
+$("go-request").addEventListener("click", () => {
+  $("req-email").value = $("req-email").value || $("login-email").value;
+  $("request-ok").classList.add("hidden");
+  $("auth-foot").classList.add("hidden");
+  show("form-request");
+});
+$("request-back").addEventListener("click", () => { $("auth-foot").classList.remove("hidden"); show("form-login"); });
+$("req-source").addEventListener("change", () => $("req-note-wrap").classList.toggle("hidden", !["colega", "outro"].includes($("req-source").value)));
+$("form-request").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const err = $("request-error"), ok = $("request-ok"), btn = $("request-submit");
+  err.textContent = "";
+  btn.disabled = true;
+  try {
+    await api.post("/auth/invite-request", {
+      name: $("req-name").value.trim(), email: $("req-email").value.trim(), source: $("req-source").value,
+      source_note: $("req-note").value.trim() || null, reason: $("req-reason").value.trim(), website: $("req-website").value || null,
+    });
+    // Mesma frase em qualquer caso: a tela não revela se o e-mail já tem conta.
+    ok.textContent = "Pedido enviado. Se o administrador aprovar, o convite chega no seu e-mail; confira também o spam.";
+    ok.classList.remove("hidden");
+    $("form-request").querySelectorAll(".field, #request-submit").forEach((el) => el.classList.add("hidden"));
+  } catch (e) {
+    err.textContent = e.message || "Não foi possível enviar.";
+    btn.disabled = false;
+  }
+});
 $("go-forgot").addEventListener("click", () => {
   $("forgot-email").value = $("login-email").value;
   $("forgot-ok").classList.add("hidden");

@@ -1,7 +1,9 @@
 /* Design tokens do Nexus — identidade da ShadowTec (a mesma do shadow.tec.br):
    grafite + azul #5294E2, Google Sans Flex (OFL, self-hosted); rótulos e código usam variações dela.
    Os NOMES das variáveis vêm da versão Material: o dashboard desenha SVG com
-   eles, então só os valores mudaram. Tema escuro único. */
+   eles, então só os valores mudaram. Escuro por padrão; o claro (Material 3,
+   contraste AA ou mais em todo texto) vale quando o aparelho está em claro ou
+   quando a pessoa força em Configurações › Conta (data-theme no <html>). */
 
 @font-face {
   font-family: "Google Sans Flex";
@@ -25,6 +27,9 @@
   --accent-purple: #C58AF9;
   --accent-cyan: #5EC8D8;
   --avatar-fg: #fff;
+  --tint: #fff;            /* película de hover/fundo leve: branco no escuro, preto no claro */
+  --shadow: #000;          /* sombras (o claro usa uma bem mais leve) */
+  --on-error: #2b0a07;
 
   /* Escala da interface: no desktop tudo sai em 90% (como o zoom do navegador
      em 90%), mantendo as proporções. Medidas da tela (vh/vw) e a área útil
@@ -45,7 +50,7 @@
   --primary: #5294E2;
   --primary-hi: #8AB8F0;
   --on-primary: #0B0D10;
-  --primary-container: rgba(82, 148, 226, 0.16);
+  --primary-container: color-mix(in srgb, #5294E2 16%, transparent);
   --chart-muted: #2E4D72;   /* barras secundárias dos gráficos (sólido, legível) */
 
   /* Superfícies (grafite) */
@@ -56,8 +61,8 @@
   --on-surface: #EDEDEF;
   --on-surface-variant: #A1A1A8;
   --dim: #86868E;
-  --outline-variant: rgba(255, 255, 255, 0.08);
-  --line-2: rgba(255, 255, 255, 0.14);
+  --outline-variant: color-mix(in srgb, #fff 8%, transparent);
+  --line-2: color-mix(in srgb, #fff 14%, transparent);
 
   /* Semânticas (paleta Shadow Materia) */
   --success: #81C995;
@@ -67,6 +72,81 @@
   --ease: cubic-bezier(.2, .7, .1, 1);
 
   color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+  /* Tema claro (Material 3 a partir do azul #5294E2). Contraste sobre o branco:
+     texto 16:1, secundário 9:1, apagado 6:1, azul 5,4:1, sucesso/aviso/erro 5:1+. */
+  --surface: #F6F7FA;
+  --surface-side: #EEF0F5;
+  --surface-fade: #F1F2F6;
+  --surface-deep: #E8EAF0;
+  --surface-container: #FFFFFF;
+  --surface-container-high: #EEF0F5;
+  --surface-container-highest: #E2E5EC;
+  --surface-pop: #FFFFFF;
+  --surface-toast: #FFFFFF;
+  --surface-raise: #FFFFFF;
+  --surface-accent: #E7EFFA;
+  --on-surface: #1A1C20;
+  --on-surface-variant: #44474F;
+  --dim: #5D6170;
+  --outline-variant: color-mix(in srgb, #1A1C20 12%, transparent);
+  --line-2: color-mix(in srgb, #1A1C20 20%, transparent);
+  --primary: #2D69BE;
+  --primary-hi: #1F579F;
+  --on-primary: #FFFFFF;
+  --primary-container: #DCE7F8;
+  --chart-muted: #A8C1E6;
+  --success: #1D7A3D;
+  --warning: #8A5800;
+  --error: #B3261E;
+  --on-error: #FFFFFF;
+  --accent-purple: #7A3EC2;
+  --accent-cyan: #00707C;
+  --ink-code: #2B2E35;
+  --warning-ink: #5A4300;
+  --tint: #000;
+  --shadow: color-mix(in srgb, #1A1C20 28%, transparent);
+  color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  /* Tema claro (Material 3 a partir do azul #5294E2). Contraste sobre o branco:
+     texto 16:1, secundário 9:1, apagado 6:1, azul 5,4:1, sucesso/aviso/erro 5:1+. */
+  --surface: #F6F7FA;
+  --surface-side: #EEF0F5;
+  --surface-fade: #F1F2F6;
+  --surface-deep: #E8EAF0;
+  --surface-container: #FFFFFF;
+  --surface-container-high: #EEF0F5;
+  --surface-container-highest: #E2E5EC;
+  --surface-pop: #FFFFFF;
+  --surface-toast: #FFFFFF;
+  --surface-raise: #FFFFFF;
+  --surface-accent: #E7EFFA;
+  --on-surface: #1A1C20;
+  --on-surface-variant: #44474F;
+  --dim: #5D6170;
+  --outline-variant: color-mix(in srgb, #1A1C20 12%, transparent);
+  --line-2: color-mix(in srgb, #1A1C20 20%, transparent);
+  --primary: #2D69BE;
+  --primary-hi: #1F579F;
+  --on-primary: #FFFFFF;
+  --primary-container: #DCE7F8;
+  --chart-muted: #A8C1E6;
+  --success: #1D7A3D;
+  --warning: #8A5800;
+  --error: #B3261E;
+  --on-error: #FFFFFF;
+  --accent-purple: #7A3EC2;
+  --accent-cyan: #00707C;
+  --ink-code: #2B2E35;
+  --warning-ink: #5A4300;
+  --tint: #000;
+  --shadow: color-mix(in srgb, #1A1C20 28%, transparent);
+  color-scheme: light;
 }
 
 @media (min-width: 861px) {

@@ -107,9 +107,9 @@ def test_convite_e_falha_de_envio(admin, monkeypatch):
 # ------------------------------------------------------------- recuperação --
 
 def test_options_mostra_se_ha_email(monkeypatch):
-    assert Api().get("/auth/options").json() == {"email": False}
+    assert Api().get("/auth/options").json() == {"email": False, "invite_request": False}
     monkeypatch.setattr(mailer, "configured", lambda: True)
-    assert Api().get("/auth/options").json() == {"email": True}
+    assert Api().get("/auth/options").json() == {"email": True, "invite_request": True}
 
 
 def test_esqueci_a_senha(usuario, caixa):

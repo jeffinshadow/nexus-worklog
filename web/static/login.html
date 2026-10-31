@@ -13,8 +13,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Nexus">
   <link rel="preload" as="font" type="font/woff2" href="/fonts/GoogleSansFlex.woff2" crossorigin>
-  <link rel="stylesheet" href="/css/tokens.css?v=99">
-  <link rel="stylesheet" href="/css/app.css?v=99">
+  <script src="/js/tema.js?v=103"></script>
+  <link rel="stylesheet" href="/css/tokens.css?v=103">
+  <link rel="stylesheet" href="/css/app.css?v=103">
 </head>
 <body>
   <div class="auth-wrap">
@@ -79,11 +80,49 @@
         <button class="btn btn-text full hidden" type="button" id="link-back">Ir para entrar</button>
       </form>
 
-      <p class="auth-foot" id="auth-foot">acesso por convite · peça ao administrador</p>
+      <!-- Pedido de convite (só com e-mail configurado no servidor). -->
+      <form id="form-request" class="hidden">
+        <h2 class="auth-title">Solicitar convite</h2>
+        <p class="sub">O pedido vai para o administrador do Nexus. Se ele aprovar, o convite chega no seu e-mail.</p>
+        <div class="field">
+          <label for="req-name">Nome</label>
+          <input id="req-name" type="text" required maxlength="80" autocomplete="name">
+        </div>
+        <div class="field">
+          <label for="req-email">E-mail</label>
+          <input id="req-email" type="email" required maxlength="254" autocomplete="email">
+        </div>
+        <div class="field">
+          <label for="req-source">Como conheceu o Nexus</label>
+          <select id="req-source" required>
+            <option value="">Escolha…</option>
+            <option value="colega">Indicação de colega</option>
+            <option value="site">Site da ShadowTec</option>
+            <option value="github">GitHub</option>
+            <option value="outro">Outro</option>
+          </select>
+        </div>
+        <div class="field hidden" id="req-note-wrap">
+          <label for="req-note">Conte qual (opcional)</label>
+          <input id="req-note" type="text" maxlength="120">
+        </div>
+        <div class="field">
+          <label for="req-reason">Por que gostaria de usar</label>
+          <textarea id="req-reason" required minlength="3" maxlength="600" rows="3" placeholder="ex.: registrar o suporte da filial e tirar o relatório do mês"></textarea>
+        </div>
+        <!-- Armadilha para robôs: invisível para gente (e fora do leitor de tela e do Tab). -->
+        <div class="trap" aria-hidden="true"><label for="req-website">Site</label><input id="req-website" type="text" tabindex="-1" autocomplete="off"></div>
+        <p class="error-text" id="request-error"></p>
+        <p class="ok-text hidden" id="request-ok" role="status"></p>
+        <button class="btn btn-primary full" type="submit" id="request-submit">Enviar o pedido</button>
+        <button class="btn btn-text full" type="button" id="request-back">Voltar para entrar</button>
+      </form>
+
+      <p class="auth-foot" id="auth-foot">acesso por convite · <button type="button" class="link-btn hidden" id="go-request">solicitar convite ao administrador</button><span id="foot-ask">peça ao administrador</span></p>
     </div>
   </div>
 
-  <script type="module" src="/js/login.js?v=99"></script>
-  <script type="module" src="/js/pwa.js?v=99"></script>
+  <script type="module" src="/js/login.js?v=103"></script>
+  <script type="module" src="/js/pwa.js?v=103"></script>
 </body>
 </html>

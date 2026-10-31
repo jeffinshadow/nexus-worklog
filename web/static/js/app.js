@@ -218,7 +218,7 @@ function mountMore(el) {
   ].filter(([v]) => allowed(v));
   el.append(
     h("a", { href: "#/config?aba=conta", class: "more-me" }, avatar(me, "md"),
-      h("span", { class: "who-text" }, h("span", { class: "who-name", text: me.name }), h("span", { class: "who-email", text: me.email }))),
+      h("span", { class: "who-text" }, h("span", { class: "who-name", text: me.name, title: me.name }), h("span", { class: "who-email", text: me.email, title: me.email }))),
     h("div", { class: "menu-list" },
       ...items.map(([v, ic, label]) => h("a", { href: "#/" + v }, icon(ic), h("span", { text: label }))),
       h("button", { type: "button", class: "nav-btn", onClick: showHelp }, icon("help"), h("span", { text: "Ajuda" })),
@@ -295,7 +295,7 @@ function renderWho() {
   meBtn.replaceChildren(avatar(me, "sm"));
   meBtn.setAttribute("aria-label", `Sua conta (${me.name})`);
   who.append(avatar(me, "sm"), h("span", { class: "who-text" },
-    h("span", { class: "who-name", text: me.name }), h("span", { class: "who-email", text: me.email })));
+    h("span", { class: "who-name", text: me.name, title: me.name }), h("span", { class: "who-email", text: me.email, title: me.email })));
 }
 
 function showChangePassword() {
@@ -332,6 +332,7 @@ async function boot() {
   }
   api.setCsrf(me.csrf_token);
   setTimeZone(me.tz);
+  if (window.nexusTheme && me.theme && me.theme !== window.nexusTheme.get()) window.nexusTheme.set(me.theme);  // a escolha da conta vale aqui também
   // Outra conta neste aparelho: nada do que ficou guardado da anterior serve.
   try {
     if (localStorage.getItem("nexus.uid") !== String(me.id)) { await wipe(); localStorage.setItem("nexus.uid", String(me.id)); }
@@ -486,6 +487,8 @@ async function boot() {
     offerNotifications(me);  // já instalado: ligar as notificações deste aparelho
   }
   syncOnBoot();
+  // Admin: pedidos de convite abertos viram um número no item Admin do menu.
+  if (has("admin")) api.get("/admin/invite-requests").then((l) => import("./admin.js").then((m) => m.setRequestsBadge(l.filter((r) => r.status === "pending").length))).catch(() => {});
   startQueue(route);  // sem sinal: a fila do aparelho vai quando a conexão voltar
   // Primeiro acesso: o tour guiado abre sozinho (uma vez; a Ajuda reabre).
   if (has("user") && !me.tour_done_at) setTimeout(() => startTour(me), 700);

@@ -39,7 +39,8 @@ def _banco_limpo():
         db.execute("INSERT INTO app_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING")
     main.seed_admin()
     for limiter in (security.login_limiter, security.login_email_limiter,
-                    security.pdf_limiter, security.reset_limiter, security.reset_email_limiter):
+                    security.pdf_limiter, security.reset_limiter, security.reset_email_limiter,
+                    security.invite_req_limiter, security.invite_req_email_limiter):
         limiter._hits.clear()
     yield
 

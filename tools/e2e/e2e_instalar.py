@@ -50,7 +50,7 @@ try:
     check("manifest sem erros", not m.get("errors"), m.get("errors"))
     man = json.loads(m.get("data") or "{}")
     check("manifest: 3 atalhos", len(man.get("shortcuts", [])) == 3)
-    check("manifest: compartilhar", (man.get("share_target") or {}).get("action") == "/")
+    check("manifest: compartilhar (com fotos)", (man.get("share_target") or {}).get("action") == "/compartilhar" and (man.get("share_target") or {}).get("method") == "POST")
     inst = cmd("Page.getInstallabilityErrors")
     check("instalável (sem erros de instalação)", not inst.get("installabilityErrors"), inst.get("installabilityErrors"))
     for src in ["/img/atalho-nova.png", "/img/telas/hoje.webp", "/img/telas/cel-hoje.webp"]:

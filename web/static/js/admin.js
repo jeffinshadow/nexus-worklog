@@ -1,6 +1,6 @@
 import { api } from "./api.js";
 import { h, icon, clear, field } from "./dom.js";
-import { codeBox, confirmDialog, errorToast, modal, toast, busy, warnBox } from "./ui.js";
+import { codeBox, confirmDialog, errorToast, modal, navBadge, toast, busy, warnBox } from "./ui.js";
 import { applyBranding } from "./branding.js";
 import { avatar } from "./profile.js";
 import { consentsPanel } from "./atribuir.js";
@@ -11,6 +11,13 @@ const ROLES = [
   ["assigner", "Atribuidor de tarefas", "manda tarefas para quem aceitou receber"],
   ["viewer", "Visualizador de tarefas", "vê os registros e tira relatórios de todos"],
 ];
+
+const dateShort = (iso) => new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+
+// Número de pedidos de convite abertos no item Admin do menu (também ao abrir o app).
+export function setRequestsBadge(n) {
+  navBadge("admin", n, n === 1 ? "1 pedido de convite" : `${n} pedidos de convite`);
+}
 
 // Admin: contas (convite, senha), permissões, quem aceita tarefas, configurações
 // gerais e identidade visual. Ver registros e relatórios é do Visualizador (Equipe).
@@ -58,7 +65,32 @@ async function mountUsers(root) {
         ? h("button", { type: "button", class: "btn btn-text btn-sm", text: "Reenviar convite", onClick: () => onResend(u) })
         : h("button", { type: "button", class: "btn btn-text btn-sm", text: "Redefinir senha", onClick: () => onReset(String(u.id)) }),
       h("button", { type: "button", class: "icon", title: "Excluir conta", "aria-label": "Excluir a conta de " + u.email, onClick: () => onDelete(u) }, icon("trash")))));
-  root.append(h("div", { class: "settings-grid" }, list));
+  // Pedidos de convite que chegaram pela tela de login (só com e-mail configurado).
+  const pedidos = await api.get("/admin/invite-requests").catch(() => []);
+  const ORIGEM = { colega: "indicação de colega", site: "site da ShadowTec", github: "GitHub", outro: "outro" };
+  const abertos = pedidos.filter((r) => r.status === "pending");
+  setRequestsBadge(abertos.length);
+  const requests = pedidos.length ? h("section", { class: "panel" },
+    h("div", { class: "panel-head" }, icon("mail"), h("h2", { text: "Pedidos de convite" }),
+      abertos.length ? h("span", { class: "count", text: String(abertos.length) }) : null),
+    ...pedidos.map((r) => h("div", { class: "request-row" + (r.status === "pending" ? "" : " decided") },
+      h("div", { class: "t" },
+        h("span", { class: "request-who" }, h("strong", { text: r.name }), " · ", r.email),
+        h("small", { text: `${ORIGEM[r.source]}${r.source_note ? ` (${r.source_note})` : ""} · ${dateShort(r.created_at)}` }),
+        h("p", { class: "request-reason", text: r.reason })),
+      r.status === "pending"
+        ? h("div", { class: "request-actions" },
+            r.has_account ? h("span", { class: "chip", text: "já tem conta" }) : null,
+            h("button", { type: "button", class: "btn btn-primary btn-sm", disabled: r.has_account ? "disabled" : null, onClick: busy(async () => {
+              try { const res = await api.post(`/admin/invite-requests/${r.id}/invite`); await mountUsers(root); showInvite(res); }
+              catch (e) { errorToast(e, "Não foi possível convidar."); }
+            }) }, icon("send"), "Convidar"),
+            h("button", { type: "button", class: "btn btn-text btn-sm", text: "Recusar", onClick: async () => {
+              if (!(await confirmDialog({ title: `Recusar o pedido de ${r.name}?`, text: "Nenhum e-mail é enviado para quem pediu. O pedido fica na lista por 30 dias.", confirm: "Recusar" }))) return;
+              try { await api.post(`/admin/invite-requests/${r.id}/decline`); await mountUsers(root); } catch (e) { errorToast(e); }
+            } }))
+        : h("span", { class: "chip " + (r.status === "invited" ? "done" : ""), text: r.status === "invited" ? "convidado" : "recusado" })))) : null;
+  root.append(h("div", { class: "settings-grid" }, requests, list));
 
   // ---- Excluir conta (LGPD): apaga a conta e todos os dados dela; confirma com o e-mail ----
   function onDelete(u) {

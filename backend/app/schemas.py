@@ -150,6 +150,19 @@ class SnoozeIn(BaseModel):
     minutes: int = Field(default=10, ge=5, le=120)
 
 
+class ThemeIn(BaseModel):
+    theme: Literal["auto", "light", "dark"]
+
+
+class InviteRequestIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    email: EmailStr
+    source: Literal["colega", "site", "github", "outro"]
+    source_note: Optional[str] = Field(default=None, max_length=120)
+    reason: str = Field(min_length=3, max_length=600)
+    website: Optional[str] = Field(default=None, max_length=200)  # armadilha: gente não vê, robô preenche
+
+
 class TokenIn(BaseModel):
     name: str = Field(min_length=1, max_length=60)
     scope: Literal["read", "write"] = "write"

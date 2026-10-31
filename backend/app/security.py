@@ -137,6 +137,9 @@ login_email_limiter = RateLimiter(max_hits=100, window_seconds=300)
 # "Esqueci a senha": poucos pedidos por IP e por e-mail (não vira canal de spam).
 reset_limiter = RateLimiter(max_hits=5, window_seconds=900)
 reset_email_limiter = RateLimiter(max_hits=3, window_seconds=3600)
+# Pedido de convite (público): poucos por IP e por e-mail.
+invite_req_limiter = RateLimiter(max_hits=5, window_seconds=3600)
+invite_req_email_limiter = RateLimiter(max_hits=2, window_seconds=86400)
 # PDF: gerar e pesado (CPU, um processo so). Ate 6 por usuario por minuto.
 pdf_limiter = RateLimiter(max_hits=6, window_seconds=60)
 # Erros do navegador mandados ao log: poucos por pessoa (não vira canal de spam no log).
