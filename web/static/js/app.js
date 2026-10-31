@@ -291,6 +291,9 @@ window.addEventListener("unhandledrejection", (ev) => {
 function renderWho() {
   const who = document.getElementById("who");
   clear(who);
+  const meBtn = document.getElementById("appbar-me");  // celular: a foto no topo leva à conta
+  meBtn.replaceChildren(avatar(me, "sm"));
+  meBtn.setAttribute("aria-label", `Sua conta (${me.name})`);
   who.append(avatar(me, "sm"), h("span", { class: "who-text" },
     h("span", { class: "who-name", text: me.name }), h("span", { class: "who-email", text: me.email })));
 }

@@ -628,7 +628,7 @@ mark { background: rgba(82,148,226,.28); color: var(--on-surface); border-radius
 .offline-bar.bad { border-color: rgba(242,139,130,.5); }
 .offline-bar.bad > .ico { color: var(--error); }
 .offline-bar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-@media (max-width: 860px) { .offline-bar { top: env(safe-area-inset-top); font-size: .8rem; } }
+@media (max-width: 860px) { .offline-bar { top: calc(56px + env(safe-area-inset-top)); font-size: .8rem; } }
 
 /* Avisos do canto (lembrete, convites) não cobrem o detalhe aberto ao lado. */
 @media (min-width: 861px) { body.has-side .idle-card { right: calc(460px + 24px); } }
@@ -784,14 +784,25 @@ dialog.sheet .menu-list > :last-child { border-bottom: 0; }
   .tabbar a.active .tab-ind { background: var(--primary-container); }
   .tabbar a.active .ico { color: var(--primary-hi); }
 
-  /* Título fino no topo quando o grande sai da tela. */
-  .appbar { position: fixed; top: 0; left: 0; right: 0; z-index: 25; display: flex; align-items: center; gap: 8px;
-    height: calc(56px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 4px 0 16px;
-    background: rgba(18,18,19,.92); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-    border-bottom: 1px solid var(--outline-variant); transform: translateY(-100%); visibility: hidden; transition: transform .2s var(--ease), visibility .2s; }
-  .appbar.show { transform: none; visibility: visible; }
-  .appbar-title { flex: 1; min-width: 0; font-size: 1.1rem; font-weight: 600; letter-spacing: -.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Barra fixa no topo com a marca (como nos outros apps): o dragão e o nome;
+     rolando a página, o nome do app dá lugar ao da tela (o dragão fica). */
+  .appbar { position: fixed; top: 0; left: 0; right: 0; z-index: 25; display: flex; align-items: center; gap: 6px;
+    height: calc(56px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 8px 0 14px;
+    background: rgba(18,18,19,.94); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid transparent; transition: border-color .2s; }
+  .appbar.show { border-bottom-color: var(--outline-variant); }
+  .lockup--bar { --lock-fs: 1.06rem; flex: 1; min-width: 0; text-decoration: none; }
+  .lockup--bar .lockup-mark { height: 2.1rem; max-width: 3.6rem; }
+  .appbar-title { display: none; flex: 1; min-width: 0; font-size: 1.1rem; font-weight: 600; letter-spacing: -.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .appbar.show .lockup--bar { flex: none; }
+  .appbar.show .lockup--bar .lockup-type { display: none; }
+  .appbar.show .appbar-title { display: block; animation: fade-in .15s var(--ease); }
+  @keyframes fade-in { from { opacity: 0; } }
   .appbar .icon-btn { width: 48px; height: 48px; }
+  .appbar-me { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; }
+  .appbar-me .avatar { width: 32px; height: 32px; font-size: .74rem; }
+  .main { padding-top: calc(56px + env(safe-area-inset-top) + 16px); }
+  .offline-bar { top: calc(56px + env(safe-area-inset-top)); }
 
   /* Ação principal da tela: botão flutuante acima da barra (e acima do cronômetro). */
   #page-actions [data-fab] { display: none; }
