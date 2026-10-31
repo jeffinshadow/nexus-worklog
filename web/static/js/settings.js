@@ -5,6 +5,7 @@ import { codeBox, confirmDialog, errorToast, modal, toast, warnBox, busy } from 
 import { defaultProjectPanel, fillProjectSelect } from "./projects.js";
 import { avatar, squarePhoto } from "./profile.js";
 import { pushPanel } from "./notificacoes.js";
+import { cancelled, register as registerPasskey, supported as passkeySupported } from "./passkey.js";
 
 const TABS = [
   ["modelos", "Modelos"],
@@ -73,8 +74,8 @@ export async function mount(root, ctx) {
     }
     else if (active === "calendario") body.append(await calendarFeed(() => render()));
     else if (active === "ia") body.append(...aiHelp(), await tokens(() => render()));
-    else if (isUser) body.append(profilePanel(ctx.me, render), assignmentsPanel(ctx.me), assistantPanel(ctx.me), defaultProjectPanel(ctx.me, (r) => meChanged(ctx.me, r)), ticketsPanel(ctx.me), workDays(ctx.me), shortcutsPanel(), account(ctx.me), deleteAccount(isUser));
-    else body.append(profilePanel(ctx.me, render), account(ctx.me), deleteAccount(isUser));
+    else if (isUser) body.append(profilePanel(ctx.me, render), assignmentsPanel(ctx.me), assistantPanel(ctx.me), defaultProjectPanel(ctx.me, (r) => meChanged(ctx.me, r)), ticketsPanel(ctx.me), workDays(ctx.me), shortcutsPanel(), account(ctx.me), await passkeysPanel(render), deleteAccount(isUser));
+    else body.append(profilePanel(ctx.me, render), account(ctx.me), await passkeysPanel(render), deleteAccount(isUser));
   }
   await render();
 }
@@ -622,6 +623,30 @@ function deleteAccount(isUser) {
 }
 
 // ------------------------------------------------------------------- conta --
+
+// Passkeys: entrar com digital, rosto, Windows Hello ou chave física, sem a senha.
+async function passkeysPanel(rerender) {
+  const list = await api.get("/auth/passkeys");
+  const ua = navigator.userAgent;
+  const guess = /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) ? "iPad" : /Android/.test(ua) ? "Celular Android"
+    : /Windows/.test(ua) ? "Windows" : /Mac OS X/.test(ua) ? "Mac" : "Este aparelho";
+  const add = h("button", { type: "button", class: "btn btn-primary btn-sm" }, icon("add"), "Adicionar passkey neste aparelho");
+  add.addEventListener("click", busy(async () => {
+    try { await registerPasskey(guess); toast("Passkey criada. Na próxima vez, entre com ela."); rerender(); }
+    catch (e) { if (!cancelled(e)) errorToast(e, "Não foi possível criar a passkey."); }
+  }));
+  return h("section", { class: "panel" },
+    h("div", { class: "panel-head" }, icon("key"), h("h2", { text: "Passkeys" })),
+    h("p", { class: "help", text: "Entre sem digitar a senha: com a digital, o rosto, o PIN do Windows ou uma chave física. A passkey fica no aparelho (ou no gerenciador de senhas dele); o Nexus guarda só a parte pública. A senha continua valendo." }),
+    ...list.map((p) => h("div", { class: "token-row" },
+      h("span", { class: "token-name", text: p.name || "Passkey" }),
+      h("span", { class: "token-meta", text: (p.last_used_at ? "usada " + dateTime(p.last_used_at) : "criada " + dateTime(p.created_at)) + (p.backed_up ? " · sincronizada" : "") }),
+      h("button", { type: "button", class: "icon", title: "Remover esta passkey", "aria-label": "Remover " + (p.name || "passkey"), onClick: async () => {
+        if (!(await confirmDialog({ title: "Remover a passkey?", text: "Ela deixa de entrar no Nexus. Para tirar também do aparelho, apague nas configurações de senhas dele.", confirm: "Remover", danger: true }))) return;
+        try { await api.del(`/auth/passkeys/${p.id}`); rerender(); } catch (e) { errorToast(e); }
+      } }, icon("trash")))),
+    passkeySupported() ? h("div", { class: "row-actions" }, add) : h("p", { class: "dialog-note", text: "Este navegador não cria passkeys." }));
+}
 
 function account(me) {
   const cur = h("input", { type: "password", autocomplete: "current-password", required: "required", maxlength: "128" });

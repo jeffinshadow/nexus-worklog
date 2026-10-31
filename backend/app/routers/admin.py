@@ -185,6 +185,8 @@ def reset_password(user_id: int, admin=Depends(require_admin_csrf)):
     # do calendario. Ele so volta com a senha temporaria.
     db.execute("DELETE FROM sessions WHERE user_id = %s", (user_id,))
     revoke_access(user_id)
+    # As passkeys também: entrar sem senha numa conta que o admin bloqueou derrubaria o reset.
+    db.execute("DELETE FROM webauthn_credentials WHERE user_id = %s", (user_id,))
     audit.record({**admin, "actor": "admin"}, "user.reset_password", "password", user_id,
                  after={"by": admin["email"]}, user_id=user_id)
     return {"email": target["email"], "temp_password": temp}

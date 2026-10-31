@@ -61,6 +61,19 @@ Legenda: **S** = só sessão do app · **W** = exige escopo `write` (chave) ou C
 | `POST /change-password` | S W | `{current_password, new_password}`; encerra as outras sessões e revoga chaves e calendário |
 | `POST /settings` | W | `{work_days}` — máscara, domingo = bit 0 (seg–sex = 62). Não reescreve o passado: rotinas "dias úteis" com história são encerradas com os dias antigos e recomeçam hoje; não se desfaz pelo histórico |
 
+## Passkeys — `/api/auth/passkeys`
+
+| Rota | | Corpo |
+| --- | --- | --- |
+| `GET /` | S | as passkeys da conta (nome, sincronizada, criada, último uso) |
+| `POST /register/options` · `POST /register` | S W | opções do WebAuthn (passkey residente, verificação do usuário obrigatória) e depois `{challenge_id, credential, name?}`; até 10 por conta |
+| `DELETE /{id}` | S W | remove (entra no histórico) |
+| `POST /login/options` · `POST /login` | público | `{challenge_id, credential}` → a mesma sessão do login por senha; mesmo limite de tentativas |
+
+Presas ao domínio do `APP_URL` (a criada na homologação não vale em produção);
+o banco guarda só a chave pública e o contador. Reset de senha pelo admin
+apaga as passkeys da conta; "Esqueci a senha" mantém e avisa por e-mail.
+
 ## Perfil e assistente — `/api/me` (só pelo app)
 
 | Rota | | Corpo / observação |

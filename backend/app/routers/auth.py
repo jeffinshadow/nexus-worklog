@@ -127,6 +127,17 @@ def _reset_mail(email: str, link: str):
     return m
 
 
+def _passkeys_mail(n: int):
+    from ..notify import Mail
+    m = Mail("Sua senha do Nexus foi redefinida", "Senha redefinida",
+             "A senha desta conta acabou de ser trocada pelo link de \"Esqueci a senha\".")
+    m.blocks = [("As suas passkeys continuam valendo", [
+        f"{n} passkey{'s' if n > 1 else ''} ainda entra{'m' if n > 1 else ''} nesta conta sem senha.",
+        "Não foi você? Entre, troque a senha e remova as passkeys em Configurações › Conta."])]
+    m.reason, m.settings_tab = "Aviso de segurança da sua conta.", None
+    return m
+
+
 def _send_quiet(to: str, mail) -> None:
     try:
         mailer.send(to, mail.subject, mail.text(), mail.html())
@@ -196,6 +207,11 @@ def reset_by_link(data: LinkPasswordIn, request: Request, response: Response):
     db.execute("DELETE FROM sessions WHERE user_id = %s", (uid,))
     revoke_access(uid)
     audit.record({"user_id": uid, "actor": "web"}, "password.reset_link", "password", uid)
+    # As passkeys continuam (são do aparelho da pessoa); avisa, para quem não pediu poder agir.
+    n = db.query_one("SELECT count(*)::int AS n FROM webauthn_credentials WHERE user_id = %s", (uid,))["n"]
+    if n and mailer.configured():
+        email = db.query_one("SELECT email FROM users WHERE id = %s", (uid,))["email"]
+        threading.Thread(target=_send_quiet, args=(email, _passkeys_mail(n)), daemon=True).start()
     return _start_session(db.query_one("SELECT * FROM users WHERE id = %s", (uid,)), response)
 
 

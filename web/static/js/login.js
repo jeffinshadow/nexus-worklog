@@ -5,6 +5,7 @@
 import { api } from "./api.js";
 import { loadBranding } from "./branding.js";
 import { matchPasswords } from "./dom.js";
+import { cancelled, conditionalAvailable, login as passkeyLogin, supported as passkeySupported } from "./passkey.js";
 
 loadBranding();
 
@@ -37,6 +38,32 @@ $("form-login").addEventListener("submit", async (ev) => {
     if (btn) btn.disabled = false;
   }
 });
+
+// ---- Passkey: o botão (digital, rosto, Windows Hello) e, onde o navegador
+// permite, a sugestão no próprio campo de e-mail, sem janela.
+let conditional = null;
+async function withPasskey(opts) {
+  const err = $("login-error");
+  try {
+    await passkeyLogin(opts);
+    location.href = destino;
+  } catch (e) {
+    if (!cancelled(e)) err.textContent = e.message || "Não foi possível entrar com a passkey.";
+  }
+}
+if (passkeySupported()) {
+  $("login-passkey").classList.remove("hidden");
+  $("login-passkey").addEventListener("click", () => {
+    if (conditional) conditional.abort(); // uma consulta por vez ao aparelho
+    $("login-error").textContent = "";
+    withPasskey({});
+  });
+  conditionalAvailable().then((ok) => {
+    if (!ok || !$("form-link").classList.contains("hidden")) return; // nos links do e-mail, não
+    conditional = new AbortController();
+    withPasskey({ conditional: true, signal: conditional.signal });
+  });
+}
 
 // ---- Esqueci a senha: o link só aparece se o servidor manda e-mail.
 api.get("/auth/options").then((o) => { if (o.email) $("go-forgot").classList.remove("hidden"); }).catch(() => {});

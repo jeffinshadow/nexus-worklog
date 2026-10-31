@@ -13,8 +13,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Nexus">
   <link rel="preload" as="font" type="font/woff2" href="/fonts/GoogleSansFlex.woff2" crossorigin>
-  <link rel="stylesheet" href="/css/tokens.css?v=90">
-  <link rel="stylesheet" href="/css/app.css?v=90">
+  <link rel="stylesheet" href="/css/tokens.css?v=91">
+  <link rel="stylesheet" href="/css/app.css?v=91">
 </head>
 <body>
   <div class="auth-wrap">
@@ -29,7 +29,7 @@
       <form id="form-login" autocomplete="on">
         <div class="field">
           <label for="login-email">E-mail</label>
-          <input id="login-email" name="email" type="email" required autocomplete="username" maxlength="254">
+          <input id="login-email" name="email" type="email" required autocomplete="username webauthn" maxlength="254">
         </div>
         <div class="field">
           <div class="label-row">
@@ -40,6 +40,7 @@
         </div>
         <p class="error-text" id="login-error"></p>
         <button class="btn btn-primary full" type="submit">Entrar</button>
+        <button class="btn btn-ghost full hidden" type="button" id="login-passkey">Entrar com passkey</button>
       </form>
 
       <!-- Esqueci a senha (só com e-mail configurado no servidor). -->
@@ -82,7 +83,7 @@
     </div>
   </div>
 
-  <script type="module" src="/js/login.js?v=90"></script>
-  <script type="module" src="/js/pwa.js?v=90"></script>
+  <script type="module" src="/js/login.js?v=91"></script>
+  <script type="module" src="/js/pwa.js?v=91"></script>
 </body>
 </html>
