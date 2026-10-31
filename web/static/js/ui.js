@@ -93,12 +93,31 @@ export function growFrom(el) {
 // enquanto o detalhe da tarefa está aberto ao lado (body.has-side).
 const railAlways = matchMedia("(min-width: 861px) and (max-width: 1199px)");
 const railWithSide = matchMedia("(min-width: 1200px) and (max-width: 1739px)");
+let peek = false; // mouse sobre o menu compacto: abre por cima do conteúdo
 export function syncRail() {
   const b = document.body;
-  b.classList.toggle("rail", railAlways.matches || (railWithSide.matches && b.classList.contains("has-side")));
+  const rail = railAlways.matches || (railWithSide.matches && b.classList.contains("has-side"));
+  b.classList.toggle("rail", rail && !peek);
+  b.classList.toggle("rail-peek", rail && peek);
 }
 railAlways.addEventListener("change", syncRail);
 railWithSide.addEventListener("change", syncRail);
+
+// Menu compacto com mouse: parar sobre ele abre o menu inteiro por cima da
+// tela (o conteúdo não se mexe); tirar o mouse volta aos ícones.
+export function initRailPeek() {
+  if (!matchMedia("(hover: hover)").matches) return;
+  const side = document.querySelector(".sidebar");
+  let timer = null;
+  const set = (on) => { clearTimeout(timer); if (peek !== on) { peek = on; syncRail(); } };
+  side.addEventListener("mouseenter", () => {
+    if (!document.body.matches(".rail, .rail-peek")) return;
+    clearTimeout(timer);
+    timer = setTimeout(() => set(true), 150); // passar de raspão não abre
+  });
+  side.addEventListener("mouseleave", () => set(false));
+  side.addEventListener("click", (ev) => { if (ev.target.closest("a[href]")) set(false); }); // escolheu: fecha
+}
 
 // Dicas dos botões só com ícone (Material 3, "plain tooltip"): no lugar da
 // dica nativa do navegador, que demora e é pequena. Aparece ao passar o mouse

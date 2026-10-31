@@ -53,7 +53,14 @@ export async function openTask(taskId, onChange) {
   const body = h("div", { class: "task-body" });
   const dlg = h("dialog", { class: "task-dialog" + (side ? " side" : ""), "aria-label": "Detalhe da tarefa" }, body);
   document.body.append(dlg);
-  const onKey = (ev) => { if (ev.key === "Escape" && !document.querySelector("dialog:modal")) dlg.close(); };
+  // Visão expandida (pedido dos clientes, para ler com folga): o painel vira
+  // uma janela larga no meio da tela; Esc ou o mesmo botão voltam ao painel.
+  let expanded = false;
+  const expand = (on) => { expanded = on; dlg.classList.toggle("expanded", on); paint(); };
+  const onKey = (ev) => {
+    if (ev.key !== "Escape" || document.querySelector("dialog:modal")) return;
+    if (expanded) expand(false); else dlg.close();
+  };
   dlg.addEventListener("close", () => {
     dlg.remove();
     if (side) {
@@ -132,6 +139,9 @@ export async function openTask(taskId, onChange) {
       h("button", { type: "button", class: "icon", title: "Fechar", "aria-label": "Fechar", onClick: () => dlg.close() }, icon("close")),
       h("span", { class: "task-appbar-title", text: "Tarefa" }),
       saved,
+      side ? h("button", { type: "button", class: "icon", title: expanded ? "Voltar ao painel" : "Expandir para ler",
+        "aria-label": expanded ? "Voltar ao painel" : "Expandir para ler", "aria-pressed": String(expanded),
+        onClick: () => expand(!expanded) }, icon(expanded ? "shrink" : "expand")) : null,
       h("button", { type: "button", class: "icon", title: "Mais ações", "aria-label": "Mais ações", onClick: () => sheet(t.title, [
         ["Copiar resumo (para o chamado ou o cliente)", "copy", () => copySummary(t)],
         ["Salvar como modelo", "list", () => saveAsTemplate(t)],

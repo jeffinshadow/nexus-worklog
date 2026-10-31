@@ -40,7 +40,7 @@ function windowStart() {
 }
 
 async function check() {
-  if (box || Date.now() < snoozeUntil || document.querySelector("dialog[open]")) return;
+  if (box || Date.now() < snoozeUntil || document.querySelector("dialog[open], .rem-card")) return;
   if (timerState()) { lastKnown = Date.now(); return; } // cronômetro rodando = trabalhando
   const start = windowStart();
   if (start === null) return;

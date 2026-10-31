@@ -619,6 +619,22 @@ mark { background: rgba(82,148,226,.28); color: var(--on-surface); border-radius
 .idle-head p strong { color: var(--on-surface); }
 .idle-card .assist-actions { margin-top: 10px; }
 @media (max-width: 860px) { .idle-card { right: 16px; bottom: calc(86px + env(safe-area-inset-bottom)); } }
+/* Lembrete das rotinas com horário (lembretes.js): por cima do de inatividade. */
+.rem-card { z-index: 91; }
+body:has(.rem-card) .idle-card:not(.rem-card) { display: none; }
+.rem-card.ringing { border-color: rgba(253,214,99,.55); animation: rem-pulse 1.6s ease-in-out infinite; }
+@keyframes rem-pulse { 50% { box-shadow: 0 0 0 4px rgba(253,214,99,.16), 0 16px 36px -12px rgba(0,0,0,.8); } }
+.rem-card.ringing .assist-mark { color: var(--warning); }
+.rem-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 0; border-top: 1px solid var(--outline-variant); }
+.rem-row p { flex: 1; min-width: 0; margin: 0; font-size: .92rem; }
+.rem-row p small { display: block; font-family: var(--font-label); font-size: .72rem; color: var(--dim); }
+.rem-row input { flex: 1 1 100%; order: 2; }
+.rem-row input + .btn { order: 3; margin-left: auto; }
+.rec-title { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.chip.rem-at { font-variant-numeric: tabular-nums; }
+.chip.rem-at.soon { color: var(--warning); border-color: rgba(253,214,99,.45); }
+.chip.rem-at.due { color: var(--warning); border-color: rgba(253,214,99,.55); background: rgba(253,214,99,.1); }
+.check-row.done .chip.rem-at { opacity: .6; }
 .profile-row .row-actions { margin-top: 0; }
 
 /* ------------------------------------------ cronômetro, chamado, atalhos -- */
@@ -802,6 +818,19 @@ dialog.sheet .menu-list > :last-child { border-bottom: 0; }
   .task-dialog.side .time-form { grid-template-columns: 104px 1fr; }
   .task-dialog.side .time-form > :nth-child(n+3) { grid-column: span 2; }
   body.has-side .main { margin-right: 460px; }
+  /* Visão expandida: janela larga no meio, com o resto escurecido; texto maior e linhas de leitura. */
+  dialog.task-dialog.side.expanded { left: 50%; right: auto; top: calc(4vh / var(--ui-zoom)); bottom: calc(4vh / var(--ui-zoom));
+    width: min(1040px, calc(92vw / var(--ui-zoom))); max-width: none; transform: translateX(-50%); z-index: 60;
+    border: 1px solid var(--line-2); border-radius: var(--radius-m);
+    box-shadow: 0 0 0 100vmax rgba(0,0,0,.55), 0 24px 64px -16px rgba(0,0,0,.8); animation: expand-in .2s var(--ease); }
+  @keyframes expand-in { from { opacity: .4; transform: translateX(-50%) scale(.97); } }
+  .task-dialog.side.expanded .task-body { padding: 0 48px 40px; }
+  .task-dialog.side.expanded .task-appbar { margin: 0 -48px 22px; padding: 10px 16px 10px 12px; }
+  .task-dialog.side.expanded .title-main h2 { font-size: 1.65rem; line-height: 1.25; }
+  .task-dialog.side.expanded :is(.task-desc, .resolution, .task-sec p:not(.empty), .check-row .label) { font-size: 1.04rem; line-height: 1.65; max-width: 76ch; }
+  .task-dialog.side.expanded .task-main-actions { grid-template-columns: repeat(2, minmax(0, 220px)); }
+  .task-dialog.side.expanded .time-form { grid-template-columns: 104px 150px 1fr auto; }
+  .task-dialog.side.expanded .time-form > :nth-child(n+3) { grid-column: auto; }
   .card.selected, .list-row.selected { border-color: rgba(82,148,226,.6); background: rgba(82,148,226,.06); }
   .list-row.selected { border-radius: 10px; }
 
@@ -840,6 +869,12 @@ body.rail .who-text, body.rail #btn-logout { display: none; }  /* Sair continua 
 body.rail #timer-side { display: none !important; }
 body.rail .timer-mobile:not(.hidden) { display: flex; position: fixed; left: 89px; bottom: 16px; width: 380px; z-index: 40;
   background: var(--surface-accent); box-shadow: 0 12px 30px -12px rgba(0,0,0,.8); }
+/* Menu compacto aberto pelo mouse (body.rail-peek, ver initRailPeek): a coluna
+   continua com 73px e o menu inteiro passa por cima do conteúdo. */
+body.rail-peek .app { grid-template-columns: 73px 1fr; }
+body.rail-peek .sidebar { width: var(--sidebar-w); z-index: 45; box-shadow: 24px 0 48px -24px rgba(0,0,0,.7);
+  background: linear-gradient(180deg, var(--surface-side), var(--surface)) var(--surface); animation: peek-in .16s var(--ease); }
+@keyframes peek-in { from { clip-path: inset(0 calc(100% - 73px) 0 0); } }
 @media (min-width: 861px) and (max-width: 1199px) {
   body.has-side .main { margin-right: 420px; }
   dialog.task-dialog.side { width: 420px; max-width: 420px; }
@@ -1010,7 +1045,9 @@ dialog.help-dialog > .dialog-actions { position: sticky; bottom: -24px; margin: 
 .proj-card:hover { border-color: rgba(82,148,226,.5); }
 .proj-card.archived { opacity: .65; }
 .proj-card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-.proj-card-head h2 { font-size: 1.05rem; font-weight: 600; margin: 0; }
+.proj-card-head h2 { font-size: 1.05rem; font-weight: 600; margin: 0; min-width: 0; overflow-wrap: anywhere; }
+/* Pílulas não encolhem nem quebram dentro da borda: com nome longo, quem quebra é o título. */
+.proj-card-head > .chip, .proj-card-head > .dot, .obj-head > .chip, .obj-head > .obj-n, .rec-title > .chip { flex-shrink: 0; white-space: nowrap; }
 .proj-card-meta { color: var(--dim); font-size: .84rem; margin: 8px 0 0; }
 .proj-archived { margin-top: 18px; }
 .proj-archived .proj-grid { margin-top: 10px; }

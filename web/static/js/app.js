@@ -17,13 +17,14 @@ import { highlight } from "./search.js";
 import { loadBranding } from "./branding.js";
 import { avatar } from "./profile.js";
 import { startIdle } from "./idle.js";
+import { startReminders } from "./lembretes.js";
 import { configure as configureAssistant } from "./assistant.js";
 import { session } from "./session.js";
 import { initTimer, stopTimer, timerState } from "./timer.js";
 import { openWorklog } from "./board.js";
 import { openTask, closeSidePanel } from "./task.js";
 import { startTour } from "./tour.js";
-import { modal, busy, initTooltips, syncRail, calmMotion } from "./ui.js";
+import { modal, busy, initTooltips, initRailPeek, syncRail, calmMotion } from "./ui.js";
 
 let me = null;
 
@@ -324,12 +325,14 @@ async function boot() {
   if (has("user")) {
     initTimer(route);
     startIdle(me, route);
+    startReminders(route);
   }
   // Perfil ou assistente mudou (Configurações, convite do assistente): atualiza o menu e o lembrete.
   window.addEventListener("nexus:me", () => { renderWho(); configureAssistant(me); if (has("user")) startIdle(me, route); });
   // Menu: cada item aparece só para quem tem o papel (data-need).
   for (const el of document.querySelectorAll("[data-need]")) el.classList.toggle("hidden", !has(el.dataset.need));
   initTooltips();
+  initRailPeek();
   syncRail();
   // Celular: rolando para baixo, o botão flutuante encolhe para o ícone; para cima, volta.
   const fab = document.getElementById("fab");

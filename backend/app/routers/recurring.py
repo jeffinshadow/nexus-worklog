@@ -1,26 +1,41 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from .. import audit, db
-from ..deps import active_user_csrf
+from ..deps import active_user, active_user_csrf
 from ..schemas import RecurringIn, RecurringUpdate, ToggleIn
-from ..services import app_today, app_tz, recurring_vigente
+from ..services import app_today, app_tz, is_due, recurring_vigente, rotinas, work_mask
 from .board import check_board_day
 
 router = APIRouter(prefix="/api/recurring", tags=["recurring"])
+
+
+@router.get("/reminders")
+def reminders(user=Depends(active_user)):
+    """Rotinas com horário devidas hoje (para o lembrete da interface tocar
+    perto do horário até a rotina ser marcada)."""
+    uid, today = user["user_id"], app_today()
+    mask = work_mask(uid)
+    feitas = {r["task_id"] for r in db.query_all(
+        "SELECT task_id FROM recurring_completions WHERE user_id = %s AND completed_date = %s", (uid, today))}
+    return {"today": today, "items": [
+        {"id": r["id"], "label": r["label"], "remind_at": r["remind_at"].strftime("%H:%M"),
+         "require_note": r["require_note"], "done": r["id"] in feitas}
+        for r in rotinas(uid)
+        if r["remind_at"] and r["start_d"] <= today <= r["end_d"] and is_due(r, today, mask)]}
 
 
 @router.post("", status_code=201)
 def create(data: RecurringIn, user=Depends(active_user_csrf)):
     row = db.query_one(
         """
-        INSERT INTO recurring_tasks (user_id, label, position, freq, weekdays, month_day, interval_days, require_note)
+        INSERT INTO recurring_tasks (user_id, label, position, freq, weekdays, month_day, interval_days, require_note, remind_at)
         VALUES (%(uid)s, %(label)s,
                 (SELECT COALESCE(MAX(position), 0) + 1
                    FROM recurring_tasks WHERE user_id = %(uid)s),
-                %(freq)s, %(weekdays)s, %(month_day)s, %(interval_days)s, %(require_note)s)
-        RETURNING id, label, position, active, freq, weekdays, month_day, interval_days, require_note
+                %(freq)s, %(weekdays)s, %(month_day)s, %(interval_days)s, %(require_note)s, %(remind_at)s)
+        RETURNING id, label, position, active, freq, weekdays, month_day, interval_days, require_note, remind_at
         """,
-        {"uid": user["user_id"], "label": data.label, "require_note": data.require_note,
+        {"uid": user["user_id"], "label": data.label, "require_note": data.require_note, "remind_at": data.remind_at,
          **(data.agenda() if data.freq else {"freq": "daily", "weekdays": None, "month_day": None, "interval_days": None})},
     )
     audit.record(user, "recurring.create", "recurring", row["id"],
@@ -39,11 +54,11 @@ def replace_routine(user: dict, before: dict, new: dict, freeze: dict | None = N
     db.execute(f"UPDATE recurring_tasks SET {', '.join(sets)} WHERE id = %s AND user_id = %s",
                tuple((freeze or {}).values()) + (old_id, uid))
     row = db.query_one(
-        """INSERT INTO recurring_tasks (user_id, label, position, freq, weekdays, month_day, interval_days, require_note)
-           VALUES (%(uid)s, %(label)s, %(position)s, %(freq)s, %(weekdays)s, %(month_day)s, %(interval_days)s, %(require_note)s)
+        """INSERT INTO recurring_tasks (user_id, label, position, freq, weekdays, month_day, interval_days, require_note, remind_at)
+           VALUES (%(uid)s, %(label)s, %(position)s, %(freq)s, %(weekdays)s, %(month_day)s, %(interval_days)s, %(require_note)s, %(remind_at)s)
            RETURNING id""",
         {"uid": uid, "position": before["position"], "weekdays": None, "month_day": None, "interval_days": None,
-         "require_note": bool(before.get("require_note")), **new})
+         "require_note": bool(before.get("require_note")), "remind_at": before.get("remind_at"), **new})
     db.execute("UPDATE recurring_completions SET task_id = %s WHERE task_id = %s AND user_id = %s AND completed_date = %s",
                (row["id"], old_id, uid, app_today()))
     audit.record(user, "recurring.replace", "recurring", row["id"], before=before,
@@ -61,7 +76,8 @@ def update(task_id: int, data: RecurringUpdate, user=Depends(active_user_csrf)):
     if not before or not before["active"]:
         raise HTTPException(status_code=404, detail="não encontrado")
     agenda = data.agenda() if data.freq is not None else {}
-    if data.label is None and not agenda and data.require_note is None:
+    horario = "remind_at" in data.model_fields_set  # null tira o horário
+    if data.label is None and not agenda and data.require_note is None and not horario:
         raise HTTPException(status_code=400, detail="nada para atualizar")
     today = app_today()
     muda_agenda = any(before[k] != v for k, v in agenda.items())
@@ -69,7 +85,8 @@ def update(task_id: int, data: RecurringUpdate, user=Depends(active_user_csrf)):
 
     if muda_agenda and tem_passado:
         new_id = replace_routine(user, before, {"label": data.label or before["label"], **agenda,
-                                                **({"require_note": data.require_note} if data.require_note is not None else {})})
+                                                **({"require_note": data.require_note} if data.require_note is not None else {}),
+                                                **({"remind_at": data.remind_at} if horario else {})})
         return {"ok": True, "id": new_id, "replaced": task_id}
 
     fields, values = [], []
@@ -79,6 +96,9 @@ def update(task_id: int, data: RecurringUpdate, user=Depends(active_user_csrf)):
     if data.require_note is not None:
         fields.append("require_note = %s")
         values.append(data.require_note)
+    if horario:
+        fields.append("remind_at = %s")
+        values.append(data.remind_at)
     for col, val in agenda.items():  # rotina criada hoje: ainda sem passado
         fields.append(f"{col} = %s")
         values.append(val)

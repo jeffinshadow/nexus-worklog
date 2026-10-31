@@ -473,7 +473,8 @@ def t_list_recurring(ctx, args):
 
 
 def _recurring_rows(rows: list) -> list[str]:
-    return [f"  [{'x' if r['done_today'] else ' '}] R{r['id']} {r['label']}" + ("" if r["due"] else " (fora da agenda)")
+    return [f"  [{'x' if r['done_today'] else ' '}] R{r['id']} {r['label']}"
+            + (f" às {r['remind_at']:%H:%M}" if r.get("remind_at") else "") + ("" if r["due"] else " (fora da agenda)")
             for r in rows]
 
 

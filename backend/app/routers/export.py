@@ -152,7 +152,7 @@ def export(kind: str, user=Depends(active_user)):
         for e in db.query_all("SELECT task_id, day, minutes, note, actor, token_name FROM time_entries WHERE user_id = %s ORDER BY day, id", (uid,)):
             by_id[e.pop("task_id")]["time"].append(e)
         recurring = db.query_all(
-            """SELECT id, label, active, freq, weekdays, month_day, interval_days, require_note, created_at, deactivated_at
+            """SELECT id, label, active, freq, weekdays, month_day, interval_days, require_note, remind_at, created_at, deactivated_at
                  FROM recurring_tasks WHERE user_id = %s ORDER BY position, id""", (uid,))
         done, evid = {}, {}
         for c in db.query_all("SELECT task_id, completed_date, note FROM recurring_completions WHERE user_id = %s ORDER BY completed_date", (uid,)):

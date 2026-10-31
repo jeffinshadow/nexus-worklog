@@ -5,7 +5,7 @@ Toda rota que altera dados chama `record` com o contexto de autenticação
 pelo servidor MCP), e o nome da chave quando houver. O antes/depois em JSON
 alimenta a tela de histórico e o "desfazer" (routers/history.py).
 """
-from datetime import date, datetime
+from datetime import date, datetime, time
 
 from psycopg.types.json import Jsonb
 
@@ -17,7 +17,7 @@ def _jsonable(value):
         return {k: _jsonable(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
         return [_jsonable(v) for v in value]
-    if isinstance(value, (date, datetime)):
+    if isinstance(value, (date, datetime, time)):
         return value.isoformat()
     return value
 
@@ -51,7 +51,7 @@ _WORKLOG_COLS = ("id, title, description, status, due_date, created_at, complete
                  "(SELECT COALESCE(array_agg(x.project_id ORDER BY x.project_id), '{}') FROM worklog_task_projects x"
                  " WHERE x.task_id = worklog_tasks.id) AS extra_project_ids")
 _RECURRING_COLS = ("id, label, position, active, created_at, deactivated_at, "
-                   "freq, weekdays, month_day, interval_days, require_note")
+                   "freq, weekdays, month_day, interval_days, require_note, remind_at")
 
 
 def worklog_snapshot(task_id: int, user_id: int):

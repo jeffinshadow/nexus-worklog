@@ -262,11 +262,11 @@ def _restore_recurring(uid: int, snap: dict) -> None:
     db.execute(
         """UPDATE recurring_tasks
               SET label = %s, position = %s, active = %s, created_at = %s, deactivated_at = %s,
-                  freq = %s, weekdays = %s, month_day = %s, interval_days = %s, require_note = %s
+                  freq = %s, weekdays = %s, month_day = %s, interval_days = %s, require_note = %s, remind_at = %s
             WHERE id = %s AND user_id = %s""",
         (snap["label"], snap["position"], snap["active"], snap["created_at"],
          snap["deactivated_at"], snap.get("freq") or "daily", snap.get("weekdays"),
-         snap.get("month_day"), snap.get("interval_days"), bool(snap.get("require_note")), snap["id"], uid),
+         snap.get("month_day"), snap.get("interval_days"), bool(snap.get("require_note")), snap.get("remind_at"), snap["id"], uid),
     )
 
 

@@ -8,6 +8,7 @@ import { openTask, openTaskId, duration, parseDuration } from "./task.js";
 import { boardLine } from "./assistant.js";
 import { session } from "./session.js";
 import { timerButton, timerState, startTimer, stopTimer } from "./timer.js";
+import { refreshReminders } from "./lembretes.js";
 
 const WEEKDAYS_SHORT = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 const DONE_PAGE = 10;
@@ -351,6 +352,8 @@ export function openRecurring(item, onDone) {
   const sched = scheduleForm(item);
   const requireNote = document.getElementById("rec-require-note");
   requireNote.checked = !!(item && item.require_note);
+  const time = document.getElementById("rec-time");
+  time.value = item && item.remind_at ? item.remind_at.slice(0, 5) : "";
 
   const del = document.getElementById("rec-delete");
   del.classList.toggle("hidden", !item);
@@ -376,9 +379,11 @@ export function openRecurring(item, onDone) {
     const agenda = sched.value();
     if (!agenda) return;
     try {
-      if (item) await api.patch(`/recurring/${item.id}`, { label, ...agenda, require_note: requireNote.checked });
-      else await api.post("/recurring", { label, ...agenda, require_note: requireNote.checked });
+      const body = { label, ...agenda, require_note: requireNote.checked, remind_at: time.value || null };
+      if (item) await api.patch(`/recurring/${item.id}`, body);
+      else await api.post("/recurring", body);
       dlg.close();
+      refreshReminders();
       onDone && onDone();
     } catch (e) {
       errorToast(e, "Erro ao salvar.");

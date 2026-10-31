@@ -3,6 +3,7 @@
 import { api } from "./api.js";
 import { h, icon, clear, longDate, localDay, addDays } from "./dom.js";
 import { errorToast, modal, toast, busy, sheet } from "./ui.js";
+import { reminderState, refreshReminders } from "./lembretes.js";
 import { openRecurring, openWorklog, finishTask, taskChips, isOverdue, scheduleLabel, dayLabel, moreButton, desk, lateBadge, withMenu } from "./board.js";
 import { openTask } from "./task.js";
 import { fillProjectSelect } from "./projects.js";
@@ -89,6 +90,7 @@ export async function mount(root, ctx, opts = {}) {
       }
       try {
         await api.post(`/recurring/${r.id}/toggle`, { done: cb.checked, day: b.day }); // o dia da tela, não o do relógio
+        refreshReminders();
         refresh();
       } catch (e) {
         cb.checked = !cb.checked;
@@ -96,8 +98,12 @@ export async function mount(root, ctx, opts = {}) {
       }
     });
     const hint = [scheduleLabel(r), r.require_note && !r.done_today ? "exige evidência" : ""].filter(Boolean).join(" · ");
+    // Horário: perto dele (ou passado, sem marcar) a etiqueta acende, como o aviso.
+    const at = r.remind_at ? r.remind_at.slice(0, 5) : null;
+    const state = at && b.day === today && r.due !== false ? reminderState({ ...r, remind_at: at }) : null;
+    const time = at ? h("span", { class: "chip rem-at" + (state ? " " + state : ""), text: state === "due" ? `${at} · na hora` : at }) : null;
     recPanel.append(h("label", { class: "check-row" + (r.done_today ? " done" : "") + (r.due === false ? " off" : "") }, cb,
-      h("span", { class: "label" }, r.label, hint ? h("small", { text: hint }) : null,
+      h("span", { class: "label" }, h("span", { class: "rec-title" }, r.label, time), hint ? h("small", { text: hint }) : null,
         r.note ? h("small", { class: "evidence", text: "evidência: " + r.note }) : null),
       // Marcada: anota o que foi conferido (vai pro relatório, pra auditoria).
       r.done_today ? h("button", { type: "button", class: "icon", title: r.note ? "Editar a evidência" : "Anotar a evidência (o que foi conferido)",
@@ -243,6 +249,7 @@ function editEvidence(r, day, refresh) {
   form.addEventListener("submit", busy(async () => {
     try {
       await api.post(`/recurring/${r.id}/toggle`, { done: true, day, note: input.value.trim() || null });
+      refreshReminders();
       dlg.close();
       refresh();
     } catch (e) { err.textContent = e.message || "Não foi possível salvar."; }
