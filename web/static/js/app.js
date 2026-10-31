@@ -367,12 +367,13 @@ async function boot() {
   }, { passive: true });
   // Barra inferior: no máximo 5 itens; quem atribui troca a Busca por Atribuir.
   if (has("assigner")) document.querySelector('#tabbar [data-view="busca"]').classList.add("hidden");
-  // Celular: rolando a página, o título vira uma barra fina no topo.
+  // Celular: quando o título da tela passa por baixo da barra do topo, ela mostra o nome da tela.
   const pageTitle = document.getElementById("page-title");
+  const barH = () => document.getElementById("appbar").getBoundingClientRect().height || 56;
   new IntersectionObserver(([e]) => {
     const shown = !pageTitle.closest(".hidden");
-    document.getElementById("appbar").classList.toggle("show", shown && !e.isIntersecting && e.boundingClientRect.top < 0);
-  }).observe(pageTitle);
+    document.getElementById("appbar").classList.toggle("show", shown && e.intersectionRatio < 1 && e.boundingClientRect.top < barH());
+  }, { rootMargin: `-${Math.round(barH())}px 0px 0px 0px`, threshold: [0, 1] }).observe(pageTitle);
   document.getElementById("btn-logout").addEventListener("click", logout);
   document.getElementById("btn-help").addEventListener("click", showHelp);
   // Busca na barra lateral; "/" foca a busca de qualquer tela.
