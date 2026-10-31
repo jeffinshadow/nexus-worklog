@@ -276,6 +276,8 @@ def t_get_task(ctx, args):
     lines = [_task_line(t, services.app_today())]
     if t["checklist"]:
         lines += ["", "Checklist:"] + [f"  [{'x' if c['done'] else ' '}] item #{c['id']} {c['label']}" for c in t["checklist"]]
+    if t.get("photos"):
+        lines += ["", f"Fotos: {len(t['photos'])} (vistas no app; a IA não recebe as imagens)"]
     if t["notes"]:
         lines += ["", "Anotações (mais recentes primeiro):"]
         lines += [f"  {n['created_at'].astimezone(services.app_tz()):%d/%m %H:%M} — {n['body']}" for n in t["notes"][:10]]

@@ -152,15 +152,16 @@ def account_counts(user_id: int) -> dict:
 
 @router.get("/settings")
 def get_settings(admin=Depends(require_admin)):
-    return db.query_one("SELECT retro_days, support_contact FROM app_settings WHERE id = 1")
+    return db.query_one("SELECT retro_days, support_contact, photo_quota_mb FROM app_settings WHERE id = 1")
 
 
 @router.put("/settings")
 def put_settings(data: AppSettingsIn, admin=Depends(require_admin_csrf)):
     before = get_settings(admin)
     contact = " ".join((data.support_contact or "").split()) or None
-    db.execute("UPDATE app_settings SET retro_days = %s, support_contact = %s, updated_at = now() WHERE id = 1",
-               (data.retro_days, contact))
+    db.execute("""UPDATE app_settings SET retro_days = %s, support_contact = %s, updated_at = now(),
+                         photo_quota_mb = COALESCE(%s, photo_quota_mb) WHERE id = 1""",
+               (data.retro_days, contact, data.photo_quota_mb))
     audit.record({**admin, "actor": "admin"}, "app.settings", "app_settings", 1,
                  before=before, after=data.model_dump())
     return get_settings(admin)

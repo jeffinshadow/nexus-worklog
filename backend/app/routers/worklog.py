@@ -241,6 +241,8 @@ def detail(task_id: int, user=Depends(active_user)):
         "SELECT id, body, actor, token_name, created_at FROM task_notes WHERE task_id = %s ORDER BY created_at DESC, id DESC",
         (task_id,),
     )
+    from .photos import for_task
+    task["photos"] = for_task(uid, task_id)
     task["time"] = db.query_all(
         "SELECT id, minutes, day, note, actor, token_name, created_at FROM time_entries WHERE task_id = %s ORDER BY day DESC, id DESC",
         (task_id,),

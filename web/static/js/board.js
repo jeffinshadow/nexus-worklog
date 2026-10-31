@@ -10,6 +10,7 @@ import { session } from "./session.js";
 import { timerButton, timerState, startTimer, stopTimer } from "./timer.js";
 import { refreshReminders } from "./lembretes.js";
 import { appBadge } from "./instalar.js";
+import { upload } from "./fotos.js";
 
 const WEEKDAYS_SHORT = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 const DONE_PAGE = 10;
@@ -66,6 +67,7 @@ export function taskChips(t, today) {
   if (t.check_total) chips.push(h("span", { class: "tag" + (t.check_done === t.check_total ? " ok" : ""), title: "Checklist" }, icon("list"), `${t.check_done}/${t.check_total}`));
   if (t.minutes) chips.push(h("span", { class: "tag", title: "Tempo apontado" }, icon("clock"), duration(t.minutes)));
   if (t.notes_count) chips.push(h("span", { class: "tag", title: "Anotações" }, icon("note"), String(t.notes_count)));
+  if (t.photos_count) chips.push(h("span", { class: "tag", title: "Fotos" }, icon("image"), String(t.photos_count)));
   return chips;
 }
 
@@ -333,6 +335,7 @@ export function openWorklog(onDone, opts = {}) {
         if (minutes) await api.post(`/worklog/${created.id}/time`, { minutes });
         // Texto compartilhado de outro app que não coube na descrição: vira anotação.
         if (opts.note) await api.post(`/worklog/${created.id}/notes`, { body: opts.note });
+        if (opts.files && opts.files.length) await upload(`/worklog/${created.id}/photos`, opts.files);
       } catch (e) {
         toast(`Tarefa criada, mas ${minutes ? "o tempo ou " : ""}o checklist não foi salvo: ${e.message || "tente pelo detalhe"}.`, { error: true });
       }

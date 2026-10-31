@@ -140,6 +140,19 @@ Agenda: `daily` (dias úteis do dono) · `weekly` + `weekdays` (máscara) ·
 | `POST /{id}/time` | W | `{minutes, day?, note?}` — 1–1440 min; até 366 dias atrás, nunca no futuro; máx. 24h somadas por dia |
 | `DELETE /api/time/{id}` | W | |
 
+## Fotos (só pelo app)
+
+| Rota | | Corpo |
+| --- | --- | --- |
+| `POST /api/worklog/{id}/photos` | S W | `{image, thumb, width?, height?}` em base64 — PNG, JPEG ou WebP pelo conteúdo; foto até 1 MB (o app já reduz a 1600 px e regrava, sem EXIF/GPS), miniatura até 96 KB; até 10 por tarefa; cota por pessoa em Admin › Geral |
+| `POST /api/recurring/{id}/photos?day=` · `GET` | S W | o mesmo, como evidência da rotina no dia (até 7 dias atrás) |
+| `GET /api/photos/{id}?thumb=` | S | a imagem (dona ou visualizador); cache privado e imutável |
+| `DELETE /api/photos/{id}` | S W | some na hora; volta pelo histórico em até 7 dias, depois sai de vez |
+| `GET /api/export/fotos.zip` | S | todas as fotos, numa pasta por tarefa e por rotina |
+
+O detalhe da tarefa traz `photos` e o quadro, `photos_count`. A IA (MCP) vê só
+quantas fotos a tarefa tem.
+
 ## Projetos — `/api/projects`
 
 | Rota | | Corpo |

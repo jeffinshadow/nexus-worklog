@@ -76,6 +76,10 @@ para leitura, o quadro, a retrospectiva e os relatórios de cada pessoa).
   por aparelho (Web Push padrão, criptografado, sem Firebase): rotina na hora
   com Marcar feita e Adiar (repete até marcar), cobranças e prazos de manhã e
   tarefa atribuída; opção de esconder os nomes na tela bloqueada.
+- **Fotos** — na tarefa e como evidência da rotina: câmera no celular, print
+  colado (Ctrl+V) ou arrastado no computador, ou compartilhada de outro app.
+  Reduzidas no aparelho (1600 px, sem EXIF/GPS), com miniatura, excluir com
+  desfazer, cota por pessoa e exportação em .zip.
 - **Passkeys** — entrar sem senha, com a digital, o rosto, o Windows Hello ou
   uma chave física (WebAuthn); a senha continua valendo.
 - **Contas** — com e-mail configurado, o admin convida por **link** (7 dias,

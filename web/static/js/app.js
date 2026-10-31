@@ -458,10 +458,11 @@ async function boot() {
   await route();
   run();
   // Texto ou link compartilhado de outro app: abre a Nova tarefa já preenchida (salva só ao confirmar).
-  const shared = has("user") ? sharedTask() : null;
+  const shared = has("user") ? await sharedTask() : null;
   if (shared) {
     openWorklog(route, shared);
-    if (shared.note) toast("O texto compartilhado é longo: ao salvar, ele entra inteiro como anotação da tarefa.");
+    if (shared.files.length) toast(`${shared.files.length > 1 ? `As ${shared.files.length} fotos entram` : "A foto entra"} na tarefa ao salvar.`);
+    else if (shared.note) toast("O texto compartilhado é longo: ao salvar, ele entra inteiro como anotação da tarefa.");
   } else {
     offerInstall(me);        // no navegador: instalar
     offerNotifications(me);  // já instalado: ligar as notificações deste aparelho

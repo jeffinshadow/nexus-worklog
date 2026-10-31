@@ -214,17 +214,20 @@ async function mountGeneral(root, me) {
   const cfg = await api.get("/admin/settings");
   const days = h("input", { type: "number", min: "1", max: "366", value: String(cfg.retro_days), required: "required" });
   const contact = h("input", { type: "text", maxlength: "200", value: cfg.support_contact || "", placeholder: "ex.: suporte@empresa.com · ramal 2040" });
+  const quota = h("input", { type: "number", min: "0", max: "100000", value: String(cfg.photo_quota_mb), required: "required" });
   const err = h("p", { class: "error-text" });
   const form = h("form", {},
     field("Dias para trás", days),
     h("p", { class: "dialog-note", text: "Vale para criar ou concluir tarefas com data passada, pelo app, pela API e pela IA. As rotinas seguem com 7 dias." }),
     field("Contato de suporte (aparece em Ajuda)", contact),
+    field("Espaço de fotos por pessoa (MB)", quota),
+    h("p", { class: "dialog-note", text: "Fotos das tarefas e das rotinas, já reduzidas no aparelho (em geral 200 a 400 KB cada). 0 = ninguém envia fotos novas." }),
     err, h("button", { type: "submit", class: "btn btn-primary", text: "Salvar" }));
   form.addEventListener("submit", busy(async (ev) => {
     ev.preventDefault();
     err.textContent = "";
     try {
-      const res = await api.put("/admin/settings", { retro_days: Number(days.value), support_contact: contact.value.trim() || null });
+      const res = await api.put("/admin/settings", { retro_days: Number(days.value), support_contact: contact.value.trim() || null, photo_quota_mb: Number(quota.value) });
       me.retro_days = res.retro_days;
       me.support_contact = res.support_contact;
       toast("Configurações salvas.");

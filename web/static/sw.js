@@ -1,8 +1,28 @@
-// Service Worker: deixa o Nexus instalável e mostra as notificações do sistema
-// (app/push.py), mesmo com o app fechado. Sem handler de 'fetch': tudo vai pela
-// rede, sem risco de servir versão obsoleta (o cache continua no nginx).
+// Service Worker: deixa o Nexus instalável, mostra as notificações do sistema
+// (app/push.py), mesmo com o app fechado, e recebe o "compartilhar" de outros
+// apps. O 'fetch' só atende esse envio; o resto vai pela rede, sem risco de
+// servir versão obsoleta (o cache continua no nginx).
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
+
+// Compartilhar de outro app (share_target POST com fotos): guarda texto e fotos
+// no cache do aparelho e abre o app, que monta a nova tarefa (mesmo que precise
+// entrar antes). Até 10 fotos.
+const SHARE = 'nexus-compartilhado';
+self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+  if (event.request.method !== 'POST' || url.pathname !== '/compartilhar') return;
+  event.respondWith((async () => {
+    const form = await event.request.formData();
+    const cache = await caches.open(SHARE);
+    for (const k of await cache.keys()) await cache.delete(k);
+    const fotos = form.getAll('fotos').filter((f) => f && f.size && /^image\//.test(f.type)).slice(0, 10);
+    await cache.put('/compartilhado/dados', new Response(JSON.stringify({
+      title: form.get('title') || '', text: form.get('text') || '', url: form.get('url') || '', fotos: fotos.length })));
+    for (const [i, f] of fotos.entries()) await cache.put(`/compartilhado/foto-${i}`, new Response(f, { headers: { 'Content-Type': f.type } }));
+    return Response.redirect('/?compartilhado=1', 303);
+  })());
+});
 
 // O conteúdo chega criptografado e o navegador entrega já aberto: {title, body,
 // url, tag, kind, actions?, id?, day?, require_interaction?}.

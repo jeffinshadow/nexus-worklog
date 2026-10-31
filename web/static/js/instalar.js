@@ -117,26 +117,50 @@ export function appBadge(kind, n) {
 // login perde a busca do endereço: guarda na aba e retoma depois de entrar.
 export function stashShare() {
   const q = new URLSearchParams(location.search);
+  if (q.get("compartilhado")) { history.replaceState(null, "", "/" + location.hash); return; } // já no cache (sw.js)
   const data = { title: q.get("title") || "", text: q.get("text") || "", url: q.get("url") || "" };
   if (!data.title && !data.text && !data.url) return;
   try { sessionStorage.setItem(SHARE_KEY, JSON.stringify(data)); } catch { /* sem armazenamento */ }
   history.replaceState(null, "", "/" + location.hash);
 }
 
+// O que o sw.js guardou (texto e fotos); consome e apaga.
+async function fromCache() {
+  if (!("caches" in window)) return null;
+  try {
+    const cache = await caches.open("nexus-compartilhado");
+    const res = await cache.match("/compartilhado/dados");
+    if (!res) return null;
+    const data = await res.json();
+    const files = [];
+    for (let i = 0; i < data.fotos; i++) {
+      const r = await cache.match(`/compartilhado/foto-${i}`);
+      if (r) { const b = await r.blob(); files.push(new File([b], `compartilhada-${i + 1}`, { type: b.type })); }
+    }
+    await caches.delete("nexus-compartilhado");
+    return { ...data, files };
+  } catch { return null; }
+}
+
 // Título: o assunto (ou a 1ª linha). Descrição: o resto, se couber nos 300
 // caracteres do campo; se não couber, o texto inteiro vai como anotação.
-export function sharedTask() {
-  let data;
-  try { data = JSON.parse(sessionStorage.getItem(SHARE_KEY) || "null"); sessionStorage.removeItem(SHARE_KEY); } catch { data = null; }
+export async function sharedTask() {
+  let data = await fromCache();
+  if (!data) {
+    try { data = JSON.parse(sessionStorage.getItem(SHARE_KEY) || "null"); sessionStorage.removeItem(SHARE_KEY); } catch { data = null; }
+  }
   if (!data) return null;
+  const files = data.files || [];
+  if (!data.title.trim() && !data.text.trim() && !data.url.trim() && files.length)
+    data.title = files.length > 1 ? `${files.length} fotos compartilhadas` : "Foto compartilhada";
   const text = data.text.trim(), url = data.url.trim();
   const lines = text.split(/\r?\n/);
   const title = (data.title.trim() || lines[0] || url || "Compartilhado").slice(0, 200);
   const rest = (data.title.trim() ? text : lines.slice(1).join("\n")).trim();
   const extra = [rest, url && !text.includes(url) ? url : ""].filter(Boolean).join("\n");
   return extra.length <= 300
-    ? { title, description: extra.replace(/\s*\n\s*/g, " · ") }
-    : { title, description: url && !text.includes(url) ? url.slice(0, 300) : "", note: extra.slice(0, 2000) };
+    ? { title, description: extra.replace(/\s*\n\s*/g, " · "), files }
+    : { title, description: url && !text.includes(url) ? url.slice(0, 300) : "", note: extra.slice(0, 2000), files };
 }
 
 // Atalho do ícone: #/hoje?acao=nova|rapido. Tira o parâmetro do endereço e devolve a ação.

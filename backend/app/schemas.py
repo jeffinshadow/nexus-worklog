@@ -21,6 +21,7 @@ class RolesIn(BaseModel):
 class AppSettingsIn(BaseModel):
     retro_days: int = Field(ge=1, le=366)  # tarefas: criar/concluir até N dias atrás
     support_contact: Optional[str] = Field(default=None, max_length=200)  # "Ajuda": a quem recorrer
+    photo_quota_mb: Optional[int] = Field(default=None, ge=0, le=100000)  # fotos por pessoa (MB); ausente = mantém
 
 
 class DeleteUserIn(BaseModel):

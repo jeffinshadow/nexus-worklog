@@ -121,7 +121,7 @@ export async function mount(root, opts = {}) {
       const b = h("button", { type: "button", class: "export-item", onClick: async () => {
         b.disabled = true;
         try { await api.download(typeof path === "function" ? path() : path); } catch (e) { errorToast(e, "Falha ao exportar."); } finally { b.disabled = false; }
-      } }, h("span", { class: "export-ico" }, icon(label.includes("JSON") ? "folder" : "list")),
+      } }, h("span", { class: "export-ico" }, icon(label.includes("JSON") ? "folder" : label.includes("ZIP") ? "image" : "list")),
         h("span", { class: "export-text" }, h("span", { class: "export-title", text: label }), h("span", { class: "export-help", text: help })),
         icon("download"));
       return b;
@@ -135,7 +135,8 @@ export async function mount(root, opts = {}) {
         "Plantão do período (CSV)", "os apontamentos das tarefas marcadas como plantão, de todos os projetos, com as horas e o total — pra fechar sobreaviso ou banco de horas (usa o período escolhido acima)"),
       dl(() => "/export/rotinas.csv?" + new URLSearchParams(Object.entries({ start: startInput.value, end: endInput.value }).filter(([, v]) => v)),
         "Rotinas e evidências (CSV)", "trilha de auditoria: cada rotina em cada dia, se foi feita e o que foi conferido (usa o período escolhido acima)"),
-      dl("/export/tudo.json", "Tudo (JSON)", "tarefas com anotações, checklist, tempo e como foram resolvidas; rotinas com dias feitos e evidências; vencimentos; projetos")));
+      dl("/export/tudo.json", "Tudo (JSON)", "tarefas com anotações, checklist, tempo e como foram resolvidas; rotinas com dias feitos e evidências; vencimentos; projetos"),
+      dl("/export/fotos.zip", "Fotos (ZIP)", "todas as fotos das tarefas e das evidências das rotinas, numa pasta por tarefa e por rotina")));
   }
 
   async function run() {

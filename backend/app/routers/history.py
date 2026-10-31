@@ -11,6 +11,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from .. import audit, db
+from . import photos
 from ..labels import dur
 from ..services import RETRO_DAYS, app_today, board_day_range, set_extra_projects
 from .worklog import check_day_total
@@ -25,10 +26,13 @@ UNDOABLE = {
     "time.create", "time.delete", "project.create", "project.update", "project.delete",
     "renewal.create", "renewal.update", "renewal.renew", "renewal.delete",
     "objective.create", "objective.update", "objective.delete", "objective.order",
+    "photo.create", "photo.delete",
 }
 
 ACTION_LABELS = {
     "worklog.create": "criou a tarefa",
+    "photo.create": "adicionou uma foto",
+    "photo.delete": "excluiu uma foto",
     "worklog.update": "editou a tarefa",
     "worklog.finish": "concluiu a tarefa",
     "worklog.delete": "excluiu a tarefa",
@@ -333,8 +337,9 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
         if db.query_one(
             """SELECT 1 FROM task_notes WHERE task_id = %(t)s UNION ALL
                SELECT 1 FROM task_checklist WHERE task_id = %(t)s UNION ALL
-               SELECT 1 FROM time_entries WHERE task_id = %(t)s LIMIT 1""", {"t": eid}):
-            raise HTTPException(status_code=409, detail="a tarefa já tem anotações, checklist ou tempo; para tirá-la, exclua pela tela")
+               SELECT 1 FROM time_entries WHERE task_id = %(t)s UNION ALL
+               SELECT 1 FROM photos WHERE task_id = %(t)s AND deleted_at IS NULL LIMIT 1""", {"t": eid}):
+            raise HTTPException(status_code=409, detail="a tarefa já tem anotações, checklist, tempo ou fotos; para tirá-la, exclua pela tela")
         db.execute("DELETE FROM worklog_tasks WHERE id = %s AND user_id = %s", (eid, uid))
     elif a in ("worklog.update", "worklog.finish"):
         _need_task(uid, eid)
@@ -412,6 +417,14 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
             db.execute(
                 "DELETE FROM recurring_completions WHERE task_id = %s AND user_id = %s AND completed_date = %s",
                 (eid, uid, day))
+    elif a == "photo.create":
+        if not photos.soft_delete(uid, eid):
+            raise _gone()
+    elif a == "photo.delete":
+        if before.get("task_id"):
+            _need_task(uid, before["task_id"])
+        if not photos.restore(uid, eid):
+            raise _gone()
     elif a == "note.create":
         if not db.execute("DELETE FROM task_notes WHERE id = %s AND user_id = %s", (eid, uid)):
             raise _gone()

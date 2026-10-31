@@ -98,6 +98,7 @@ TASK_COUNTS = """
     (SELECT count(*) FROM task_checklist c WHERE c.task_id = w.id)::int AS check_total,
     (SELECT count(*) FROM task_checklist c WHERE c.task_id = w.id AND c.done)::int AS check_done,
     (SELECT count(*) FROM task_notes n WHERE n.task_id = w.id)::int AS notes_count,
+    (SELECT count(*) FROM photos f WHERE f.task_id = w.id AND f.user_id = w.user_id AND f.deleted_at IS NULL)::int AS photos_count,
     (SELECT COALESCE(sum(t.minutes), 0) FROM time_entries t WHERE t.task_id = w.id)::int AS minutes,
     (SELECT o.title FROM project_objectives o WHERE o.id = w.objective_id) AS objective_title,
     """ + EXTRA_PROJECTS
@@ -202,9 +203,13 @@ def get_board(user_id: int, day: date | None = None, project: int | None = None)
     feitas = {r["task_id"]: r["note"] for r in db.query_all(
         "SELECT task_id, note FROM recurring_completions WHERE user_id = %s AND completed_date = %s", (user_id, day))}
     recurring = [r for r in rotinas(user_id) if r["start_d"] <= day <= r["end_d"]]
+    fotos = {r["recurring_id"]: r["n"] for r in db.query_all(
+        """SELECT recurring_id, count(*)::int AS n FROM photos WHERE user_id = %s AND day = %s
+             AND recurring_id IS NOT NULL AND deleted_at IS NULL GROUP BY recurring_id""", (user_id, day))}
     for r in recurring:
         r["done_today"] = r["id"] in feitas
         r["note"] = feitas.get(r["id"])  # evidência da marcação nesse dia
+        r["photos"] = fotos.get(r["id"], 0)  # fotos de evidência nesse dia
     filtro_proj, params = "", [user_id]
     if project is not None:
         filtro_proj = " AND w.project_id IS NULL" if project == 0 else " AND " + IN_PROJECT

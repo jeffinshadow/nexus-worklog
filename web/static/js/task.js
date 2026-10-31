@@ -10,6 +10,7 @@ import { finishTask, deleteTask, followUpDay, isOverdue, ticketUrl, taskChips } 
 import { extraProjectsField, fillObjectiveSelect, fillProjectSelect } from "./projects.js";
 import { session } from "./session.js";
 import { timerButton, timerState, startTimer, stopTimer } from "./timer.js";
+import { pastedImages, photosSection, upload } from "./fotos.js";
 
 export function duration(min) {
   if (!min) return "0 min";
@@ -53,6 +54,14 @@ export async function openTask(taskId, onChange) {
   const body = h("div", { class: "task-body" });
   const dlg = h("dialog", { class: "task-dialog" + (side ? " side" : ""), "aria-label": "Detalhe da tarefa" }, body);
   document.body.append(dlg);
+  // Print colado (Ctrl+V) com o detalhe aberto: vira foto da tarefa.
+  dlg.addEventListener("paste", async (ev) => {
+    const files = pastedImages(ev);
+    if (!files.length) return;
+    ev.preventDefault();
+    toast("Enviando o print…");
+    if (await upload(`/worklog/${taskId}/photos`, files)) { toast("Print adicionado às fotos."); touch(); }
+  });
   // Visão expandida (pedido dos clientes, para ler com folga): o painel vira
   // uma janela larga no meio da tela; Esc ou o mesmo botão voltam ao painel.
   let expanded = false;
@@ -153,7 +162,7 @@ export async function openTask(taskId, onChange) {
         icon(running ? "stop" : "play"), running ? "Parar cronômetro" : "Cronômetro"),
       h("button", { type: "button", class: "btn btn-primary", onClick: () => finishTask(t, after) }, icon("check"), "Concluir"));
 
-    body.append(...[appbar, head, mainActs, editing ? details(t, today) : null, checklist(t), timePanel(t, today), notesPanel(t)].filter(Boolean));
+    body.append(...[appbar, head, mainActs, editing ? details(t, today) : null, checklist(t), photosSection(t, touch), timePanel(t, today), notesPanel(t)].filter(Boolean));
     if (title) requestAnimationFrame(() => grow(title)); // a altura só existe com o campo na tela (e o painel aberto)
     // Redesenhou com o foco num campo (ex.: trocou o status): volta para ele.
     if (refocus) { const el = body.querySelector(`[aria-label="${refocus}"]`); if (el) el.focus(); refocus = null; }

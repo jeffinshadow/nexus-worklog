@@ -298,5 +298,11 @@ async def scheduler() -> None:
             await asyncio.to_thread(push.run_once, now)
         except Exception:  # noqa: BLE001
             log.exception("agendador de notificações falhou nesta passada")
+        if now.minute == 0:  # uma vez por hora: fotos excluídas há 7 dias e de tarefas que não voltam mais
+            try:
+                from .routers.photos import cleanup
+                await asyncio.to_thread(cleanup)
+            except Exception:  # noqa: BLE001
+                log.exception("faxina das fotos falhou")
         await asyncio.sleep(60 - datetime.now(tz).second)  # perto do início de cada minuto
 

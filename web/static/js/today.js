@@ -4,6 +4,7 @@ import { api } from "./api.js";
 import { h, icon, clear, longDate, localDay, addDays } from "./dom.js";
 import { errorToast, modal, toast, busy, sheet } from "./ui.js";
 import { reminderState, refreshReminders } from "./lembretes.js";
+import { photoGrid } from "./fotos.js";
 import { openRecurring, openWorklog, finishTask, taskChips, isOverdue, scheduleLabel, dayLabel, moreButton, desk, lateBadge, withMenu } from "./board.js";
 import { openTask } from "./task.js";
 import { fillProjectSelect } from "./projects.js";
@@ -97,7 +98,8 @@ export async function mount(root, ctx, opts = {}) {
         errorToast(e, "Erro ao salvar.");
       }
     });
-    const hint = [scheduleLabel(r), r.require_note && !r.done_today ? "exige evidência" : ""].filter(Boolean).join(" · ");
+    const hint = [scheduleLabel(r), r.require_note && !r.done_today ? "exige evidência" : "",
+      r.photos ? `${r.photos} foto${r.photos > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ");
     // Horário: perto dele (ou passado, sem marcar) a etiqueta acende, como o aviso.
     const at = r.remind_at ? r.remind_at.slice(0, 5) : null;
     const state = at && b.day === today && r.due !== false ? reminderState({ ...r, remind_at: at }) : null;
@@ -237,12 +239,21 @@ export async function mount(root, ctx, opts = {}) {
 
 // Evidência da rotina: uma linha curta do que foi conferido ("backup OK, 2,1 TB").
 function editEvidence(r, day, refresh) {
+  // Fotos da evidência (print, foto do painel): entram na hora, mesmo sem salvar o texto.
+  const photoBox = h("div", { class: "field" }, h("span", { class: "field-label", text: "Fotos (opcional)" }));
+  const loadPhotos = async () => {
+    let list = [];
+    try { list = await api.get(`/recurring/${r.id}/photos?day=${day}`); } catch { /* sem rede: só o botão */ }
+    photoBox.querySelector(".photo-grid")?.remove();
+    photoBox.append(photoGrid(list, { path: `/recurring/${r.id}/photos?day=${day}`, onChange: () => { loadPhotos(); refresh(); } }));
+  };
+  loadPhotos();
   const input = h("input", { type: "text", maxlength: "200", value: r.note || "", placeholder: "ex.: backup OK, 2,1 TB, 0 erros",
     required: r.require_note ? "required" : null });
   const err = h("p", { class: "error-text" });
   const form = h("form", {}, h("h2", { text: "Evidência" }),
     h("p", { class: "dialog-note", text: `${r.label}: o que foi conferido. Aparece no relatório em PDF e na exportação.${r.require_note ? " Esta rotina só é marcada com a evidência." : ""}` }),
-    h("label", { class: "field" }, "Evidência", input), err,
+    h("label", { class: "field" }, "Evidência", input), photoBox, err,
     h("div", { class: "dialog-actions" },
       h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
       h("button", { type: "submit", class: "btn btn-primary", text: "Salvar" })));
