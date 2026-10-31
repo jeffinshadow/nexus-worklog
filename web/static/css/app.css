@@ -796,8 +796,11 @@ dialog.sheet .menu-list > :last-child { border-bottom: 0; }
   .lockup--bar { --lock-fs: var(--bar-fs); flex: 1; min-width: 0; text-decoration: none; }
   .lockup--bar .lockup-mark { height: 1.55em; max-width: 2.7em; }
   .lockup--bar .lockup-type { flex-direction: row; align-items: baseline; gap: .28em; line-height: 1; white-space: nowrap; min-width: 0; overflow: hidden; }
-  .appbar-title { display: none; flex: 1; min-width: 0; font-size: var(--bar-fs); font-weight: 700; letter-spacing: -.02em; line-height: 1;
-    color: var(--on-surface); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Como a segunda linha da marca: mesma cor, minúsculas e o mesmo vão até o dragão
+     (.55em do .lockup, descontado o gap de 6px da barra). */
+  .appbar-title { display: none; flex: 1; min-width: 0; margin-left: calc(.55em - 6px); font-size: var(--bar-fs); font-weight: 700;
+    letter-spacing: -.02em; line-height: 1; text-transform: lowercase; color: var(--on-surface-variant);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .appbar.show .lockup--bar { flex: none; }
   .appbar.show .lockup--bar .lockup-type { display: none; }
   .appbar.show .appbar-title { display: block; animation: fade-in .15s var(--ease); }
