@@ -77,6 +77,11 @@ try:
             cmd("Page.navigate", url=B + "/#/" + tela); time.sleep(.3); cmd("Page.reload"); pronto(ev)
             coleta(tela)
         if papel == "user":
+            # projeto aberto: o cabeçalho com Tarefa, Editar e o ⋮ "Mais ações do projeto"
+            cmd("Page.navigate", url=B + "/#/projetos"); time.sleep(.3); cmd("Page.reload"); pronto(ev)
+            ev("document.querySelector('a.proj-card')?.click()"); time.sleep(.5); pronto(ev); coleta("projeto aberto")
+            ev("document.querySelector('#page-actions .proj-more')?.click()"); time.sleep(.8); coleta("menu ⋮ do projeto")
+            ev("document.querySelectorAll('dialog[open]').forEach(d=>d.close())")
             cmd("Page.navigate", url=B + "/#/tarefas"); time.sleep(.3); cmd("Page.reload"); pronto(ev)
             ev("document.querySelector('.card-open')?.click()"); time.sleep(1.5); coleta("detalhe da tarefa")
             ev("document.querySelector('.task-dialog .edit-toggle')?.click()"); time.sleep(1); coleta("detalhe em edição")

@@ -154,18 +154,26 @@ async function mountProject(root, ctx, pid) {
   titulo.replaceChildren(projTile(p, "proj-tile-lg"), h("span", { text: p.name }));
   ctx.setEyebrow(p.archived ? "projeto arquivado" : "projeto");
   document.title = `${p.name} · Nexus Worklog`;
-  ctx.setActions(
-    h("button", { type: "button", class: "btn btn-ghost", onClick: () => openWorklog(refresh, { project_id: pid }) }, icon("add"), "Tarefa"),
-    h("button", { type: "button", class: "btn btn-primary", "data-fab": "", onClick: () => editObjective(pid, null, refresh) }, icon("add"), "Objetivo"));
-
-  clear(root);
-  const projMenu = h("button", { type: "button", class: "icon", title: "Ações do projeto", "aria-label": "Ações do projeto" }, icon("more-v"));
+  // As ações do projeto ficam no cabeçalho, junto do título (celular e
+  // computador): "Editar" com rótulo e, logo ao lado, o ⋮ com o resto
+  // (arquivar/reativar, excluir). Depois de salvar, a tela redesenha e o foco
+  // volta ao botão de onde saiu.
+  const back = (sel) => () => refresh().then(() => document.querySelector(`#page-actions ${sel}`)?.focus());
+  const projEdit = h("button", { type: "button", class: "btn btn-tonal proj-edit", "aria-label": "Editar projeto",
+    onClick: async () => { if (await projectDialog(p)) back(".proj-edit")(); } }, icon("edit"), "Editar");
+  const projMenu = h("button", { type: "button", class: "icon proj-more", title: "Mais ações do projeto", "aria-label": "Mais ações do projeto",
+    "aria-haspopup": "menu" }, icon("more-v"));
   projMenu.addEventListener("click", () => actionsMenu(projMenu, p.name, [
-    ["Editar projeto", "edit", async () => { if (await projectDialog(p)) refresh(); }],
-    p.archived ? ["Reativar", "folder", () => saveProject(p, { archived: false }, "Projeto reativado.", refresh)]
-      : ["Arquivar…", "folder", () => archiveProject(p, o.totals.total - o.totals.done, refresh)],
+    p.archived ? ["Reativar", "folder", () => saveProject(p, { archived: false }, "Projeto reativado.", back(".proj-more"))]
+      : ["Arquivar…", "folder", () => archiveProject(p, o.totals.total - o.totals.done, back(".proj-more"))],
     ["Excluir projeto", "trash", () => deleteProject(p)],
   ]));
+  ctx.setActions(
+    h("button", { type: "button", class: "btn btn-ghost", onClick: () => openWorklog(refresh, { project_id: pid }) }, icon("add"), "Tarefa"),
+    h("button", { type: "button", class: "btn btn-primary", "data-fab": "", onClick: () => editObjective(pid, null, refresh) }, icon("add"), "Objetivo"),
+    projEdit, projMenu);
+
+  clear(root);
   const upcoming = o.upcoming.length ? h("div", { class: "proj-upcoming" },
     h("h3", { text: "Próximos prazos" }),
     h("ul", {}, ...o.upcoming.map((x) => {
@@ -177,8 +185,7 @@ async function mountProject(root, ctx, pid) {
           text: late ? "atrasado · " + shortDate(x.due_date) : x.due_date === today ? "hoje" : shortDate(x.due_date) }));
     }))) : null;
   root.append(h("div", { class: "proj-head" },
-    h("div", { class: "proj-bar" }, h("a", { class: "btn btn-text btn-sm proj-back", href: "#/projetos" }, icon("left"), "Todos os projetos"),
-      projMenu),
+    h("div", { class: "proj-bar" }, h("a", { class: "btn btn-text btn-sm proj-back", href: "#/projetos" }, icon("left"), "Todos os projetos")),
     p.description ? h("p", { class: "proj-desc", text: p.description }) : null,
     h("div", { class: "proj-summary" }, numeros(p, "proj-nums proj-nums-lg"),
       h("p", { class: "proj-last", text: "última atividade " + quando(p.last_activity, today) })),

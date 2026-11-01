@@ -66,6 +66,7 @@ button:disabled { opacity: .38; cursor: not-allowed; }  /* desabilitado: uma opa
 .btn-ghost { background: transparent; color: var(--on-surface); border-color: var(--line-2); }  /* contornado (outlined) */
 .btn-text { background: transparent; color: var(--on-surface-variant); padding: 0 12px; }
 .btn-text:hover:not(:disabled) { color: var(--on-surface); }
+.btn-tonal { background: var(--secondary-container); color: var(--on-secondary-container); }  /* tonal (Material 3): ação de destaque médio */
 .btn-danger { background: var(--error-container); color: var(--on-error-container); }  /* tonal de erro: substitui o primário nas confirmações */
 .btn-sm { height: 32px; padding: 0 12px; font-size: var(--type-body-s); }
 .full { width: 100%; }
@@ -1403,8 +1404,11 @@ dialog.proj-dialog { max-width: 480px; width: min(480px, calc(100vw / var(--ui-z
 .obj-block.unassigned { border-style: dashed; }
 .chip.objective { display: inline-flex; align-items: center; gap: 4px; }
 .chip.objective .ico { width: 16px; height: 16px; }
-/* Projeto aberto: o título da página é o nome; aqui só a volta, a cor e o ⋮ */
+/* Projeto aberto: o título da página é o nome; aqui só a volta (as ações ficam no cabeçalho) */
 .proj-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+/* Ações do projeto no cabeçalho: "Editar" (tonal) e o ⋮ logo ao lado, na altura dos botões. */
+.page-actions .proj-more { width: 40px; height: 40px; }
+@media (max-width: 860px) { .page-actions .proj-more { width: 44px; height: 44px; } }
 .proj-bar .proj-back { margin: 0 0 0 -8px; }
 .proj-bar .proj-color { margin-left: auto; display: inline-flex; }
 .dialog-note.intro { margin: -8px 0 16px; }
