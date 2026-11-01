@@ -35,12 +35,13 @@ def _ensure_user(user_id: int) -> dict:
 
 @router.get("/users")
 def list_users(viewer=Depends(require_viewer)):
+    # Só quem já entrou e segue com acesso (convite pendente ou conta bloqueada
+    # não têm o que mostrar), em ordem de nome, como aparecem no seletor.
     rows = db.query_all(
         """SELECT u.id, u.email FROM users u
-            WHERE u.viewers_allowed
-              AND EXISTS (SELECT 1 FROM user_roles r WHERE r.user_id = u.id AND r.role = 'user')
-            ORDER BY lower(u.email)""")
-    return [{**r, **people.profile(r["id"])} for r in rows]
+            WHERE u.viewers_allowed AND NOT u.invite_pending AND u.blocked_at IS NULL
+              AND EXISTS (SELECT 1 FROM user_roles r WHERE r.user_id = u.id AND r.role = 'user')""")
+    return sorted(({**r, **people.profile(r["id"])} for r in rows), key=lambda x: (x["name"].lower(), x["email"]))
 
 
 @router.get("/users/{user_id}/board")

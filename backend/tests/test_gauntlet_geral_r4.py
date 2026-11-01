@@ -77,3 +77,17 @@ def test_desfazer_pausa_antiga_nao_vira_falta_no_passado(usuario):
     p = db.query_one("SELECT start_d, end_d FROM recurring_pauses WHERE recurring_id = %s", (rid,))
     assert p["start_d"] == hoje - timedelta(days=5) and p["end_d"] == hoje - timedelta(days=1)
     assert _linha_rotina(usuario, rid)["paused_until"] is None  # de hoje em diante volta a valer
+
+
+def test_equipe_lista_so_quem_entrou_e_tem_acesso_em_ordem_de_nome(admin, novo_usuario):
+    ze, ana, bloq = novo_usuario("ze@example.com"), novo_usuario("ana@example.com"), novo_usuario("bloq@example.com")
+    for u, nome in ((ze, "Zé Campos"), (ana, "Ana Lima"), (bloq, "Bia Bloqueada")):
+        assert u.put("/me/viewers", {"accept": True}).status_code == 200
+        db.execute("UPDATE users SET display_name = %s WHERE id = %s", (nome, uid_de(u)))
+    assert admin.post(f"/admin/users/{uid_de(bloq)}/block").status_code == 200
+    assert admin.post("/admin/users", {"email": "convite@example.com"}).status_code == 201
+    db.execute("UPDATE users SET viewers_allowed = true, invite_pending = true WHERE email = 'convite@example.com'")
+    lista = admin.get("/viewer/users").json()
+    emails, nomes = [u["email"] for u in lista], [u["name"] for u in lista]
+    assert "bloq@example.com" not in emails and "convite@example.com" not in emails
+    assert nomes.index("Ana Lima") < nomes.index("Zé Campos")
