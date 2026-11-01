@@ -1233,8 +1233,9 @@ dialog.help-dialog > .dialog-actions { position: sticky; bottom: -24px; margin: 
   label.weekday-option { min-height: 44px; }
   .lockup--bar { min-height: 44px; }
   .chip-x, a.chip.ticket, .link-btn { position: relative; }
+  .timer-chip .timer-task { align-self: stretch; min-height: 44px; }  /* o nome da tarefa no cronômetro: a altura toda da barra */
   .chip-x::after { content: ""; position: absolute; inset: -13px; }
   a.chip.ticket::after { content: ""; position: absolute; inset: -11px -4px; }
-  .link-btn::after { content: ""; position: absolute; inset: -14px -6px; }
-  .card-open { padding-block: 11px; margin-block: -11px; }
+  .link-btn::after { content: ""; position: absolute; inset: -15px -6px; }
+  .card-open { padding-block: 12px; margin-block: -12px; }
 }
