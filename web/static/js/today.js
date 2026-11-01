@@ -17,6 +17,7 @@ import { packButton } from "./pacotes.js";
 
 const LAST_PROJECT = "nexus.quick.project";
 const OPEN_FILTER = "nexus.today.filter";
+const OPEN_MAX = 10; // em aberto no Hoje; o resto, em Tarefas
 // Filtro das abertas: todas, as que vencem até hoje (atrasadas inclusas) ou só as de prioridade alta.
 const FILTERS = [
   ["all", "Todas", () => true, "Nada em aberto."],
@@ -219,7 +220,13 @@ export async function mount(root, ctx, opts = {}) {
     clear(list);
     const shown = open.filter((t) => test(t, today));
     if (!shown.length) list.append(h("p", { class: "empty", text: open.length ? empty : "Nada em aberto." }));
-    for (const t of shown) openRow(t);
+    // O Hoje é um resumo: as 10 primeiras (a ordem já põe atrasadas e as de hoje
+    // na frente); a lista inteira, com páginas, mora em Tarefas.
+    for (const t of shown.slice(0, OPEN_MAX)) openRow(t);
+    if (shown.length > OPEN_MAX)
+      list.append(h("a", { class: "see-all", href: "#/tarefas",
+        onClick: () => sessionStorage.setItem("nexus.board.project", "") },
+      filter === "all" ? `Ver as ${shown.length} em Tarefas` : `Mais ${shown.length - OPEN_MAX}: ver todas em Tarefas`, icon("right")));
   }
   // Feita sem sinal: ainda não tem id no servidor; aparece marcada, sem ações.
   const pendingRow = (t) => h("div", { class: "list-row" }, h("div", { class: "t" }, h("span", { text: t.title }),

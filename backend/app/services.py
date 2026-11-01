@@ -316,17 +316,20 @@ def recurring_vigente(task_id: int, user_id: int, day: date) -> bool:
     return any(r["start_d"] <= day <= r["end_d"] for r in rotinas(user_id, task_id))
 
 
-# Concluídas no quadro: as mais recentes (o resto fica no relatório/exportação).
+# Concluídas no quadro: as mais recentes; done_offset/done_limit pedem outras
+# páginas e done_total diz quantas há.
 BOARD_DONE_LIMIT = 200
 
 
-def get_board(user_id: int, day: date | None = None, project: int | None = None) -> dict:
+def get_board(user_id: int, day: date | None = None, project: int | None = None,
+              done_offset: int = 0, done_limit: int = BOARD_DONE_LIMIT) -> dict:
     """Quadro do usuário. `day` escolhe o dia das rotinas (padrão: hoje; a rota
     garante a janela de RETRO_DAYS): as vigentes naquele dia, com `due` (agenda)
     e `done_today` (feita no dia escolhido; nome mantido por compatibilidade).
     `in_progress` = tarefas abertas (a fazer, em andamento, aguardando), na
     ordem: atrasadas, vencem hoje, prioridade, prazo. `project` filtra as
-    tarefas (0 = sem projeto)."""
+    tarefas (0 = sem projeto). `done`: as concluídas mais recentes, da
+    posição done_offset, até done_limit; done_total = todas."""
     today = app_today()
     day = day or today
     mask = work_mask(user_id)
@@ -360,9 +363,13 @@ def get_board(user_id: int, day: date | None = None, project: int | None = None)
         tuple(params) + (today, today),
     )
     done = db.query_all(
-        cols() + " AND w.status = 'done'" + filtro_proj + f" ORDER BY w.completed_at DESC NULLS LAST LIMIT {BOARD_DONE_LIMIT}",
-        tuple(params),
+        cols() + " AND w.status = 'done'" + filtro_proj
+        + " ORDER BY w.completed_at DESC NULLS LAST, w.id DESC LIMIT %s OFFSET %s",
+        tuple(params) + (max(1, min(int(done_limit), BOARD_DONE_LIMIT)), max(0, int(done_offset))),
     )
+    done_total = db.query_one(
+        "SELECT count(*)::int AS n FROM worklog_tasks w WHERE w.user_id = %s AND w.status = 'done'" + filtro_proj,
+        tuple(params))["n"]
     for r in recurring:
         r["due"] = is_pending(r, day, mask)
         r["paused_until"] = pause_end(r, day)  # pausada nesse dia: até quando
@@ -375,6 +382,7 @@ def get_board(user_id: int, day: date | None = None, project: int | None = None)
         "recurring": recurring,
         "in_progress": in_progress,
         "done": done,
+        "done_total": done_total,
         "day": day,
         "today": today,
         "min_day": min_day,

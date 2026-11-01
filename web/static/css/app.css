@@ -187,6 +187,7 @@ button.column-toggle { display: none; }
   .column { display: flex; flex-direction: column; max-height: calc(100vh / var(--ui-zoom) - 150px); }
   .column-head { flex: none; }
   .column-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin-right: -6px; padding-right: 6px; }
+  .column-foot { flex: none; }
 }
 .column-body { scrollbar-width: thin; scrollbar-color: var(--surface-container-highest) transparent; }
 @media (max-width: 860px) {
@@ -194,6 +195,8 @@ button.column-toggle { display: none; }
   .column-toggle .ico { transition: transform .2s; }
   .column-done .column-body { display: none; }
   .column-done.expanded .column-body { display: block; }
+  .column-done .column-foot { display: none; }
+  .column-done.expanded .column-foot { display: block; }
   .column-done.expanded .column-toggle .ico { transform: rotate(180deg); }
 }
 
@@ -235,7 +238,31 @@ button.column-toggle { display: none; }
 /* Concluídas mais discretas pelo título (não por transparência: as etiquetas pequenas seguem legíveis). */
 .column-done .card h3, .column-done .card .card-open { color: var(--on-surface-variant); }
 .column-done .card h3 { padding-right: 40px; }
-.show-more { width: 100%; margin-top: 4px; }
+/* Páginas (ui.js pager): "Anterior · Página N de M · Próxima" embaixo da lista,
+   sem flutuar. Botões de 44 px; nos extremos, esmaecidos com aria-disabled (o foco
+   continua neles). Compacto (dentro de cartões e blocos): 36 px de desenho e 44 de alvo. */
+.pager { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--outline-variant); }
+.pager-btn { min-height: 44px; min-width: 44px; padding: 0 16px; flex: none; }
+.pager-btn .ico { width: 18px; height: 18px; }
+.pager-prev { padding-left: 10px; }
+.pager-next { padding-right: 10px; }
+.pager-btn[aria-disabled="true"] { opacity: .38; cursor: default; }
+.pager-btn[aria-disabled="true"]:hover { background-image: none; }
+.pager-info { margin: 0; flex: 1; min-width: 0; text-align: center; font-size: var(--type-body-s); color: var(--on-surface); line-height: var(--lh-label); }
+.pager-range { color: var(--on-surface-variant); }
+.pager-compact { margin-top: 8px; padding-top: 8px; }
+.pager-compact .pager-btn { height: 36px; min-height: 36px; padding: 0 12px; font-size: var(--type-body-s); position: relative; }
+.pager-compact .pager-btn::after { content: ""; position: absolute; inset: -4px 0; }
+.pager-compact .pager-prev { padding-left: 8px; }
+.pager-compact .pager-next { padding-right: 8px; }
+.pager-compact .pager-info { font-size: var(--type-caption); }
+/* Celular estreito: o intervalo desce para baixo do "Página N de M"; abaixo de 360 px, só os ícones. */
+.pager-range::before { content: " · "; }
+@media (max-width: 520px) { .pager-range { display: block; } .pager-range::before { content: none; } }
+@media (max-width: 359px) { .pager-word { display: none; } .pager-btn { padding: 0; width: 44px; } }
+/* Link para a lista inteira em outra tela (Hoje → Tarefas, revisão → Tarefas). */
+.see-all { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin-top: 4px; color: var(--primary-hi); font-weight: var(--weight-label); font-size: var(--type-body-s); text-decoration: none; }
+.see-all:hover { text-decoration: underline; }
 
 /* Chips: no mínimo 12 px reais, também no computador (onde a interface sai em 90%).
    Neutro = contêiner alto; status = contêiner sólido da cor + o texto "on" dela. */
@@ -554,6 +581,7 @@ mark { background: var(--primary-container); color: var(--on-primary-container);
 #view-busca { display: grid; gap: var(--gap); grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr); }
 #view-busca.hidden { display: none; }
 #view-busca > .search-big, #view-busca > .empty { grid-column: 1 / -1; }
+#view-busca > .search-box { display: contents; }  /* cada seção pagina e redesenha sozinha */
 @media (max-width: 900px) { #view-busca { grid-template-columns: 1fr; } }
 
 .today-grid > .t-sum { grid-column: 1 / -1; }

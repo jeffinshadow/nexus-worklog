@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from psycopg.errors import UniqueViolation
 
 from .. import audit, db
+from ..paging import clamp, put_total
 from ..deps import active_user, active_user_csrf
 from ..schemas import ChecklistIn, ChecklistUpdate, FinishIn, NoteIn, TimeIn, WorklogIn, WorklogUpdate
 from .assign import notify_assigner
@@ -209,13 +210,16 @@ def list_tasks(
     status: Literal["open", "done", "all"] = "all",
     limit: int = Query(default=200, ge=1, le=500),
     external_ref: Annotated[Optional[str], Query(min_length=1, max_length=120)] = None,  # Annotated: idem (MCP)
+    offset: Annotated[int, Query(ge=0, le=1000000, description="Pula as N primeiras (páginas); o total vem em X-Total-Count")] = 0,
+    response: Response = None,
     user=Depends(active_user),
 ):
     """Tarefas por período (dias inclusivos, fuso da app), pela criação ou
     pela conclusão: para conferir o que já foi lançado sem baixar tudo.
     Com external_ref: só a tarefa com essa chave (lista vazia se não houver)."""
     col = "w.completed_at" if by == "completed" else "w.created_at"
-    cond, params = ["w.user_id = %(uid)s"], {"uid": user["user_id"], "tz": app_tz().key, "lim": limit}
+    limit, offset = clamp(limit, 1, 500, 200), clamp(offset, 0, 1000000, 0)
+    cond, params = ["w.user_id = %(uid)s"], {"uid": user["user_id"], "tz": app_tz().key, "lim": limit, "off": offset}
     if external_ref is not None:
         found = _by_ref(user["user_id"], external_ref.strip())
         cond.append("w.id = %(ref_id)s")
@@ -232,14 +236,16 @@ def list_tasks(
         cond.append("w.status <> 'done'")
     elif status == "done":
         cond.append("w.status = 'done'")
+    where = " AND ".join(cond)
+    put_total(response, db.query_one(f"SELECT count(*)::int AS n FROM worklog_tasks w WHERE {where}", params)["n"])
     return db.query_all(
         f"""SELECT w.id, w.title, w.description, w.status, w.due_date, w.created_at, w.completed_at,
                    w.priority, w.project_id, w.ticket, w.after_hours, w.external_ref, w.assigned_by,
                    p.name AS project_name, {ASSIGNER_NAME}
               FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
-             WHERE {' AND '.join(cond)}
+             WHERE {where}
              ORDER BY {col} DESC NULLS LAST, w.id DESC
-             LIMIT %(lim)s""",
+             LIMIT %(lim)s OFFSET %(off)s""",
         params,
     )
 

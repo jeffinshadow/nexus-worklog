@@ -2,7 +2,9 @@
 // com "desfazer" na ação mais recente de cada item.
 import { api } from "./api.js";
 import { h, icon, clear, dateTime } from "./dom.js";
-import { confirmDialog, errorToast, toast } from "./ui.js";
+import { confirmDialog, errorToast, hashPage, pager, setHashPage, toast } from "./ui.js";
+
+const SIZE = 30; // linhas de uma linha (hora + frase): cabem em ~2 telas no computador
 
 const WHO = {
   web: (r) => ["web", null, "app"],
@@ -12,13 +14,19 @@ const WHO = {
 };
 
 export async function mount(root) {
-  let limit = 50;
+  let page = hashPage();
 
   async function render() {
-    const rows = await api.get(`/history?limit=${limit}`);
+    let { rows, total } = await api.page(`/history?limit=${SIZE}&offset=${(page - 1) * SIZE}`);
+    const last = Math.max(1, Math.ceil(total / SIZE));
+    if (page > last) { // a página guardada sumiu (o histórico encolheu): a última
+      page = last;
+      ({ rows, total } = await api.page(`/history?limit=${SIZE}&offset=${(page - 1) * SIZE}`));
+    }
+    setHashPage("p", page, "historico");
     clear(root);
     const panel = h("section", { class: "panel" },
-      h("p", { class: "help muted", text: "Toda alteração fica registrada. A origem aparece quando não foi pelo app (chave de API, IA, admin). Dá para desfazer a mais recente de cada tarefa, rotina ou configuração." }));
+      h("p", { class: "help muted", text: "Toda alteração fica registrada por 180 dias. A origem aparece quando não foi pelo app (chave de API, IA, admin). Dá para desfazer a mais recente de cada tarefa, rotina ou configuração." }));
     if (!rows.length) panel.append(h("p", { class: "empty", text: "Nada registrado ainda." }));
     const list = h("div", { class: "hist" });
     for (const r of rows) {
@@ -47,10 +55,8 @@ export async function mount(root) {
         h("div", { class: "hist-what" }, badge, r.summary),
         actions));
     }
-    panel.append(list);
-    if (rows.length === limit && limit < 200) {
-      panel.append(h("button", { type: "button", class: "btn btn-text show-more", text: "carregar mais", onClick: () => { limit = Math.min(200, limit + 50); render(); } }));
-    }
+    panel.append(list, pager({ page, total, size: SIZE, label: "Histórico",
+      onPage: async (n) => { page = n; await render(); }, focus: () => document.getElementById("page-title") }));
     root.append(panel);
   }
 

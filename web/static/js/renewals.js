@@ -2,8 +2,10 @@
 // tela própria (menu lateral); no Hoje aparecem só os que estão no aviso.
 import { api } from "./api.js";
 import { h, icon, clear, field, shortDate, addDays } from "./dom.js";
-import { busy, confirmDialog, errorToast, modal, toast, undoLatest } from "./ui.js";
+import { busy, confirmDialog, errorToast, hashPage, modal, pager, pageSlice, setHashPage, toast, undoLatest } from "./ui.js";
 import { fillProjectSelect } from "./projects.js";
+
+const PAGE = 20; // linha média, com 3 ou 4 botões
 
 // Mesma data N meses depois (31/01 + 1 mês = 28/02 ou 29/02).
 function addMonths(iso, n) {
@@ -104,7 +106,21 @@ export async function renewalsPanel(rerender) {
   const sec = h("section", { class: "panel" },
     h("p", { class: "help", text: "Certificados, licenças, domínios, garantias e contratos. Avisam no Hoje, no e-mail da manhã e no calendário a partir dos dias de antecedência de cada um. O Nexus não consulta nada de fora: vale a data informada aqui." }));
   if (!list.length) sec.append(h("p", { class: "empty", text: "Nenhum vencimento ainda. Cadastre certificados, licenças, contratos ou garantias e o Nexus avisa antes de vencer." }));
-  for (const r of list) sec.append(row(r, rerender));
+  // Em ordem de data: os vencidos e os já no aviso ficam na frente (página 1).
+  const box = h("div");
+  sec.append(box);
+  let page = hashPage("p");
+  const paint = () => {
+    clear(box);
+    const slice = pageSlice(list, page, PAGE);
+    page = slice.page;
+    setHashPage("p", page, "vencimentos");
+    for (const r of slice.rows) box.append(row(r, rerender));
+    const nav = pager({ page, total: list.length, size: PAGE, label: "vencimentos",
+      onPage: (n) => { page = n; paint(); }, focus: () => document.getElementById("page-title") });
+    if (nav) box.append(nav);
+  };
+  paint();
   return sec;
 }
 

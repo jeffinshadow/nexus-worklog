@@ -456,3 +456,71 @@ export function codeBox(text) {
 export function warnBox(text) {
   return h("div", { class: "warnbox" }, icon("alert"), h("span", { text }));
 }
+
+// ------------------------------------------------------------- páginas --
+// Listas grandes não crescem na mesma página: X itens e, embaixo,
+// "Anterior · Página N de M · Próxima". Sem números clicáveis (alvos pequenos no
+// celular). Nos extremos o botão fica com aria-disabled (não disabled), para o
+// foco não cair no <body>. Ao trocar de página, a lista se redesenha e o foco
+// vai para o título dela (`focus`: o elemento ou uma função que o devolve depois
+// do redesenho), que sobe para a vista se estiver fora; o leitor ouve
+// "Página N de M". compact: dentro de cartões e blocos (36 px de desenho,
+// 44 px de alvo). page começa em 1.
+export function pager({ page, total, size, label, onPage, focus = null, compact = false }) {
+  const pages = Math.max(1, Math.ceil(total / size));
+  if (pages <= 1) return null;
+  const cur = Math.min(Math.max(1, page), pages);
+  const from = (cur - 1) * size + 1, to = Math.min(total, cur * size);
+  let going = false;
+  const go = async (n) => {
+    if (going || n < 1 || n > pages || n === cur) return;
+    going = true;
+    try { await onPage(n); } catch (e) { errorToast(e, "Não foi possível abrir a página."); return; } finally { going = false; }
+    const el = typeof focus === "function" ? focus() : focus;
+    if (el && el.isConnected) {
+      if (!el.matches("a[href], button, input, select, textarea, [tabindex]")) el.tabIndex = -1;
+      el.focus({ preventScroll: true });
+      const r = el.getBoundingClientRect();
+      if (r.top < 0 || r.top > innerHeight - 40) el.scrollIntoView({ block: "start", behavior: calmMotion() ? "auto" : "smooth" });
+    }
+    announce(`Página ${n} de ${pages}`);
+  };
+  const btn = (dir) => {
+    const prev = dir < 0, off = prev ? cur === 1 : cur === pages;
+    return h("button", { type: "button", class: "btn btn-ghost pager-btn " + (prev ? "pager-prev" : "pager-next") + (off ? " off" : ""),
+      "aria-label": prev ? "Página anterior" : "Próxima página", "aria-disabled": off ? "true" : null,
+      onClick: () => { if (!off) go(cur + dir); } },
+    prev ? icon("left") : null, h("span", { class: "pager-word", text: prev ? "Anterior" : "Próxima" }), prev ? null : icon("right"));
+  };
+  return h("nav", { class: "pager" + (compact ? " pager-compact" : ""), "aria-label": `Páginas de ${label}` },
+    btn(-1),
+    h("p", { class: "pager-info" }, h("span", { class: "pager-n", text: `Página ${cur} de ${pages}` }),
+      h("span", { class: "pager-range", text: `${from}–${to} de ${total}` })),
+    btn(1));
+}
+
+// A fatia de uma página (page em 1..; além do fim, a última) e a página certa.
+export function pageSlice(items, page, size) {
+  const pages = Math.max(1, Math.ceil(items.length / size));
+  const p = Math.min(Math.max(1, page || 1), pages);
+  return { rows: items.slice((p - 1) * size, p * size), page: p, start: (p - 1) * size };
+}
+
+// A página fica no endereço da tela (#/historico?p=3), como a busca faz com
+// ?q=: voltar do detalhe ou pelo botão Voltar do navegador cai na mesma página.
+// replaceState: trocar de página não enche o histórico nem recarrega a tela.
+export function hashPage(key = "p") {
+  const n = parseInt(new URLSearchParams(location.hash.split("?")[1] || "").get(key), 10);
+  return n >= 1 ? n : 1;
+}
+
+// view: a tela dona da lista; redesenho de outra tela (um "Desfazer" depois de
+// trocar de tela) não mexe no endereço da atual.
+export function setHashPage(key, n, view) {
+  const [path, qs = ""] = location.hash.split("?");
+  if (!path.startsWith("#/") || path !== "#/" + view) return; // sem endereço (abertura) ou outra tela: fica só na memória
+  const sp = new URLSearchParams(qs);
+  if (n > 1) sp.set(key, String(n)); else sp.delete(key);
+  const s = sp.toString();
+  window.history.replaceState(window.history.state, "", path + (s ? "?" + s : ""));
+}

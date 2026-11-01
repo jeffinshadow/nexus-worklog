@@ -4,7 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..deps import active_user
-from ..services import RETRO_DAYS, app_today, board_day_range, get_board
+from ..services import BOARD_DONE_LIMIT, RETRO_DAYS, app_today, board_day_range, get_board
 
 router = APIRouter(prefix="/api/board", tags=["board"])
 
@@ -23,6 +23,8 @@ def check_board_day(day: Optional[date]) -> Optional[date]:
 def board(
     day: Optional[date] = Query(default=None),
     project: Optional[int] = Query(default=None, ge=0, description="0 = sem projeto"),
+    done_offset: int = Query(default=0, ge=0, le=1000000, description="Concluídas: pula as N mais recentes (páginas)"),
+    done_limit: int = Query(default=BOARD_DONE_LIMIT, ge=1, le=BOARD_DONE_LIMIT, description="Concluídas por resposta; o total vem em done_total"),
     user=Depends(active_user),
 ):
-    return get_board(user["user_id"], check_board_day(day), project)
+    return get_board(user["user_id"], check_board_day(day), project, done_offset, done_limit)
