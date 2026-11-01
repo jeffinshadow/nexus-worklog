@@ -266,7 +266,7 @@ button.column-toggle { display: none; }
 .seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; border: 1px solid var(--outline-variant); background: var(--surface); margin-bottom: 20px; flex-wrap: wrap; }
 .seg button.chip-btn { border: 0; background: transparent; color: var(--on-surface-variant); padding: 7px 14px; border-radius: 999px; font-weight: 500; font-size: .86rem; }
 .seg button.chip-btn[aria-selected="true"], .seg button.chip-btn[aria-checked="true"] { background: var(--primary-container); color: var(--on-surface); }
-.settings-grid { display: grid; gap: var(--gap); }
+.settings-grid { display: grid; gap: var(--gap); grid-template-columns: minmax(0, 1fr); }
 .panel p.help { color: var(--on-surface-variant); font-size: .88rem; margin-bottom: 14px; max-width: 62ch; }
 .panel ol.help { color: var(--on-surface-variant); font-size: .88rem; margin: 0 0 14px; padding-left: 1.4em; max-width: 62ch; display: grid; gap: 4px; }
 .panel ol.help a { color: var(--primary); }
@@ -1199,6 +1199,14 @@ dialog.help-dialog > .dialog-actions { position: sticky; bottom: -24px; margin: 
 .request-row.decided { opacity: .65; }
 .request-who { overflow-wrap: anywhere; }
 @media (max-width: 860px) { .request-row { flex-direction: column; } .request-actions { justify-content: flex-start; } }
+.requests-decided > summary { cursor: pointer; padding: 12px 0 4px; color: var(--on-surface-variant); font-size: .88rem; border-top: 1px solid var(--outline-variant); }
+/* Admin no celular: nada passa de 390 px; e-mails longos quebram em vez de cobrir os botões. */
+.menu-list a .nav-badge { margin-left: auto; }
+.list-row .t { overflow-wrap: anywhere; }
+.list-row .t .pending-chip { display: inline-block; margin: 2px 0 0 6px; }
+.admin-search { margin-bottom: 8px; }
+.dialog-note.field-note { margin: calc(-1 * var(--gap) + 6px) 0 var(--gap); }
+.equipe-note { margin: 0 0 14px; }
 
 /* Celular: áreas de toque de pelo menos 44 px (Material 3 pede 48 de alvo). Controles
    crescem de verdade; o que precisa continuar pequeno (x do chip, link do chamado,
