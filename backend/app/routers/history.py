@@ -5,7 +5,7 @@ recorrente, configuração): desfazer uma alteração antiga por cima de mudanç
 posteriores apagaria trabalho sem aviso. O próprio desfazer fica registrado
 (ação "undo") e não pode ser desfeito de novo.
 """
-from datetime import date
+from datetime import date, timedelta
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -384,6 +384,37 @@ def _put_time(uid: int, task_id: int, e: dict) -> None:
                (e["id"], task_id, uid, e["minutes"], e["day"], e["note"], e["actor"], e["token_name"], e["created_at"]))
 
 
+def _current_routine(uid: int, rid: int) -> int:
+    """A rotina que substituiu `rid` (trocas de agenda em sequência), ou ela mesma."""
+    for _ in range(50):
+        nxt = db.query_one(
+            """SELECT a.entity_id FROM audit_log a JOIN recurring_tasks r ON r.id = a.entity_id AND r.user_id = a.user_id
+                WHERE a.user_id = %s AND a.action = 'recurring.replace' AND a.undone_at IS NULL
+                  AND (a.after->>'replaced')::bigint = %s
+                ORDER BY a.id DESC LIMIT 1""", (uid, rid))
+        if not nxt:
+            return rid
+        rid = nxt["entity_id"]
+    return rid
+
+
+def _set_pause_today(rid: int, end_d) -> None:
+    """Deixa a rotina `rid` pausada de hoje até `end_d` (None ou passado: sem pausa hoje)."""
+    today = app_today()
+    cur = db.query_one("""SELECT id, start_d FROM recurring_pauses WHERE recurring_id = %s AND start_d <= %s AND end_d >= %s
+                          ORDER BY id DESC LIMIT 1""", (rid, today, today))
+    if end_d is not None and end_d >= today:
+        if cur:
+            db.execute("UPDATE recurring_pauses SET end_d = %s WHERE id = %s", (end_d, cur["id"]))
+        else:
+            db.execute("INSERT INTO recurring_pauses (recurring_id, start_d, end_d) VALUES (%s, %s, %s)", (rid, today, end_d))
+    elif cur:
+        if cur["start_d"] < today:
+            db.execute("UPDATE recurring_pauses SET end_d = %s WHERE id = %s", (today - timedelta(days=1), cur["id"]))
+        else:
+            db.execute("DELETE FROM recurring_pauses WHERE id = %s", (cur["id"],))
+
+
 @router.post("/{history_id}/undo")
 def undo(history_id: int, user=Depends(active_user_csrf)):
     uid = user["user_id"]
@@ -486,6 +517,9 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
                        (before["pause"]["end_d"], before["pause"]["id"], eid))
         else:
             db.execute("DELETE FROM recurring_pauses WHERE id = %s AND recurring_id = %s", (after["pause"]["id"], eid))
+        # A agenda mudou depois (a pausa foi copiada para a rotina nova): vale para a atual.
+        if (atual := _current_routine(uid, eid)) != eid:
+            _set_pause_today(atual, date.fromisoformat(str(before["pause"]["end_d"])) if before.get("pause") else None)
     elif a == "recurring.toggle":
         day = date.fromisoformat(before["day"])
         min_day, today = board_day_range(app_today())

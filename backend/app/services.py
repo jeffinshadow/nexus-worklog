@@ -65,10 +65,12 @@ def pause_end(t: dict, d: date) -> date | None:
 
 def _after_cycle(t: dict, d: date) -> tuple[date, bool]:
     """freq 'after': (data em que o ciclo aberto em `d` venceu, marcada em `d`?).
-    O ciclo conta da última marcação ANTES de `d` (sem marcação: da criação)."""
+    O ciclo conta da última marcação ANTES de `d` (sem marcação: da última vez
+    da rotina substituída, `after_from`, ou da criação)."""
     dates = t.get("done_dates") or []
     i = bisect.bisect_left(dates, d)
-    last = dates[i - 1] if i and dates[i - 1] >= t["start_d"] else t["start_d"]
+    # after_from: a última vez da rotina que esta substituiu (troca de agenda).
+    last = dates[i - 1] if i and dates[i - 1] >= t["start_d"] else (t.get("after_from") or t["start_d"])
     return last + timedelta(days=t.get("interval_days") or 1), i < len(dates) and dates[i] == d
 
 
@@ -218,6 +220,7 @@ def board_day_range(today: date) -> tuple[date, date]:
 # que conta da última vez).
 _ROTINAS_SQL = """
     SELECT r.id, r.label, r.position, r.freq, r.weekdays, r.month_day, r.interval_days, r.require_note, r.remind_at,
+           r.after_from,
            ARRAY(SELECT ARRAY[p.start_d, p.end_d] FROM recurring_pauses p
                   WHERE p.recurring_id = r.id AND p.start_d <= p.end_d ORDER BY p.start_d) AS pauses,
            CASE WHEN r.freq = 'after' THEN ARRAY(SELECT x.completed_date FROM recurring_completions x
@@ -298,6 +301,7 @@ def get_board(user_id: int, day: date | None = None, project: int | None = None)
         r["paused_until"] = pause_end(r, day)  # pausada nesse dia: até quando
         r["next_due"] = next_due(r, day)  # só 'after'
         r.pop("done_dates", None)  # já usadas; não vão na resposta
+        r.pop("after_from", None)
     min_day, _ = board_day_range(today)
     return {
         "timer": running_timer(user_id),

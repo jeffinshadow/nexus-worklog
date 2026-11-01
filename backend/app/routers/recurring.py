@@ -3,6 +3,7 @@ from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException
 
 from .. import audit, db, push
+from ..config import config
 from ..deps import active_user, active_user_csrf
 from ..schemas import PauseIn, RecurringIn, RecurringUpdate, SnoozeIn, ToggleIn
 from ..services import app_today, app_tz, is_pending, recurring_vigente, rotinas, work_mask
@@ -45,6 +46,23 @@ def create(data: RecurringIn, user=Depends(active_user_csrf)):
     return row
 
 
+def _last_time(uid: int, old: dict):
+    """"Depois da última vez": a última marcação da rotina antiga (antes de hoje;
+    a de hoje passa para a nova). Sem marcação, se a antiga já era 'after', o
+    ponto de onde ela contava. A nova segue contando dali (última + N novo)."""
+    r = db.query_one(
+        """SELECT (SELECT max(completed_date) FROM recurring_completions
+                    WHERE task_id = t.id AND user_id = t.user_id AND completed_date < %s) AS last,
+                  t.freq, t.after_from, (t.created_at AT TIME ZONE %s)::date AS start_d
+             FROM recurring_tasks t WHERE t.id = %s AND t.user_id = %s""",
+        (app_today(), config.APP_TZ, old["id"], uid))
+    if not r:
+        return None
+    if r["last"]:
+        return max(r["last"], r["after_from"]) if r["after_from"] else r["last"]
+    return (r["after_from"] or r["start_d"]) if r["freq"] == "after" else None
+
+
 def replace_routine(user: dict, before: dict, new: dict, freeze: dict | None = None) -> int:
     """Encerra a rotina `before` hoje e cria outra (mesma posição) a partir de
     hoje com `new` (label + agenda): o passado da antiga não muda. `freeze`
@@ -55,12 +73,16 @@ def replace_routine(user: dict, before: dict, new: dict, freeze: dict | None = N
     sets = ["active = false", "deactivated_at = now()"] + [f"{k} = %s" for k in (freeze or {})]
     db.execute(f"UPDATE recurring_tasks SET {', '.join(sets)} WHERE id = %s AND user_id = %s",
                tuple((freeze or {}).values()) + (old_id, uid))
+    freq = new.get("freq") or before.get("freq")
     row = db.query_one(
-        """INSERT INTO recurring_tasks (user_id, label, position, freq, weekdays, month_day, interval_days, require_note, remind_at)
-           VALUES (%(uid)s, %(label)s, %(position)s, %(freq)s, %(weekdays)s, %(month_day)s, %(interval_days)s, %(require_note)s, %(remind_at)s)
+        """INSERT INTO recurring_tasks (user_id, label, position, freq, weekdays, month_day, interval_days, require_note,
+                                        remind_at, after_from)
+           VALUES (%(uid)s, %(label)s, %(position)s, %(freq)s, %(weekdays)s, %(month_day)s, %(interval_days)s, %(require_note)s,
+                   %(remind_at)s, %(after_from)s)
            RETURNING id""",
         {"uid": uid, "position": before["position"], "weekdays": None, "month_day": None, "interval_days": None,
-         "require_note": bool(before.get("require_note")), "remind_at": before.get("remind_at"), **new})
+         "require_note": bool(before.get("require_note")), "remind_at": before.get("remind_at"),
+         "after_from": _last_time(uid, before) if freq == "after" else None, **new})
     db.execute("UPDATE recurring_completions SET task_id = %s WHERE task_id = %s AND user_id = %s AND completed_date = %s",
                (row["id"], old_id, uid, app_today()))
     db.execute("UPDATE photos SET recurring_id = %s WHERE recurring_id = %s AND user_id = %s AND day = %s",

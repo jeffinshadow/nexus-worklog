@@ -181,3 +181,79 @@ def test_cancelamento_e_lapide_no_feed(par):
     rec = next(h for h in hist(marina, entity="worklog", entity_id=tid) if h["action"] == "worklog.delete")
     assert marina.post(f"/history/{rec['id']}/undo").status_code == 200
     assert _linha(chefe, tid)["status"] == "todo"
+
+
+# ----------------------------------------------------------------- rotinas --
+
+TODO_DIA = 127
+
+
+def _rotina(u, **kw):
+    r = u.post("/recurring", {"label": "Trocar o filtro", "freq": "weekly", "weekdays": TODO_DIA, **kw})
+    assert r.status_code == 201, r.text
+    return r.json()["id"]
+
+
+def _linha_rotina(u, rid):
+    return next(x for x in u.get("/board").json()["recurring"] if x["id"] == rid)
+
+
+def _marcar(u, rid, d):
+    db.execute("INSERT INTO recurring_completions (task_id, user_id, completed_date) VALUES (%s, %s, %s)",
+               (rid, uid_de(u), d))
+
+
+def test_mudar_o_n_mantem_a_ultima_vez(usuario):
+    from datetime import timedelta
+    from conftest import dia_hoje, recuar_criacao
+    hoje = dia_hoje(usuario)
+    rid = _rotina(usuario, freq="after", interval_days=7)
+    recuar_criacao(rid, 20)
+    _marcar(usuario, rid, hoje - timedelta(days=3))
+    assert _linha_rotina(usuario, rid)["next_due"] == (hoje + timedelta(days=4)).isoformat()
+    novo = usuario.patch(f"/recurring/{rid}", {"freq": "after", "interval_days": 10}).json()["id"]
+    assert novo != rid
+    assert _linha_rotina(usuario, novo)["next_due"] == (hoje + timedelta(days=7)).isoformat()  # última + 10
+    # Atrasada continua atrasada ao mudar o N (não some por N dias).
+    novo2 = usuario.patch(f"/recurring/{novo}", {"freq": "after", "interval_days": 2}).json()["id"]
+    linha = _linha_rotina(usuario, novo2)
+    assert linha["next_due"] == (hoje - timedelta(days=1)).isoformat() and linha["due"] is True
+    # De semanal para "depois da última vez": conta da última marcação da semanal.
+    sem = _rotina(usuario, label="Ronda")
+    recuar_criacao(sem, 10)
+    _marcar(usuario, sem, hoje - timedelta(days=2))
+    n = usuario.patch(f"/recurring/{sem}", {"freq": "after", "interval_days": 5}).json()["id"]
+    assert _linha_rotina(usuario, n)["next_due"] == (hoje + timedelta(days=3)).isoformat()
+
+
+def test_desfazer_pausa_depois_de_trocar_a_agenda(usuario):
+    from datetime import timedelta
+    from conftest import dia_hoje, recuar_criacao
+    hoje = dia_hoje(usuario)
+    rid = _rotina(usuario)
+    recuar_criacao(rid, 10)
+    usuario.post(f"/recurring/{rid}/pause", {"until": (hoje + timedelta(days=14)).isoformat()})
+    novo = usuario.patch(f"/recurring/{rid}", {"freq": "weekly", "weekdays": 62}).json()["id"]
+    assert _linha_rotina(usuario, novo)["paused_until"] == (hoje + timedelta(days=14)).isoformat()
+    h = next(x for x in hist(usuario, entity="recurring", entity_id=rid) if x["action"] == "recurring.pause")
+    assert usuario.post(f"/history/{h['id']}/undo").status_code == 200
+    assert _linha_rotina(usuario, novo)["paused_until"] is None  # a rotina atual voltou a valer
+
+
+# -------------------------------------------------------------- cronômetro --
+
+def test_inicio_sem_sinal_nao_sobrepoe_tempo_ja_apontado(usuario):
+    from datetime import datetime, timedelta, timezone
+    agora = datetime.now(timezone.utc)
+    a = usuario.post("/worklog", {"title": "A"}).json()["id"]
+    b = usuario.post("/worklog", {"title": "B"}).json()["id"]
+    # O computador rodou B de -120 a -30 min.
+    assert usuario.post("/timer/start", {"task_id": b, "at": (agora - timedelta(minutes=120)).isoformat()}).status_code == 200
+    r = usuario.post("/timer/stop", {"at": (agora - timedelta(minutes=30)).isoformat()})
+    assert r.json()["stopped"]["minutes"] == 90
+    # O celular, sem sinal, tinha iniciado A em -60: chega depois e não pode contar o mesmo tempo.
+    r = usuario.post("/timer/start", {"task_id": a, "at": (agora - timedelta(minutes=60)).isoformat()})
+    assert r.status_code == 409 and "já há tempo de cronômetro" in r.json()["detail"] and "nada foi mudado" in r.json()["detail"]
+    assert usuario.get("/timer").json()["timer"] is None
+    # Depois do fim, ou sem hora: vale.
+    assert usuario.post("/timer/start", {"task_id": a, "at": (agora - timedelta(minutes=30)).isoformat()}).status_code == 200
