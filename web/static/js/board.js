@@ -582,7 +582,8 @@ export function askResolution(t, onDone) {
   // Ao fechar, o "Desfazer" da conclusão volta (o aviso some quando se clica numa ação).
   const undoAgain = () => toast(`Concluída: ${t.title}`, { action: "Desfazer", onAction: () => undoLatest("worklog", t.id, onDone) });
   const area = h("textarea", { rows: "4", maxlength: "1000", placeholder: "ex.: disjuntor trocado e circuito testado", "aria-label": "Como resolveu" });
-  const err = h("p", { class: "error-text" });
+  const err = h("p", { class: "error-text", role: "alert" });
+  area.addEventListener("input", () => markInvalid([area], err, false));
   const form = h("form", {}, h("h2", { text: "Como resolveu?" }),
     h("p", { class: "dialog-note", text: `${t.title}: em poucas linhas. A busca encontra isso da próxima vez que o problema voltar.` }),
     area, err,
@@ -600,7 +601,7 @@ export function askResolution(t, onDone) {
         await undoLatest("worklog", t.id, onDone);
       } });
       onDone && onDone();
-    } catch (e) { err.textContent = e.message || "Não foi possível salvar."; }
+    } catch (e) { err.textContent = e.message || "Não foi possível salvar."; markInvalid([area], err); area.focus(); }
   }));
   const dlg = modal(form);
   area.focus();

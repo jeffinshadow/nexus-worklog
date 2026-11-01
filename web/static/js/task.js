@@ -4,7 +4,8 @@
 // Abaixo, checklist, tempo apontado e anotações.
 // Abre por cima do quadro/Hoje; ao fechar, quem abriu recarrega (onChange).
 import { api } from "./api.js";
-import { h, icon, clear, addDays, shortDate, dateTime, field, localDateTime } from "./dom.js";
+import { h, icon, clear, addDays, shortDate, dateTime, field, localDateTime, localDay } from "./dom.js";
+import { overlay } from "./fila.js";
 import { errorToast, modal, toast, undoLatest, busy, sheet, syncRail, growFrom, refocusBy, actionMenu } from "./ui.js";
 import { finishTask, deleteTask, duplicateTask, followUpDay, isOverdue, ticketUrl, taskChips, blockTask, canBlock } from "./board.js";
 import { extraProjectsField, fillObjectiveSelect, fillProjectSelect } from "./projects.js";
@@ -55,6 +56,29 @@ export function closeSidePanel() {
   for (const d of document.querySelectorAll("dialog.task-dialog.side[open]")) d.close();
 }
 
+// Sem sinal, uma tarefa que nunca foi aberta com sinal não está no cache do
+// aparelho: o que houver dela nas listas guardadas (Hoje, Tarefas, busca...)
+// serve para mostrar o título e deixar anotar, pôr foto e concluir pela fila.
+async function cachedTask(id) {
+  if (!("caches" in window)) return null;
+  const find = (o, depth) => {
+    if (!o || typeof o !== "object" || depth > 5) return null;
+    if (Array.isArray(o)) { for (const x of o) { const r = find(x, depth + 1); if (r) return r; } return null; }
+    if (o.id === id && typeof o.title === "string" && "status" in o) return o;
+    for (const v of Object.values(o)) { const r = find(v, depth + 1); if (r) return r; }
+    return null;
+  };
+  try {
+    const cache = await caches.open("nexus-dados");  // o mesmo nome de sw.js
+    for (const req of await cache.keys()) {
+      if (!new URL(req.url).pathname.startsWith("/api/") || /\/photos/.test(req.url)) continue;
+      const hit = find(await (await cache.match(req)).json().catch(() => null), 0);
+      if (hit) return hit;
+    }
+  } catch { /* sem cache */ }
+  return null;
+}
+
 // opts.editTitle: abre já editando o título, selecionado (a cópia do Duplicar).
 export async function openTask(taskId, onChange, opts = {}) {
   // Computador: painel lateral (lista + detalhe, Material 3); o quadro segue
@@ -81,7 +105,11 @@ export async function openTask(taskId, onChange, opts = {}) {
     if (ev.key !== "Escape" || document.querySelector("dialog:modal")) return;
     if (expanded) expand(false); else dlg.close();
   };
+  // Aberta sem sinal só com o que havia nas listas: a conexão voltou, busca os detalhes.
+  const onOnline = () => { if (dlg.open && cur && cur.offline) render(); };
+  addEventListener("online", onOnline);
   dlg.addEventListener("close", () => {
+    removeEventListener("online", onOnline);
     dlg.remove();
     if (editing && editingId === taskId) markEditing(null);
     if (side) {
@@ -104,17 +132,33 @@ export async function openTask(taskId, onChange, opts = {}) {
   // Desfazer pelo aviso pode chegar com o detalhe já fechado: aí recarrega quem abriu.
   const after = () => (dlg.open ? touch() : onChange && onChange());
 
+  // false: não deu para mostrar (o detalhe não abre, ou fecha).
+  let offlineBase = null;
   async function render() {
     let t;
     try {
       t = await api.get(`/worklog/${taskId}`);
     } catch (e) {
+      if (e.status === 0 && (offlineBase || !cur)) {
+        // Sem sinal e sem nada desta tarefa no cache: abre com o que houver das listas.
+        if (!offlineBase) {
+          const hit = await cachedTask(taskId);
+          offlineBase = { title: "Tarefa", status: "todo", ...(hit || {}), id: taskId, offline: true,
+            checklist: [], time: [], notes: [], photos: [], minutes: 0, today: localDay() };
+        }
+        cur = await overlay(`/worklog/${taskId}`, structuredClone(offlineBase));
+        paint();
+        return true;
+      }
+      if (e.status === 0 && cur) { errorToast(e); return true; }  // fica com o que já está na tela
       errorToast(e, "Tarefa não encontrada.");
-      dlg.close();
-      return;
+      if (dlg.open) dlg.close();
+      return false;
     }
     cur = t;
+    offlineBase = null;
     paint();
+    return true;
   }
 
   // Desenha com o que já está em memória (entrar no modo edição não vai ao servidor).
@@ -141,7 +185,8 @@ export async function openTask(taskId, onChange, opts = {}) {
     }
     // Lápis ao lado do título: entra na edição; "Pronto" volta (e busca do
     // servidor o que mudou, para as etiquetas saírem certas).
-    const toggle = editing
+    const off = !!t.offline;  // aberta sem sinal: só o que vai pela fila
+    const toggle = off ? null : editing
       ? h("button", { type: "button", class: "btn btn-ghost btn-sm edit-toggle", onClick: async () => { await pending; editing = false; markEditing(null); render(); } }, icon("check"), "Pronto")
       : h("button", { type: "button", class: "icon edit-toggle", title: "Editar a tarefa", "aria-label": "Editar a tarefa",
           onClick: () => { editing = true; markEditing(t.id); refocus = "Título"; paint(); } }, icon("edit"));
@@ -158,10 +203,11 @@ export async function openTask(taskId, onChange, opts = {}) {
           ? h("button", { type: "button", class: "icon", title: editing ? EDIT_HINT : "Concluir", "aria-label": "Concluir", disabled: editing ? "disabled" : null,
               onClick: () => finishTask(t, after) }, icon("check"))
           : null,
-        h("button", { type: "button", class: "icon", title: "Copiar resumo (para o chamado ou o cliente)", "aria-label": "Copiar resumo", onClick: async () => { await pending; copySummary(cur); } }, icon("copy")),
-        h("button", { type: "button", class: "icon", title: "Salvar como modelo", "aria-label": "Salvar como modelo", onClick: async () => { await pending; saveAsTemplate(cur); } }, icon("list")),
-        h("button", { type: "button", class: "icon", title: "Duplicar tarefa", "aria-label": "Duplicar tarefa", onClick: dup }, icon("add")),
-        h("button", { type: "button", class: "icon", title: "Excluir", "aria-label": "Excluir", onClick: remove }, icon("trash")),
+        ...(off ? [] : [
+          h("button", { type: "button", class: "icon", title: "Copiar resumo (para o chamado ou o cliente)", "aria-label": "Copiar resumo", onClick: async () => { await pending; copySummary(cur); } }, icon("copy")),
+          h("button", { type: "button", class: "icon", title: "Salvar como modelo", "aria-label": "Salvar como modelo", onClick: async () => { await pending; saveAsTemplate(cur); } }, icon("list")),
+          h("button", { type: "button", class: "icon", title: "Duplicar tarefa", "aria-label": "Duplicar tarefa", onClick: dup }, icon("add")),
+          h("button", { type: "button", class: "icon", title: "Excluir", "aria-label": "Excluir", onClick: remove }, icon("trash"))]),
         h("button", { type: "button", class: "icon", title: "Fechar", "aria-label": "Fechar", onClick: () => dlg.close() }, icon("close"))));
 
     // Celular e painel lateral: barra no topo (fechar e o resto no ⋮) e as
@@ -173,7 +219,7 @@ export async function openTask(taskId, onChange, opts = {}) {
       side ? h("button", { type: "button", class: "icon", title: expanded ? "Voltar ao painel" : "Expandir para ler",
         "aria-label": expanded ? "Voltar ao painel" : "Expandir para ler", "aria-pressed": String(expanded),
         onClick: () => expand(!expanded) }, icon(expanded ? "shrink" : "expand")) : null,
-      h("button", { type: "button", class: "icon", title: "Mais ações", "aria-label": "Mais ações", onClick: (ev) => {
+      off ? null : h("button", { type: "button", class: "icon", title: "Mais ações", "aria-label": "Mais ações", onClick: (ev) => {
         const items = [
           canBlock(t) ? ["Marcar como aguardando…", "clock", async () => { await pending; blockTask(cur, after); }] : null,
           ["Copiar resumo (para o chamado ou o cliente)", "copy", async () => { await pending; copySummary(cur); }],
@@ -191,7 +237,10 @@ export async function openTask(taskId, onChange, opts = {}) {
       h("button", { type: "button", class: "btn btn-primary", title: editing ? EDIT_HINT : null, disabled: editing ? "disabled" : null,
         onClick: () => finishTask(t, after) }, icon("check"), "Concluir"));
 
-    body.append(...[appbar, head, mainActs, editing ? details(t, today) : null, checklist(t), photosSection(t, touch), timePanel(t, today), notesPanel(t)].filter(Boolean));
+    const offNote = off ? h("p", { class: "offline-note", role: "status" }, icon("alert"),
+      h("span", { text: "Sem conexão: os detalhes desta tarefa aparecem quando a conexão voltar. Anotação, foto, concluir e cronômetro ficam guardados e vão sozinhos." })) : null;
+    body.append(...(off ? [appbar, head, offNote, mainActs, photosSection(t, touch), notesPanel(t)]
+      : [appbar, head, mainActs, editing ? details(t, today) : null, checklist(t), photosSection(t, touch), timePanel(t, today), notesPanel(t)]).filter(Boolean));
     if (title) requestAnimationFrame(() => grow(title)); // a altura só existe com o campo na tela (e o painel aberto)
     // Redesenhou com o foco num campo (ex.: trocou o status): volta para ele.
     if (refocus) { const el = body.querySelector(`[aria-label="${refocus}"]`); if (el) el.focus(); refocus = null; }
@@ -216,21 +265,23 @@ export async function openTask(taskId, onChange, opts = {}) {
     savedTimer = setTimeout(() => { saved.textContent = ""; }, 1800);
     if (redraw) { refocus = document.activeElement && document.activeElement.getAttribute("aria-label"); await render(); }
   }
-  // Campo de texto: Enter confirma (sai do campo), Esc desfaz; salva ao sair.
+  // Campo de texto: Enter salva, Esc desfaz (os dois mantêm o foco no campo;
+  // Esc sem nada a desfazer fecha, como fora dele); salva também ao sair.
   // toPatch(valor) devolve o que mandar, ou null para voltar ao valor anterior.
   function inline(el, original, toPatch) {
     const multi = el.tagName === "TEXTAREA" && !el.classList.contains("inline-title");
-    el.addEventListener("keydown", (ev) => {
-      if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); el.value = original(); grow(el); el.blur(); }
-      else if (ev.key === "Enter" && (!multi || ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); el.blur(); }
-    });
-    el.addEventListener("blur", () => {
+    const commit = () => {
       const v = el.value.trim();
       if (v === original()) return;
       const patch = toPatch(v);
       if (!patch) { el.value = original(); grow(el); return; }
       save(patch);
+    };
+    el.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape" && el.value.trim() !== original()) { ev.preventDefault(); ev.stopPropagation(); el.value = original(); grow(el); }
+      else if (ev.key === "Enter" && (!multi || ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); commit(); }
     });
+    el.addEventListener("blur", commit);
   }
   function grow(el) {
     if (!el.classList.contains("inline-title")) return;
@@ -452,7 +503,7 @@ export async function openTask(taskId, onChange, opts = {}) {
   }
 
   if (opts.editTitle) { editing = true; markEditing(taskId); }
-  await render();
+  if (!(await render())) { removeEventListener("online", onOnline); dlg.remove(); return; }
   const pickTitle = () => { const el = body.querySelector(".inline-title"); if (el) { el.focus(); el.select(); } };
   if (!side) { dlg.showModal(); growFrom(dlg); if (opts.editTitle) pickTitle(); return; }
   dlg.show();

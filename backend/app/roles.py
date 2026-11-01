@@ -10,7 +10,7 @@ users.role espelha "admin" só por compatibilidade (rollback e código antigo).
 from . import db
 
 ROLES = ("user", "admin", "assigner", "viewer")
-LABELS = {"user": "Usuário", "admin": "Admin", "assigner": "Atribuidor de tarefas", "viewer": "Visualizador de tarefas"}
+LABELS = {"user": "Usuário", "admin": "Admin", "assigner": "Manda tarefas", "viewer": "Vê a equipe"}
 
 # Subconsulta para as leituras de sessão/chave (deps): papéis como lista.
 ROLES_SQL = "ARRAY(SELECT r.role FROM user_roles r WHERE r.user_id = u.id ORDER BY r.role) AS roles"

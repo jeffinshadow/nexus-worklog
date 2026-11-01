@@ -263,8 +263,8 @@ function showHelp(focus) {
         ["Projetos", "Cada projeto com os objetivos em ordem de execução e as tarefas de cada um."],
         ["Meu mês", "Como foi o mês numa frase: rotinas, tarefas concluídas e tempo; o que ficou para trás, para onde foi o tempo, o que foi entregue e o PDF do mês. Outro período, um projeto e a exportação dos dados ficam em “Outro período ou formato”."]] : []),
       ["Histórico", "Tudo o que mudou, com desfazer."],
-      ...(has("assigner") ? [["Atribuir", "Manda uma tarefa para quem aceitou receber. Enquanto ela está a fazer, você ainda corrige ou cancela; depois, é da pessoa."]] : []),
-      ...(has("viewer") ? [["Equipe", "O registro de quem permitiu (cada pessoa decide em Configurações > Conta), só para ver e tirar relatório."]] : []),
+      ...(has("assigner") ? [["Atribuir", "Do papel “Manda tarefas”. Manda uma tarefa para quem aceitou receber. Enquanto ela está a fazer, você ainda corrige ou cancela; depois, é da pessoa."]] : []),
+      ...(has("viewer") ? [["Equipe", "Do papel “Vê a equipe”. O registro de quem permitiu (cada pessoa decide em Configurações > Conta), só para ver e tirar relatório."]] : []),
       ...(has("admin") ? [["Admin", "Convites e pedidos de convite, contas (senha, bloquear, excluir), papéis, configurações gerais e identidade visual."]] : []),
       ["Configurações", user ? "A sua conta (dias úteis, projeto padrão, quem vê e quem manda tarefas), modelos, avisos, calendário e IA." : "A sua conta, e IA e API."],
     ])),
@@ -281,7 +281,7 @@ function showHelp(focus) {
       ]),
       h("p", { class: "help-example" }, "Ex.: ", h("code", { text: "Troca do switch @Matriz #4821 — 45min" }))) : null,
     user && desk ? sec("key", "Atalhos de teclado", list([
-      ["n", "nova tarefa", true], ["/", "buscar", true], ["h t", "Hoje, Tarefas", true], ["r l", "Meu mês: números, relatórios", true],
+      ["n", "nova tarefa", true], ["q", "registro rápido", true], ["/", "buscar", true], ["h t", "Hoje, Tarefas", true], ["r l", "Meu mês: números, relatórios", true],
       ["s", "parar o cronômetro", true], ["?", "ver todos os atalhos", true],
     ])) : null,
     // Para o admin, o Suporte é ele mesmo: diz onde fica o contato que os outros veem.
@@ -294,6 +294,9 @@ function showHelp(focus) {
         : h("p", { class: "help", text: "Dúvidas ou problemas: fale com quem administra o Nexus na sua equipe." })),
     h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-text", text: "Fechar", onClick: () => dlg.close() })));
   dlg.classList.add("help-dialog");
+  // Só o meio rola (título e Fechar ficam fixos): a barra de rolagem não passa por cima dos cantos arredondados.
+  const helpBody = h("div", { class: "help-body" }, ...[...dlg.children].filter((el) => el.tagName !== "H2" && !el.classList.contains("dialog-actions")));
+  dlg.querySelector(".dialog-actions").before(helpBody);
   // Pedido de uma seção (ex.: "ver marcadores" no Hoje): rola até ela.
   if (focus === "marcadores") [...dlg.querySelectorAll(".help-sec")].find((s) => /Registro rápido/.test(s.textContent))?.scrollIntoView({ block: "start" });
 }
@@ -346,7 +349,8 @@ async function boot() {
   stashShare(); // compartilhado de outro app: guarda antes de um eventual login
   loadBranding();
   try {
-    me = await api.get("/auth/me");
+    // Servidor fora: o cartão de erro vem em segundos (o service worker, sem rede, responde antes com a cópia guardada).
+    me = await api.get("/auth/me", { timeout: 6500 });
   } catch (e) {
     // Só sessão inválida vai ao login; sem rede ou servidor fora, avisa e deixa tentar de novo.
     if (e.status === 401 || e.message === "nao autenticado") { toLogin(); return; }
@@ -477,6 +481,11 @@ async function boot() {
       else location.hash = "#/busca";
     }],
     n: ["Nova tarefa", () => openWorklog(route)],
+    // O registro rápido fica depois das rotinas na ordem do Tab: uma tecla leva até ele.
+    q: ["Registro rápido (no Hoje)", () => {
+      const el = document.querySelector('#view-hoje [aria-label="Registrar tarefa rápida"]');
+      if (el && el.offsetParent) el.focus(); else go("hoje?acao=rapido");
+    }],
     h: ["Ir para Hoje", () => go("hoje")],
     t: ["Ir para Tarefas", () => go("tarefas")],
     r: ["Ir para Meu mês", () => go("mes")],

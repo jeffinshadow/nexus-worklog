@@ -37,8 +37,8 @@ Authorization: Bearer nxs_...
   header `X-CSRF-Token` (senão 403).
 
 **Papéis** (acumuláveis, em `roles` no `/api/auth/me`): `user` (o próprio registro),
-`admin` (contas, permissões, configurações), `assigner` (atribui tarefas) e `viewer`
-(registros e relatórios de quem aceitou, `PUT /api/me/viewers`). Todo dado é filtrado por `user_id`; `/api/admin/*`
+`admin` (contas, permissões, configurações), `assigner` ("Manda tarefas", tela Atribuir) e `viewer` ("Vê a equipe", tela Equipe:
+registros e relatórios de quem aceitou, `PUT /api/me/viewers`). Todo dado é filtrado por `user_id`; `/api/admin/*`
 e `/api/viewer/*` exigem o papel com sessão do app.
 
 | Código | Quando |
@@ -105,7 +105,7 @@ apaga as passkeys da conta; "Esqueci a senha" mantém e avisa por e-mail.
 | `GET /activity` | S | `{last_activity, timer}`: último registro de qualquer origem (tarefa, rotina, anotação, checklist, tempo, cronômetro) e o cronômetro rodando |
 | `PUT /tickets` | S W | `{ticket_url}` — endereço do sistema de chamados; `{id}` vira o número (sem `{id}`, vai no fim) |
 | `PUT /assignments` | S W | `{accept}` — aceitar receber tarefas de um atribuidor (desligar não mexe nas recebidas) |
-| `PUT /viewers` | S W | `{accept}` → `{viewers_allowed}` — permitir que visualizadores vejam seu registro (quadro, números, PDF, horas, fotos). Contas novas começam com `false`; vai ao histórico (`viewers.consent`) |
+| `PUT /viewers` | S W | `{accept}` → `{viewers_allowed}` — permitir que quem tem o papel "Vê a equipe" (`viewer`) veja seu registro (quadro, números, PDF, horas, fotos). Contas novas começam com `false`; vai ao histórico (`viewers.consent`) |
 | `POST /delete` | S W | `{password}` — exclui a conta e todos os dados dela; o último admin não sai |
 
 ## Cronômetro e modelos
@@ -135,9 +135,9 @@ apaga as passkeys da conta; "Esqueci a senha" mantém e avisa por e-mail.
 | `POST /` | W | `{label, freq?, weekdays?, month_day?, interval_days?, require_note?, remind_at?}` — `require_note` = marcar exige evidência; `remind_at` (`HH:MM`, também `7h30`/`7h`) = horário do lembrete |
 | `PATCH /{id}` | W | `{label?, require_note?, freq?…}` — mudar a agenda exige `freq` + o parâmetro dela; se a rotina já tem passado, ela é encerrada hoje e uma nova (devolvida em `id`) começa hoje — uma ação só no histórico. Para `freq: "after"`, a nova conta da última marcação da antiga (próxima = última + N novo) |
 | `DELETE /{id}` | W | remove daqui para a frente (o passado fica) |
-| `GET /reminders` | R | rotinas com horário devidas hoje: `{today, items: [{id, label, remind_at, require_note, done}]}` (o lembrete da tela) |
+| `GET /reminders` | R | rotinas com horário previstas hoje: `{today, items: [{id, label, remind_at, require_note, done}]}` (o lembrete da tela) |
 | `POST /{id}/pause` | W | `{until}` (`AAAA-MM-DD`, de hoje até 1 ano) — pausa de hoje até `until`, inclusive (férias, folga, prédio fechado); já pausada = muda o fim. Volta sozinha no dia seguinte |
-| `DELETE /{id}/pause` | W | retomar agora: a pausa termina ontem e hoje a rotina já é devida (400 se não está pausada) |
+| `DELETE /{id}/pause` | W | retomar agora: a pausa termina ontem e hoje a rotina já é prevista (400 se não está pausada) |
 | `POST /{id}/snooze` | W | `{minutes}` (5–120, padrão 10) — adia o lembrete de hoje; as notificações dos aparelhos esperam |
 | `POST /{id}/toggle` | W | `{done, day?, note?}` — `day` até 7 dias atrás e só quando a rotina existia; `note` (até 200) = evidência do que foi conferido (vai pro PDF e pro JSON; remarcar sem `note` mantém a anterior; `note` vazio apaga). Rotina com `require_note` só é marcada com evidência (400) |
 
@@ -154,7 +154,7 @@ uma falta no último dia do ciclo (vencimento + N − 1), quando abre o seguinte
 Marcar antes de vencer é extra e adianta a próxima data. No quadro, `next_due`
 = a próxima data (ou o vencimento já passado do ciclo aberto).
 
-Pausa: nos dias pausados a rotina não é devida em nada (quadro, lembrete,
+Pausa: nos dias pausados a rotina não é prevista em nada (quadro, lembrete,
 notificação, avisos por e-mail, retrospectiva, PDF, resumos, calendário ICS);
 marcar conta como extra. Ela começa sempre no dia em que é pedida, então os
 números já fechados não mudam; cada pausa fica guardada como um período. No
@@ -186,7 +186,7 @@ pausada leva a pausa para a nova.
 
 | Rota | | Corpo |
 | --- | --- | --- |
-| `POST /api/worklog/{id}/photos` | S W | `{image, thumb, width?, height?, at?}` em base64 (`at` = hora do aparelho, mesma regra das anotações) — PNG, JPEG ou WebP pelo conteúdo; foto até 1 MB (o app já reduz a 1600 px e regrava, sem EXIF/GPS), miniatura até 96 KB; até 10 por tarefa; cota por pessoa em Admin > Geral |
+| `POST /api/worklog/{id}/photos` | S W | `{image, thumb, width?, height?, at?, external_ref?}` em base64 (`at` = hora do aparelho, mesma regra das anotações; `external_ref` repetido devolve a foto que já existe, 200 com `existing`) — PNG, JPEG ou WebP pelo conteúdo; foto até 1 MB (o app já reduz a 1600 px e regrava, sem EXIF/GPS), miniatura até 96 KB; até 10 por tarefa; cota por pessoa em Admin > Geral |
 | `POST /api/recurring/{id}/photos?day=` · `GET` | S W | o mesmo, como evidência da rotina no dia (até 7 dias atrás) |
 | `GET /api/photos/{id}?thumb=` | S | a imagem (dona, ou visualizador se a dona aceitou); cache privado e imutável |
 | `DELETE /api/photos/{id}` | S W | some na hora; volta pelo histórico em até 7 dias, depois sai de vez |
@@ -273,7 +273,7 @@ O Nexus avisa outro sistema a cada mudança: o mesmo evento do feed, empurrado p
 | `POST /api/notifications/test` | S W | manda um teste para o e-mail da conta (503 sem SMTP) |
 | `GET /api/push?endpoint=` | S | chave pública VAPID, preferências e aparelhos (`current` = o do `endpoint`) |
 | `POST /api/push/devices` · `DELETE /api/push/devices/{id}` | S W | `{endpoint, keys: {p256dh, auth}, label?}` — só serviços de push dos navegadores (Google, Mozilla, Apple, Microsoft); o mesmo navegador com outra conta passa para quem entrou |
-| `PUT /api/push/prefs` | S W | `{routine, follow_up, deadline, assigned, morning_hour, hide_content}` |
+| `PUT /api/push/prefs` | S W | `{routine, follow_up, deadline, assigned, morning_hour, hide_content}` (o app grava o mesmo `morning_hour` do e-mail "Seu dia": uma hora da manhã só, um Salvar na aba Avisos) |
 | `POST /api/push/test?device_id=` | S W | notificação de teste (502 se o serviço do aparelho recusar) |
 | `GET /api/tokens` · `POST /api/tokens` · `DELETE /api/tokens/{id}` | S (W) | `{name, scope, expires_in_days}`; até 20 ativas |
 
@@ -310,7 +310,7 @@ Aparecem no Hoje (só os no aviso), no e-mail da manhã e no calendário (dia de
 | `POST /users/{id}/delete` | W | `{confirm_email}` — exclui a conta e todos os dados (não a própria, nunca o último admin); e-mail e contagens ficam no histórico de quem excluiu |
 | `GET /settings` · `PUT /settings` | W | `{retro_days (1–366), support_contact?}` |
 
-## Visualizador — `/api/viewer` (só pelo app, papel viewer)
+## Vê a equipe — `/api/viewer` (só pelo app, papel viewer; tela Equipe)
 
 | Rota | | Observação |
 | --- | --- | --- |
@@ -360,13 +360,14 @@ tarefas). `update_task` e `undo` levam `destructiveHint: true`.
 
 Crie uma chave em Configurações > IA e API (permissão ler e registrar) e troque `nxs_SUA_CHAVE` por ela.
 
-Claude Code:
+Claude Code (`--scope user`: vale em qualquer pasta; sem ele, só na pasta onde o comando rodou):
 
 ```bash
-claude mcp add --transport http nexus https://SEU-HOST/mcp --header "Authorization: Bearer nxs_SUA_CHAVE"
+claude mcp add --scope user --transport http nexus https://SEU-HOST/mcp --header "Authorization: Bearer nxs_SUA_CHAVE"
 ```
 
-Cursor (`mcp.json`) e outros clientes que aceitam URL e cabeçalho:
+Cursor (`~/.cursor/mcp.json`, ou Cursor Settings > MCP > Add new global MCP server) e outros clientes
+que aceitam URL e cabeçalho. Arquivo que já tem outros servidores: junte como na nota do Claude Desktop, abaixo.
 
 ```json
 { "mcpServers": { "nexus": { "url": "https://SEU-HOST/mcp", "headers": { "Authorization": "Bearer nxs_SUA_CHAVE" } } } }
@@ -387,7 +388,7 @@ Claude Desktop (só fala com programas locais; o `mcp-remote` faz a ponte e prec
     "env": { "NEXUS_AUTH": "Bearer nxs_SUA_CHAVE" } } } }
 ```
 
-Se o arquivo já tiver conteúdo, não cole por cima nem no fim (o JSON fica inválido e o app abre sem
+Vale para os três arquivos (Claude Desktop, Cursor e Gemini CLI): se o arquivo já tiver conteúdo, não cole por cima nem no fim (o JSON fica inválido e o app abre sem
 o Nexus). Já existe `"mcpServers"`: cole só o trecho `"nexus": { … }` dentro dele, separado do
 servidor anterior por vírgula. Não existe: acrescente `"mcpServers": { … }` como mais uma chave do
 objeto principal, também com vírgula. Exemplo:
@@ -407,7 +408,8 @@ objeto principal, também com vírgula. Exemplo:
 ```
 
 Gemini CLI, o Gemini de terminal (`~/.gemini/settings.json`; no Windows,
-`C:\Users\<você>\.gemini\settings.json`):
+`C:\Users\<você>\.gemini\settings.json`). Depois do primeiro login ele já tem conteúdo (o tipo de
+login, o tema): junte como na nota acima, sem colar por cima.
 
 ```json
 { "mcpServers": { "nexus": { "httpUrl": "https://SEU-HOST/mcp", "headers": { "Authorization": "Bearer nxs_SUA_CHAVE" } } } }

@@ -296,6 +296,10 @@ button.column-toggle { display: none; }
 .token-name { font-weight: 600; font-size: var(--type-body); }
 .token-meta { grid-column: 1; font-family: var(--font-label); font-size: var(--type-label); color: var(--dim); }
 .token-row .actions { grid-row: 1 / span 2; grid-column: 2; }
+.token-row .dismiss { grid-row: 1; grid-column: 2; }
+/* Falha da fila (fila.js): o texto inteiro, com Copiar, antes de dispensar. */
+.token-row .failed-box { grid-column: 1 / -1; display: flex; gap: 8px; align-items: flex-start; }
+.token-row .failed-box > p { flex: 1; margin: 0; white-space: pre-wrap; word-break: break-word; font-size: var(--type-body-s); color: var(--on-surface); }
 .token-row.inactive .token-name { color: var(--dim); text-decoration: line-through; }
 .codebox { position: relative; font-family: var(--font-label); font-size: var(--type-caption); line-height: 1.7; background: var(--surface-deep); border: 1px solid var(--line-2); border-radius: var(--radius-m); padding: 12px 44px 12px 14px; color: var(--ink-code); white-space: pre-wrap; word-break: break-all; }
 .codebox .copy { position: absolute; top: 6px; right: 6px; }
@@ -374,6 +378,12 @@ dialog p { color: var(--on-surface-variant); font-size: var(--type-body); }
 /* Marca enquanto o app abre: só aparece se demorar (abrir rápido não pisca). */
 .boot-splash { animation: splash-in .3s .35s both; }
 @keyframes splash-in { from { opacity: 0; } }
+/* Abrindo: a frase visível e um indicador linear indeterminado (Material 3). */
+.boot-msg { margin: 18px 0 10px; text-align: center; color: var(--on-surface-variant); font-size: var(--type-body-s); }
+.boot-progress { position: relative; height: 4px; border-radius: var(--radius-full); background: var(--surface-container-high); overflow: hidden; }
+.boot-progress > span { position: absolute; top: 0; bottom: 0; left: 0; width: 40%; border-radius: inherit; background: var(--primary); animation: boot-bar 1.4s var(--ease, ease-in-out) infinite; }
+@keyframes boot-bar { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+@media (prefers-reduced-motion: reduce) { .boot-progress > span { animation-duration: 3s; } }
 .view-error { margin: 32px auto; max-width: 420px; text-align: center; }
 .auth-wrap::before { content: ''; position: absolute; inset: 0; z-index: -1; background: radial-gradient(600px circle at 70% 35%, color-mix(in srgb, var(--primary) 14%, transparent), transparent 60%); }
 .auth-wrap::after { content: ''; position: absolute; left: 0; right: 0; top: 62%; height: 1px; z-index: -1; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--primary) 20%, transparent) 15%, var(--primary) 55%, color-mix(in srgb, var(--primary-hi) 80%, transparent) 70%, transparent); box-shadow: 0 0 14px 1px color-mix(in srgb, var(--primary) 45%, transparent); }
@@ -458,7 +468,8 @@ dialog.task-dialog { max-width: 640px; padding: 0; max-height: min(88vh / var(--
 
 .time-form { display: grid; grid-template-columns: 90px 150px 1fr auto; gap: 8px; align-items: center; margin-bottom: 10px; }
 .time-form input { height: 40px; }
-.time-form .dur { font-family: var(--font-label); text-align: center; }
+.time-form .btn { height: 40px; }  /* mesma altura dos campos ao lado */
+.time-form .dur { font-family: var(--font-label); }
 @media (max-width: 560px) { .time-form { grid-template-columns: 1fr 1fr; } .time-form > :nth-child(3), .time-form > :nth-child(4) { grid-column: span 2; } }
 .mini-row { display: grid; grid-template-columns: 48px 56px 1fr auto; gap: 10px; align-items: center; padding: 4px 0; font-size: var(--type-body-s); }
 .mini-row .when, .mini-row .amount { font-size: var(--type-label); color: var(--dim); }
@@ -470,6 +481,7 @@ dialog.task-dialog { max-width: 640px; padding: 0; max-height: min(88vh / var(--
 
 .note-form { display: flex; gap: 8px; align-items: flex-end; margin-bottom: 12px; }
 .note-form textarea { flex: 1; min-height: 44px; }
+.note-form .btn { height: 44px; }
 .note { padding: 10px 12px; margin-bottom: 8px; border-radius: var(--radius-m); background: color-mix(in srgb, var(--tint) 2.5%, transparent); border: 1px solid var(--outline-variant); }
 .note p { color: var(--on-surface); font-size: var(--type-body); white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
 .note-meta { display: flex; align-items: center; gap: 8px; margin: -4px -6px 4px 0; font-size: var(--type-label); color: var(--dim); }
@@ -546,6 +558,8 @@ mark { background: color-mix(in srgb, var(--primary) 28%, transparent); color: v
 .small { font-size: var(--type-caption); }
 
 .notice-row { display: flex; align-items: center; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--outline-variant); }
+.hour-shared { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; }
+.hour-shared > small { font-size: var(--type-caption); color: var(--dim); text-align: right; max-width: 12em; }
 .notice-main { flex: 1; display: flex; gap: 12px; align-items: flex-start; margin: 0; cursor: pointer; }
 .notice-main input { margin-top: 3px; flex: none; }
 .notice-main strong { display: block; color: var(--on-surface); font-size: var(--type-body); font-weight: 600; }
@@ -628,6 +642,10 @@ mark { background: color-mix(in srgb, var(--primary) 28%, transparent); color: v
 .offline-bar.bad { border-color: color-mix(in srgb, var(--error) 50%, transparent); }
 .offline-bar.bad > .ico { color: var(--error); }
 .offline-bar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Detalhe da tarefa aberto sem sinal (task.js): só o que houver nas listas guardadas. */
+.offline-note { display: flex; gap: 10px; align-items: flex-start; margin: 4px 0 14px; padding: 12px 14px; border-radius: var(--radius-m);
+  background: var(--surface-pop); color: var(--on-surface); border: 1px solid color-mix(in srgb, var(--warning) 45%, transparent); font-size: var(--type-body-s); }
+.offline-note > .ico { width: 18px; height: 18px; color: var(--warning); flex: none; margin-top: 1px; }
 @media (max-width: 860px) { .offline-bar { top: calc(var(--bar-h, 56px) + env(safe-area-inset-top)); font-size: var(--type-caption); } }
 
 /* Tarefa em edição no detalhe: o concluir dela (cartão, linha, detalhe) esmaece até o "Pronto". */
@@ -744,7 +762,13 @@ button.nav-link { border: 0; background: transparent; width: 100%; font-family: 
 /* Inovação: impedimento com motivo, evidência da rotina e passagem de turno */
 /* Contexto da tarefa em texto: "● Matriz · Rede do 2º andar · #5098". */
 .task-ctx { display: inline-flex; flex-wrap: wrap; align-items: center; min-width: 0; font-size: var(--type-caption); color: var(--on-surface-variant); }
-.task-ctx > * + *::before { content: "·"; display: inline-block; margin: 0 6px; color: var(--dim); }  /* inline-block: o sublinhado do link do chamado não pega o ponto */
+/* Separador "·" antes de CADA item, num recuo de 14px cortado à esquerda: o primeiro
+   item de cada linha (também depois de quebrar) não começa com "·", e nenhuma linha
+   termina nele. inline-block: o sublinhado do link do chamado não pega o ponto. */
+.task-ctx, .dot-list { margin-left: -14px; clip-path: inset(-24px -24px -24px 14px); }
+.task-ctx > *::before, .dot-list > *::before { content: "·"; display: inline-block; width: 14px; text-align: center; color: var(--dim); }
+.dot-list { display: inline-flex; flex-wrap: wrap; min-width: 0; }
+.dot-list > * { min-width: 0; overflow-wrap: anywhere; }
 .task-ctx .chip { padding: 0; border: 0; border-radius: 0; background: none; font-family: var(--font-sans); font-size: inherit; font-weight: 400; letter-spacing: 0; color: var(--on-surface-variant); }
 .task-ctx .chip.project { color: var(--on-surface-variant); }
 .task-ctx .chip .ico { width: 14px; height: 14px; vertical-align: -2px; margin-right: 3px; }
@@ -811,6 +835,8 @@ dialog.sheet .menu-list > :last-child { border-bottom: 0; }
   .lockup--bar { --lock-fs: var(--bar-fs); flex: 1; min-width: 0; text-decoration: none; }
   .lockup--bar .lockup-mark { height: 1.55em; max-width: 2.7em; }
   .lockup--bar .lockup-type { flex-direction: row; align-items: baseline; gap: .28em; line-height: 1.3; white-space: nowrap; min-width: 0; overflow: hidden; }
+  /* Muito estreito (zoom de 400%): só "nexus", em vez do nome cortado no meio. */
+  @media (max-width: 359px) { .lockup--bar .lockup-type span + span { display: none; } }
   .appbar .icon-btn { width: 48px; height: 48px; }
   .appbar-me { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; }
   .appbar-me .avatar { width: 32px; height: 32px; font-size: var(--type-label); }
@@ -1088,7 +1114,9 @@ dialog .tour-intro { margin: 0 0 14px; line-height: 1.5; }
 .venc-row > .chip, .venc-row > .btn { white-space: nowrap; }
 
 /* ------------------------------------------------------------------ ajuda -- */
-dialog.help-dialog { max-width: 600px; width: min(600px, calc(100vw / var(--ui-zoom) - 32px)); max-height: min(88vh / var(--ui-zoom), 900px); overflow-y: auto; }
+dialog.help-dialog { max-width: 600px; width: min(600px, calc(100vw / var(--ui-zoom) - 32px)); max-height: min(88vh / var(--ui-zoom), 900px); overflow: hidden; padding-bottom: 0; }
+dialog.help-dialog[open] { display: flex; flex-direction: column; }
+.help-body { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -24px; padding: 0 24px; scrollbar-width: thin; }
 .help-sec { padding: 14px 0; border-top: 1px solid var(--outline-variant); }
 .help-sec:first-of-type { border-top: 0; padding-top: 0; }
 .help-sec h3 { display: flex; align-items: center; gap: 8px; font-size: var(--type-title); font-weight: 600; margin: 0 0 10px; color: var(--on-surface); }
@@ -1102,7 +1130,7 @@ dialog.help-dialog { max-width: 600px; width: min(600px, calc(100vw / var(--ui-z
 .help-example code { font-family: var(--font-label); color: var(--on-surface); }
 @media (max-width: 480px) { .help-list { grid-template-columns: 1fr; gap: 2px; } .help-list dd { margin-bottom: 8px; } }
 /* A Ajuda rola; o Fechar fica sempre à vista no rodapé. */
-dialog.help-dialog > .dialog-actions { position: sticky; bottom: -24px; margin: 8px -24px -24px; padding: 12px 24px 16px;
+dialog.help-dialog > .dialog-actions { flex: none; margin: 0 -24px; padding: 12px 24px 16px;
   background: var(--surface-pop); border-top: 1px solid var(--outline-variant); }
 
 /* ------------------------------------------- login: senha nova e convite -- */

@@ -38,7 +38,8 @@ export function sheet(title, items) {
 // ou Tab; setas andam entre os itens. Fica fora do zoom do <body>, então a
 // posição é a do ponteiro em px da tela.
 let menuClose = null;
-export function popupMenu(x, y, items) {
+// anchorTop: o topo do botão que abriu; sem espaço embaixo, o menu abre acima dele (não o cobre).
+export function popupMenu(x, y, items, anchorTop = null) {
   if (menuClose) menuClose();
   const back = document.activeElement;
   const menu = h("div", { class: "pop-menu", role: "menu" }, ...items.filter(Boolean).map(([label, ic, fn]) =>
@@ -46,7 +47,8 @@ export function popupMenu(x, y, items) {
   document.documentElement.append(menu);
   const r = menu.getBoundingClientRect();
   menu.style.left = Math.max(8, Math.min(x, innerWidth - r.width - 8)) + "px";
-  menu.style.top = Math.max(8, Math.min(y, innerHeight - r.height - 8)) + "px";
+  const top = anchorTop !== null && y + r.height + 8 > innerHeight ? anchorTop - r.height - 4 : y;
+  menu.style.top = Math.max(8, Math.min(top, innerHeight - r.height - 8)) + "px";
   const btns = [...menu.querySelectorAll("button")];
   btns[0].focus();
   const onDown = (ev) => { if (!menu.contains(ev.target)) close(); };
@@ -80,7 +82,7 @@ export function popupMenu(x, y, items) {
 export function actionMenu(btn, title, items) {
   if (matchMedia("(max-width: 860px)").matches) { sheet(title, items); return; }
   const r = btn.getBoundingClientRect();
-  popupMenu(r.right - 220, r.bottom + 4, items);
+  popupMenu(r.right - 220, r.bottom + 4, items, r.top);
 }
 
 // Quem pediu ao sistema menos movimento (as animações em JS também respeitam).
@@ -317,6 +319,41 @@ export function setSingleKeys(on) {
 
 // Foco que não se perde quando a lista é redesenhada: depois de render(),
 // volta ao controle de mesmo nome (aria-label) dentro de scope.
+// Anúncio para o leitor de tela numa região viva que não é recriada com a tela.
+let liveRegion = null;
+export function announce(text) {
+  if (!liveRegion) { liveRegion = h("div", { class: "sr-only", role: "status", "aria-live": "polite" }); document.body.append(liveRegion); }
+  liveRegion.textContent = "";
+  setTimeout(() => { liveRegion.textContent = text; }, 60);
+}
+
+// Setas de período (dia no Hoje, semana, mês, Equipe): a tela se redesenha e o
+// botão focado some. Espera o rótulo mudar, devolve o foco à mesma seta (ou à
+// outra, se esta ficou desabilitada no limite) e anuncia o período novo.
+document.addEventListener("click", (ev) => {
+  const btn = ev.target.closest && ev.target.closest(".day-nav button[aria-label]");
+  if (!btn) return;
+  const label = btn.getAttribute("aria-label");
+  const oldNav = btn.closest(".day-nav"), oldLab = oldNav.querySelector(".day-nav-label"), oldText = oldLab?.textContent;
+  const index = [...document.querySelectorAll(".day-nav")].indexOf(oldNav);
+  const t0 = performance.now();
+  const tick = () => {
+    if (performance.now() - t0 > 4000) return;
+    const navs = [...document.querySelectorAll(".day-nav")];
+    const nav = oldNav.isConnected ? oldNav : navs.filter((n) => n.querySelector(`button[aria-label="${CSS.escape(label)}"]`))[0] || navs[index];
+    const lab = nav && nav.querySelector(".day-nav-label");
+    if (!lab || lab.textContent === oldText) { requestAnimationFrame(tick); return; }
+    const a = document.activeElement;
+    if (!a || a === document.body || !a.isConnected || a === btn) {
+      const same = nav.querySelector(`button[aria-label="${CSS.escape(label)}"]`);
+      const el = same && !same.disabled ? same : nav.querySelector("button:not([disabled])");
+      if (el) el.focus();
+    }
+    if (lab !== oldLab || !lab.hasAttribute("aria-live")) announce(lab.textContent);  // rótulo recriado: a região viva nova não fala
+  };
+  requestAnimationFrame(tick);
+});
+
 export function refocusBy(scope, label) {
   if (!scope || !label) return;
   const el = scope.querySelector(`[aria-label="${CSS.escape(label)}"]`);
@@ -330,6 +367,8 @@ export function refocusBy(scope, label) {
 const TIMER_SWAP = [[/^Iniciar o cronômetro em /, "Parar o cronômetro de "], [/^Parar o cronômetro de /, "Iniciar o cronômetro em "]];
 export function keepFocus() {
   const a = document.activeElement;
+  // Foco no painel/janela da tarefa (ex.: "Mais ações" > Aguardando): volta para o mesmo controle lá.
+  const dlg = a && a.closest ? a.closest("dialog.task-dialog") : null;
   const item = a && a.closest ? a.closest("#main [data-task-id]") : null;
   const id = item && item.dataset.taskId;
   const label = a && a.getAttribute ? a.getAttribute("aria-label") : null;
@@ -337,6 +376,10 @@ export function keepFocus() {
   return () => {
     const cur = document.activeElement;
     if (cur && cur !== document.body && cur !== document.getElementById("main") && cur.isConnected) return; // já tem lugar (ex.: um diálogo)
+    if (dlg && dlg.isConnected && dlg.open) {
+      const el = (label && dlg.querySelector(`[aria-label="${CSS.escape(label)}"]`)) || dlg.querySelector(".task-appbar button");
+      if (el) { el.focus(); return; }
+    }
     const box = id && document.querySelector(`#main [data-task-id="${CSS.escape(id)}"]`);
     if (!box) { removed(); return; }
     const names = label ? [label, ...TIMER_SWAP.filter(([re]) => re.test(label)).map(([re, to]) => label.replace(re, to))] : [];

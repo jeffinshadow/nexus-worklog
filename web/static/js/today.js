@@ -68,7 +68,7 @@ export async function mount(root, ctx, opts = {}) {
   const recPanel = h("section", { class: "panel t-rec" },
     h("div", { class: "panel-head" }, h("h2", { text: "Rotinas" }), h("span", { class: "count", text: `${recDone}/${due.length}${extraTxt}` }),
       h("button", { type: "button", class: "icon accent", title: "Nova rotina", "aria-label": "Nova rotina", onClick: () => openRecurring(null, refresh) }, icon("add"))),
-    h("div", { class: "day-nav" }, prev, h("span", { class: "day-nav-label", "aria-live": "polite", text: dayLabel(b.day, today) }), next));
+    h("div", { class: "day-nav" }, prev, h("span", { class: "day-nav-label", text: dayLabel(b.day, today) }), next));
   if (due.length) {
     const bar = h("span");
     bar.style.width = `${Math.round((recDone / due.length) * 100)}%`;
@@ -78,7 +78,6 @@ export async function mount(root, ctx, opts = {}) {
     recPanel.append(h("p", { class: "empty", text: "Nenhuma rotina ainda. Crie o que você confere sempre (rondas, equipamentos, fila de pedidos, e-mail…)." }));
   else if (!due.length)
     recPanel.append(h("p", { class: "empty", text: "Nada previsto para este dia. Marcar mesmo assim conta como extra." }));
-  else if (off.length) recPanel.append(h("p", { class: "day-note", text: `Esmaecidas: fora da agenda deste dia${off.some((r) => r.paused_until) ? " ou pausadas" : ""} (se marcar, conta como extra).` }));
   for (const r of [...due, ...off]) {
     const cb = h("input", { type: "checkbox", "aria-label": r.label });
     cb.checked = r.done_today;
@@ -106,15 +105,21 @@ export async function mount(root, ctx, opts = {}) {
         errorToast(e, "Não foi possível salvar.");
       }
     });
-    const hint = [r.paused_until ? `pausada até ${shortDate(r.paused_until)}` : "", scheduleLabel(r, b.day), r.require_note && !r.done_today ? "exige evidência" : "",
+    // Esmaecida: a própria linha diz por quê (e o leitor de tela também, pela descrição da caixa).
+    const hint = [r.paused_until ? `pausada até ${shortDate(r.paused_until)}` : "", scheduleLabel(r, b.day),
+      r.due === false && !r.paused_until ? "fora da agenda deste dia (se marcar, é extra)" : "",
+      r.require_note && !r.done_today ? "exige evidência" : "",
       r.photos ? `${r.photos} foto${r.photos > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ");
     // Horário: perto dele (ou passado, sem marcar) a etiqueta acende, como o aviso.
     const at = r.remind_at ? r.remind_at.slice(0, 5) : null;
     const state = at && b.day === today && r.due !== false ? reminderState({ ...r, remind_at: at }) : null;
-    const time = at ? h("span", { class: "chip rem-at" + (state ? " " + state : ""), text: state === "due" ? `${at} · na hora` : at }) : null;
+    const time = at ? h("span", { class: "chip rem-at" + (state ? " " + state : ""), id: `rec-at-${r.id}`, text: state === "due" ? `${at} · na hora` : at }) : null;
+    // O aria-label da caixa troca o texto do <label>: horário, estado e evidência vão pela descrição.
+    cb.setAttribute("aria-describedby", [at && `rec-at-${r.id}`, hint && `rec-hint-${r.id}`, r.note && `rec-ev-${r.id}`].filter(Boolean).join(" "));
+    if (!cb.getAttribute("aria-describedby")) cb.removeAttribute("aria-describedby");
     recPanel.append(h("label", { class: "check-row" + (r.done_today ? " done" : "") + (r.due === false ? " off" : "") }, cb,
-      h("span", { class: "label" }, h("span", { class: "rec-title" }, r.label, time), hint ? h("small", { text: hint }) : null,
-        r.note ? h("small", { class: "evidence", text: "evidência: " + r.note }) : null),
+      h("span", { class: "label" }, h("span", { class: "rec-title" }, r.label, time), hint ? h("small", { id: `rec-hint-${r.id}`, text: hint }) : null,
+        r.note ? h("small", { class: "evidence", id: `rec-ev-${r.id}`, text: "evidência: " + r.note }) : null),
       // Marcada: anota o que foi conferido (vai para o relatório, para comprovar depois).
       r.done_today ? h("button", { type: "button", class: "icon", title: r.note ? "Editar a evidência" : "Anotar a evidência (o que foi conferido)",
         "aria-label": "Evidência de " + r.label, onClick: (ev) => { ev.preventDefault(); editEvidence(r, b.day, refresh); } }, icon("note")) : null,

@@ -8,13 +8,13 @@ Prioridades: **simples > seguro > funcional > elegante**.
 
 Cada pessoa vê **apenas** os próprios dados. As contas são criadas pelo
 **admin** (convite com senha temporária); não há cadastro público. Papéis
-acumuláveis, dados em **Admin > Usuários > ⋮ > Papéis…**: **Usuário** (o próprio registro),
-**Admin** (convites, contas, papéis, configurações), **Atribuidor de tarefas** (manda
-tarefas a quem aceitou receber) e **Visualizador de tarefas** (consulta, só
+acumuláveis, dados em **Admin > Contas > ⋮ > Papéis…**: **Usuário** (o próprio registro),
+**Admin** (convites, contas, papéis, configurações), **Manda tarefas** (libera a tela Atribuir:
+manda tarefas a quem aceitou receber) e **Vê a equipe** (libera a tela Equipe: consulta, só
 para leitura, o quadro, a retrospectiva, os relatórios, as horas e as fotos de
 quem **aceitou** em Configurações > Conta; contas novas começam sem o aceite, e
 os Papéis… de cada conta mostram quem liberou). O admin também tem o próprio registro;
-em Admin > Usuários ele busca a conta, reenvia ou **cancela um convite** ainda
+em Admin > Contas ele busca a conta, reenvia ou **cancela um convite** ainda
 não aceito, redefine a senha, **bloqueia o acesso** (a pessoa sai de todos os
 aparelhos, chaves e passkeys param, os dados ficam; Redefinir senha libera) ou
 exclui a conta de vez.
@@ -87,7 +87,7 @@ exclui a conta de vez.
   Exportação em CSV (planilha) e JSON (backup).
 - **Histórico com desfazer**, **busca** sem acento (inclusive por `#chamado`),
   **feed de calendário (ICS)**, **avisos por e-mail** (opt-in), **lembrete** no
-  app depois de X minutos sem registro, **atalhos de teclado** (`n`, `/`, `s`,
+  app depois de X minutos sem registro, **atalhos de teclado** (`n`, `q`, `/`, `s`,
   `?`…), perfil com nome e foto e **identidade visual** configurável pelo admin.
 - **App instalável** (PWA, sem loja) — no celular e no computador, com convite
   para instalar (no iPhone, o passo a passo do Safari), **atalhos** no ícone
@@ -95,7 +95,7 @@ exclui a conta de vez.
   ou link de outro app vira uma nova tarefa preenchida) e o **número no ícone**
   (atrasadas + rotinas na hora). **Notificações do sistema** com o app fechado,
   por aparelho (Web Push padrão, criptografado, sem Firebase): rotina na hora
-  com Marcar feita e Adiar (repete até marcar), cobranças e prazos de manhã e
+  com Marcar feita e Adiar (repete até marcar), cobranças e prazos de manhã (no mesmo horário do e-mail "Seu dia") e
   tarefa atribuída; opção de esconder os nomes na tela bloqueada.
 - **Fotos** — na tarefa e como evidência da rotina: câmera no celular, print
   colado (Ctrl+V) ou arrastado no computador, ou compartilhada de outro app.
@@ -103,8 +103,11 @@ exclui a conta de vez.
   desfazer, cota por pessoa e exportação em .zip.
 - **Sem sinal** — o app abre com as telas da última visita (avisando de que
   hora são) e guarda no aparelho o que for feito: registrar, concluir, anotar,
-  marcar rotina e o cronômetro, com a hora em que aconteceu. Na volta da
-  conexão, vai sozinho e na ordem, sem duplicar. Sair limpa tudo do aparelho.
+  marcar rotina, fotos e o cronômetro, com a hora em que aconteceu. Uma tarefa
+  nunca aberta com sinal abre com o que havia nas listas e aceita anotação, foto
+  e conclusão. Na volta da conexão, vai sozinho e na ordem, sem duplicar (nem
+  as fotos); o que for recusado fica com o texto inteiro para copiar. Sair limpa
+  tudo do aparelho.
 - **Tema claro e escuro** (Material 3) — segue o aparelho ou fica fixo pela
   conta, com contraste AA medido em todo texto; no celular, controles com área
   de toque de pelo menos 44 px.
@@ -206,7 +209,7 @@ cd nexus-worklog
      STARTTLS), `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM`, `APP_URL`
 2. `docker compose up -d --build` — o nginx fica em `127.0.0.1:${WEB_PORT}`.
 3. Entre com o admin: a troca de senha é obrigatória no primeiro acesso.
-   Depois, **Admin > Novo usuário** cria as contas.
+   Depois, **Admin > Convidar pessoa** cria as contas.
 
 Desenvolvimento com e-mail falso: `docker-compose.mailpit.yml` (instruções no
 próprio arquivo).
@@ -267,7 +270,7 @@ incidente e outra quando volta. Logs com rotação (10 MB × 5 por serviço).
   em sandbox.
 - **Seus dados (LGPD)**: cada pessoa exporta tudo em JSON ou CSV (Meu mês > Outro período ou formato) e
   exclui a própria conta em Configurações > Conta (com a senha); o admin também
-  exclui uma conta (Admin > Usuários, confirmando o e-mail). Tarefas, rotinas,
+  exclui uma conta (Admin > Contas, confirmando o e-mail). Tarefas, rotinas,
   tempo, anotações, chaves e histórico vão junto; ficam só o e-mail e as contagens
   no histórico de quem excluiu (180 dias). O último admin não sai. O JSON leva
   também perfil, preferências, modelos, projetos com objetivos e as chaves
@@ -281,8 +284,8 @@ incidente e outra quando volta. Logs com rotação (10 MB × 5 por serviço).
   - **Pedidos de convite** (nome, e-mail e motivo de quem ainda não tem conta):
     apagados 30 dias depois de decididos, ou em 180 dias sem resposta.
   - **Quem vê o seu registro**: só você, até você ligar "Permitir que
-    visualizadores vejam meu registro" em Configurações > Conta. Ligado, o
-    visualizador vê (sem editar) quadro, números, PDF, horas e fotos; quem não
+    quem tem o papel “Vê a equipe” veja meu registro" em Configurações > Conta. Ligado,
+    quem tem esse papel vê (sem editar) quadro, números, PDF, horas e fotos; quem não
     aceitou não aparece em Equipe nem no CSV da equipe. O admin não vê
     registros. A linha "Quem pode ver seu registro" mostra os nomes, e a mudança
     fica no seu histórico. Contas que já existiam quando o aceite chegou

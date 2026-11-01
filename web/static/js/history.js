@@ -18,12 +18,13 @@ export async function mount(root) {
     const rows = await api.get(`/history?limit=${limit}`);
     clear(root);
     const panel = h("section", { class: "panel" },
-      h("p", { class: "help muted", text: "Toda alteração fica registrada com a origem. Dá para desfazer a mais recente de cada tarefa, rotina ou configuração." }));
+      h("p", { class: "help muted", text: "Toda alteração fica registrada. A origem aparece quando não foi pelo app (chave de API, IA, admin). Dá para desfazer a mais recente de cada tarefa, rotina ou configuração." }));
     if (!rows.length) panel.append(h("p", { class: "empty", text: "Nada registrado ainda." }));
     const list = h("div", { class: "hist" });
     for (const r of rows) {
       const [cls, ic, label] = (WHO[r.actor] || WHO.web)(r);
-      const badge = h("span", { class: "who-badge " + cls }, ic ? icon(ic) : null, label);
+      // Pelo próprio app é o normal: a origem só aparece quando é outra (chave, IA, admin).
+      const badge = cls === "web" ? null : h("span", { class: "who-badge " + cls }, ic ? icon(ic) : null, label);
       const actions = h("div");
       if (r.can_undo) {
         actions.append(h("button", {

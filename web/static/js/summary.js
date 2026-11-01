@@ -15,7 +15,7 @@ function figures(s) {
   const p = pct(s.recurring_done, s.recurring_total);
   const fig = (value, label) => h("div", { class: "fig" }, h("p", { class: "fig-n", text: value }), h("p", { class: "fig-l", text: label }));
   return h("div", { class: "figs" },
-    fig(s.recurring_total ? `${p}%` : "—", s.recurring_total ? `rotinas · ${s.recurring_done}/${s.recurring_total}` : "sem rotinas devidas"),
+    fig(s.recurring_total ? `${p}%` : "—", s.recurring_total ? `rotinas · ${s.recurring_done}/${s.recurring_total}` : "sem rotinas previstas"),
     fig(String(s.pontual_done), s.pontual_done === 1 ? "tarefa concluída" : "tarefas concluídas"),
     fig(s.minutes ? duration(s.minutes) : "—", "tempo apontado"));
 }

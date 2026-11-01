@@ -69,7 +69,7 @@ try:
     shot("e2-painel-ligado")
     # preferências
     ev("document.querySelector('input[aria-label=\"Prazos de hoje\"]').click()")
-    ev("[...document.querySelectorAll('button')].find(b=>b.textContent==='Salvar notificações').click()"); time.sleep(1)
+    ev("[...document.querySelectorAll('button')].find(b=>b.textContent==='Salvar avisos').click()"); time.sleep(1.5)
     check("preferência salva", api("GET", "/push")["b"]["prefs"]["deadline"] is False)
     api("PUT", "/push/prefs", {"deadline": True})
 

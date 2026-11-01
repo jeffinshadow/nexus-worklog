@@ -108,12 +108,12 @@ export function offerNotifications(me) {
 // --------------------------------------------- Configurações > Avisos --
 const TYPES = [
   ["routine", "Rotina na hora", "No horário da rotina, com Marcar feita e Adiar 10 min; repete 10 e 30 min depois até ser marcada."],
-  ["follow_up", "Cobrar hoje", "De manhã, as tarefas aguardando com o dia de cobrar chegando."],
-  ["deadline", "Prazos de hoje", "De manhã, as atrasadas e o que vence hoje."],
+  ["follow_up", "Cobrar hoje", "No horário da manhã (em Seu dia, abaixo), as tarefas aguardando com o dia de cobrar chegando."],
+  ["deadline", "Prazos de hoje", "No horário da manhã (em Seu dia, abaixo), as atrasadas e o que vence hoje."],
   ["assigned", "Tarefa atribuída a você", "Quando alguém manda uma tarefa pelo Nexus."],
 ];
-const HOURS = Array.from({ length: 24 }, (_, i) => i);
-
+// O horário da manhã e o Salvar ficam um só na aba: o painel devolve `collect()`
+// (o corpo de PUT /push/prefs, sem o horário) e o Salvar do e-mail grava os dois.
 export async function pushPanel(rerender) {
   const sub = await currentSubscription();
   const p = await api.get("/push" + (sub ? "?endpoint=" + encodeURIComponent(sub.endpoint) : ""));
@@ -143,18 +143,14 @@ export async function pushPanel(rerender) {
     on.checked = p.prefs[key];
     return { key, on, el: h("label", { class: "notice-main notice-row" }, on, h("span", {}, h("strong", { text: title }), h("small", { text: help }))) };
   });
-  const hour = h("select", { class: "select-sm", "aria-label": "Horário dos avisos da manhã" },
-    ...HOURS.map((x) => h("option", { value: String(x), text: `${String(x).padStart(2, "0")}:00` })));
-  hour.value = String(p.prefs.morning_hour);
   const hide = h("input", { type: "checkbox" });
   hide.checked = p.prefs.hide_content;
-  const saveBtn = h("button", { type: "button", class: "btn btn-primary", text: "Salvar notificações" });
-  saveBtn.addEventListener("click", async () => {
-    const body = { morning_hour: Number(hour.value), hide_content: hide.checked };
+  const collect = () => {
+    const body = { hide_content: hide.checked };
     for (const c of checks) body[c.key] = c.on.checked;
-    try { await api.put("/push/prefs", body); toast("Notificações salvas."); } catch (e) { errorToast(e, "Não foi possível salvar."); }
-  });
-  const test = h("button", { type: "button", class: "btn btn-ghost" }, icon("bell"), "Testar");
+    return body;
+  };
+  const test = h("button", { type: "button", class: "btn btn-ghost" }, icon("bell"), "Testar notificação");
   test.disabled = !p.devices.length;
   test.addEventListener("click", async () => {
     test.disabled = true;
@@ -163,14 +159,14 @@ export async function pushPanel(rerender) {
     finally { setTimeout(() => { test.disabled = false; }, 4000); }
   });
 
-  return h("section", { class: "panel" },
+  const panel = h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Notificações nos aparelhos" })),
     h("p", { class: "help", text: "Avisos do sistema no celular e no computador, mesmo com o Nexus fechado. Cada aparelho liga separado; o conteúdo vai criptografado, sem serviço de terceiros além do push do próprio navegador." }),
     h("div", { class: "push-here" }, h("p", { text: status }), action),
     ...checks.map((c) => c.el),
-    h("div", { class: "notice-row" }, h("span", { class: "notice-main" }, h("span", {}, h("strong", { text: "Horário dos avisos da manhã" }), h("small", { text: "Cobranças e prazos, nos dias úteis." }))), hour),
     h("label", { class: "check-line notice-titles" }, hide, h("span", { text: "Esconder nomes de tarefas e rotinas na tela bloqueada (só o tipo do aviso)" })),
-    h("div", { class: "row-actions" }, saveBtn, test),
+    h("p", { class: "dialog-note", text: "Escolhas daqui são gravadas pelo “Salvar avisos”, no fim da aba." }),
+    h("div", { class: "row-actions" }, test),
     p.devices.length ? h("div", { class: "push-devices" },
       h("h3", { text: "Aparelhos ligados" }),
       ...p.devices.map((d) => h("div", { class: "token-row" },
@@ -178,4 +174,6 @@ export async function pushPanel(rerender) {
         h("span", { class: "token-meta", text: d.last_ok_at ? "último aviso " + dateTime(d.last_ok_at) : "ligado " + dateTime(d.created_at) }),
         h("button", { type: "button", class: "icon", title: "Remover este aparelho", "aria-label": "Remover " + (d.label || "aparelho"),
           onClick: async () => { if (d.current) await disable(d.id); else await api.del(`/push/devices/${d.id}`); rerender(); } }, icon("trash"))))) : null);
+  panel.collect = collect;
+  return panel;
 }

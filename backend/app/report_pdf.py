@@ -248,7 +248,7 @@ def _lede(data: dict) -> str:
         frases.append(("Foram " if s["pontual_done"] != 1 or s["minutes"] else "Foi ") + " e ".join(feito) + ".")
     if s["recurring_total"] and not by_project:
         pct = round(100 * s["recurring_done"] / s["recurring_total"])
-        r = f"As rotinas ficaram em {pct}%: {s['recurring_done']} de {s['recurring_total']} verificações devidas"
+        r = f"As rotinas ficaram em {pct}%: {s['recurring_done']} de {s['recurring_total']} verificações previstas"
         r += f", mais {_plural(s['recurring_extra'], 'extra', 'extras')}." if s["recurring_extra"] else "."
         frases.append(r)
     if s["open"]:
@@ -318,7 +318,7 @@ def _figures(pdf: _Report, data: dict) -> None:
     if not by_project:
         pct = round(100 * s["recurring_done"] / s["recurring_total"]) if s["recurring_total"] else None
         cols.append(("rotinas", f"{pct}%" if pct is not None else "—",
-                     f"{s['recurring_done']} de {s['recurring_total']} devidas" if s["recurring_total"] else "nenhuma devida", pct))
+                     f"{s['recurring_done']} de {s['recurring_total']} previstas" if s["recurring_total"] else "nenhuma prevista", pct))
     cols.append(("concluídas", str(s["pontual_done"]), "tarefas", None))
     cols.append(("tempo", _dur(s["minutes"]) if s["minutes"] else "—",
                  (f"{_dur(s['minutes_after_hours'])} em plantão" if s.get("minutes_after_hours") else
@@ -462,7 +462,7 @@ def _matrix(pdf: _Report, data: dict) -> bool:
     d = min(step * 0.62, 2.8)
     y = _section(pdf, "Rotinas", need=14 + 6 * min(len(stats), 6), legend=[
         ("feita", lambda x, yy: pdf.dot(x, yy, 2.2, ACCENT)),
-        ("perdida", lambda x, yy: pdf.dot(x + 0.15, yy + 0.15, 1.9, None, outline=DIM, lw=0.35)),
+        ("não feita", lambda x, yy: pdf.dot(x + 0.15, yy + 0.15, 1.9, None, outline=DIM, lw=0.35)),
         ("extra", lambda x, yy: pdf.dot(x, yy, 2.2, ACCENT_MID)),
         ("fora da agenda", lambda x, yy: pdf.dot(x + 0.75, yy + 0.75, 0.7, FAINT)),
     ])
@@ -516,7 +516,7 @@ def _recurring_list(pdf: _Report, data: dict) -> None:
     stats = [r for r in data["recurring_stats"] if r["due"] or r["extra"]]
     if not stats:
         return
-    y = _section(pdf, "Rotinas", "feitas / devidas", need=20)
+    y = _section(pdf, "Rotinas", "feitas / previstas", need=20)
     for r in stats:
         if y + 9 > pdf.bottom:
             pdf.add_page()

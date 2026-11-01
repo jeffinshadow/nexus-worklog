@@ -15,7 +15,9 @@ const TABS = [
   ["ia", "IA e API"],
 ];
 const OLD_TABS = { dias: "conta", chaves: "ia" }; // links antigos
-const ROLE_SHORT = { admin: "admin", assigner: "atribui tarefas", viewer: "visualizador" };
+// Os mesmos nomes do Admin (cada papel com o nome do que ele faz; a tela vem junto).
+const ROLE_SHORT = { admin: "Admin", assigner: "Manda tarefas", viewer: "Vê a equipe" };
+const ROLE_SCREEN = { admin: "tela Admin", assigner: "tela Atribuir", viewer: "tela Equipe" };
 
 // Dias úteis como máscara de bits, domingo = bit 0 (igual ao backend).
 const DAYS = [
@@ -34,7 +36,7 @@ export async function mount(root, ctx) {
   if (!tabs.some(([k]) => k === active)) active = tabs[0][0];
 
   clear(root);
-  const seg = h("div", { class: "seg", role: "tablist" });
+  const seg = h("div", { class: "seg", role: "tablist", "aria-label": "Configurações" });
   const body = h("div", { class: "settings-grid" });
   for (const [key, label] of tabs) {
     seg.append(h("button", {
@@ -79,9 +81,7 @@ export async function mount(root, ctx) {
   async function fill(body) {
     if (active === "modelos") body.append(await templatesPanel(() => render()));
     else if (active === "avisos") {
-      const grid = await notices();
-      grid.prepend(await pushPanel(() => render())); // notificações dos aparelhos primeiro; e-mail depois
-      body.append(grid);
+      body.append(await notices(await pushPanel(() => render()))); // notificações dos aparelhos primeiro; e-mail depois
     }
     else if (active === "calendario") body.append(await calendarFeed(() => render()));
     else if (active === "ia") body.append(await tokens(() => render()), ...aiHelp(), await webhooksPanel(() => render()));
@@ -229,7 +229,7 @@ async function templatesPanel(rerender) {
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Modelos de tarefa" }),
         h("button", { type: "button", class: "btn btn-primary btn-sm", onClick: () => editTemplate(null, rerender) }, icon("add"), "Novo modelo")),
-      h("p", { class: "help", text: "Procedimentos que se repetem (onboarding de colaborador, troca de equipamento, servidor novo) viram um modelo com checklist pronto. Use em “+ Tarefa”, escolhendo o modelo, ou salve uma tarefa existente como modelo pelo detalhe dela." })),
+      h("p", { class: "help", text: "Procedimentos que se repetem (entrada de colaborador novo, troca de equipamento, servidor novo) viram um modelo com checklist pronto. Use em “+ Tarefa”, escolhendo o modelo, ou salve uma tarefa existente como modelo pelo detalhe dela." })),
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Meus modelos" }), h("span", { class: "count", text: String(list.length) })),
       ...rows));
@@ -347,7 +347,8 @@ const KINDS = [
 ];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
-async function notices() {
+// push: o painel das notificações (o mesmo Salvar e o mesmo horário da manhã valem para ele).
+async function notices(push) {
   const p = await api.get("/notifications");
   const rows = KINDS.map(([key, title, help]) => {
     const on = h("input", { type: "checkbox", "aria-label": title });
@@ -355,11 +356,13 @@ async function notices() {
     const hour = h("select", { class: "select-sm", "aria-label": `Horário de ${title}` },
       ...HOURS.map((x) => h("option", { value: String(x), text: `${String(x).padStart(2, "0")}:00` })));
     hour.value = String(p[`${key}_hour`]);
-    const sync = () => { hour.disabled = !on.checked; };
+    // O horário da manhã vale também para as notificações (cobranças e prazos): fica sempre editável.
+    const sync = () => { hour.disabled = !on.checked && key !== "morning"; };
     on.addEventListener("change", sync);
     sync();
     return { key, on, hour, el: h("div", { class: "notice-row" },
-      h("label", { class: "notice-main" }, on, h("span", {}, h("strong", { text: title }), h("small", { text: help }))), hour) };
+      h("label", { class: "notice-main" }, on, h("span", {}, h("strong", { text: title }), h("small", { text: help }))),
+      key === "morning" ? h("span", { class: "hour-shared" }, hour, h("small", { text: "horário da manhã: e-mail e notificações" })) : hour) };
   });
   // Semanal: o PDF anexado e uma cópia (quem acompanha o trabalho) — só valem com o resumo da semana ligado.
   const weekly = rows.find((r) => r.key === "weekly");
@@ -380,7 +383,11 @@ async function notices() {
   save.addEventListener("click", async () => {
     const body = { show_titles: titles.checked, weekly_pdf: pdf.checked, weekly_cc: cc.value.trim() || null };
     for (const r of rows) { body[r.key] = r.on.checked; body[`${r.key}_hour`] = Number(r.hour.value); }
-    try { await api.put("/notifications", body); toast("Avisos salvos."); setDirty(false); }
+    try {
+      await api.put("/notifications", body);
+      await api.put("/push/prefs", { ...push.collect(), morning_hour: body.morning_hour });
+      toast("Avisos salvos."); setDirty(false);
+    }
     catch (e) { if (e.status === 422) toast("O e-mail da cópia não parece válido.", { error: true }); else errorToast(e, "Não foi possível salvar."); }
   });
   const test = h("button", { type: "button", class: "btn btn-ghost" }, icon("mail"), "Mandar um teste");
@@ -421,7 +428,7 @@ async function notices() {
       h("div", { class: "row-actions" }, save, test, testWeek));
   for (const ev of ["input", "change"]) mailPanel.addEventListener(ev, (e) => { if (!e.target.closest(".row-actions")) setDirty(true); });
   return h("div", { class: "settings-grid" },
-    mailPanel,
+    push, mailPanel,
     recent.length ? h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Últimos envios" })),
       ...recent.map((r) => h("div", { class: "token-row" },
@@ -547,7 +554,7 @@ async function tokens(rerender) {
       h("p", { class: "help", text: "Em vez de registrar à mão, conte para a IA o que você fez e ela registra no Nexus. Uma chave deixa uma IA ou automação usar o Nexus em seu nome, sem a sua senha; tudo o que ela fizer aparece no Histórico com o nome que você der aqui. Ao criar, a janela já traz a configuração pronta para o Claude Code, o Claude Desktop, o Cursor e o Gemini CLI." }),
       form),
     h("section", { class: "panel" },
-      h("div", { class: "panel-head" }, h("h2", { text: "Minhas chaves" }), h("span", { class: "count", text: String(list.filter((t) => t.active).length) + " ativas" })),
+      h("div", { class: "panel-head" }, h("h2", { text: "Minhas chaves" }), h("span", { class: "count", text: (() => { const n = list.filter((t) => t.active).length; return n + (n === 1 ? " ativa" : " ativas"); })() })),
       ...rows));
 }
 
@@ -556,7 +563,7 @@ function aiConfigs(key) {
   const url = `${location.origin}/mcp`;
   const desktop = { command: "npx", args: ["-y", "mcp-remote", url, "--header", "Authorization:${NEXUS_AUTH}"], env: { NEXUS_AUTH: `Bearer ${key}` } };
   return {
-    code: `claude mcp add --transport http nexus ${url} --header "Authorization: Bearer ${key}"`,
+    code: `claude mcp add --scope user --transport http nexus ${url} --header "Authorization: Bearer ${key}"`,
     desktop: JSON.stringify({ mcpServers: { nexus: desktop } }, null, 2),
     desktopMerge: JSON.stringify({ preferences: { "...": "o que já estava aqui" }, mcpServers: { "outro-servidor": { "...": "o que já estava aqui" }, nexus: desktop } }, null, 2),
     cursor: JSON.stringify({ mcpServers: { nexus: { url, headers: { Authorization: `Bearer ${key}` } } } }, null, 2),
@@ -564,14 +571,19 @@ function aiConfigs(key) {
   };
 }
 
+// Arquivo de configuração que já tem conteúdo: juntar, não substituir (Desktop, Cursor, Gemini CLI).
+const MERGE_NOTE = "Arquivo com outro conteúdo? Já existe \"mcpServers\": cole só o trecho \"nexus\": { … } dentro dele, com uma vírgula entre os servidores. Não existe: acrescente \"mcpServers\": { … } inteiro como mais um item, separado por vírgula.";
+
 // Chave criada: a chave e o bloco pronto da IA escolhida (já com a chave), cada um com Copiar.
 function showNewToken(res) {
   const cfg = aiConfigs(res.token);
   const AIS = [
-    ["Claude Code", "No terminal, rode:", cfg.code],
-    ["Claude Desktop", "Cole em claude_desktop_config.json (Configurações > Desenvolvedor > Editar configuração). Arquivo com outro conteúdo? Veja a nota na aba IA e API.", cfg.desktop],
-    ["Cursor", "Cole em mcp.json (vale para outros programas que aceitam endereço e cabeçalho):", cfg.cursor],
-    ["Gemini CLI", "Cole em settings.json, dentro da pasta .gemini da sua pasta de usuário:", cfg.gemini],
+    ["Claude Code", ["No terminal, rode (vale em qualquer pasta):"], cfg.code],
+    ["Claude Desktop", ["Precisa do Node.js instalado (versão LTS, em ",
+      h("a", { href: "https://nodejs.org", target: "_blank", rel: "noopener noreferrer", text: "nodejs.org" }),
+      "). Depois, cole em claude_desktop_config.json (Configurações > Desenvolvedor > Editar configuração) e reabra o Claude Desktop. " + MERGE_NOTE], cfg.desktop],
+    ["Cursor", ["Cole em mcp.json, na pasta .cursor da sua pasta de usuário (ou em Cursor Settings > MCP > Add new global MCP server). " + MERGE_NOTE], cfg.cursor],
+    ["Gemini CLI", ["Abra settings.json, na pasta .gemini da sua pasta de usuário. Depois do primeiro login ele já tem conteúdo (o login, o tema): não cole por cima. " + MERGE_NOTE], cfg.gemini],
   ];
   const seg = h("div", { class: "seg seg-sm ai-tabs", role: "tablist", "aria-label": "Sua IA" });
   const slot = h("div", { class: "ai-config" });
@@ -579,7 +591,7 @@ function showNewToken(res) {
     for (const [n, b] of [...seg.children].entries()) b.setAttribute("aria-selected", String(n === i));
     const [, note, code] = AIS[i];
     clear(slot);
-    slot.append(h("p", { class: "dialog-note", text: note }), codeBox(code));
+    slot.append(h("p", { class: "dialog-note" }, ...note), codeBox(code));
   };
   AIS.forEach(([name], i) => seg.append(h("button", { type: "button", class: "chip-btn", role: "tab", text: name, onClick: () => show(i) })));
   show(0);
@@ -639,9 +651,9 @@ async function webhooksPanel(rerender) {
       }));
     }
     actions.append(h("button", {
-      type: "button", class: "btn btn-danger btn-sm", text: "Apagar", onClick: async () => {
-        if (!(await confirmDialog({ title: "Apagar o webhook?", text: `${w.url} deixa de receber os avisos na hora.`, confirm: "Apagar", danger: true }))) return;
-        try { await api.del(`/webhooks/${w.id}`); toast("Webhook apagado."); rerender(); }
+      type: "button", class: "btn btn-danger btn-sm", text: "Excluir", onClick: async () => {
+        if (!(await confirmDialog({ title: "Excluir o webhook?", text: `${w.url} deixa de receber os avisos na hora.`, confirm: "Excluir", danger: true }))) return;
+        try { await api.del(`/webhooks/${w.id}`); toast("Webhook excluído."); rerender(); }
         catch (e) { errorToast(e); }
       },
     }));
@@ -684,9 +696,9 @@ function aiHelp() {
       h("div", { class: "panel-head" }, h("h2", { text: "Use o Nexus pela sua IA" })),
       h("p", { class: "help", text: "Conte para a IA o que você fez (“troquei o disjuntor do quadro 3 e fiz a ronda da manhã”) e ela registra no Nexus. O Nexus fala MCP, a forma padrão de uma IA usar outros programas." }),
       h("p", { class: "help", text: "1. Crie uma chave em Nova chave, acima (opção “Ler e registrar”): a janela já mostra a configuração pronta de cada IA. 2. Precisa de novo depois? Cole a configuração abaixo, trocando nxs_SUA_CHAVE pela chave:" }),
-      h("p", { class: "dialog-note", text: "Claude Code (terminal):" }),
+      h("p", { class: "dialog-note", text: "Claude Code (terminal; com --scope user vale em qualquer pasta):" }),
       codeBox(cfg.code),
-      h("p", { class: "dialog-note", text: "Cursor (arquivo mcp.json) e outros programas que aceitam endereço e cabeçalho:" }),
+      h("p", { class: "dialog-note", text: "Cursor (arquivo mcp.json, na pasta .cursor da sua pasta de usuário, ou Cursor Settings > MCP > Add new global MCP server) e outros programas que aceitam endereço e cabeçalho. Arquivo com outro conteúdo: veja a nota do Claude Desktop, abaixo; vale igual." }),
       codeBox(cfg.cursor),
       h("p", { class: "dialog-note", text: "Claude Desktop (o aplicativo do Claude no computador), passo a passo:" }),
       h("ol", { class: "help" },
@@ -696,14 +708,14 @@ function aiHelp() {
         h("li", { text: "Se o arquivo estiver vazio ou só com {}, apague tudo e cole o bloco abaixo. Se já tiver outro conteúdo, veja a nota logo depois do bloco." }),
         h("li", { text: "Salve, feche o Claude Desktop por completo e abra de novo. Para conferir, pergunte “o que tenho hoje no Nexus?”: o nexus aparece no ícone de ferramentas, abaixo da caixa de mensagem." })),
       codeBox(cfg.desktop),
-      h("p", { class: "help", text: "Se o arquivo já tiver conteúdo, não cole por cima nem no fim: o arquivo deixa de valer e o aplicativo abre sem o Nexus. Já existe \"mcpServers\"? Copie só o trecho \"nexus\": { … } e cole dentro dele, depois do último servidor, com uma vírgula entre os dois. Não existe? Acrescente \"mcpServers\": { … } inteiro como mais um item, também separado por vírgula. Exemplo de um arquivo que já tinha outras coisas:" }),
+      h("p", { class: "help", text: "Vale para os três arquivos (Claude Desktop, Cursor e Gemini CLI). Se o arquivo já tiver conteúdo, não cole por cima nem no fim: o arquivo deixa de valer e o aplicativo abre sem o Nexus. Já existe \"mcpServers\"? Copie só o trecho \"nexus\": { … } e cole dentro dele, depois do último servidor, com uma vírgula entre os dois. Não existe? Acrescente \"mcpServers\": { … } inteiro como mais um item, também separado por vírgula. Exemplo de um arquivo que já tinha outras coisas:" }),
       codeBox(cfg.desktopMerge),
-      h("p", { class: "dialog-note", text: "Gemini CLI (o Gemini que roda no terminal; arquivo settings.json dentro da pasta .gemini, na sua pasta de usuário):" }),
+      h("p", { class: "dialog-note", text: "Gemini CLI (o Gemini que roda no terminal; arquivo settings.json dentro da pasta .gemini, na sua pasta de usuário). Depois do primeiro login esse arquivo já tem conteúdo: junte como na nota acima, sem colar por cima." }),
       codeBox(cfg.gemini),
       h("p", { class: "help", text: "O aplicativo e o site do Gemini (gemini.google.com), o ChatGPT e o Claude no navegador (claude.ai) ainda não ligam no Nexus: os conectores deles pedem um tipo de login (OAuth) que o Nexus não tem. Do Gemini, só o Gemini CLI funciona; nos outros, use um dos programas acima ou a API." })),
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "O que a IA pode fazer" })),
-      h("p", { class: "help", text: "Ver o dia e como foi qualquer período (tempo por projeto), buscar, criar e editar tarefas (com projeto, prioridade e tempo gasto), concluir, criar e marcar rotinas (até 7 dias atrás), anotar progresso, montar checklist, apontar tempo e usar o cronômetro, montar projetos e objetivos, fazer a passagem de turno, ver vencimentos, achar como você resolveu algo parecido antes, consultar o histórico e desfazer um engano dela. Pelo MCP ela não exclui tarefas, rotinas, projetos nem objetivos. Mas a chave “ler e registrar” também vale para a API, que exclui (tudo volta pelo Histórico), e uma IA com terminal no seu computador (Claude Code, Gemini CLI) consegue usar a API. Se você só quer consultas, crie uma chave “só leitura”: com ela, a IA apenas consulta." }),
+      h("p", { class: "help", text: "Ver o dia e como foi qualquer período (tempo por projeto), buscar, criar e editar tarefas (com projeto, prioridade e tempo apontado), concluir, criar e marcar rotinas (até 7 dias atrás), anotar progresso, montar checklist, apontar tempo e usar o cronômetro, montar projetos e objetivos, fazer a passagem de turno, ver vencimentos, achar como você resolveu algo parecido antes, consultar o histórico e desfazer um engano dela. Pelo MCP ela não exclui tarefas, rotinas, projetos nem objetivos. Mas a chave “ler e registrar” também vale para a API, que exclui (tudo volta pelo Histórico), e uma IA com terminal no seu computador (Claude Code, Gemini CLI) consegue usar a API. Se você só quer consultas, crie uma chave “só leitura”: com ela, a IA apenas consulta." }),
       h("p", { class: "dialog-note", text: "API REST direta (scripts, automações):" }),
       codeBox(`curl -H "Authorization: Bearer nxs_SUA_CHAVE" ${location.origin}/api/board`)),
     h("section", { class: "panel" },
@@ -747,7 +759,7 @@ function assignments(me) {
     finally { cb.disabled = false; }
   });
   return [
-    h("p", { class: "help", text: "Quem tem o papel de atribuir tarefas pode mandar tarefas para você, mas só se você permitir aqui. A tarefa recebida é sua: você edita, conclui ou exclui. Quem mandou só corrige ou cancela enquanto ela está a fazer e você não registrou nada nela." }),
+    h("p", { class: "help", text: "Quem tem o papel “Manda tarefas” (tela Atribuir) pode mandar tarefas para você, mas só se você permitir aqui. A tarefa recebida é sua: você edita, conclui ou exclui. Quem mandou só corrige ou cancela enquanto ela está a fazer e você não registrou nada nela." }),
     h("label", { class: "check-line" }, cb, h("span", { text: "Permitir que me atribuam tarefas" })),
     since];
 }
@@ -766,7 +778,7 @@ function deleteAccount(isUser) {
   form.addEventListener("submit", busy(async (ev) => {
     ev.preventDefault();
     err.textContent = "";
-    const ok = await confirmDialog({ title: "Excluir a sua conta?", text: "Tudo o que você registrou será apagado agora, sem volta.", confirm: "Excluir para sempre", danger: true });
+    const ok = await confirmDialog({ title: "Excluir a sua conta?", text: "Tudo o que você registrou será excluído agora, sem volta.", confirm: "Excluir para sempre", danger: true });
     if (!ok) return;
     try {
       await api.post("/me/delete", { password: pw.value });
@@ -844,7 +856,7 @@ function account(me) {
   }));
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Conta" })),
-    h("p", { class: "help mono", text: [me.email, ...(me.roles || []).filter((r) => r !== "user").map((r) => ROLE_SHORT[r])].join(" · ") }),
+    h("p", { class: "help mono", text: [me.email, ...(me.roles || []).filter((r) => r !== "user").map((r) => `${ROLE_SHORT[r]} (${ROLE_SCREEN[r]})`)].join(" · ") }),
     form);
 }
 
@@ -858,7 +870,7 @@ function seenBy(me) {
   let list = [];
   const paint = () => {
     const viewers = list.filter((p) => p.roles.includes("viewer")).map((p) => p.name);
-    help.textContent = `${viewers.length ? `Visualizadores (${viewers.join(", ")})` : "Visualizadores (hoje, ninguém tem esse papel)"} veem, sem editar, seu quadro, seus números, seus relatórios em PDF, suas horas e suas fotos. Só se você permitir.`;
+    help.textContent = `Quem tem o papel “Vê a equipe” (${viewers.length ? viewers.join(", ") : "hoje, ninguém"}) vê na tela Equipe, sem editar, seu quadro, seus números, seus relatórios em PDF, suas horas e suas fotos. Só se você permitir.`;
     const names = list.map((p) => `${p.name} (${p.roles.map((r) => ROLE_SHORT[r]).join(", ")})`);
     line.textContent = cb.checked
       ? `Quem pode ver seu registro: ${names.length ? names.join(", ") : "só você"}.`
@@ -872,9 +884,9 @@ function seenBy(me) {
       const res = await api.put("/me/viewers", { accept: cb.checked });
       meChanged(me, res);
       paint();
-      toast(cb.checked ? "Pronto: visualizadores veem seu registro." : "Visualizadores não veem mais seu registro.");
+      toast(cb.checked ? "Pronto: quem vê a equipe vê seu registro." : "Quem vê a equipe não vê mais seu registro.");
     } catch (e) { cb.checked = !cb.checked; errorToast(e); }
     finally { cb.disabled = false; }
   });
-  return [help, h("label", { class: "check-line" }, cb, h("span", { text: "Permitir que visualizadores vejam meu registro" })), line];
+  return [help, h("label", { class: "check-line" }, cb, h("span", { text: "Permitir que quem tem o papel “Vê a equipe” veja meu registro" })), line];
 }

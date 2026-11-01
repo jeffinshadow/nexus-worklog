@@ -18,14 +18,14 @@ export async function mount(root) {
   const users = await api.get("/viewer/users");
   clear(root); // só depois da resposta: na volta à tela, a visita anterior fica até chegar
   if (!users.length) {
-    root.append(h("p", { class: "empty", text: "Ninguém liberou o registro para visualizadores ainda. Cada pessoa decide em Configurações > Conta, em “Permitir que visualizadores vejam meu registro”." }));
+    root.append(h("p", { class: "empty", text: "Ninguém liberou o registro ainda. Cada pessoa decide em Configurações > Conta." }));
     return;
   }
   const select = h("select", {},
     ...users.map((u) => h("option", { value: u.id }, `${u.display_name ? u.display_name + " · " : ""}${u.email}`)));
 
   let active = "board";
-  const subtabs = h("div", { class: "seg seg-sm", role: "tablist" },
+  const subtabs = h("div", { class: "seg seg-sm", role: "tablist", "aria-label": "Equipe" },
     ...SUBVIEWS.map((s) => h("button", {
       type: "button", class: "chip-btn", role: "tab", text: s.label,
       "aria-selected": s.key === active ? "true" : "false",
@@ -58,7 +58,7 @@ export async function mount(root) {
             ["Mês passado", "calendar", get(prevFirst, addDays(first, -1))],
           ]);
         } }, icon("download"), "Horas da equipe (CSV)")),
-    h("p", { class: "dialog-note equipe-note", text: "Aparecem aqui só as pessoas que liberaram o registro para visualizadores (cada uma decide em Configurações > Conta)." }),
+    h("p", { class: "dialog-note equipe-note", text: "Aparecem aqui só as pessoas que liberaram o registro para quem vê a equipe (cada uma decide em Configurações > Conta)." }),
     subtabs,
     note,
     content);
@@ -81,7 +81,7 @@ export async function mount(root) {
         const opt = select.selectedOptions[0];
         const who = opt ? opt.textContent.split(" · ")[0] : "Essa pessoa";
         if (opt) opt.remove();
-        box.append(h("p", { class: "empty", text: `${who} não libera mais o registro para visualizadores.` }));
+        box.append(h("p", { class: "empty", text: `${who} não libera mais o registro para quem vê a equipe.` }));
       } else box.append(h("p", { class: "empty", text: e && e.status === 0 ? e.message : "Não foi possível carregar. Tente de novo." }));
     }
     if (my !== seq) return;

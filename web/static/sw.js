@@ -37,7 +37,8 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
   if (req.method === 'GET') {
     if (url.pathname.startsWith('/api/')) {
-      if (API_OK.test(url.pathname)) event.respondWith(networkFirst(req, DADOS, 8000, true));
+      // A abertura (auth/me) desiste antes: o app espera 6,5 s por ela e a cópia guardada precisa chegar antes disso.
+      if (API_OK.test(url.pathname)) event.respondWith(networkFirst(req, DADOS, url.pathname === '/api/auth/me' ? 5000 : 8000, true));
       return;  // o resto da API: só rede
     }
     if (url.pathname === '/login' || url.pathname === '/sw.js') return;

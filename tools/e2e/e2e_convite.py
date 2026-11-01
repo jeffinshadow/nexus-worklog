@@ -121,7 +121,7 @@ try:
     # ---- convite pelo Admin
     adm.go(B + "/#/admin", 2.5)
     adm.ev("document.querySelector('dialog.tour-dialog')?.close()")
-    adm.click(adm.btn("Novo usuário")); time.sleep(.8)
+    adm.click(adm.btn("Convidar pessoa")); time.sleep(.8)
     check("diálogo diz que vai por link", adm.ev("document.querySelector('dialog[open]').textContent.includes('link para criar a própria senha')"))
     adm.fill("dialog[open] input[type=email]", NOVO)
     adm.shot("c01-convidar")
