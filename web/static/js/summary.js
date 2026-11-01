@@ -4,7 +4,7 @@
 import { api } from "./api.js";
 import { h, icon, clear, longDate, shortDate, addDays } from "./dom.js";
 import { errorToast } from "./ui.js";
-import { projectChip } from "./projects.js";
+import { projectChip, corProjeto } from "./projects.js";
 import { duration, openTask } from "./task.js";
 
 function pct(done, total) {
@@ -49,7 +49,7 @@ export function projectBars(items) {
   return comTempo.map((p) => {
     const bar = h("span");
     bar.style.width = `${Math.round((100 * p.minutes) / top)}%`;
-    bar.style.background = p.color || "var(--dim)";
+    bar.style.background = corProjeto(p.color);
     return h("div", { class: "sum-bar" }, h("span", { class: "sum-bar-l", text: p.name || "Sem projeto" }),
       h("span", { class: "sum-track" }, bar), h("span", { class: "mono sum-bar-v", text: duration(p.minutes) }));
   });

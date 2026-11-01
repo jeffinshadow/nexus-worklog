@@ -133,11 +133,24 @@
   --on-info-container: #C3EEF8;
 
   /* Calendário de rotinas (Meu mês): degraus sólidos do primário e a cor do número em cada um. */
+  --heat-0: #2C2C2D;               /* dia com rotina prevista e nenhuma feita */
   --heat-1: #2A3C53;
   --heat-2: #36577F;
   --heat-3: #4A82C4;
   --heat-4: #5294E2;
   --heat-3-ink: #0B0D10;
+  /* Meu mês: os quadros do painel (um degrau acima do contêiner do painel). */
+  --surface-tile: #222324;
+  /* Cores de projeto: o hex gravado (PALETA em projects.js) vira um destes
+     (corProjeto). Escuro: os pastéis da híbrida. */
+  --proj-1: #5294E2;
+  --proj-2: #78CA9F;
+  --proj-3: #F2DA66;
+  --proj-4: #B98EFF;
+  --proj-5: #F28B82;
+  --proj-6: #62C7E0;
+  --proj-7: #F6AE6B;
+  --proj-8: #ACABAD;
 
   --ink-code: #D6D4D5;
   --avatar-fg: #FFFFFF;
@@ -200,11 +213,22 @@
   --on-error-container: #8C1D18;
   --info-container: #C6ECF5;
   --on-info-container: #004E5C;
+  --heat-0: #D9DBE2;
   --heat-1: #B4CAE3;
   --heat-2: #85ADD5;
   --heat-3: #508CC5;
   --heat-4: #1A6AB5;
   --heat-3-ink: #191C20;
+  --surface-tile: #FFFFFF;
+  /* projetos no claro: 3:1 em gráfico e 4,5:1 como texto sobre branco */
+  --proj-1: #1A6AB5;
+  --proj-2: #00774F;
+  --proj-3: #776600;
+  --proj-4: #7B51BF;
+  --proj-5: #B51F21;
+  --proj-6: #007286;
+  --proj-7: #8A5300;
+  --proj-8: #5F636B;
   --ink-code: #2E3035;
   --avatar-fg: #FFFFFF;
   --tint: #000000;
@@ -265,11 +289,22 @@
   --on-error-container: #8C1D18;
   --info-container: #C6ECF5;
   --on-info-container: #004E5C;
+  --heat-0: #D9DBE2;
   --heat-1: #B4CAE3;
   --heat-2: #85ADD5;
   --heat-3: #508CC5;
   --heat-4: #1A6AB5;
   --heat-3-ink: #191C20;
+  --surface-tile: #FFFFFF;
+  /* projetos no claro: 3:1 em gráfico e 4,5:1 como texto sobre branco */
+  --proj-1: #1A6AB5;
+  --proj-2: #00774F;
+  --proj-3: #776600;
+  --proj-4: #7B51BF;
+  --proj-5: #B51F21;
+  --proj-6: #007286;
+  --proj-7: #8A5300;
+  --proj-8: #5F636B;
   --ink-code: #2E3035;
   --avatar-fg: #FFFFFF;
   --tint: #000000;

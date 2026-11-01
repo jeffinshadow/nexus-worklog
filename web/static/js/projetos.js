@@ -7,7 +7,7 @@ import { h, icon, clear, field, shortDate, localDay } from "./dom.js";
 import { busy, confirmDialog, errorToast, modal, popupMenu, sheet, toast, undoLatest } from "./ui.js";
 import { finishTask, openWorklog, taskChips } from "./board.js";
 import { editingTaskId, openTask } from "./task.js";
-import { PALETA, askName, invalidateProjects } from "./projects.js";
+import { PALETA, askName, invalidateProjects, corProjeto } from "./projects.js";
 
 const STATUS = { todo: "não iniciado", in_progress: "em andamento", done: "concluído" };
 const phone = () => matchMedia("(max-width: 860px)").matches;
@@ -57,7 +57,7 @@ async function mountList(root, ctx) {
   }
   const card = (p) => {
     const dot = h("span", { class: "dot big" });
-    dot.style.background = p.color || "var(--dim)";
+    dot.style.background = corProjeto(p.color);
     return h("a", { class: "proj-card" + (p.archived ? " archived" : ""), href: `#/projetos?id=${p.id}` },
       h("div", { class: "proj-card-head" }, dot, h("h2", { text: p.name }), p.archived ? h("span", { class: "chip", text: "arquivado" }) : null),
       progress(p.done_tasks, p.total_tasks),
@@ -96,7 +96,7 @@ async function mountProject(root, ctx, pid) {
 
   clear(root);
   const dot = h("span", { class: "dot big" });
-  dot.style.background = p.color || "var(--dim)";
+  dot.style.background = corProjeto(p.color);
   const projMenu = h("button", { type: "button", class: "icon", title: "Ações do projeto", "aria-label": "Ações do projeto" }, icon("more-v"));
   projMenu.addEventListener("click", () => actionsMenu(projMenu, p.name, [
     ["Editar projeto", "edit", () => editProject(p, refresh)],
@@ -400,7 +400,7 @@ function editProject(p, refresh) {
   const swatches = h("div", { class: "swatches", role: "radiogroup", "aria-label": "Cor" }, ...PALETA.map((c) => {
     const b = h("button", { type: "button", class: "swatch", role: "radio", title: c, "aria-label": c,
       "aria-checked": String(c.toLowerCase() === (color || "").toLowerCase()) });
-    b.style.background = c;
+    b.style.background = corProjeto(c);
     b.addEventListener("click", () => {
       color = c;
       for (const x of swatches.children) x.setAttribute("aria-checked", String(x === b));

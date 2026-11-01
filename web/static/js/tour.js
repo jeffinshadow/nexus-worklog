@@ -6,7 +6,7 @@
 import { api } from "./api.js";
 import { h, icon, clear, field } from "./dom.js";
 import { errorToast } from "./ui.js";
-import { listProjects } from "./projects.js";
+import { listProjects, corProjeto } from "./projects.js";
 
 const DAYS = [[1, "Seg"], [2, "Ter"], [3, "Qua"], [4, "Qui"], [5, "Sex"], [6, "Sáb"], [0, "Dom"]];
 // Exemplos de várias áreas de suporte (TI, manutenção, atendimento): ninguém se sente fora.
@@ -152,7 +152,7 @@ function setup(me) {
         clear(chips);
         for (const p of list) {
           const dot = h("span", { class: "dot" });
-          dot.style.background = p.color || "var(--dim)";
+          dot.style.background = corProjeto(p.color);
           chips.append(h("span", { class: "chip project" }, dot, p.name));
         }
         for (const s of PROJ_HINTS.filter((s) => !list.some((p) => p.name.toLowerCase() === s.toLowerCase())))
