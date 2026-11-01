@@ -267,10 +267,24 @@ def _day(value):
 
 
 def t_create_task(ctx, args):
-    data = _call(WorklogIn, **_task_args(ctx["user_id"], args))
+    uid = ctx["user_id"]
+    args = dict(args)
+    minutes = args.pop("minutes", None)
+    if minutes is not None and not 1 <= minutes <= 1440:
+        raise ToolError("minutes vai de 1 a 1440")
+    data = _call(WorklogIn, **_task_args(uid, args))
     res = _call(worklog_routes.create, data, Response(), user=ctx)
     verbo = "Já existia (external_ref repetido), nada duplicado" if res.get("existing") else "Criada"
-    return f"{verbo}: " + _task_line(_find_task(ctx["user_id"], res["id"]), services.app_today())
+    aviso = ""
+    if minutes and not res.get("existing"):
+        # O tempo vai para o dia em que a tarefa foi feita (conclusão ou início).
+        w = db.query_one("SELECT created_at, completed_at FROM worklog_tasks WHERE id = %s AND user_id = %s", (res["id"], uid))
+        day = (w["completed_at"] or w["created_at"]).astimezone(services.app_tz()).date()
+        try:
+            _call(worklog_routes.log_time, res["id"], TimeIn(minutes=minutes, day=day), user=ctx)
+        except ToolError as e:
+            aviso = f" ATENÇÃO: a tarefa foi criada, mas o tempo não foi apontado ({e}); use log_time."
+    return f"{verbo}: " + _task_line(_find_task(uid, res["id"]), services.app_today()) + aviso
 
 
 def t_update_task(ctx, args):
@@ -773,7 +787,10 @@ TOOLS = {
                        "from": {**DATE, "description": "Primeiro dia (inclusive)"},
                        "to": {**DATE, "description": "Último dia (inclusive; depois de hoje vira hoje). Até 366 dias"},
                        "project": {"type": "string", "description": "Nome ou id do projeto. Com project e sem from: o projeto inteiro"}}}),
-    "create_task": (t_create_task, True, "Cria uma tarefa (também retroativa, com created_at/completed_at).",
+    "create_task": (t_create_task, True,
+                    "Cria uma tarefa (também retroativa, com created_at/completed_at). Antes de criar, veja get_today ou "
+                    "search: se já houver tarefa aberta sobre o mesmo assunto, conclua ou atualize essa em vez de "
+                    "criar outra. Algo já feito: status done e minutes com o tempo gasto.",
                     {"type": "object", "required": ["title"], "properties": {
                         "title": {"type": "string", "maxLength": 200},
                         "description": {"type": ["string", "null"], "maxLength": 300},
@@ -792,6 +809,8 @@ TOOLS = {
                                            "description": "Com status blocked: o que se está aguardando"},
                         "follow_up_on": {**DATE, "type": ["string", "null"], "description": "Com status blocked: dia combinado para cobrar"},
                         "resolution": {"type": "string", "maxLength": 1000, "description": "Com status done: como foi resolvido (entra na busca)"},
+                        "minutes": {"type": "integer", "minimum": 1, "maximum": 1440,
+                                    "description": "Tempo gasto, em minutos: já fica apontado (no dia da conclusão ou do início)"},
                         "external_ref": {"type": "string", "maxLength": 120,
                                          "description": "Chave sua para não duplicar: repetida, devolve a tarefa que já existe"}}}),
     "update_task": (t_update_task, True,
