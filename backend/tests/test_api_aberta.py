@@ -158,6 +158,8 @@ def test_webhook_cria_lista_limite_e_apaga(usuario, novo_usuario, dns):
     # Chave: write cadastra, read só lê.
     assert Bearer(criar_chave(usuario, scope="read")["token"]).post("/webhooks", {"url": "https://hooks.example.com/"}).status_code == 403
     assert Bearer(criar_chave(usuario, nome="w")["token"]).get("/webhooks").status_code == 200
+    # cadastrar só pelo app: chave vazada não abre canal permanente para fora
+    assert Bearer(criar_chave(usuario, nome="w2")["token"]).post("/webhooks", {"url": "https://hooks.example.com/"}).status_code == 403
 
 
 def test_webhook_entrega_assinada_em_ordem_e_filtrada(usuario, dns):
@@ -304,3 +306,9 @@ def test_retry_after_no_429_e_503(usuario):
     # Os outros erros seguem sem o header e com o detail de sempre.
     r = usuario.get("/worklog/999999")
     assert r.status_code == 404 and "Retry-After" not in r.headers and r.json() == {"detail": "não encontrado"}
+
+
+def test_webhook_de_grupo_recebe_o_desfazer():
+    from app.webhooks import matches
+    assert matches(["worklog.*"], "undo", "worklog") and not matches(["recurring.*"], "undo", "worklog")
+    assert matches(["worklog.*"], "worklog.finish", "worklog") and matches(["*"], "undo", "worklog")

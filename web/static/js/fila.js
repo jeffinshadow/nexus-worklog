@@ -102,7 +102,13 @@ let sending = false, sendFn = null, onSynced = null;
 // api.js entrega o envio cru (sem fila).
 export function configure(send) { sendFn = send; }
 
+// Duas abas abertas: só uma envia a fila de cada vez (a trava `sending` é da aba).
 export async function flush() {
+  if (navigator.locks) return navigator.locks.request("nexus-fila", { ifAvailable: true }, (lock) => (lock ? flushHere() : null));
+  return flushHere();
+}
+
+async function flushHere() {
   if (sending || !sendFn || !navigator.onLine) return;
   sending = true;
   let sent = 0;

@@ -66,3 +66,25 @@ def test_parada_de_outro_aparelho_nao_derruba_o_cronometro_novo(usuario):
     assert usuario.post("/timer/stop", {"task_id": b, "at": cedo}).status_code == 409  # parou antes de começar
     db.execute("UPDATE task_timers SET started_at = now() - interval '5 minutes' WHERE task_id = %s", (b,))
     assert usuario.post("/timer/stop", {"task_id": b}).json()["stopped"]["minutes"] == 5
+
+
+def test_inicio_sem_sinal_mais_antigo_que_o_cronometro_atual_da_409(usuario):
+    from datetime import datetime, timedelta, timezone
+    a = usuario.post("/worklog", {"title": "A"}).json()["id"]
+    b = usuario.post("/worklog", {"title": "B"}).json()["id"]
+    usuario.post("/timer/start", {"task_id": a})
+    antes = (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat()
+    assert usuario.post("/timer/start", {"task_id": b, "at": antes}).status_code == 409
+    assert usuario.get("/timer").json()["timer"]["task_id"] == a
+
+
+def test_concluir_sem_sinal_para_o_cronometro_na_hora_da_conclusao(usuario):
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    inicio = (datetime.now(ZoneInfo("America/Sao_Paulo")) - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M")
+    tid = usuario.post("/worklog", {"title": "Disjuntor", "created_at": inicio}).json()["id"]
+    usuario.post("/timer/start", {"task_id": tid})
+    db.execute("UPDATE task_timers SET started_at = now() - interval '60 minutes' WHERE task_id = %s", (tid,))
+    fim = (datetime.now(ZoneInfo("America/Sao_Paulo")) - timedelta(minutes=50)).strftime("%Y-%m-%dT%H:%M")
+    assert usuario.post(f"/worklog/{tid}/finish", {"completed_at": fim}).status_code == 200
+    assert 9 <= usuario.get(f"/worklog/{tid}").json()["minutes"] <= 11

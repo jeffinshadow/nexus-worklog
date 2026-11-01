@@ -442,6 +442,8 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
             raise HTTPException(status_code=409, detail="essa troca já saiu da janela de 7 dias; ajuste a agenda de novo")
         db.execute("UPDATE recurring_completions SET task_id = %s WHERE task_id = %s AND user_id = %s",
                    (after["replaced"], eid, uid))
+        db.execute("UPDATE photos SET recurring_id = %s WHERE recurring_id = %s AND user_id = %s",
+                   (after["replaced"], eid, uid))  # senão o CASCADE da exclusão apagaria as fotos
         db.execute("DELETE FROM recurring_tasks WHERE id = %s AND user_id = %s", (eid, uid))
         _restore_recurring(uid, before)
     elif a == "recurring.toggle":

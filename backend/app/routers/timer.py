@@ -39,12 +39,15 @@ def stop_running(user: dict, only_task: int | None = None, ended_at: datetime | 
     only_task: só para se estiver rodando nessa tarefa. ended_at: parou antes
     de agora (feito sem sinal). Esquecido (mais de 12 h): para sem apontar e
     devolve needs_review, com o início, para a pessoa informar o tempo."""
-    t = db.query_one("SELECT task_id, started_at FROM task_timers WHERE user_id = %s", (user["user_id"],))
-    if not t or (only_task is not None and t["task_id"] != only_task):
+    # Tira o cronômetro e lê o que era numa operação só: duas paradas ao mesmo
+    # tempo (dois aparelhos) não apontam o tempo duas vezes.
+    t = db.query_one(
+        """DELETE FROM task_timers WHERE user_id = %s AND (%s::int IS NULL OR task_id = %s)
+           RETURNING task_id, started_at""", (user["user_id"], only_task, only_task))
+    if not t:
         return None
     end = max(ended_at or datetime.now(timezone.utc), t["started_at"])
     if end - t["started_at"] > FORGOTTEN:
-        db.execute("DELETE FROM task_timers WHERE user_id = %s", (user["user_id"],))
         title = db.query_one("SELECT title FROM worklog_tasks WHERE id = %s", (t["task_id"],))
         audit.record(user, "timer.discard", "timer", t["task_id"],
                      after={"task_id": t["task_id"], "title": title["title"] if title else ""})
@@ -57,7 +60,6 @@ def stop_running(user: dict, only_task: int | None = None, ended_at: datetime | 
     used = db.query_one("SELECT COALESCE(sum(minutes), 0)::int AS m FROM time_entries WHERE user_id = %s AND day = %s",
                         (user["user_id"], day))["m"]
     minutes = min(minutes, 1440 - used)
-    db.execute("DELETE FROM task_timers WHERE user_id = %s", (user["user_id"],))
     if minutes < 1:
         return None
     entry = log_time(t["task_id"], TimeIn(minutes=minutes, day=day, note="cronômetro"), user=user)
@@ -80,6 +82,8 @@ def start(data: TimerIn, user=Depends(active_user_csrf)):
     if current and current["task_id"] == data.task_id:
         return {"timer": current, "stopped": None}
     at = client_time(data.at)
+    if current and at is not None and at < current["started_at"]:  # início feito sem sinal, já superado
+        raise HTTPException(status_code=409, detail="o cronômetro já mudou em outro aparelho; nada foi alterado")
     stopped = stop_running(user, ended_at=at)  # trocar de tarefa aponta o tempo da anterior
     db.execute("INSERT INTO task_timers (user_id, task_id, started_at) VALUES (%s, %s, COALESCE(%s, now()))",
                (user["user_id"], data.task_id, at))

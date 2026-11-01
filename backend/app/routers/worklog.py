@@ -55,7 +55,7 @@ def _parse_when(raw: str, label: str) -> tuple[datetime, bool]:
 
 
 def _check_window(when: datetime, label: str, now: datetime) -> None:
-    if when > now + timedelta(minutes=1):  # 1 min de folga para relógio de quem chama
+    if when > now + timedelta(minutes=10):  # folga para o relógio do aparelho (feito sem sinal)
         raise HTTPException(status_code=400, detail=f"{label} no futuro")
     limit = task_retro_days()
     if (app_today() - when.astimezone(app_tz()).date()).days > limit:
@@ -92,10 +92,11 @@ def resolve_completed(raw: Optional[str], created: datetime, now: datetime) -> d
     return when
 
 
-def stop_timer_of(user: dict, task_id: int) -> None:
-    """Concluir a tarefa com o cronômetro rodando nela para o cronômetro e aponta o tempo."""
+def stop_timer_of(user: dict, task_id: int, ended_at: datetime | None = None) -> None:
+    """Concluir a tarefa com o cronômetro rodando nela para o cronômetro e aponta o
+    tempo. ended_at: a conclusão veio com hora (feita sem sinal): para ali."""
     from .timer import stop_running  # import tardio: timer usa log_time daqui
-    stop_running(user, only_task=task_id)
+    stop_running(user, only_task=task_id, ended_at=min(ended_at, datetime.now(timezone.utc)) if ended_at else None)
 
 
 def _own_task(uid: int, task_id: int) -> dict:
@@ -359,7 +360,7 @@ def finish(task_id: int, data: Optional[FinishIn] = None, user=Depends(active_us
     raw = data.completed_at if data else None
     when = before["completed_at"] if (before["completed_at"] and not raw) else \
         resolve_completed(raw, before["created_at"], datetime.now(timezone.utc))
-    stop_timer_of(user, task_id)
+    stop_timer_of(user, task_id, when if raw else None)
     resolution = ((data.resolution if data else None) or "").strip() or None  # mantém as quebras de linha (passos)
     db.execute(
         """UPDATE worklog_tasks SET status = 'done', completed_at = %s,

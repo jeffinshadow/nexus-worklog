@@ -19,6 +19,7 @@ import logging
 import secrets
 import socket
 import ssl
+import threading
 import time
 from urllib.parse import urlsplit
 
@@ -29,6 +30,7 @@ log = logging.getLogger("uvicorn.error")
 
 MAX_PER_USER = 5
 TIMEOUT = 5  # segundos, por conexão/leitura
+DEADLINE = 15  # segundos, o envio inteiro (destino que responde aos pinguinhos não prende a fila)
 BACKOFF_MIN = (1, 5, 30, 120, 720)  # espera depois da 1ª, 2ª... falha seguida
 MAX_FAILURES = 5
 BATCH = 20  # eventos por webhook em cada passada
@@ -111,20 +113,32 @@ def post(url: str, headers: dict, body: bytes) -> int:
     """Um POST, sem seguir redirecionamento (3xx conta como falha)."""
     host, port, path, ip = check_url(url)
     conn = _Pinned(host, port, ip)
+
+    def cut():  # prazo total: o timeout do socket vale por operação; isto corta o envio inteiro
+        try:
+            if conn.sock:
+                conn.sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+    timer = threading.Timer(DEADLINE, cut)
+    timer.start()
     try:
         conn.request("POST", path, body=body, headers=headers)
         res = conn.getresponse()
         res.read(4096)  # a resposta não interessa; só não deixa a conexão pendurada
         return res.status
     finally:
+        timer.cancel()
         conn.close()
 
 
 # ------------------------------------------------------------------ entrega --
 
-def matches(events: list[str], action: str) -> bool:
-    """["*"], a ação exata ("worklog.finish") ou o grupo ("worklog.*")."""
-    return any(e == "*" or e == action or (e.endswith(".*") and action.startswith(e[:-1])) for e in events)
+def matches(events: list[str], action: str, entity: str = "") -> bool:
+    """["*"], a ação exata ("worklog.finish") ou o grupo ("worklog.*"). Desfazer
+    ("undo") entra no grupo da entidade desfeita: quem ouve tarefas fica sabendo."""
+    group = entity + "." if action == "undo" else action
+    return any(e == "*" or e == action or (e.endswith(".*") and group.startswith(e[:-1])) for e in events)
 
 
 def payload(row: dict) -> dict:
@@ -147,7 +161,7 @@ def _deliver(hook: dict, send) -> tuple[int, str | None]:
     )
     secret, last, sent, error = secret_for(hook["secret_salt"]), hook["last_event_id"], 0, None
     for r in rows:
-        if not matches(hook["events"], r["action"]):
+        if not matches(hook["events"], r["action"], r["entity"]):
             last = r["id"]
             continue
         body = json.dumps(payload(r), ensure_ascii=False, separators=(",", ":")).encode()

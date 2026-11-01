@@ -12,9 +12,13 @@ let onChange = null; // recarrega a tela atual
 
 export const timerState = () => state;
 
+// O cronômetro é um só em todos os aparelhos: relê ao voltar para o app.
+const reload = () => api.get("/timer").then((r) => setTimer(r.timer)).catch(() => {});
+
 export function initTimer(refresh) {
   onChange = refresh;
-  api.get("/timer").then((r) => setTimer(r.timer)).catch(() => {});
+  reload();
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") reload(); });
 }
 
 function elapsed(ms) {
@@ -80,7 +84,10 @@ export async function stopTimer(after = onChange) {
     if (r.stopped && r.stopped.needs_review) forgotten(r.stopped);
     else toast(r.stopped ? `Apontado: ${duration(r.stopped.minutes)}.` : "Cronômetro parado. O dia dele já tinha 24h apontadas, nada foi somado.");
     if (after) after();
-  } catch (e) { errorToast(e, "Não foi possível parar o cronômetro."); }
+  } catch (e) {
+    if (e.status === 409) { reload(); if (after) after(); }  // outro aparelho parou ou trocou
+    errorToast(e, "Não foi possível parar o cronômetro.");
+  }
 }
 
 // Botão de uma tarefa aberta: inicia (ou, se já está rodando nela, para).

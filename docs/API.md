@@ -220,8 +220,8 @@ O Nexus avisa outro sistema a cada mudança: o mesmo evento do feed, empurrado p
 | Rota | | Corpo / observação |
 | --- | --- | --- |
 | `GET /` | | os webhooks, com `active`, `failures`, `last_error`, `last_delivered_at`, `disabled_at` |
-| `POST /` | W | `{url, events?}` — só `https://` com endereço público; `events` = `["*"]` (padrão), ações exatas (`worklog.finish`) ou grupos (`worklog.*`); até 5 por pessoa. Devolve `secret` (`whsec_…`) **uma vez** |
-| `POST /{id}/enable` | W | religa um desligado por falhas; continua do evento em que parou |
+| `POST /` | S | `{url, events?}` (só pelo app: uma chave vazada não cadastra destino) — só `https://` com endereço público; `events` = `["*"]` (padrão), ações exatas (`worklog.finish`) ou grupos (`worklog.*`); até 5 por pessoa. Devolve `secret` (`whsec_…`) **uma vez** |
+| `POST /{id}/enable` | S | religa um desligado por falhas; continua do evento em que parou |
 | `DELETE /{id}` | W | |
 
 - Corpo: o item do feed + `data` (o estado do item logo depois da mudança, para tarefa, anotação, checklist,

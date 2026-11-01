@@ -59,8 +59,11 @@ export function toLogin() {
   wipeReads().catch(() => {}).finally(() => { location.href = "/login" + next; });
 }
 
+// Foto (base64, até ~1,3 MB) no 3G do campo passa dos 20 s: espera mais.
+const waitFor = (path) => (/\/photos(\?|$)/.test(path) ? 90000 : 20000);
+
 async function raw(method, path, body) {
-  const res = await send(method, path, body === undefined ? {} : { body: JSON.stringify(body), type: "application/json" });
+  const res = await send(method, path, body === undefined ? { timeout: waitFor(path) } : { body: JSON.stringify(body), type: "application/json", timeout: waitFor(path) });
   return res.status === 204 ? null : res.json().catch(() => null);
 }
 configure(raw);
@@ -69,11 +72,11 @@ configure(raw);
 // { queued: true, qid }; leituras servidas do cache avisam a barra e recebem
 // por cima o que está na fila.
 async function request(method, path, body) {
-  if (method === "POST" && path === "/worklog" && body && !body.external_ref)
-    body = { ...body, external_ref: "app-" + crypto.randomUUID() };  // reenviar nunca duplica
+  if (method === "POST" && /^\/worklog(\/\d+\/(notes|time))?$/.test(path) && body && !body.external_ref)
+    body = { ...body, external_ref: "app-" + crypto.randomUUID() };  // reenviar (fila, timeout) nunca duplica
   let res;
   try {
-    res = await send(method, path, body === undefined ? {} : { body: JSON.stringify(body), type: "application/json" });
+    res = await send(method, path, body === undefined ? { timeout: waitFor(path) } : { body: JSON.stringify(body), type: "application/json", timeout: waitFor(path) });
   } catch (e) {
     if (e.status === 0 && queueable(method, path)) return { queued: true, qid: await enqueue(method, path, body), id: null };
     throw e;

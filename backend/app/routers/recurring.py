@@ -61,6 +61,8 @@ def replace_routine(user: dict, before: dict, new: dict, freeze: dict | None = N
          "require_note": bool(before.get("require_note")), "remind_at": before.get("remind_at"), **new})
     db.execute("UPDATE recurring_completions SET task_id = %s WHERE task_id = %s AND user_id = %s AND completed_date = %s",
                (row["id"], old_id, uid, app_today()))
+    db.execute("UPDATE photos SET recurring_id = %s WHERE recurring_id = %s AND user_id = %s AND day = %s",
+               (row["id"], old_id, uid, app_today()))  # as fotos de hoje vão junto com a marcação
     audit.record(user, "recurring.replace", "recurring", row["id"], before=before,
                  after={"replaced": old_id, **audit.recurring_snapshot(row["id"], uid)})
     return row["id"]

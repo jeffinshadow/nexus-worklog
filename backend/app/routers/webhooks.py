@@ -1,14 +1,15 @@
 """Webhooks de saída: cadastro (a entrega fica em app/webhooks.py).
 
-Pelo app (sessão + CSRF) ou por chave de escrita, para o integrador se
-cadastrar sozinho. O segredo de assinatura aparece uma vez, na criação.
+Cadastrar e religar só pelo app (sessão + CSRF): uma chave de API vazada não
+abre um canal permanente para fora (revogar a chave não desligaria o webhook).
+Listar e apagar também por chave. O segredo aparece uma vez, na criação.
 """
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from .. import audit, db, webhooks
-from ..deps import active_user, active_user_csrf
+from ..deps import active_user, active_user_csrf, web_active_csrf
 from ..schemas import WebhookIn
 
 router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
@@ -24,7 +25,7 @@ def list_webhooks(user=Depends(active_user)):
 
 
 @router.post("", status_code=201)
-def create_webhook(data: WebhookIn, user=Depends(active_user_csrf)):
+def create_webhook(data: WebhookIn, user=Depends(web_active_csrf)):
     uid = user["user_id"]
     if db.query_one("SELECT count(*) AS n FROM webhooks WHERE user_id = %s", (uid,))["n"] >= webhooks.MAX_PER_USER:
         raise HTTPException(status_code=409, detail=f"limite de {webhooks.MAX_PER_USER} webhooks; apague algum")
@@ -49,7 +50,7 @@ def create_webhook(data: WebhookIn, user=Depends(active_user_csrf)):
 
 
 @router.post("/{hook_id}/enable")
-def enable_webhook(hook_id: int, user=Depends(active_user_csrf)):
+def enable_webhook(hook_id: int, user=Depends(web_active_csrf)):
     """Religa um desligado por falhas: continua do evento em que parou."""
     row = db.query_one(
         f"""UPDATE webhooks SET disabled_at = NULL, failures = 0, next_attempt_at = NULL, last_error = NULL
