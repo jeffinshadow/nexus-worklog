@@ -188,14 +188,15 @@ def test_ordem_das_rotinas_com_desfazer(usuario, novo_usuario):
 
 def test_sair_dos_outros_aparelhos_sem_trocar_a_senha(usuario, novo_usuario):
     email = usuario.me["email"]
+    antes = usuario.get("/auth/sessions").json()["others"]  # a do 1º acesso (senha temporária) também conta
     celular, notebook = Api(), Api()
     celular.login(email, SENHA_PADRAO)
     notebook.login(email, SENHA_PADRAO)
     outra = novo_usuario("outra@example.com")
     chave = usuario.post("/tokens", {"name": "IA"}).json()
-    assert usuario.get("/auth/sessions").json() == {"others": 2}
+    assert usuario.get("/auth/sessions").json() == {"others": antes + 2}
     r = usuario.post("/auth/logout-others")
-    assert r.status_code == 200 and r.json() == {"ok": True, "ended": 2}
+    assert r.status_code == 200 and r.json() == {"ok": True, "ended": antes + 2}
     assert usuario.get("/auth/me").status_code == 200          # este continua
     assert celular.get("/auth/me").status_code == 401           # os outros saíram
     assert notebook.get("/auth/me").status_code == 401
