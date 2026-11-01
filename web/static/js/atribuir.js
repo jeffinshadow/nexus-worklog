@@ -89,7 +89,8 @@ async function loadSent(sec, ready) {
     if (r.status === "removed") {
       // Saiu da conta de quem recebeu: fica aqui com o que houve (60 dias).
       const quando = r.ended.at ? " em " + shortDate(localDay(r.ended.at)) : "";
-      chips.push(h("span", { class: "chip late", text:
+      // Fato neutro (decisão de quem recebeu, ou sua): chip comum, sem o vermelho do atraso.
+      chips.push(h("span", { class: "chip", text:
         r.ended.kind === "canceled" ? "cancelada por você" + quando
         : `excluída por ${r.to_name}${quando}` }));  // um termo só (com ou sem data)
     } else {
