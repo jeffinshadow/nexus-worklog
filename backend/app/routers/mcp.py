@@ -33,6 +33,7 @@ from . import renewals as renewal_routes
 from . import search as search_routes
 from . import summary as summary_routes
 from . import recurring as recurring_routes
+from . import reports as report_routes
 from . import templates as template_routes
 from . import timer as timer_routes
 from . import worklog as worklog_routes
@@ -219,16 +220,35 @@ def _created(t: dict) -> str:
     return t["created_at"].astimezone(services.app_tz()).strftime("%Y-%m-%d %H:%M")
 
 
+def _with_counts(uid: int, rows: list) -> list:
+    """Acrescenta tempo apontado, checklist e projetos extras às linhas."""
+    if not rows:
+        return rows
+    extra = {r["id"]: r for r in db.query_all(
+        "SELECT w.id, " + services.TASK_COUNTS + " FROM worklog_tasks w WHERE w.user_id = %s AND w.id = ANY(%s)",
+        (uid, [t["id"] for t in rows]))}
+    return [t | extra.get(t["id"], {}) for t in rows]
+
+
+def _in_project(t: dict, pid: int) -> bool:
+    return t.get("project_id") == pid or any(x["id"] == pid for x in t.get("extra_projects") or [])
+
+
 def t_list_tasks(ctx, args):
+    uid = ctx["user_id"]
     status = args.get("status", "open")
     limit = int(args.get("limit", 50))
+    pid = _resolve_project(uid, args.get("project"))
     if args.get("from") or args.get("to") or args.get("by"):
         rows = _call(worklog_routes.list_tasks, start=_day(args.get("from")), end=_day(args.get("to")),
                      by=args.get("by") or "created", status=args.get("status", "all"),
-                     limit=max(1, min(limit, 500)), user=ctx)
+                     limit=500 if pid else max(1, min(limit, 500)), user=ctx)
+        rows = _with_counts(uid, rows)
+        if pid:
+            rows = [t for t in rows if _in_project(t, pid)][: max(1, min(limit, 500))]
         today = services.app_today()
         return "\n".join(f"criada {_created(t)} · {_task_line(t, today)}" for t in rows) or "(nenhuma tarefa no período)"
-    b = services.get_board(ctx["user_id"])
+    b = services.get_board(uid, project=pid)
     items = {"open": b["in_progress"], "done": b["done"], "all": b["in_progress"] + b["done"]}.get(status)
     if items is None:
         raise ToolError("status deve ser open, done ou all")
@@ -476,6 +496,43 @@ def _recurring_rows(rows: list) -> list[str]:
             for r in rows]
 
 
+def t_get_period(ctx, args):
+    uid = ctx["user_id"]
+    pid = _resolve_project(uid, args.get("project"))
+    if pid is None and not (args.get("from") and args.get("to")):
+        raise ToolError("informe from e to (AAAA-MM-DD); com project, sem from = o projeto inteiro")
+    start, end, proj, _ = _call(report_routes.resolve_range, uid, _day(args.get("from")), _day(args.get("to")), pid)
+    r = services.get_report_range(uid, start, end, proj, with_open=False)
+    s = r["summary"]
+    head = f"De {start.isoformat()} a {end.isoformat()}" + (f", projeto {proj['name']}" if proj else "")
+    if proj and proj.get("truncated"):
+        head += " (projeto inteiro limitado aos últimos 3 anos)"
+    lines = [head + ":",
+             f"  {s['pontual_done']} tarefa(s) concluída(s) · {_dur(s['minutes']) if s['minutes'] else 'nada'} apontado"
+             f" · {s['active_days']} dia(s) com registro"]
+    if not proj:
+        rec = f"{s['recurring_done']}/{s['recurring_total']} feitas" if s["recurring_total"] else "nenhuma devida"
+        lines.append(f"  rotinas: {rec}" + (f" (+{s['recurring_extra']} extra)" if s["recurring_extra"] else ""))
+    projs = [p for p in r["projects"] if p["minutes"] or p["done"]]
+    if projs:
+        lines += ["", "Por projeto:"]
+        lines += [f"  {p['name'] or 'sem projeto'}: {_dur(p['minutes']) if p['minutes'] else 'nada'} apontado, "
+                  f"{p['done']} concluída(s)" for p in projs]
+        if r["multi_project"]:
+            lines.append("  (tarefa em mais de um projeto conta em cada um; a soma pode passar do total)")
+    if r["deliveries"]:
+        lines += ["", "Concluídas:"]
+        lines += [f"  {d['done_date'].isoformat()} #{d['id']} {d['title']}" + (f" {{{d['project']}}}" if d["project"] else "")
+                  for d in r["deliveries"][:40]]
+        if len(r["deliveries"]) > 40:
+            lines.append(f"  … e mais {len(r['deliveries']) - 40} (use list_tasks com by=completed)")
+    stats = [x for x in r["recurring_stats"] if x["due"] or x["extra"]] if not proj else []
+    if stats:
+        lines += ["", "Rotinas no período (feitas/devidas):"]
+        lines += [f"  {x['label']}: {x['done']}/{x['due']}" + (f" (+{x['extra']} extra)" if x["extra"] else "") for x in stats]
+    return "\n".join(lines)
+
+
 def _summary_block(title, x, prev=None, prev_label="mesma parte da semana passada"):
     out = [title]
     rec = f"{x['recurring_done']}/{x['recurring_total']}" if x["recurring_total"] else "nenhuma devida"
@@ -652,8 +709,9 @@ TOOLS = {
                   "Resumo de hoje: rotinas (feitas ou não), tarefas abertas com prazos/atrasos e o que foi concluído hoje.",
                   {"type": "object", "properties": {}}),
     "list_tasks": (t_list_tasks, False,
-                   "Lista tarefas pontuais do usuário. Com from/to (e by), filtra por período de criação ou de "
-                   "conclusão e mostra a data de criação e o external_ref: use para conferir duplicidade.",
+                   "Lista tarefas pontuais do usuário (com o tempo apontado em cada uma). Com from/to (e by), filtra por "
+                   "período de criação ou de conclusão e mostra a data de criação e o external_ref: use para conferir "
+                   "duplicidade. Para totais de um período, use get_period.",
                    {"type": "object", "properties": {
                        "status": {"type": "string", "enum": ["open", "done", "all"], "default": "open",
                                   "description": "Padrão open; com período, padrão all"},
@@ -661,7 +719,16 @@ TOOLS = {
                        "from": {**DATE, "description": "Primeiro dia do período (inclusive)"},
                        "to": {**DATE, "description": "Último dia do período (inclusive)"},
                        "by": {"type": "string", "enum": ["created", "completed"], "default": "created",
-                              "description": "O período vale para a criação ou para a conclusão"}}}),
+                              "description": "O período vale para a criação ou para a conclusão"},
+                       "project": {"type": "string", "description": "Só as tarefas deste projeto (nome ou id; inclui as em que ele é projeto extra)"}}}),
+    "get_period": (t_get_period, False,
+                   "Como foi um período qualquer (um mês, um trimestre...), como na prévia do relatório: tarefas "
+                   "concluídas, tempo apontado no total e por projeto, rotinas feitas/devidas. Com project, só aquele "
+                   "projeto (pergunta do tipo “quanto tempo gastei no cliente X este mês?”).",
+                   {"type": "object", "properties": {
+                       "from": {**DATE, "description": "Primeiro dia (inclusive)"},
+                       "to": {**DATE, "description": "Último dia (inclusive; depois de hoje vira hoje). Até 366 dias"},
+                       "project": {"type": "string", "description": "Nome ou id do projeto. Com project e sem from: o projeto inteiro"}}}),
     "create_task": (t_create_task, True, "Cria uma tarefa (também retroativa, com created_at/completed_at).",
                     {"type": "object", "required": ["title"], "properties": {
                         "title": {"type": "string", "maxLength": 200},
