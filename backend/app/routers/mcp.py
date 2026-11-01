@@ -650,13 +650,26 @@ def _review_text(st: dict) -> str:
 
 
 def t_start_timer(ctx, args):
-    res = _call(timer_routes.start, TimerIn(task_id=int(args["task_id"])), user=ctx)
+    at = _stop_at(args.get("at"))  # mesmo formato do stop_timer ("9h", HH:MM, data e hora)
+    if at:
+        if at < datetime.now(timezone.utc) - timedelta(hours=24):
+            raise ToolError("o início passou de 24 h atrás; nada foi mudado. Para trabalho já feito, use log_time")
+        running = services.running_timer(ctx["user_id"])
+        if running and running["task_id"] != int(args["task_id"]) and at < running["started_at"]:
+            inicio = running["started_at"].astimezone(services.app_tz()).strftime("%Y-%m-%d %H:%M")
+            raise ToolError(f"essa hora é antes do início do cronômetro que está rodando (#{running['task_id']}, "
+                            f"desde {inicio}); nada foi mudado. Pare o atual com stop_timer at, ou use log_time")
+    res = _call(timer_routes.start, TimerIn(task_id=int(args["task_id"]), at=at), user=ctx)
     prev = res["stopped"]
     if prev and prev.get("needs_review"):
         extra = f" (o anterior parou: {_review_text(prev)})"
     else:
         extra = f" (o anterior parou e apontou {_dur(prev['minutes'])} em #{prev['task_id']})" if prev else ""
-    return f"Cronômetro iniciado em #{res['timer']['task_id']} {res['timer']['title']}{extra}."
+    tm = res["timer"]
+    desde = tm["started_at"].astimezone(services.app_tz()).strftime("%d/%m %H:%M")
+    if prev is None and at and abs((tm["started_at"] - at).total_seconds()) > 60:
+        return f"O cronômetro já estava rodando em #{tm['task_id']} {tm['title']} desde {desde}; o início não mudou."
+    return f"Cronômetro iniciado em #{tm['task_id']} {tm['title']} (desde {desde}){extra}."
 
 
 def _stop_at(value) -> datetime | None:
@@ -1003,8 +1016,13 @@ TOOLS = {
                              "remind_at": {"type": ["string", "null"], "description": "Horário HH:MM (o app lembra perto dele)"},
                              "require_note": {"type": "boolean", "default": False,
                                               "description": "Marcar exige evidência (note em set_recurring)"}}}),
-    "start_timer": (t_start_timer, True, "Inicia o cronômetro numa tarefa aberta (se outro estiver rodando, ele para e aponta o tempo).",
-                    {"type": "object", "required": ["task_id"], "properties": {"task_id": {"type": "integer"}}}),
+    "start_timer": (t_start_timer, True, "Inicia o cronômetro numa tarefa aberta (se outro estiver rodando, ele para e aponta o tempo). "
+                    "Se a pessoa começou antes e ainda está trabalhando (“comecei às 9h”), informe at. Se o trabalho já "
+                    "terminou, não use o cronômetro: aponte com log_time.",
+                    {"type": "object", "required": ["task_id"], "properties": {
+                        "task_id": {"type": "integer"},
+                        "at": {"type": "string", "description": "Hora em que começou: HH:MM ou “9h” (a mais recente que já passou) "
+                               "ou AAAA-MM-DDTHH:MM, fuso " + config.APP_TZ + ". Padrão: agora. Até 24 h atrás"}}}),
     "stop_timer": (t_stop_timer, True,
                    "Para o cronômetro e aponta o tempo na tarefa. Se a pessoa parou antes (“parei às 18h”), informe at.",
                    {"type": "object", "properties": {
