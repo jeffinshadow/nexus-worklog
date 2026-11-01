@@ -98,6 +98,7 @@
   --card-border: var(--outline-variant);
   --card-border-hover: var(--line-2);
   --pop-border: var(--outline-variant);
+  --assist-border: var(--primary-container);
 
   /* Primário (azul do Sway) e papéis do Material 3. */
   --primary: #5294E2;
@@ -170,6 +171,7 @@
   --card-border: transparent;
   --card-border-hover: var(--outline-variant);
   --pop-border: transparent;
+  --assist-border: transparent;
   --primary: #1A6AB5;
   --primary-hi: #00569A;
   --on-primary: #FFFFFF;
@@ -234,6 +236,7 @@
   --card-border: transparent;
   --card-border-hover: var(--outline-variant);
   --pop-border: transparent;
+  --assist-border: transparent;
   --primary: #1A6AB5;
   --primary-hi: #00569A;
   --on-primary: #FFFFFF;
