@@ -360,13 +360,14 @@ tarefas). `update_task` e `undo` levam `destructiveHint: true`.
 
 Crie uma chave em Configurações > IA e API (permissão ler e registrar) e troque `nxs_SUA_CHAVE` por ela.
 
-Claude Code:
+Claude Code (`--scope user`: vale em qualquer pasta; sem ele, só na pasta onde o comando rodou):
 
 ```bash
-claude mcp add --transport http nexus https://SEU-HOST/mcp --header "Authorization: Bearer nxs_SUA_CHAVE"
+claude mcp add --scope user --transport http nexus https://SEU-HOST/mcp --header "Authorization: Bearer nxs_SUA_CHAVE"
 ```
 
-Cursor (`mcp.json`) e outros clientes que aceitam URL e cabeçalho:
+Cursor (`~/.cursor/mcp.json`, ou Cursor Settings > MCP > Add new global MCP server) e outros clientes
+que aceitam URL e cabeçalho. Arquivo que já tem outros servidores: junte como na nota do Claude Desktop, abaixo.
 
 ```json
 { "mcpServers": { "nexus": { "url": "https://SEU-HOST/mcp", "headers": { "Authorization": "Bearer nxs_SUA_CHAVE" } } } }
@@ -387,7 +388,7 @@ Claude Desktop (só fala com programas locais; o `mcp-remote` faz a ponte e prec
     "env": { "NEXUS_AUTH": "Bearer nxs_SUA_CHAVE" } } } }
 ```
 
-Se o arquivo já tiver conteúdo, não cole por cima nem no fim (o JSON fica inválido e o app abre sem
+Vale para os três arquivos (Claude Desktop, Cursor e Gemini CLI): se o arquivo já tiver conteúdo, não cole por cima nem no fim (o JSON fica inválido e o app abre sem
 o Nexus). Já existe `"mcpServers"`: cole só o trecho `"nexus": { … }` dentro dele, separado do
 servidor anterior por vírgula. Não existe: acrescente `"mcpServers": { … }` como mais uma chave do
 objeto principal, também com vírgula. Exemplo:
@@ -407,7 +408,8 @@ objeto principal, também com vírgula. Exemplo:
 ```
 
 Gemini CLI, o Gemini de terminal (`~/.gemini/settings.json`; no Windows,
-`C:\Users\<você>\.gemini\settings.json`):
+`C:\Users\<você>\.gemini\settings.json`). Depois do primeiro login ele já tem conteúdo (o tipo de
+login, o tema): junte como na nota acima, sem colar por cima.
 
 ```json
 { "mcpServers": { "nexus": { "httpUrl": "https://SEU-HOST/mcp", "headers": { "Authorization": "Bearer nxs_SUA_CHAVE" } } } }

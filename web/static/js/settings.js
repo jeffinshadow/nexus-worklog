@@ -547,7 +547,7 @@ async function tokens(rerender) {
       h("p", { class: "help", text: "Em vez de registrar à mão, conte para a IA o que você fez e ela registra no Nexus. Uma chave deixa uma IA ou automação usar o Nexus em seu nome, sem a sua senha; tudo o que ela fizer aparece no Histórico com o nome que você der aqui. Ao criar, a janela já traz a configuração pronta para o Claude Code, o Claude Desktop, o Cursor e o Gemini CLI." }),
       form),
     h("section", { class: "panel" },
-      h("div", { class: "panel-head" }, h("h2", { text: "Minhas chaves" }), h("span", { class: "count", text: String(list.filter((t) => t.active).length) + " ativas" })),
+      h("div", { class: "panel-head" }, h("h2", { text: "Minhas chaves" }), h("span", { class: "count", text: (() => { const n = list.filter((t) => t.active).length; return n + (n === 1 ? " ativa" : " ativas"); })() })),
       ...rows));
 }
 
@@ -556,7 +556,7 @@ function aiConfigs(key) {
   const url = `${location.origin}/mcp`;
   const desktop = { command: "npx", args: ["-y", "mcp-remote", url, "--header", "Authorization:${NEXUS_AUTH}"], env: { NEXUS_AUTH: `Bearer ${key}` } };
   return {
-    code: `claude mcp add --transport http nexus ${url} --header "Authorization: Bearer ${key}"`,
+    code: `claude mcp add --scope user --transport http nexus ${url} --header "Authorization: Bearer ${key}"`,
     desktop: JSON.stringify({ mcpServers: { nexus: desktop } }, null, 2),
     desktopMerge: JSON.stringify({ preferences: { "...": "o que já estava aqui" }, mcpServers: { "outro-servidor": { "...": "o que já estava aqui" }, nexus: desktop } }, null, 2),
     cursor: JSON.stringify({ mcpServers: { nexus: { url, headers: { Authorization: `Bearer ${key}` } } } }, null, 2),
@@ -564,14 +564,19 @@ function aiConfigs(key) {
   };
 }
 
+// Arquivo de configuração que já tem conteúdo: juntar, não substituir (Desktop, Cursor, Gemini CLI).
+const MERGE_NOTE = "Arquivo com outro conteúdo? Já existe \"mcpServers\": cole só o trecho \"nexus\": { … } dentro dele, com uma vírgula entre os servidores. Não existe: acrescente \"mcpServers\": { … } inteiro como mais um item, separado por vírgula.";
+
 // Chave criada: a chave e o bloco pronto da IA escolhida (já com a chave), cada um com Copiar.
 function showNewToken(res) {
   const cfg = aiConfigs(res.token);
   const AIS = [
-    ["Claude Code", "No terminal, rode:", cfg.code],
-    ["Claude Desktop", "Cole em claude_desktop_config.json (Configurações > Desenvolvedor > Editar configuração). Arquivo com outro conteúdo? Veja a nota na aba IA e API.", cfg.desktop],
-    ["Cursor", "Cole em mcp.json (vale para outros programas que aceitam endereço e cabeçalho):", cfg.cursor],
-    ["Gemini CLI", "Cole em settings.json, dentro da pasta .gemini da sua pasta de usuário:", cfg.gemini],
+    ["Claude Code", ["No terminal, rode (vale em qualquer pasta):"], cfg.code],
+    ["Claude Desktop", ["Precisa do Node.js instalado (versão LTS, em ",
+      h("a", { href: "https://nodejs.org", target: "_blank", rel: "noopener noreferrer", text: "nodejs.org" }),
+      "). Depois, cole em claude_desktop_config.json (Configurações > Desenvolvedor > Editar configuração) e reabra o Claude Desktop. " + MERGE_NOTE], cfg.desktop],
+    ["Cursor", ["Cole em mcp.json, na pasta .cursor da sua pasta de usuário (ou em Cursor Settings > MCP > Add new global MCP server). " + MERGE_NOTE], cfg.cursor],
+    ["Gemini CLI", ["Abra settings.json, na pasta .gemini da sua pasta de usuário. Depois do primeiro login ele já tem conteúdo (o login, o tema): não cole por cima. " + MERGE_NOTE], cfg.gemini],
   ];
   const seg = h("div", { class: "seg seg-sm ai-tabs", role: "tablist", "aria-label": "Sua IA" });
   const slot = h("div", { class: "ai-config" });
@@ -579,7 +584,7 @@ function showNewToken(res) {
     for (const [n, b] of [...seg.children].entries()) b.setAttribute("aria-selected", String(n === i));
     const [, note, code] = AIS[i];
     clear(slot);
-    slot.append(h("p", { class: "dialog-note", text: note }), codeBox(code));
+    slot.append(h("p", { class: "dialog-note" }, ...note), codeBox(code));
   };
   AIS.forEach(([name], i) => seg.append(h("button", { type: "button", class: "chip-btn", role: "tab", text: name, onClick: () => show(i) })));
   show(0);
@@ -684,9 +689,9 @@ function aiHelp() {
       h("div", { class: "panel-head" }, h("h2", { text: "Use o Nexus pela sua IA" })),
       h("p", { class: "help", text: "Conte para a IA o que você fez (“troquei o disjuntor do quadro 3 e fiz a ronda da manhã”) e ela registra no Nexus. O Nexus fala MCP, a forma padrão de uma IA usar outros programas." }),
       h("p", { class: "help", text: "1. Crie uma chave em Nova chave, acima (opção “Ler e registrar”): a janela já mostra a configuração pronta de cada IA. 2. Precisa de novo depois? Cole a configuração abaixo, trocando nxs_SUA_CHAVE pela chave:" }),
-      h("p", { class: "dialog-note", text: "Claude Code (terminal):" }),
+      h("p", { class: "dialog-note", text: "Claude Code (terminal; com --scope user vale em qualquer pasta):" }),
       codeBox(cfg.code),
-      h("p", { class: "dialog-note", text: "Cursor (arquivo mcp.json) e outros programas que aceitam endereço e cabeçalho:" }),
+      h("p", { class: "dialog-note", text: "Cursor (arquivo mcp.json, na pasta .cursor da sua pasta de usuário, ou Cursor Settings > MCP > Add new global MCP server) e outros programas que aceitam endereço e cabeçalho. Arquivo com outro conteúdo: veja a nota do Claude Desktop, abaixo; vale igual." }),
       codeBox(cfg.cursor),
       h("p", { class: "dialog-note", text: "Claude Desktop (o aplicativo do Claude no computador), passo a passo:" }),
       h("ol", { class: "help" },
@@ -696,9 +701,9 @@ function aiHelp() {
         h("li", { text: "Se o arquivo estiver vazio ou só com {}, apague tudo e cole o bloco abaixo. Se já tiver outro conteúdo, veja a nota logo depois do bloco." }),
         h("li", { text: "Salve, feche o Claude Desktop por completo e abra de novo. Para conferir, pergunte “o que tenho hoje no Nexus?”: o nexus aparece no ícone de ferramentas, abaixo da caixa de mensagem." })),
       codeBox(cfg.desktop),
-      h("p", { class: "help", text: "Se o arquivo já tiver conteúdo, não cole por cima nem no fim: o arquivo deixa de valer e o aplicativo abre sem o Nexus. Já existe \"mcpServers\"? Copie só o trecho \"nexus\": { … } e cole dentro dele, depois do último servidor, com uma vírgula entre os dois. Não existe? Acrescente \"mcpServers\": { … } inteiro como mais um item, também separado por vírgula. Exemplo de um arquivo que já tinha outras coisas:" }),
+      h("p", { class: "help", text: "Vale para os três arquivos (Claude Desktop, Cursor e Gemini CLI). Se o arquivo já tiver conteúdo, não cole por cima nem no fim: o arquivo deixa de valer e o aplicativo abre sem o Nexus. Já existe \"mcpServers\"? Copie só o trecho \"nexus\": { … } e cole dentro dele, depois do último servidor, com uma vírgula entre os dois. Não existe? Acrescente \"mcpServers\": { … } inteiro como mais um item, também separado por vírgula. Exemplo de um arquivo que já tinha outras coisas:" }),
       codeBox(cfg.desktopMerge),
-      h("p", { class: "dialog-note", text: "Gemini CLI (o Gemini que roda no terminal; arquivo settings.json dentro da pasta .gemini, na sua pasta de usuário):" }),
+      h("p", { class: "dialog-note", text: "Gemini CLI (o Gemini que roda no terminal; arquivo settings.json dentro da pasta .gemini, na sua pasta de usuário). Depois do primeiro login esse arquivo já tem conteúdo: junte como na nota acima, sem colar por cima." }),
       codeBox(cfg.gemini),
       h("p", { class: "help", text: "O aplicativo e o site do Gemini (gemini.google.com), o ChatGPT e o Claude no navegador (claude.ai) ainda não ligam no Nexus: os conectores deles pedem um tipo de login (OAuth) que o Nexus não tem. Do Gemini, só o Gemini CLI funciona; nos outros, use um dos programas acima ou a API." })),
     h("section", { class: "panel" },
