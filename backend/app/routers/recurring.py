@@ -3,6 +3,7 @@ from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException
 
 from .. import audit, db, push
+from ..config import config
 from ..deps import active_user, active_user_csrf
 from ..schemas import PauseIn, RecurringIn, RecurringUpdate, SnoozeIn, ToggleIn
 from ..services import app_today, app_tz, is_pending, recurring_vigente, rotinas, work_mask
@@ -45,6 +46,23 @@ def create(data: RecurringIn, user=Depends(active_user_csrf)):
     return row
 
 
+def _last_time(uid: int, old: dict):
+    """"Depois da última vez": a última marcação da rotina antiga (antes de hoje;
+    a de hoje passa para a nova). Sem marcação, se a antiga já era 'after', o
+    ponto de onde ela contava. A nova segue contando dali (última + N novo)."""
+    r = db.query_one(
+        """SELECT (SELECT max(completed_date) FROM recurring_completions
+                    WHERE task_id = t.id AND user_id = t.user_id AND completed_date < %s) AS last,
+                  t.freq, t.after_from, (t.created_at AT TIME ZONE %s)::date AS start_d
+             FROM recurring_tasks t WHERE t.id = %s AND t.user_id = %s""",
+        (app_today(), config.APP_TZ, old["id"], uid))
+    if not r:
+        return None
+    if r["last"]:
+        return max(r["last"], r["after_from"]) if r["after_from"] else r["last"]
+    return (r["after_from"] or r["start_d"]) if r["freq"] == "after" else None
+
+
 def replace_routine(user: dict, before: dict, new: dict, freeze: dict | None = None) -> int:
     """Encerra a rotina `before` hoje e cria outra (mesma posição) a partir de
     hoje com `new` (label + agenda): o passado da antiga não muda. `freeze`
@@ -55,12 +73,16 @@ def replace_routine(user: dict, before: dict, new: dict, freeze: dict | None = N
     sets = ["active = false", "deactivated_at = now()"] + [f"{k} = %s" for k in (freeze or {})]
     db.execute(f"UPDATE recurring_tasks SET {', '.join(sets)} WHERE id = %s AND user_id = %s",
                tuple((freeze or {}).values()) + (old_id, uid))
+    freq = new.get("freq") or before.get("freq")
     row = db.query_one(
-        """INSERT INTO recurring_tasks (user_id, label, position, freq, weekdays, month_day, interval_days, require_note, remind_at)
-           VALUES (%(uid)s, %(label)s, %(position)s, %(freq)s, %(weekdays)s, %(month_day)s, %(interval_days)s, %(require_note)s, %(remind_at)s)
+        """INSERT INTO recurring_tasks (user_id, label, position, freq, weekdays, month_day, interval_days, require_note,
+                                        remind_at, after_from)
+           VALUES (%(uid)s, %(label)s, %(position)s, %(freq)s, %(weekdays)s, %(month_day)s, %(interval_days)s, %(require_note)s,
+                   %(remind_at)s, %(after_from)s)
            RETURNING id""",
         {"uid": uid, "position": before["position"], "weekdays": None, "month_day": None, "interval_days": None,
-         "require_note": bool(before.get("require_note")), "remind_at": before.get("remind_at"), **new})
+         "require_note": bool(before.get("require_note")), "remind_at": before.get("remind_at"),
+         "after_from": _last_time(uid, before) if freq == "after" else None, **new})
     db.execute("UPDATE recurring_completions SET task_id = %s WHERE task_id = %s AND user_id = %s AND completed_date = %s",
                (row["id"], old_id, uid, app_today()))
     db.execute("UPDATE photos SET recurring_id = %s WHERE recurring_id = %s AND user_id = %s AND day = %s",
@@ -83,7 +105,7 @@ def update(task_id: int, data: RecurringUpdate, user=Depends(active_user_csrf)):
     uid = user["user_id"]
     before = audit.recurring_snapshot(task_id, uid)
     if not before or not before["active"]:
-        raise HTTPException(status_code=404, detail="não encontrado")
+        raise HTTPException(status_code=404, detail="rotina não encontrada (pode ter sido excluída); atualize a tela")
     agenda = data.agenda() if data.freq is not None else {}
     horario = "remind_at" in data.model_fields_set  # null tira o horário
     if data.label is None and not agenda and data.require_note is None and not horario:
@@ -131,7 +153,7 @@ def deactivate(task_id: int, user=Depends(active_user_csrf)):
         (task_id, user["user_id"]),
     )
     if not updated:
-        raise HTTPException(status_code=404, detail="não encontrado")
+        raise HTTPException(status_code=404, detail="rotina não encontrada (pode ter sido excluída); atualize a tela")
     audit.record(user, "recurring.deactivate", "recurring", task_id, before=before,
                  after=audit.recurring_snapshot(task_id, user["user_id"]))
     return {"ok": True}
@@ -144,7 +166,7 @@ def toggle(task_id: int, data: ToggleIn, user=Depends(active_user_csrf)):
         (task_id, user["user_id"]),
     )
     if not owns:
-        raise HTTPException(status_code=404, detail="não encontrado")
+        raise HTTPException(status_code=404, detail="rotina não encontrada (pode ter sido excluída); atualize a tela")
 
     # Marcação retroativa: hoje ou até RETRO_DAYS dias atrás (mesma janela do
     # quadro), e só em dia em que a rotina estava vigente.
@@ -186,7 +208,7 @@ def toggle(task_id: int, data: ToggleIn, user=Depends(active_user_csrf)):
 def snooze(task_id: int, data: SnoozeIn, user=Depends(active_user_csrf)):
     """Adia o lembrete da rotina hoje (as notificações do aparelho esperam)."""
     if not db.query_one("SELECT 1 FROM recurring_tasks WHERE id = %s AND user_id = %s AND active", (task_id, user["user_id"])):
-        raise HTTPException(status_code=404, detail="não encontrado")
+        raise HTTPException(status_code=404, detail="rotina não encontrada (pode ter sido excluída); atualize a tela")
     return {"until": push.snooze(user["user_id"], task_id, data.minutes)}
 
 
@@ -209,7 +231,7 @@ def current_pause(task_id: int, today):
 def _active_routine(task_id: int, uid: int) -> dict:
     row = db.query_one("SELECT id, label FROM recurring_tasks WHERE id = %s AND user_id = %s AND active", (task_id, uid))
     if not row:
-        raise HTTPException(status_code=404, detail="não encontrado")
+        raise HTTPException(status_code=404, detail="rotina não encontrada (pode ter sido excluída); atualize a tela")
     return row
 
 
@@ -221,7 +243,7 @@ def pause(task_id: int, data: PauseIn, user=Depends(active_user_csrf)):
     if data.until < today:
         raise HTTPException(status_code=400, detail="a pausa começa hoje: escolha hoje ou um dia depois")
     if (data.until - today).days > PAUSE_MAX_DAYS:
-        raise HTTPException(status_code=400, detail="pausa de no máximo um ano")
+        raise HTTPException(status_code=400, detail="a pausa pode ir até um ano a partir de hoje; escolha uma data mais próxima")
     cur = current_pause(task_id, today)
     if cur:
         db.execute("UPDATE recurring_pauses SET end_d = %s WHERE id = %s", (data.until, cur["id"]))

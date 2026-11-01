@@ -92,7 +92,7 @@ function ticketChip(ticket) {
 }
 
 // Resumo da agenda de uma rotina ("seg, qua", "todo dia 5", "a cada 15 dias",
-// "30 dias após a última vez · próxima em 12/12"). day: o dia que a tela mostra.
+// "30 dias depois da última vez · próxima em 12/12"). day: o dia que a tela mostra.
 const WD_ORDER = [1, 2, 3, 4, 5, 6, 0];
 export function scheduleLabel(r, day) {
   if (r.freq === "weekly") {
@@ -102,7 +102,7 @@ export function scheduleLabel(r, day) {
   if (r.freq === "monthly") return r.month_day >= 31 ? "último dia do mês" : `todo dia ${r.month_day}`;
   if (r.freq === "interval") return `a cada ${r.interval_days} dias`;
   if (r.freq === "after") {
-    const base = `${r.interval_days} dias após a última vez`;
+    const base = `${r.interval_days} dias depois da última vez`;
     if (!r.next_due) return base;
     if (day && r.next_due < day) return `${base} · venceu em ${shortDate(r.next_due)}`;
     return `${base} · ${day && r.next_due === day ? "vence hoje" : "próxima em " + shortDate(r.next_due)}`;
@@ -122,7 +122,7 @@ export function pauseRecurring(r, onDone) {
   const until = h("input", { type: "date", min: today, max: addDays(today, 366), value: r.paused_until || addDays(today, 7), required: "" });
   const dlg = modal(
     h("h2", { text: r.paused_until ? "Rotina pausada" : "Pausar rotina" }),
-    h("p", { text: `“${r.label}” não conta como falta nem lembra até o dia escolhido (inclusive) e volta sozinha no dia seguinte. Marcar durante a pausa conta como extra.` }),
+    h("p", { text: `“${r.label}” não conta como falta nem avisa até o dia escolhido (inclusive) e volta sozinha no dia seguinte. Marcar durante a pausa conta como extra.` }),
     field("Pausar até", until),
     h("div", { class: "dialog-actions" },
       r.paused_until ? h("button", { type: "button", class: "btn btn-text", text: "Retomar agora", onClick: async () => {
@@ -165,9 +165,10 @@ export function moreButton(t, onDone) {
         t.status === "done" ? null : running
           ? ["Parar o cronômetro e apontar", "stop", () => stopTimer(onDone)]
           : ["Iniciar o cronômetro", "play", () => startTimer(t, onDone)],
-        canBlock(t) ? ["Aguardando…", "clock", () => blockTask(t, onDone)] : null,
+        canBlock(t) ? ["Marcar como aguardando…", "clock", () => blockTask(t, onDone)] : null,
         ["Duplicar tarefa", "add", () => duplicateTask(t, onDone)],
         ["Abrir (ver e editar)", "right", () => openTask(t.id, onDone)],
+        ["Excluir", "trash", () => deleteTask(t, onDone)],
       ]);
     } }, icon("more-v"));
 }
@@ -188,7 +189,7 @@ export function withMenu(el, t, onDone) {
         ? ["Parar o cronômetro e apontar", "stop", () => stopTimer(onDone)]
         : ["Iniciar o cronômetro", "play", () => startTimer(t, onDone)],
       t.status === "done" ? null : ["Concluir", "check", () => finishTask(t, onDone)],
-      canBlock(t) ? ["Aguardando…", "clock", () => blockTask(t, onDone)] : null,
+      canBlock(t) ? ["Marcar como aguardando…", "clock", () => blockTask(t, onDone)] : null,
       ["Duplicar tarefa", "add", () => duplicateTask(t, onDone)],
       ["Excluir", "trash", () => deleteTask(t, onDone)],
     ];
@@ -225,7 +226,7 @@ export function followUpDay(day) {
 
 export const canBlock = (t) => t.status !== "done" && t.status !== "blocked";
 
-// "Aguardando…" direto do menu: pergunta o que falta e, se quiser, quando cobrar.
+// "Marcar como aguardando…" direto do menu: pergunta o que falta e, se quiser, quando cobrar.
 export function blockTask(t, onDone) {
   const back = keepFocus(); // depois do redesenho, o foco volta ao cartão
   const reason = h("input", { type: "text", maxlength: "120", required: "required", placeholder: "Ex.: peça do fornecedor, acesso à sala, aprovação" });
@@ -400,7 +401,7 @@ export function openWorklog(onDone, opts = {}) {
 
   document.getElementById("wl-cancel").onclick = () => dlg.close();
   document.getElementById("wl-close").onclick = () => dlg.close();
-  // Celular: campos menos usados ficam em "Mais opções" (abertos se a tarefa já usa algum).
+  // Campos menos usados ficam em "Mais opções" (celular e computador).
   const more = document.getElementById("wl-more"), moreBtn = document.getElementById("wl-more-toggle");
   const setMore = (open) => { more.classList.toggle("open", open); moreBtn.setAttribute("aria-expanded", String(open)); moreBtn.textContent = open ? "Menos opções" : "Mais opções"; };
   setMore(false);

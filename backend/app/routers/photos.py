@@ -12,7 +12,7 @@ import binascii
 import re
 import tempfile
 import zipfile
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -23,6 +23,7 @@ from .. import audit, db
 from ..deps import web_active, web_active_csrf
 from .board import check_board_day
 from .me import _sniff
+from .worklog import device_time
 
 router = APIRouter(prefix="/api", tags=["photos"])
 
@@ -37,6 +38,7 @@ class PhotoIn(BaseModel):
     thumb: str = Field(min_length=50, max_length=130_000)
     width: Optional[int] = Field(default=None, ge=1, le=10000)
     height: Optional[int] = Field(default=None, ge=1, le=10000)
+    at: Optional[datetime] = None  # hora do aparelho (tirada sem sinal, enviada depois); até 24 h atrás
 
 
 def _decode(text: str, limit: int, what: str) -> tuple[bytes, str]:
@@ -71,10 +73,11 @@ def _store(user: dict, data: PhotoIn, task_id: int | None = None, recurring_id: 
         raise HTTPException(status_code=409, detail=f"até {MAX_PER_ITEM} fotos em cada tarefa ou rotina do dia")
     _quota(uid, len(image) + len(thumb))
     row = db.query_one(
-        """INSERT INTO photos (user_id, task_id, recurring_id, day, mime, image, thumb, width, height, bytes)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """INSERT INTO photos (user_id, task_id, recurring_id, day, mime, image, thumb, width, height, bytes, created_at)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, COALESCE(%s, now()))
            RETURNING id, width, height, created_at""",
-        (uid, task_id, recurring_id, day, mime, image, thumb, data.width, data.height, len(image) + len(thumb)))
+        (uid, task_id, recurring_id, day, mime, image, thumb, data.width, data.height, len(image) + len(thumb),
+         device_time(data.at, "a foto")))
     audit.record(user, "photo.create", "photo", row["id"],
                  after={"task_id": task_id, "recurring_id": recurring_id, "day": day, "bytes": len(image)})
     return row

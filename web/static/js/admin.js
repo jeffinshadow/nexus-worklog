@@ -6,7 +6,7 @@ import { avatar } from "./profile.js";
 
 const ROLES = [
   ["user", "Usuário", "tem o próprio registro (Hoje, Tarefas, Rotinas) e pode receber tarefas"],
-  ["admin", "Admin", "convites, contas, permissões e configurações gerais"],
+  ["admin", "Admin", "convites, contas, papéis e configurações gerais"],
   ["assigner", "Atribuidor de tarefas", "manda tarefas para quem aceitou receber"],
   ["viewer", "Visualizador de tarefas", "vê, sem editar, os registros de quem permitir (cada pessoa libera em Configurações > Conta)"],
 ];
@@ -141,7 +141,7 @@ async function mountUsers(root, me) {
 
   // ---- Cancelar convite (ninguém entrou ainda: a conta não tem dados) ----
   async function onCancelInvite(u) {
-    if (!(await confirmDialog({ title: "Cancelar o convite?", text: `O link mandado para ${u.email} deixa de valer e a conta sai da lista. Se precisar, convide de novo depois.`, confirm: "Cancelar convite", danger: true }))) return;
+    if (!(await confirmDialog({ title: "Cancelar o convite?", text: `O link mandado para ${u.email} deixa de valer e a conta sai da lista. Se precisar, convide de novo depois.`, confirm: "Cancelar convite", danger: true, dismiss: "Voltar" }))) return;
     try { await api.post(`/admin/users/${u.id}/cancel-invite`); toast(`Convite de ${u.email} cancelado.`); mountUsers(root, me); }
     catch (e) { errorToast(e, "Não foi possível cancelar o convite."); }
   }
@@ -150,7 +150,7 @@ async function mountUsers(root, me) {
   async function onBlock(u) {
     const ok = await confirmDialog({
       title: "Bloquear o acesso?",
-      text: `${u.email} sai de todos os aparelhos agora e não entra mais: a senha vira uma que ninguém sabe, e as chaves de API, o link do calendário e as passkeys param de funcionar. Tarefas, rotinas e histórico ficam guardados. Para liberar, use “Liberar acesso”: gera uma senha temporária para você repassar.`,
+      text: `${u.email} sai de todos os aparelhos agora e não entra mais: a senha vira uma que ninguém sabe, e as chaves de API, o link do calendário e a entrada com digital ou rosto (passkeys) param de funcionar. Tarefas, rotinas e histórico ficam guardados. Para liberar, use “Liberar acesso”: gera uma senha temporária para você repassar.`,
       confirm: "Bloquear", danger: true,
     });
     if (!ok) return;
@@ -189,7 +189,7 @@ async function mountUsers(root, me) {
     const email = emailById.get(uid) || "";
     const ok = await confirmDialog(blocked ? {
       title: "Liberar o acesso?",
-      text: `Gera uma senha temporária para ${email} entrar de novo. Repasse a ela; no primeiro login, ela cria uma senha nova.`,
+      text: `Gera uma senha temporária para ${email} entrar de novo. Repasse à pessoa; no primeiro login, ela cria uma senha nova.`,
       confirm: "Liberar",
     } : {
       title: "Redefinir senha?",

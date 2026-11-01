@@ -159,8 +159,9 @@ def test_cancelar_atribuicao_fica_na_lista(par, caixa):
     linha = _linha(chefe, tid)
     assert linha["status"] == "removed" and linha["ended"]["kind"] == "canceled" and linha["ended"]["at"]
     assert linha["title"] == "Trocar o nobreak" and linha["to_name"]
-    rec = next(h for h in hist(marina, entity="worklog", entity_id=tid) if h["action"] == "worklog.assign_cancel")
-    assert "cancelou" in rec["summary"] and not rec["can_undo"]
+    # No histórico de quem recebeu: lápide comum (feed/webhook), dizendo quem cancelou.
+    rec = next(h for h in hist(marina, entity="worklog", entity_id=tid) if h["action"] == "worklog.delete")
+    assert "cancelou" in rec["summary"] and "que tinha atribuído a você" in rec["summary"] and rec["can_undo"]
     assert chefe.post(f"/assign/{tid}/cancel").status_code == 404
 
 

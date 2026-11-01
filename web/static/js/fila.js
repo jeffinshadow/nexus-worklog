@@ -62,14 +62,29 @@ export async function enqueue(method, path, body) {
   return qid;
 }
 
+// Criações já enviadas por esta aba: qid -> id da tarefa (para um passo que chega atrasado).
+const sentIds = new Map();
+
 // Passo seguinte de uma criação que está na fila ({id} = a tarefa criada).
+// Tempo e anotação levam o próprio external_ref: reenviar depois de um timeout não duplica.
 export async function after(qid, method, path, body) {
-  if (/\/time$/.test(path) && body && !body.day) body = { ...body, day: localDay(new Date().toISOString()) };
-  if (/\/(notes|photos)$/.test(path) && body && !body.at) body = { ...body, at: new Date().toISOString() };
-  await tx(STORE, "readwrite", (s) => {
+  body = { ...(body || {}) };
+  if (/\/time$/.test(path) && !body.day) body.day = localDay(new Date().toISOString());
+  if (/\/(notes|photos)$/.test(path) && !body.at) body.at = new Date().toISOString();  // a hora em que foram feitas
+  if (/\/(time|notes)$/.test(path) && !body.external_ref) body.external_ref = "app-" + crypto.randomUUID();
+  const found = await tx(STORE, "readwrite", (s) => {
     const g = s.get(qid);
     g.onsuccess = () => { if (g.result) { g.result.then.push({ method, path, body }); s.put(g.result); } };
+    return g;
   });
+  if (found) return;
+  // A fila enviou a criação enquanto o passo era preparado (ex.: a foto sendo comprimida):
+  // o passo entra sozinho na fila, já com o id; sem o id (outra aba enviou), vira falha visível.
+  if (sentIds.has(qid)) { await enqueue(method, path.replace("{id}", sentIds.get(qid)), body); return; }
+  const step = { method, path, body };
+  await tx(FAILED, "readwrite", (s) => s.put({ ...step, qid: `${qid}-tarde-${Date.now()}`, at: new Date().toISOString(),
+    error: "a tarefa não estava mais na fila do aparelho; refaça pelo detalhe dela", what: describeStep(step) }));
+  changed();
 }
 
 // Nomes das tarefas e rotinas na última leitura guardada (a que a tela mostrava).
@@ -120,7 +135,7 @@ function describeStep(step) {
 const later = (e) => !e.status || e.status === 401 || e.status === 429 || e.status >= 500;
 
 // ------------------------------------------------------------- envio --
-let sending = false, sendFn = null, onSynced = null;
+let sending = false, sendFn = null, onSynced = null, flushAgain = false;
 
 // api.js entrega o envio cru (sem fila).
 export function configure(send) { sendFn = send; }
@@ -137,6 +152,7 @@ async function flushHere() {
   let sent = 0;
   try {
     outer: for (const op of await all()) {
+      const n0 = op.then.length;  // passos acrescentados durante o envio ficam depois destes
       let res = op.created ? { id: op.created } : null;  // a criação já foi numa tentativa anterior
       if (!res) {
         try { res = await sendFn(op.method, op.path, op.body); }
@@ -154,7 +170,10 @@ async function flushHere() {
         try { await sendFn(step.method, step.path.replace("{id}", res && res.id), step.body); }
         catch (e) {
           if (later(e)) {
-            await tx(STORE, "readwrite", (s) => s.put({ ...op, created: res && res.id }));
+            await tx(STORE, "readwrite", (s) => {
+              const g = s.get(op.qid);  // o que foi acrescentado enquanto enviava não se perde
+              g.onsuccess = () => s.put({ ...op, created: res && res.id, then: [...op.then, ...((g.result && g.result.then) || []).slice(n0)] });
+            });
             break outer;
           }
           await tx(FAILED, "readwrite", (s) => s.put({ ...step, qid: `${op.qid}-${op.then.length}`, at: op.at,
@@ -162,13 +181,25 @@ async function flushHere() {
         }
         op.then.shift();
       }
-      await tx(STORE, "readwrite", (s) => s.delete(op.qid));
+      // Apaga só se nada chegou durante o envio; senão, os passos novos ficam para a próxima volta.
+      const rest = await tx(STORE, "readwrite", (s) => {
+        const g = s.get(op.qid);
+        g.onsuccess = () => {
+          const extra = ((g.result && g.result.then) || []).slice(n0);
+          if (extra.length) s.put({ ...op, created: res && res.id, then: extra });
+          else s.delete(op.qid);
+        };
+        return { get result() { return ((g.result && g.result.then) || []).slice(n0).length; } };
+      });
+      if (res && res.id) sentIds.set(op.qid, res.id);
+      if (rest) { flushAgain = true; continue; }
       sent++;
     }
   } finally {
     sending = false;
     changed();
   }
+  if (flushAgain) { flushAgain = false; setTimeout(flush, 0); }  // passos que chegaram durante o envio
   if (sent) {
     const { toast } = await import("./ui.js");
     toast(sent > 1 ? `${sent} alterações feitas sem conexão foram enviadas.` : "A alteração feita sem conexão foi enviada.");

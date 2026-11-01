@@ -28,6 +28,19 @@ def check_day_total(uid: int, day, minutes: int, status: int = 400) -> None:
         raise HTTPException(status_code=status, detail="com esse tempo, o dia passaria de 24 h apontadas; confira se o dia ou as horas estão certos")
 
 
+def device_time(at: Optional[datetime], what: str = "a anotação") -> Optional[datetime]:
+    """Hora do aparelho de algo feito sem sinal e enviado depois (anotação,
+    foto): as mesmas regras do cronômetro — até 24 h atrás; no futuro (relógio
+    adiantado) vale como agora."""
+    if at is None:
+        return None
+    now = datetime.now(timezone.utc)
+    at = at if at.tzinfo else at.replace(tzinfo=timezone.utc)
+    if at < now - timedelta(hours=24):
+        raise HTTPException(status_code=400, detail=f"{what} feita sem conexão passou de 24 h; envie sem a hora (at)")
+    return min(at, now)
+
+
 def _check_project(uid: int, project_id) -> None:
     if project_id is None:
         return
@@ -104,7 +117,7 @@ def stop_timer_of(user: dict, task_id: int, ended_at: datetime | None = None) ->
 def _own_task(uid: int, task_id: int) -> dict:
     row = audit.worklog_snapshot(task_id, uid)
     if not row:
-        raise HTTPException(status_code=404, detail="não encontrado")
+        raise HTTPException(status_code=404, detail="tarefa não encontrada (pode ter sido excluída); atualize a tela")
     return row
 
 
@@ -152,7 +165,14 @@ def create(data: WorklogIn, response: Response, user=Depends(active_user_csrf)):
     _check_project(uid, project_id)
     check_objective(uid, data.objective_id, project_id)
     now = datetime.now(timezone.utc)
-    created_at = resolve_created(data.created_at, now)
+    # Só a conclusão no passado (lançamento retroativo): começou nela, não "agora".
+    if data.created_at or not (data.status == "done" and data.completed_at):
+        created_at = resolve_created(data.created_at, now)
+    else:
+        try:
+            created_at = min(resolve_created(data.completed_at, now), now)
+        except HTTPException:  # conclusão inválida: o erro certo vem dela, logo abaixo
+            created_at = now
     completed_at = resolve_completed(data.completed_at, created_at, now) if data.status == "done" else None
     try:
         row = db.query_one(
@@ -241,7 +261,7 @@ def detail(task_id: int, user=Depends(active_user)):
         (task_id, uid),
     )
     if not task:
-        raise HTTPException(status_code=404, detail="não encontrado")
+        raise HTTPException(status_code=404, detail="tarefa não encontrada (pode ter sido excluída); atualize a tela")
     task["checklist"] = db.query_all(
         "SELECT id, label, done, position FROM task_checklist WHERE task_id = %s ORDER BY position, id",
         (task_id,),
@@ -328,8 +348,8 @@ def update(task_id: int, data: WorklogUpdate, user=Depends(active_user_csrf)):
         # Motivo ou cobrança numa tarefa que não fica aguardando: antes era
         # descartado em silêncio. Mudar o status por tabela seria efeito escondido.
         raise HTTPException(status_code=400, detail=(
-            "motivo (blocked_reason) e dia de cobrar (follow_up_on) só valem em tarefa aguardando: "
-            "mande status \"blocked\" junto para ela passar a aguardar"))
+            "o motivo e o dia de cobrar só valem em tarefa aguardando: "
+            "marque a tarefa como aguardando (status \"blocked\") junto"))
     elif before["status"] == "blocked":
         fields.append("blocked_at = NULL")
         fields.append("blocked_reason = NULL")
@@ -385,27 +405,32 @@ def finish(task_id: int, data: Optional[FinishIn] = None, user=Depends(active_us
 
 @router.post("/{task_id}/duplicate", status_code=201)
 def duplicate(task_id: int, user=Depends(active_user_csrf)):
-    """Tarefa nova "a fazer" com o título, a descrição, os projetos, a prioridade
-    e o checklist (desmarcado) desta. Sem tempo, fotos, anotações nem datas."""
+    """Tarefa nova "a fazer" com o título, a descrição, os projetos, o objetivo, a
+    prioridade e o checklist (desmarcado) desta. Sem tempo, fotos, anotações nem datas."""
     uid = user["user_id"]
     src = _own_task(uid, task_id)
     # Um comando só: a tarefa, os itens e os outros projetos entram juntos (ou nada entra).
     row = db.query_one(
         """WITH nova AS (
-               INSERT INTO worklog_tasks (user_id, title, description, status, project_id, priority, exec_position)
-               SELECT user_id, title, description, 'todo', project_id, priority, %s
+               INSERT INTO worklog_tasks (user_id, title, description, status, project_id, objective_id, priority,
+                                          exec_position)
+               SELECT user_id, title, description, 'todo', project_id, objective_id, priority, %s
                  FROM worklog_tasks WHERE id = %s AND user_id = %s
                RETURNING id),
            itens AS (
                INSERT INTO task_checklist (task_id, user_id, label, position)
-               SELECT nova.id, %s, c.label, c.position FROM nova, task_checklist c WHERE c.task_id = %s),
+               SELECT nova.id, %s, c.label, c.position FROM nova, task_checklist c WHERE c.task_id = %s
+               RETURNING id),
            extras AS (
                INSERT INTO worklog_task_projects (task_id, project_id)
                SELECT nova.id, x.project_id FROM nova, worklog_task_projects x WHERE x.task_id = %s)
-           SELECT id FROM nova""",
-        (next_position(uid, src["project_id"], None), task_id, uid, uid, task_id, task_id),
+           SELECT id, ARRAY(SELECT id FROM itens ORDER BY id) AS items FROM nova""",
+        (next_position(uid, src["project_id"], src["objective_id"]), task_id, uid, uid, task_id, task_id),
     )
-    audit.record(user, "worklog.create", "worklog", row["id"], after=audit.worklog_snapshot(row["id"], uid))
+    # copied_checklist: os itens que vieram da original. O desfazer ("criou a
+    # tarefa") aceita apagar a cópia enquanto eles seguem desmarcados.
+    audit.record(user, "worklog.create", "worklog", row["id"],
+                 after={**audit.worklog_snapshot(row["id"], uid), "copied_checklist": row["items"]})
     return {"id": row["id"]}
 
 
@@ -443,10 +468,10 @@ def add_note(task_id: int, data: NoteIn, response: Response = None, user=Depends
         return {**found, "existing": True}
     try:
         row = db.query_one(
-            f"""INSERT INTO task_notes (task_id, user_id, body, actor, token_name, external_ref)
-               VALUES (%s, %s, %s, %s, %s, %s) RETURNING {NOTE_COLS}""",
+            f"""INSERT INTO task_notes (task_id, user_id, body, actor, token_name, external_ref, created_at)
+               VALUES (%s, %s, %s, %s, %s, %s, COALESCE(%s, now())) RETURNING {NOTE_COLS}""",
             (task_id, user["user_id"], data.body.strip(), user.get("actor", "web"), user.get("token_name"),
-             data.external_ref),
+             data.external_ref, device_time(data.at)),
         )
     except UniqueViolation:  # duas chamadas iguais ao mesmo tempo: a segunda devolve a primeira
         response.status_code = 200
@@ -466,7 +491,7 @@ def delete_note(note_id: int, user=Depends(active_user_csrf)):
         (note_id, user["user_id"]),
     )
     if not row:
-        raise HTTPException(status_code=404, detail="não encontrado")
+        raise HTTPException(status_code=404, detail="anotação não encontrada (pode ter sido excluída); atualize a tela")
     audit.record(user, "note.delete", "note", note_id, before=row)
     return {"ok": True}
 
@@ -496,7 +521,7 @@ def update_item(item_id: int, data: ChecklistUpdate, user=Depends(active_user_cs
         (item_id, user["user_id"]),
     )
     if not before:
-        raise HTTPException(status_code=404, detail="não encontrado")
+        raise HTTPException(status_code=404, detail="item do checklist não encontrado (pode ter sido excluído); atualize a tela")
     label = data.label.strip() if data.label is not None else before["label"]
     done = data.done if data.done is not None else before["done"]
     db.execute("UPDATE task_checklist SET label = %s, done = %s WHERE id = %s", (label, done, item_id))
@@ -514,7 +539,7 @@ def delete_item(item_id: int, user=Depends(active_user_csrf)):
         (item_id, user["user_id"]),
     )
     if not row:
-        raise HTTPException(status_code=404, detail="não encontrado")
+        raise HTTPException(status_code=404, detail="item do checklist não encontrado (pode ter sido excluído); atualize a tela")
     audit.record(user, "checklist.delete", "checklist", item_id, before=row)
     return {"ok": True}
 
@@ -561,6 +586,6 @@ def delete_time(entry_id: int, user=Depends(active_user_csrf)):
         (entry_id, user["user_id"]),
     )
     if not row:
-        raise HTTPException(status_code=404, detail="não encontrado")
+        raise HTTPException(status_code=404, detail="registro de tempo não encontrado (pode ter sido excluído); atualize a tela")
     audit.record(user, "time.delete", "time", entry_id, before=row)
     return {"ok": True}

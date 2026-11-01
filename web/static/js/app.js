@@ -224,12 +224,12 @@ function mountMore(el) {
     ["projetos", "route", "Projetos"],
     ["vencimentos", "calendar", "Vencimentos"],
     ["historico", "history", "Histórico"],
-    // Quem atribui tem Atribuir na barra; a Busca vem para cá.
-    has("assigner") ? ["busca", "search", "Busca"] : ["atribuir", "send", "Atribuir tarefas"],
+    // A Busca fica sempre na barra; Atribuir vem para cá (na barra só para quem não tem registro próprio).
+    has("user") ? ["atribuir", "send", "Atribuir tarefas"] : null,
     ["equipe", "team", "Equipe"],
     ["admin", "admin", "Admin"],
     ["config", "settings", "Configurações"],
-  ].filter(([v]) => allowed(v));
+  ].filter((it) => it && allowed(it[0]));
   el.append(
     h("a", { href: "#/config?aba=conta", class: "more-me" }, avatar(me, "md"),
       h("span", { class: "who-text" }, h("span", { class: "who-name", text: me.name, title: me.name }), h("span", { class: "who-email", text: me.email, title: me.email }))),
@@ -261,12 +261,12 @@ function showHelp(focus) {
       ...(user ? [["Hoje", "Rotinas do dia, tarefas em aberto (com filtro) e o registro rápido."],
         ["Tarefas", "O quadro completo e o detalhe de cada tarefa: anotações, checklist, cronômetro, tempo."],
         ["Projetos", "Cada projeto com os objetivos em ordem de execução e as tarefas de cada um."],
-        ["Meu mês", "O mês em números (rotinas, tarefas, tempo por projeto) e o PDF do período ou de um projeto, com a exportação dos dados."]] : []),
+        ["Meu mês", "O mês em números (rotinas, tarefas, tempo por projeto) e os Relatórios: o PDF do período ou de um projeto e a exportação dos dados."]] : []),
       ["Histórico", "Tudo o que mudou, com desfazer."],
       ...(has("assigner") ? [["Atribuir", "Manda uma tarefa para quem aceitou receber. Enquanto ela está a fazer, você ainda corrige ou cancela; depois, é da pessoa."]] : []),
       ...(has("viewer") ? [["Equipe", "O registro de quem permitiu (cada pessoa decide em Configurações > Conta), só para ver e tirar relatório."]] : []),
-      ...(has("admin") ? [["Admin", "Convites e pedidos de convite, contas (senha, bloquear, excluir), permissões, configurações gerais e identidade visual."]] : []),
-      ["Configurações", user ? "Modelos, avisos, calendário, IA e a sua conta (projeto padrão, dias úteis)." : "IA e API, e a sua conta."],
+      ...(has("admin") ? [["Admin", "Convites e pedidos de convite, contas (senha, bloquear, excluir), papéis, configurações gerais e identidade visual."]] : []),
+      ["Configurações", user ? "A sua conta (dias úteis, projeto padrão, quem vê e quem manda tarefas), modelos, avisos, calendário e IA." : "A sua conta, e IA e API."],
     ])),
     user ? sec("add", "Registro rápido (no Hoje)",
       h("p", { class: "help", text: "Escreva o que fez e aperte Enter. Marcadores opcionais no fim, em qualquer ordem:" }),
@@ -281,7 +281,7 @@ function showHelp(focus) {
       ]),
       h("p", { class: "help-example" }, "Ex.: ", h("code", { text: "Troca do switch @Matriz #4821 — 45min" }))) : null,
     user && desk ? sec("key", "Atalhos de teclado", list([
-      ["n", "nova tarefa", true], ["/", "buscar", true], ["h t", "Hoje, Tarefas", true], ["r l", "Meu mês: números, PDF", true],
+      ["n", "nova tarefa", true], ["/", "buscar", true], ["h t", "Hoje, Tarefas", true], ["r l", "Meu mês: números, relatórios", true],
       ["s", "parar o cronômetro", true], ["?", "ver todos os atalhos", true],
     ])) : null,
     // Para o admin, o Suporte é ele mesmo: diz onde fica o contato que os outros veem.
@@ -400,8 +400,9 @@ async function boot() {
     fab.classList.toggle("compact", y > lastY && y > 80);
     lastY = y;
   }, { passive: true });
-  // Barra inferior: no máximo 5 itens; quem atribui troca a Busca por Atribuir.
-  if (has("assigner")) document.querySelector('#tabbar [data-view="busca"]').classList.add("hidden");
+  // Barra inferior: no máximo 5 itens; a Busca fica sempre e Atribuir vai para "Mais"
+  // (fica na barra só para quem atribui sem ter registro próprio).
+  if (has("user")) document.querySelector('#tabbar [data-view="atribuir"]').classList.add("hidden");
   // Celular: quando o título da tela passa por baixo da barra do topo, ela ganha a linha de baixo.
   const pageTitle = document.getElementById("page-title");
   const barH = () => document.getElementById("appbar").getBoundingClientRect().height || 56;
@@ -479,7 +480,7 @@ async function boot() {
     h: ["Ir para Hoje", () => go("hoje")],
     t: ["Ir para Tarefas", () => go("tarefas")],
     r: ["Ir para Meu mês (números)", () => go("mes?aba=numeros")],
-    l: ["Ir para Meu mês (PDF)", () => go("mes?aba=pdf")],
+    l: ["Ir para Meu mês (Relatórios)", () => go("mes?aba=pdf")],
     s: ["Parar o cronômetro (e apontar)", () => { if (timerState()) stopTimer(); }],
     "?": ["Mostrar estes atalhos", showShortcuts],
   };

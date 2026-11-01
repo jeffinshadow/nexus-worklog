@@ -247,7 +247,7 @@ const PHONE_STOPS = [
   QUICK,
   ROUTINES,
   [[".t-open .list-row[data-task-id]"], "Uma tarefa", // sem tarefas ainda (primeiro dia), a parada é pulada
-    "Toque no nome para abrir: anotações, checklist, fotos e tempo. O ✓ conclui. No ⋮ ficam o cronômetro, “Aguardando…” e “Duplicar tarefa”."],
+    "Toque no nome para abrir: anotações, checklist, fotos e tempo. O ✓ conclui. No ⋮ ficam o cronômetro, “Marcar como aguardando…” e “Duplicar tarefa”."],
   HANDOFF,
 ];
 const STOPS = [

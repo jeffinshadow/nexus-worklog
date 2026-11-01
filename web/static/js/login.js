@@ -58,7 +58,7 @@ async function withPasskey(opts) {
     location.href = destino;
   } catch (e) {
     // A consulta silenciosa (sugestão no campo) nunca mostra erro: só o botão.
-    if (!cancelled(e) && !opts.conditional) err.textContent = e.message || "Não foi possível entrar com a passkey.";
+    if (!cancelled(e) && !opts.conditional) err.textContent = e.message || "Não foi possível entrar com a digital ou o rosto.";
   }
 }
 if (passkeySupported()) {

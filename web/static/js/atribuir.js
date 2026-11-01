@@ -103,7 +103,9 @@ async function loadSent(sec, ready) {
     // Enquanto está "a fazer" e sem nada registrado, quem atribuiu ainda corrige ou cancela.
     const acts = r.editable ? h("div", { class: "request-actions" },
       h("button", { type: "button", class: "btn btn-text btn-sm", text: "Alterar", onClick: () => editSent(r, reload) }),
-      h("button", { type: "button", class: "btn btn-text btn-sm", text: "Cancelar", onClick: () => cancelSent(r, reload) })) : null;
+      r.cancelable
+        ? h("button", { type: "button", class: "btn btn-text btn-sm", text: "Cancelar", onClick: () => cancelSent(r, reload) })
+        : h("small", { class: "muted", text: `${r.to_name} já mexeu nela: cancelar, só ela` })) : null;
     sec.append(h("div", { class: "list-row" + (r.status === "removed" ? " is-removed" : "") },
       h("div", { class: "t" }, h("span", { text: r.title }),
         h("small", { text: `para ${r.to_name} · ${r.assigned_at ? dateTime(r.assigned_at) : ""}` }),
@@ -121,7 +123,7 @@ function editSent(r, done) {
   const form = h("form", {},
     field("Título", title),
     h("div", { class: "field-row" }, field("Prazo (opcional)", due), field("Prioridade", prio)),
-    h("p", { class: "dialog-note", text: `${r.to_name} recebe um e-mail com a mudança. Depois que ela começar, só ela muda a tarefa.` }),
+    h("p", { class: "dialog-note", text: `${r.to_name} recebe um e-mail com a mudança. Depois que a tarefa for começada, só quem recebeu pode mudá-la.` }),
     err,
     h("div", { class: "dialog-actions" },
       h("button", { type: "button", class: "btn btn-text", text: "Voltar", onClick: () => dlg.close() }),
@@ -141,7 +143,7 @@ function editSent(r, done) {
 }
 
 async function cancelSent(r, done) {
-  if (!(await confirmDialog({ title: "Cancelar esta tarefa?", text: `“${r.title}” sai das tarefas de ${r.to_name}, que recebe um e-mail avisando. Ela continua nesta lista como cancelada.`, confirm: "Cancelar tarefa", danger: true }))) return;
+  if (!(await confirmDialog({ title: "Cancelar esta tarefa?", text: `“${r.title}” sai das tarefas de ${r.to_name}, que recebe um e-mail avisando. A tarefa continua nesta lista, marcada como cancelada.`, confirm: "Cancelar tarefa", danger: true, dismiss: "Voltar" }))) return;
   try { await api.post(`/assign/${r.id}/cancel`); toast("Tarefa cancelada."); }
   catch (e) { errorToast(e, "Não foi possível cancelar."); }
   done();

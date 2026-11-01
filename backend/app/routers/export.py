@@ -51,10 +51,11 @@ def _tasks(uid: int) -> list[dict]:
             WHERE w.user_id = %s ORDER BY w.created_at""", (uid,))
 
 
-def time_csv(uid: int | None, filename: str, viewable_only: bool = False) -> Response:
+def time_csv(uid: int | None, filename: str, viewable_only: bool = False,
+             start: date | None = None, end: date | None = None) -> Response:
     """Apontamentos em CSV. uid=None = de todos (visualizador: horas da equipe
     por cliente; o projeto vai por nome, pois cada pessoa tem os seus).
-    viewable_only = só de quem aceitou o visualizador."""
+    viewable_only = só de quem aceitou o visualizador. start/end: só esse período."""
     rows = db.query_all(
         """SELECT e.day, e.minutes, w.id AS task_id, w.title, p.name AS project, e.note, e.actor, e.token_name,
                   w.ticket, w.after_hours, u.email
@@ -62,7 +63,8 @@ def time_csv(uid: int | None, filename: str, viewable_only: bool = False) -> Res
              JOIN users u ON u.id = e.user_id
              LEFT JOIN projects p ON p.id = w.project_id
             WHERE (%(uid)s::bigint IS NULL OR e.user_id = %(uid)s) AND (NOT %(vo)s OR u.viewers_allowed)
-            ORDER BY e.day, u.email, e.id""", {"uid": uid, "vo": viewable_only})
+              AND (%(s)s::date IS NULL OR e.day >= %(s)s) AND (%(e)s::date IS NULL OR e.day <= %(e)s)
+            ORDER BY e.day, u.email, e.id""", {"uid": uid, "vo": viewable_only, "s": start, "e": end})
     header = ["data", "minutos", "horas", "tarefa_id", "tarefa", "projeto", "observacao", "origem", "chamado", "plantao"]
     data = [[r["day"], r["minutes"], str(round(r["minutes"] / 60, 2)).replace(".", ","), r["task_id"], r["title"],
              r["project"] or "", r["note"] or "", r["token_name"] or r["actor"], r["ticket"] or "",

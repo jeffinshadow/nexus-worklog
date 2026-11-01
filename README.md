@@ -9,7 +9,7 @@ Prioridades: **simples > seguro > funcional > elegante**.
 Cada pessoa vê **apenas** os próprios dados. As contas são criadas pelo
 **admin** (convite com senha temporária); não há cadastro público. Papéis
 acumuláveis, dados em **Admin > Usuários > ⋮ > Papéis…**: **Usuário** (o próprio registro),
-**Admin** (convites, contas, permissões, configurações), **Atribuidor de tarefas** (manda
+**Admin** (convites, contas, papéis, configurações), **Atribuidor de tarefas** (manda
 tarefas a quem aceitou receber) e **Visualizador de tarefas** (consulta, só
 para leitura, o quadro, a retrospectiva, os relatórios, as horas e as fotos de
 quem **aceitou** em Configurações > Conta; contas novas começam sem o aceite, e
@@ -41,7 +41,7 @@ exclui a conta de vez.
 - **Rotinas** — verificações que se repetem (backups, alertas, fila…), com agenda:
   dias úteis, dias da semana, mensal (inclui "último dia"), a cada N dias ou
   **N dias depois da última vez** (trocar o filtro 30 dias depois da última
-  troca: a data se move quando se marca). Marcação até 7 dias para trás; feito
+  troca: a data se move quando se marca; mudar o N mantém a última vez). Marcação até 7 dias para trás; feito
   fora da agenda conta como *extra*. **Pausar até uma data** (férias, folga,
   prédio fechado): nesses dias a rotina não conta como falta nem lembra, e
   volta sozinha; a pausa vale de hoje em diante, sem mexer no passado.
@@ -70,14 +70,15 @@ exclui a conta de vez.
   atribuidor pelo app ou pela IA, com aviso por e-mail; a tarefa passa a ser
   dela, e quem atribuiu acompanha o status e recebe um e-mail quando ela é concluída.
   Enquanto está "a fazer" e sem nada registrado, quem atribuiu ainda corrige
-  título, prazo e prioridade ou cancela (engano); excluída ou cancelada, a
-  linha continua em Atribuir com quem tirou e quando.
+  título, prazo e prioridade (só o que a pessoa não mudou) ou cancela (engano;
+  só se ela não mexeu em nada); excluída ou cancelada, a linha continua em
+  Atribuir com quem tirou e quando. Conta com acesso bloqueado não recebe.
 - **Meu mês** — uma tela com duas abas e o mês escolhido uma vez no topo (o
   corrente por padrão). **Números**: aderência das rotinas, vazão, tempo por
   projeto e o que está em aberto. **PDF**: o relatório por período, por projeto ou do projeto inteiro, em
   estilo editorial: o período em texto corrido, os números, o ritmo, a
   **matriz de rotinas** (um ponto por dia) e o diário. Pode ir toda segunda
-  anexado ao resumo semanal por e-mail, com cópia opcional (gestor, cliente).
+  anexado ao resumo semanal por e-mail, com cópia opcional para quem acompanha o trabalho.
   Exportação em CSV (planilha) e JSON (backup).
 - **Histórico com desfazer**, **busca** sem acento (inclusive por `#chamado`),
   **feed de calendário (ICS)**, **avisos por e-mail** (opt-in), **lembrete** no
@@ -139,7 +140,7 @@ Capturas de uma conta de demonstração, com dados fictícios.
 *Tarefas — o número do chamado vira link, o plantão aparece em roxo, a que está aguardando mostra o quê e quando cobrar, e o cronômetro roda no menu.*
 
 ![Detalhe de uma tarefa com checklist, fotos, tempo e anotações](docs/screenshots/03-tarefa.webp)
-*Detalhe da tarefa — checklist, fotos (câmera, print colado ou arrastado), apontamentos de tempo e anotações num lugar só; o botão no topo expande para ler com calma. No menu da tarefa, “Duplicar tarefa” cria outra igual (título, descrição, projetos, prioridade e checklist desmarcado), sem tempo, fotos, anotações nem datas.*
+*Detalhe da tarefa — checklist, fotos (câmera, print colado ou arrastado), apontamentos de tempo e anotações num lugar só; o botão no topo expande para ler com calma. No menu da tarefa, “Duplicar tarefa” cria outra igual (título, descrição, projetos, objetivo, prioridade e checklist desmarcado), sem tempo, fotos, anotações nem datas.*
 
 ![Meu mês, aba Números, com aderência, vazão, tempo por projeto e backlog](docs/screenshots/04-retrospectiva.webp)
 *Meu mês (aba Números) — aderência de cada rotina, vazão por semana, tempo por cliente e saúde do backlog, com uma leitura do assistente no topo.*
@@ -259,13 +260,13 @@ incidente e outra quando volta. Logs com rotação (10 MB × 5 por serviço).
 - **nginx**: CSP sem inline, HSTS, `nosniff`, `DENY` em frames; o link do
   calendário não vai para o log. Logo enviado validado pelo conteúdo e servido
   em sandbox.
-- **Seus dados (LGPD)**: cada pessoa exporta tudo em JSON ou CSV (Meu mês > PDF) e
+- **Seus dados (LGPD)**: cada pessoa exporta tudo em JSON ou CSV (Meu mês > Relatórios) e
   exclui a própria conta em Configurações > Conta (com a senha); o admin também
   exclui uma conta (Admin > Usuários, confirmando o e-mail). Tarefas, rotinas,
   tempo, anotações, chaves e histórico vão junto; ficam só o e-mail e as contagens
   no histórico de quem excluiu (180 dias). O último admin não sai. O JSON leva
   também perfil, preferências, modelos, projetos com objetivos e as chaves
-  externas; as fotos vão à parte, no `fotos.zip` (Meu mês > PDF).
+  externas; as fotos vão à parte, no `fotos.zip` (Meu mês > Relatórios).
   - **Histórico de 180 dias**: o que você exclui some da tela na hora, mas o
     "antes" fica no histórico (para o desfazer) e sai de vez em 180 dias. Para
     apagar já, exclua a conta.
