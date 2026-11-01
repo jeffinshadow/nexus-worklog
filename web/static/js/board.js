@@ -11,6 +11,7 @@ import { timerButton, timerState, startTimer, stopTimer } from "./timer.js";
 import { refreshReminders } from "./lembretes.js";
 import { appBadge } from "./instalar.js";
 import { prepare, upload } from "./fotos.js";
+import { openPacks } from "./pacotes.js";
 
 const WEEKDAYS_SHORT = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 const DONE_PAGE = 10;
@@ -509,6 +510,10 @@ export function openRecurring(item, onDone) {
   requireNote.checked = !!(item && item.require_note);
   const time = document.getElementById("rec-time");
   time.value = item && item.remind_at ? item.remind_at.slice(0, 5) : "";
+
+  // Nova rotina: oferece os pacotes por área (projeto + rotinas num toque).
+  document.getElementById("rec-pack").classList.toggle("hidden", !!item);
+  document.getElementById("rec-pack-btn").onclick = () => { dlg.close(); openPacks(() => onDone && onDone()); };
 
   const pause = document.getElementById("rec-pause");
   pause.classList.toggle("hidden", !item);

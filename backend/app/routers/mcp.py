@@ -30,6 +30,7 @@ from ..schemas import (AssignIn, ChecklistIn, ChecklistUpdate, FinishIn, NoteIn,
 from . import assign as assign_routes
 from . import history as history_routes
 from . import objectives as objective_routes
+from . import packs as pack_routes
 from . import projects as project_routes
 from . import renewals as renewal_routes
 from . import search as search_routes
@@ -51,7 +52,8 @@ INSTRUCTIONS = (
     "semana, com tempo por projeto) e get_week para semanas passadas. Registre o que o usuário contar com "
     "create_task/update_task/complete_task, log_time e add_note; marque rotinas com "
     "set_recurring (com note = evidência); get_handoff dá a passagem de turno e get_week_review a revisão da semana. Para medir o tempo enquanto o usuário trabalha, use start_timer/stop_timer; "
-    "procedimentos repetidos têm modelos (list_templates, create_from_template). "
+    "procedimentos repetidos têm modelos (list_templates, create_from_template); quem está começando pode partir de "
+    "um pacote de rotinas da área (list_routine_packs, apply_routine_pack). "
     "Projetos e objetivos (as demandas do projeto, em ordem de execução): create_project/update_project, "
     "create_objective/update_objective e reorder_objectives; confira com list_projects e list_objectives. "
     "Datas no formato AAAA-MM-DD, no fuso " + config.APP_TZ + ". Rotinas "
@@ -653,6 +655,32 @@ def t_create_recurring(ctx, args):
     return "Criada: " + _routine_line(row) + (_pause(ctx, row["id"], args["paused_until"]) if args.get("paused_until") else "")
 
 
+def _pack_item_line(i: dict) -> str:
+    r = {**i, "remind_at": None}
+    return (f"  - {i['key']}: {i['label']} ({_agenda_text(r)})" + (f" às {i['remind_at']}" if i["remind_at"] else "")
+            + (" (exige evidência)" if i["require_note"] else "") + (" [já existe]" if i["exists"] else ""))
+
+
+def t_list_routine_packs(ctx, args):
+    out = []
+    for p in pack_routes.list_packs(user=ctx):
+        out.append(f"{p['id']}: {p['name']} — {p['description']} (projeto “{p['project']['name']}”, ícone {p['icon']})")
+        out.extend(_pack_item_line(i) for i in p["items"])
+    return "\n".join(out)
+
+
+def t_apply_routine_pack(ctx, args):
+    data = _call(pack_routes.PackApplyIn, **_fields(args, ("items", "project")))
+    res = _call(pack_routes.apply_pack, args.get("pack") or "", data, ctx)
+    out = []
+    if res["project"]:
+        out.append(("Projeto criado: " if res["project"]["created"] else "Projeto já existia (reaproveitado): ")
+                   + _project_line(res["project"]))
+    out += ["Rotina criada: " + _routine_line(r) for r in res["created"]]
+    out += [f"Já existia (mesmo nome), nada duplicado: {label}" for label in res["skipped"]]
+    return "\n".join(out) or "Nada a fazer."
+
+
 def _pause(ctx, rid: int, until) -> str:
     """paused_until: data = pausa de hoje até ela; null = retoma agora."""
     if until is None:
@@ -1244,6 +1272,22 @@ TOOLS = {
                              "remind_at": {"type": ["string", "null"], "description": "Horário HH:MM ou como se fala (07:30, 7h30, 7h; o app lembra perto dele)"},
                              "require_note": {"type": "boolean", "default": False,
                                               "description": "Marcar exige evidência (note em set_recurring)"}}}),
+    "list_routine_packs": (t_list_routine_packs, False,
+                           "Pacotes prontos de rotinas por área (manutenção predial, suporte de TI, atendimento, redes e "
+                           "campo, segurança da informação): cada um com o projeto da área e as rotinas com agenda e "
+                           "horário. [já existe] = a pessoa já tem uma rotina com esse nome.",
+                           {"type": "object", "properties": {}}),
+    "apply_routine_pack": (t_apply_routine_pack, True,
+                           "Aplica um pacote: cria o projeto da área (com ícone; o de mesmo nome é reaproveitado) e as "
+                           "rotinas escolhidas. Rotina de mesmo nome não se repete. Mostre os itens (list_routine_packs) e "
+                           "confirme com a pessoa quais quer antes de aplicar; depois tudo se edita como de costume.",
+                           {"type": "object", "required": ["pack"], "properties": {
+                               "pack": {"type": "string", "enum": [p["id"] for p in pack_routes.PACKS],
+                                        "description": "id do pacote (veja list_routine_packs)"},
+                               "items": {"type": "array", "items": {"type": "string"}, "maxItems": 20,
+                                         "description": "Chaves das rotinas escolhidas; ausente = todas as do pacote"},
+                               "project": {"type": "boolean", "default": True,
+                                           "description": "Criar (ou reaproveitar) o projeto da área"}}}),
     "start_timer": (t_start_timer, True, "Inicia o cronômetro numa tarefa aberta (se outro estiver rodando, ele para e aponta o tempo). "
                     "Se a pessoa começou antes e ainda está trabalhando (“comecei às 9h”), informe at. Se o trabalho já "
                     "terminou, não use o cronômetro: aponte com log_time.",

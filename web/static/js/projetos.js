@@ -8,6 +8,7 @@ import { busy, confirmDialog, errorToast, modal, popupMenu, sheet, toast, undoLa
 import { finishTask, openWorklog, taskChips } from "./board.js";
 import { duration, editingTaskId, openTask } from "./task.js";
 import { PALETA, invalidateProjects, listProjects, projTile, projectDialog } from "./projects.js";
+import { packButton } from "./pacotes.js";
 
 const STATUS = { todo: "não iniciado", in_progress: "em andamento", done: "concluído" };
 const phone = () => matchMedia("(max-width: 860px)").matches;
@@ -83,7 +84,10 @@ async function mountList(root, ctx) {
       ...EXEMPLOS.map(([area, itens]) => h("div", { class: "proj-ex" }, h("h3", { text: area }),
         h("div", { class: "proj-ex-row" }, ...itens.map(([nome, ic]) =>
           h("button", { type: "button", class: "proj-ex-btn", onClick: () => rapido(nome, ic) }, projTile({ icon: ic, color: PALETA[0] }, "proj-tile-sm"), nome))))),
-      h("button", { type: "button", class: "btn btn-ghost", onClick: () => novo() }, icon("add"), "Outro nome…")));
+      h("button", { type: "button", class: "btn btn-ghost", onClick: () => novo() }, icon("add"), "Outro nome…"),
+      h("div", { class: "proj-ex pack-offer" }, h("h3", { text: "Ou comece com um pacote da sua área" }),
+        h("p", { class: "help", text: "O projeto da área e as rotinas que você confere (ronda, backups, agenda do dia…), com agenda e horário. Você escolhe os itens." }),
+        packButton((res) => (res.project ? abrir(res.project) : mountList(root, ctx)), "Ver os pacotes"))));
     return;
   }
 

@@ -166,6 +166,17 @@ quadro, `paused_until` = último dia da pausa que cobre o dia mostrado (ou
 `recurring.resume`) e se desfazem em até 7 dias. Trocar a agenda de uma rotina
 pausada leva a pausa para a nova.
 
+### Pacotes de rotina por área — `/api/routine-packs`
+
+Pontos de partida prontos (lista fixa no código): `manutencao` (Manutenção predial), `ti` (Suporte de TI),
+`atendimento` (Atendimento e recepção), `campo` (Redes e campo) e `seguranca` (Segurança da informação).
+Cada um traz o projeto da área (nome e ícone) e as rotinas com agenda e horário.
+
+| Rota | | Corpo |
+| --- | --- | --- |
+| `GET /` | | `[{id, name, description, icon, project: {name, icon}, items: [{key, label, freq, weekdays, month_day, interval_days, remind_at, require_note, exists}]}]` — `exists` = a pessoa já tem uma rotina ativa com esse nome (sem diferenciar maiúsculas e acentos) |
+| `POST /{id}/apply` | W | `{items?, project?}` — `items` = as `key` escolhidas (ausente = todas); `project` (padrão `true`) cria o projeto da área com ícone e descrição, ou reaproveita o de mesmo nome (e o tira do arquivo). Idempotente: rotina ativa de mesmo nome é pulada. Devolve `{pack, project: {…, created} \| null, created: [rotinas criadas], skipped: [nomes pulados]}`; 404 pacote desconhecido, 400 item de outro pacote ou nada escolhido. Cada criação entra no histórico (desfaz uma a uma) |
+
 ## Tarefas — `/api/worklog`
 
 | Rota | | Corpo / observação |
@@ -356,10 +367,10 @@ JSON-RPC 2.0 sobre HTTP, **uma mensagem por requisição** (sem lote, sem SSE),
 `Authorization: Bearer nxs_…`. Versões: 2025-11-25, 2025-06-18, 2025-03-26.
 
 Leitura: `get_today`, `get_summary`, `get_period` (`from`, `to`, `project`: concluídas, tempo por projeto e rotinas de qualquer período, como a prévia do relatório), `get_handoff` (passagem de turno: abertas, aguardando, concluídas nas últimas 12 h, vencimentos no aviso), `get_week_review` (revisão da semana: o que fechou, o que ficou, sugestões e o que aguarda há dias sem dia para cobrar), `list_renewals` (vencimentos), `find_similar` (já resolvi isso antes?), `list_tasks` (com `from`/`to`/`by` por período e `project`; mostra o tempo de cada tarefa), `get_task`, `search`,
-`list_projects` (com objetivos e arquivados marcados), `list_objectives`, `list_recurring`, `list_templates`, `get_history`.
+`list_projects` (com objetivos e arquivados marcados), `list_objectives`, `list_recurring`, `list_templates`, `list_routine_packs` (pacotes de rotina por área, com `[já existe]`), `get_history`.
 Escrita (chave `write`): `create_task` (com `minutes` = tempo gasto, já apontado; `created_at`, `completed_at` — só com a conclusão, começou `minutes` antes dela —, `external_ref`, `blocked_reason`, `follow_up_on`, `resolution`), `update_task` (com `completed_at`, `blocked_reason`, `follow_up_on`, `resolution`; motivo ou dia de cobrar sem `status` só numa tarefa que já aguarda, senão erro pedindo `status: "blocked"` junto — vale também para o `PATCH`), `complete_task` (com `completed_at` e `resolution`),
 `add_note`, `add_checklist_item`, `set_checklist_item`, `log_time`, `start_timer` (`at` = hora em que começou), `stop_timer` (`at` = hora em que parou; os dois em HH:MM, "9h" ou data e hora, até 24 h atrás),
-`create_from_template`, `set_recurring` (`recurring_id`, `note` = evidência; `paused_until` = pausa até a data, `null` = retoma; com `paused_until` só marca se vier `done: true` explícito — `note` sozinha não marca nem é gravada), `create_recurring` (`label`, `freq` — inclui `after`, N dias depois da última vez —, `weekdays` em nomes seg/ter..., `month_day`, `interval_days`, `remind_at`, `require_note`, `paused_until`; nome repetido devolve a existente), `update_recurring` (`recurring_id` e só o que muda: `label`, `freq` com o parâmetro, `remind_at`, `null` tira, `require_note`; usa o `PATCH /api/recurring/{id}`), `undo` (só ações da própria chave; `get_history` marca `[pode desfazer]` só nelas).
+`create_from_template`, `set_recurring` (`recurring_id`, `note` = evidência; `paused_until` = pausa até a data, `null` = retoma; com `paused_until` só marca se vier `done: true` explícito — `note` sozinha não marca nem é gravada), `create_recurring` (`label`, `freq` — inclui `after`, N dias depois da última vez —, `weekdays` em nomes seg/ter..., `month_day`, `interval_days`, `remind_at`, `require_note`, `paused_until`; nome repetido devolve a existente), `apply_routine_pack` (`pack`, `items` = as chaves escolhidas, ausente = todas; `project`, padrão `true`: cria o projeto da área com ícone ou reaproveita o de mesmo nome; rotina de mesmo nome não se repete), `update_recurring` (`recurring_id` e só o que muda: `label`, `freq` com o parâmetro, `remind_at`, `null` tira, `require_note`; usa o `PATCH /api/recurring/{id}`), `undo` (só ações da própria chave; `get_history` marca `[pode desfazer]` só nelas).
 Projetos e objetivos: `create_project` / `create_objective` (nome ou título repetido, sem diferenciar maiúsculas e acentos, ou `external_ref` repetido devolvem o existente; `position` 1 = primeiro), `update_project` (`archived` em vez de excluir; `icon` de uma lista fixa, enum no esquema, em `create_project` também), `update_objective` (com `position`), `reorder_objectives` (a lista completa; a ordem anterior vai pro histórico, com desfazer). O status do objetivo é automático (pelas tarefas). Pelo MCP a IA não exclui nada (tarefas, rotinas, projetos, objetivos). A mesma chave `write`, porém, vale para a API REST, que exclui (com desfazer no Histórico): uma IA com terminal (Claude Code, Gemini CLI) consegue chamá-la. Para quem só quer consultas, use uma chave `read`.
 Só com o papel de atribuidor: `list_assignable`, `list_assigned` e `assign_task` (`to` = U<id>, e-mail ou nome).
 

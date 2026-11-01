@@ -7,6 +7,7 @@ import { api } from "./api.js";
 import { h, icon, clear, field } from "./dom.js";
 import { errorToast } from "./ui.js";
 import { listProjects, projectChip } from "./projects.js";
+import { applyPack, loadPacks, packAreas, packPicker } from "./pacotes.js";
 
 const DAYS = [[1, "Seg"], [2, "Ter"], [3, "Qua"], [4, "Qui"], [5, "Sex"], [6, "Sáb"], [0, "Dom"]];
 // Exemplos de várias áreas de suporte (TI, manutenção, atendimento): ninguém se sente fora.
@@ -196,20 +197,42 @@ function setup(me) {
     }
 
     async function routines() {
-      const board = await api.get("/board").catch(() => ({ recurring: [] }));
+      const [board, packs] = await Promise.all([api.get("/board").catch(() => ({ recurring: [] })), loadPacks().catch(() => [])]);
       const have = board.recurring.map((r) => r.label.toLowerCase());
       const picks = ROUTINE_HINTS.filter((s) => !have.includes(s.toLowerCase())).map((label) => {
         const cb = h("input", { type: "checkbox" });
         return { label, cb };
       });
       const custom = h("input", { type: "text", maxlength: "200", placeholder: "Ex.: Verificar o link da filial" });
-      return frame("O que você confere todo dia?", "Rotinas são as verificações que se repetem. Você marca no Hoje, anota a evidência (“quadro 3 sem aquecimento”, “backup OK”) e o relatório mostra quantas foram feitas. Elas seguem os dias úteis; a agenda de cada uma (semanal, mensal…) muda depois.",
+      // Pacote da área: tocar numa área mostra os itens dela para marcar; tocar de novo desmarca.
+      let pack = null, picker = null;
+      const packBox = h("div", { class: "tour-pack" });
+      const paintPack = () => {
+        clear(packBox);
+        packBox.append(packAreas(packs, (p) => { pack = pack && pack.id === p.id ? null : p; paintPack(); }, pack && pack.id));
+        picker = pack ? packPicker(pack) : null;
+        if (picker) packBox.append(picker.el);
+      };
+      paintPack();
+      return frame("O que você confere todo dia?", "Rotinas são as verificações que se repetem. Você marca no Hoje, anota a evidência (“quadro 3 sem aquecimento”, “backup OK”) e o relatório mostra quantas foram feitas. Agenda e horário de cada uma mudam depois.",
         [board.recurring.length ? h("p", { class: "dialog-note", text: "Você já tem: " + board.recurring.map((r) => r.label).join(", ") + "." }) : null,
+          packs.length ? h("p", { class: "pack-sub", text: "Começar com um pacote da sua área" }) : null,
+          packs.length ? packBox : null,
+          h("p", { class: "pack-sub", text: packs.length ? "Ou escolha avulsas (nos dias úteis)" : "Sugestões (nos dias úteis)" }),
           h("div", { class: "tour-picks" }, ...picks.map(({ label, cb }) => h("label", { class: "check-row" }, cb, h("span", { class: "label", text: label })))),
           field("Outra rotina (opcional)", custom)],
         async () => {
+          const done = new Set();
+          if (pack && picker) {
+            const sel = picker.value();
+            if (sel.items.length || sel.project) {
+              const res = await applyPack(pack, sel);
+              for (const r of res.created) done.add(r.label.toLowerCase());
+              for (const l of res.skipped) done.add(l.toLowerCase());
+            }
+          }
           const labels = [...picks.filter((p) => p.cb.checked).map((p) => p.label), custom.value.trim()].filter(Boolean);
-          for (const label of labels) await api.post("/recurring", { label });
+          for (const label of labels) if (!done.has(label.toLowerCase())) await api.post("/recurring", { label });
         },
         "Criar e seguir");
     }

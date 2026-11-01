@@ -35,7 +35,7 @@ exclui a conta de vez.
   termina com o texto da semana pronto para copiar; o assistente convida no
   último dia útil, uma vez. No primeiro acesso, um **tour
   guiado** configura o essencial (nome, dias úteis, projetos, projeto padrão,
-  rotinas) e mostra a tela; a Ajuda reabre.
+  rotinas, com um pacote da área se quiser) e mostra a tela; a Ajuda reabre.
 - **Projetos e objetivos** — cada projeto tem objetivos (as demandas
   principais) em ordem de execução, cada um com as suas tarefas, também em
   ordem; arrasta para reordenar (no celular, pelo ⋮). Progresso e status do
@@ -56,6 +56,12 @@ exclui a conta de vez.
   fora da agenda conta como *extra*. **Pausar até uma data** (férias, folga,
   prédio fechado): nesses dias a rotina não conta como falta nem lembra, e
   volta sozinha; a pausa vale de hoje em diante, sem mexer no passado.
+  Para começar, **pacotes por área** (Manutenção predial, Suporte de TI,
+  Atendimento e recepção, Redes e campo, Segurança da informação): num toque,
+  o projeto da área com ícone e as rotinas com agenda e horário (ronda às 8h,
+  extintores todo dia 1, atualizações às sextas…); a pessoa marca os itens antes
+  e edita tudo depois. Estão no tour, no + das rotinas e nas telas vazias; não
+  duplicam o que já existe.
 - **Tarefas** — status, prioridade, prazo, projeto/cliente (uma tarefa pode
   atender **mais de um projeto**: aparece em cada um, com o tempo inteiro em
   cada um; e há um **projeto padrão** por pessoa para o que é criado sem projeto), checklist,
@@ -152,7 +158,8 @@ exclui a conta de vez.
   (com posição), `update_objective` e `reorder_objectives` (a lista inteira; a
   ordem anterior fica no histórico, com desfazer). Nome ou título repetido
   devolve o que já existe; o status do objetivo continua automático. Cria
-  rotinas (`create_recurring`). A IA não exclui tarefa, rotina, projeto nem
+  rotinas (`create_recurring`) e aplica pacotes por área (`list_routine_packs`,
+  `apply_routine_pack`). A IA não exclui tarefa, rotina, projeto nem
   objetivo. Liga no Claude Code, Cursor, Claude Desktop e Gemini CLI
   (docs/API.md); ChatGPT e claude.ai na web ainda não (exigem OAuth).
 - **Integração** — API REST aberta, sem conector para produto específico:
