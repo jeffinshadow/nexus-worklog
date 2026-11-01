@@ -59,7 +59,7 @@ def find_similar(uid: int, title: str) -> list[dict]:
     params = {"uid": uid, "need": need,
               **{f"w{i}": (rf"\m{re.escape(w)}\M" if len(w) <= 3 else _like(w)) for i, w in enumerate(words)}}
     rows = db.query_all(
-        f"""SELECT w.id, w.title, w.resolution, w.completed_at, w.ticket, ({score}) AS score
+        f"""SELECT w.id, w.title, w.resolution, w.completed_at, w.ticket, ({score}) AS score, {ASSIGNER_NAME}
               FROM worklog_tasks w
              WHERE w.user_id = %(uid)s AND w.status = 'done' AND w.resolution IS NOT NULL
                AND ({score}) >= %(need)s

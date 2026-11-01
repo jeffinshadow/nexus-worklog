@@ -28,6 +28,19 @@ def check_day_total(uid: int, day, minutes: int, status: int = 400) -> None:
         raise HTTPException(status_code=status, detail="com esse tempo, o dia passaria de 24 h apontadas; confira se o dia ou as horas estão certos")
 
 
+def device_time(at: Optional[datetime], what: str = "a anotação") -> Optional[datetime]:
+    """Hora do aparelho de algo feito sem sinal e enviado depois (anotação,
+    foto): as mesmas regras do cronômetro — até 24 h atrás; no futuro (relógio
+    adiantado) vale como agora."""
+    if at is None:
+        return None
+    now = datetime.now(timezone.utc)
+    at = at if at.tzinfo else at.replace(tzinfo=timezone.utc)
+    if at < now - timedelta(hours=24):
+        raise HTTPException(status_code=400, detail=f"{what} feita sem conexão passou de 24 h; envie sem a hora (at)")
+    return min(at, now)
+
+
 def _check_project(uid: int, project_id) -> None:
     if project_id is None:
         return
@@ -152,7 +165,14 @@ def create(data: WorklogIn, response: Response, user=Depends(active_user_csrf)):
     _check_project(uid, project_id)
     check_objective(uid, data.objective_id, project_id)
     now = datetime.now(timezone.utc)
-    created_at = resolve_created(data.created_at, now)
+    # Só a conclusão no passado (lançamento retroativo): começou nela, não "agora".
+    if data.created_at or not (data.status == "done" and data.completed_at):
+        created_at = resolve_created(data.created_at, now)
+    else:
+        try:
+            created_at = min(resolve_created(data.completed_at, now), now)
+        except HTTPException:  # conclusão inválida: o erro certo vem dela, logo abaixo
+            created_at = now
     completed_at = resolve_completed(data.completed_at, created_at, now) if data.status == "done" else None
     try:
         row = db.query_one(
@@ -448,10 +468,10 @@ def add_note(task_id: int, data: NoteIn, response: Response = None, user=Depends
         return {**found, "existing": True}
     try:
         row = db.query_one(
-            f"""INSERT INTO task_notes (task_id, user_id, body, actor, token_name, external_ref)
-               VALUES (%s, %s, %s, %s, %s, %s) RETURNING {NOTE_COLS}""",
+            f"""INSERT INTO task_notes (task_id, user_id, body, actor, token_name, external_ref, created_at)
+               VALUES (%s, %s, %s, %s, %s, %s, COALESCE(%s, now())) RETURNING {NOTE_COLS}""",
             (task_id, user["user_id"], data.body.strip(), user.get("actor", "web"), user.get("token_name"),
-             data.external_ref),
+             data.external_ref, device_time(data.at)),
         )
     except UniqueViolation:  # duas chamadas iguais ao mesmo tempo: a segunda devolve a primeira
         response.status_code = 200

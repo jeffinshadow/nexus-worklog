@@ -2,7 +2,7 @@ import re
 from datetime import date, datetime, time
 from typing import Literal, Optional
 
-from pydantic import BaseModel, EmailStr, Field, model_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 from .config import config
 
@@ -91,6 +91,26 @@ class LinkPasswordIn(BaseModel):
     display_name: Optional[str] = Field(default=None, max_length=60)  # só no convite
 
 
+_HORA = re.compile(r"^(\d{1,2})(?:[:hH](\d{2})?)?$")
+
+
+def parse_hour(txt) -> tuple[int, int]:
+    """Hora escrita como se fala ou no relógio: "7h30", "7h", "07:30", "7:30",
+    "18". Mesmo formato para o cronômetro e o horário das rotinas."""
+    m = _HORA.match(str(txt).strip())
+    if not m or int(m.group(1)) > 23 or int(m.group(2) or 0) > 59:
+        raise ValueError(f"hora inválida: {txt} (use HH:MM, ex.: 07:30, ou 7h30)")
+    return int(m.group(1)), int(m.group(2) or 0)
+
+
+def _remind_at(v):
+    """remind_at aceita "7h30"/"7h" além de HH:MM (e HH:MM:SS do próprio app)."""
+    if isinstance(v, str) and v.strip() and v.count(":") < 2:
+        hh, mm = parse_hour(v)
+        return time(hh, mm)
+    return v
+
+
 Freq = Literal["daily", "weekly", "monthly", "interval", "after"]
 _PARAM = {"weekly": "weekdays", "monthly": "month_day", "interval": "interval_days", "after": "interval_days"}
 
@@ -126,6 +146,7 @@ class RecurringIn(_Agenda):
     label: str = Field(min_length=1, max_length=200)
     require_note: bool = False  # marcar exige evidência (auditoria)
     remind_at: Optional[time] = None  # horário: a interface lembra (e toca) perto dele
+    remind_at_hora = field_validator("remind_at", mode="before")(_remind_at)
 
 
 class RecurringUpdate(_Agenda):
@@ -134,6 +155,7 @@ class RecurringUpdate(_Agenda):
     label: Optional[str] = Field(default=None, min_length=1, max_length=200)
     require_note: Optional[bool] = None
     remind_at: Optional[time] = None  # null tira o horário (só se o campo vier)
+    remind_at_hora = field_validator("remind_at", mode="before")(_remind_at)
 
 
 class PauseIn(BaseModel):
@@ -468,6 +490,7 @@ class ProjectUpdate(BaseModel):
 class NoteIn(BaseModel):
     body: str = Field(min_length=1, max_length=2000)
     external_ref: Optional[str] = Ref  # repetida devolve a existente
+    at: Optional[datetime] = None  # hora do aparelho (feita sem sinal, enviada depois); até 24 h atrás
 
     @model_validator(mode="after")
     def _norm(self):

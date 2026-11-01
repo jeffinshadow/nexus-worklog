@@ -40,7 +40,7 @@ def _banco_limpo():
     main.seed_admin()
     for limiter in (security.login_limiter, security.login_email_limiter,
                     security.pdf_limiter, security.reset_limiter, security.reset_email_limiter,
-                    security.invite_req_limiter, security.invite_req_email_limiter):
+                    security.invite_req_limiter, security.invite_req_email_limiter, security.link_limiter):
         limiter._hits.clear()
     yield
 

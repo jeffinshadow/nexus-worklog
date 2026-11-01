@@ -549,7 +549,7 @@ def _report_inputs(user_id: int, start: date, end: date, project: dict | None = 
                p.name AS project, p.color AS project_color,
                (w.completed_at AT TIME ZONE %s)::date AS done_date,
                (SELECT n.body FROM task_notes n WHERE n.task_id = w.id ORDER BY n.created_at DESC LIMIT 1) AS last_note,
-               """ + TASK_COUNTS + """
+               """ + ASSIGNER_NAME + ", " + TASK_COUNTS + """
           FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
          WHERE w.user_id = %s AND w.status = 'done' AND w.completed_at IS NOT NULL
            AND (w.completed_at AT TIME ZONE %s)::date BETWEEN %s AND %s"""
@@ -763,7 +763,8 @@ def _compact(r: dict) -> dict:
         "minutes_after_hours": s["minutes_after_hours"],
         "active_days": s["active_days"],
         "deliveries": [{"id": w["id"], "title": w["title"], "project": w["project"],
-                        "project_color": w["project_color"], "minutes": w["minutes"]} for w in r["deliveries"]],
+                        "project_color": w["project_color"], "minutes": w["minutes"],
+                        "assigned_by_name": w.get("assigned_by_name")} for w in r["deliveries"]],
         "projects": [p for p in r["projects"] if p["minutes"] or p["done"]],
         "missed": [x["label"] for x in r["recurring_stats"] if x["due"] > x["done"]],
     }

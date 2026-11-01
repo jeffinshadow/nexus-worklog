@@ -25,7 +25,8 @@ from ..config import config
 from ..labels import PRIO_PT, STATUS_PT
 from ..labels import dur as _dur
 from ..schemas import (AssignIn, ChecklistIn, ChecklistUpdate, FinishIn, NoteIn, ObjectiveIn, ObjectiveUpdate, OrderIn,
-                       PauseIn, ProjectIn, ProjectUpdate, RecurringIn, RecurringUpdate, TimeIn, TimerIn, TimerStopIn, ToggleIn, WorklogIn, WorklogUpdate)
+                       PauseIn, ProjectIn, ProjectUpdate, RecurringIn, RecurringUpdate, TimeIn, TimerIn, TimerStopIn, ToggleIn, WorklogIn, WorklogUpdate,
+                       parse_hour)
 from . import assign as assign_routes
 from . import history as history_routes
 from . import objectives as objective_routes
@@ -89,8 +90,50 @@ def _call(fn, *args, **kwargs):
     except HTTPException as e:
         raise ToolError(str(e.detail)) from None
     except ValidationError as e:
-        msgs = "; ".join(f"{'.'.join(map(str, x['loc']))}: {x['msg']}" for x in e.errors())
-        raise ToolError(f"parâmetros inválidos: {msgs}") from None
+        raise ToolError(f"parâmetros inválidos: {_pt_errors(e)}") from None
+
+
+# Mensagens do pydantic em português (a IA lê e corrige; inglês cru confunde).
+_PT_TYPES = {
+    "missing": "obrigatório",
+    "extra_forbidden": "parâmetro desconhecido",
+    "int_parsing": "use um número inteiro", "int_type": "use um número inteiro",
+    "int_from_float": "use um número inteiro",
+    "bool_parsing": "use true ou false", "bool_type": "use true ou false",
+    "string_type": "use um texto",
+    "date_parsing": "use AAAA-MM-DD", "date_from_datetime_parsing": "use AAAA-MM-DD", "date_type": "use AAAA-MM-DD",
+    "date_from_datetime_inexact": "use AAAA-MM-DD",
+    "datetime_parsing": "use AAAA-MM-DDTHH:MM", "datetime_from_date_parsing": "use AAAA-MM-DDTHH:MM",
+    "time_parsing": "use HH:MM, ex.: 07:30 (ou 7h30)", "time_type": "use HH:MM, ex.: 07:30 (ou 7h30)",
+    "list_type": "use uma lista",
+}
+
+
+def _pt_error(x: dict) -> str:
+    t, c = x.get("type", ""), x.get("ctx") or {}
+    if t in ("value_error", "assertion_error"):
+        return str(c.get("error") or x["msg"]).removeprefix("Value error, ")
+    if t == "string_too_short":
+        return "não pode ficar em branco" if c.get("min_length") == 1 else f"no mínimo {c.get('min_length')} caracteres"
+    if t == "string_too_long":
+        return f"no máximo {c.get('max_length')} caracteres"
+    if t == "too_long":
+        return f"no máximo {c.get('max_length')} itens"
+    if t in ("greater_than_equal", "greater_than"):
+        return f"no mínimo {c.get('ge', c.get('gt'))}"
+    if t in ("less_than_equal", "less_than"):
+        return f"no máximo {c.get('le', c.get('lt'))}"
+    if t == "literal_error":
+        return f"use um destes: {c.get('expected', '')}".replace(" or ", ", ")
+    return _PT_TYPES.get(t, "valor inválido")
+
+
+def _pt_errors(e: ValidationError) -> str:
+    out = []
+    for x in e.errors():
+        campo = ".".join(map(str, x["loc"]))
+        out.append(f"{campo}: {_pt_error(x)}" if campo else _pt_error(x))
+    return "; ".join(out)
 
 
 def _quoted(t: dict, text: str) -> str:
@@ -99,6 +142,10 @@ def _quoted(t: dict, text: str) -> str:
     if not t.get("assigned_by_name"):
         return text
     return "«" + text.replace("«", '"').replace("»", '"') + "»"
+
+
+def _by(t: dict) -> str:
+    return f" (atribuída por {t['assigned_by_name']})" if t.get("assigned_by_name") else ""
 
 
 def _task_line(t: dict, today: date) -> str:
@@ -111,7 +158,8 @@ def _task_line(t: dict, today: date) -> str:
     if t.get("external_ref"):
         parts.append(f"(ref {t['external_ref']})")
     if t.get("status") == "blocked" and t.get("follow_up_on"):
-        parts.append(f"(cobrar em {t['follow_up_on'].isoformat()})")
+        vencida = " (cobrança vencida)" if t["follow_up_on"] < today else ""
+        parts.append(f"(cobrar em {t['follow_up_on'].isoformat()}){vencida}")
     if t.get("ticket"):
         parts.append(f"(chamado {t['ticket']})")
     if t.get("after_hours"):
@@ -225,7 +273,8 @@ def t_get_today(ctx, args):
     lines += _recurring_rows(rec) or ["  (nenhuma)"]
     extra = [r for r in b["recurring"] if not r["due"] and r["done_today"]]
     if extra:
-        lines += [f"  [x] R{r['id']} {r['label']} (extra: fora da agenda)" for r in extra]
+        lines += [f"  [x] R{r['id']} {r['label']}" + (" (removida)" if r.get("end_d") and r["end_d"].year < 9999 else "")
+                  + " (extra: fora da agenda)" for r in extra]
     lines.append("")
     open_ = b["in_progress"]
     lines.append(f"Tarefas abertas ({len(open_)}):")
@@ -233,7 +282,7 @@ def t_get_today(ctx, args):
     done_today = [t for t in b["done"] if t["completed_at"] and t["completed_at"].astimezone(services.app_tz()).date() == today]
     lines.append("")
     lines.append(f"Concluídas hoje ({len(done_today)}):")
-    lines += [f"  #{t['id']} {_quoted(t, t['title'])}" for t in done_today] or ["  (nenhuma)"]
+    lines += [f"  #{t['id']} {_quoted(t, t['title'])}{_by(t)}" for t in done_today] or ["  (nenhuma)"]
     return "\n".join(lines)
 
 
@@ -286,12 +335,28 @@ def _day(value):
         raise ToolError(f"data inválida: {value} (use AAAA-MM-DD)") from None
 
 
+def _started_from(completed_at, minutes) -> str:
+    """Lançamento retroativo só com a conclusão ("ontem às 16h terminei, levou
+    40 min"): começou `minutes` antes dela (sem minutos ou só com a data: na
+    própria conclusão/no mesmo dia)."""
+    txt = str(completed_at).strip()
+    if len(txt) <= 10 or not minutes:
+        return txt
+    try:
+        when = datetime.fromisoformat(txt.replace("Z", "+00:00"))
+    except ValueError:
+        return txt  # a rota diz o formato certo
+    return (when - timedelta(minutes=int(minutes))).isoformat()
+
+
 def t_create_task(ctx, args):
     uid = ctx["user_id"]
     args = dict(args)
     minutes = args.pop("minutes", None)
     if minutes is not None and not 1 <= minutes <= 1440:
         raise ToolError("minutes vai de 1 a 1440")
+    if args.get("completed_at") and not args.get("created_at"):
+        args["created_at"] = _started_from(args["completed_at"], minutes)
     data = _call(WorklogIn, **_task_args(uid, args))
     res = _call(worklog_routes.create, data, Response(), user=ctx)
     verbo = "Já existia (external_ref repetido), nada duplicado" if res.get("existing") else "Criada"
@@ -521,15 +586,24 @@ def t_list_recurring(ctx, args):
     day = _call(check_board_day, _day(args.get("day"))) if args.get("day") else None
     b = services.get_board(ctx["user_id"], day)
     head = f"Rotinas de {b['day'].isoformat()} ({'dia útil' if b['work_day'] else 'dia não útil'}; marcar fora da agenda conta como extra):"
-    rows = _recurring_rows(b["recurring"])
+    rows = _recurring_rows(b["recurring"], b["day"])
     return "\n".join([head, *(rows or ["  (nenhuma)"])])
 
 
-def _recurring_rows(rows: list) -> list[str]:
+def _next_text(r: dict, day: date) -> str:
+    """'after': a próxima data, ou desde quando está atrasada (vencimento passado)."""
+    if r["next_due"] < day:
+        return f"; atrasada desde {r['next_due']:%d/%m}"
+    return f"; próxima em {r['next_due']:%d/%m}"
+
+
+def _recurring_rows(rows: list, day: date | None = None) -> list[str]:
+    day = day or services.app_today()
     return [f"  [{'x' if r['done_today'] else ' '}] R{r['id']} {r['label']}"
             + (f" às {r['remind_at']:%H:%M}" if r.get("remind_at") else "")
+            + (" (removida)" if r.get("end_d") and r["end_d"].year < 9999 else "")
             + (f" (pausada até {r['paused_until']:%d/%m})" if r.get("paused_until") else "" if r["due"] else " (fora da agenda)")
-            + (f" ({_agenda_text(r)}; próxima em {r['next_due']:%d/%m})" if r.get("next_due") else "")
+            + (f" ({_agenda_text(r)}{_next_text(r, day)})" if r.get("next_due") else "")
             + (" (exige evidência)" if r.get("require_note") else "")
             for r in rows]
 
@@ -565,6 +639,8 @@ def t_create_recurring(ctx, args):
     if "weekdays" in args:
         fields["weekdays"] = _weekdays_mask(args["weekdays"]) or None
     data = _call(RecurringIn, **fields)
+    if args.get("paused_until"):
+        _pause_in(args["paused_until"])  # data errada: erro antes de criar (senão a rotina nasceria sem a pausa)
     found = db.query_one("""SELECT id, label, freq, weekdays, month_day, interval_days, require_note, remind_at
                               FROM recurring_tasks WHERE user_id = %s AND active AND nx_fold(label) = nx_fold(%s)""",
                          (uid, data.label.strip()))
@@ -579,9 +655,21 @@ def _pause(ctx, rid: int, until) -> str:
     if until is None:
         _call(recurring_routes.resume, rid, user=ctx)
         return f" Rotina R{rid} retomada: volta a valer hoje."
-    data = _call(PauseIn, until=until)
+    data = _pause_in(until)
     _call(recurring_routes.pause, rid, data, user=ctx)
-    return f" Rotina R{rid} pausada até {data.until:%d/%m/%Y} (inclusive): não conta como falta nem lembra; marcar conta como extra."
+    return (f" Rotina R{rid} pausada até {data.until:%d/%m/%Y} (inclusive): não conta como falta nem lembra; "
+            f"marcar conta como extra. Para desfazer: set_recurring recurring_id={rid} paused_until=null.")
+
+
+def _pause_in(until) -> PauseIn:
+    """Confere a data da pausa antes de mexer em qualquer coisa (mesmas regras da rota)."""
+    data = _call(PauseIn, until=until)
+    today = services.app_today()
+    if data.until < today:
+        raise ToolError("a pausa começa hoje: paused_until tem de ser hoje ou depois; nada foi mudado")
+    if (data.until - today).days > recurring_routes.PAUSE_MAX_DAYS:
+        raise ToolError("pausa de no máximo um ano; nada foi mudado")
+    return data
 
 
 def _routine_line(r: dict) -> str:
@@ -615,7 +703,8 @@ def t_get_period(ctx, args):
             lines.append("  (tarefa em mais de um projeto conta em cada um; a soma pode passar do total)")
     if r["deliveries"]:
         lines += ["", "Concluídas:"]
-        lines += [f"  {d['done_date'].isoformat()} #{d['id']} {d['title']}" + (f" {{{d['project']}}}" if d["project"] else "")
+        lines += [f"  {d['done_date'].isoformat()} #{d['id']} {_quoted(d, d['title'])}{_by(d)}"
+                  + (f" {{{d['project']}}}" if d["project"] else "")
                   for d in r["deliveries"][:40]]
         if len(r["deliveries"]) > 40:
             lines.append(f"  … e mais {len(r['deliveries']) - 40} (use list_tasks com by=completed)")
@@ -633,7 +722,8 @@ def _summary_block(title, x, prev=None, prev_label="mesma parte da semana passad
                + f" · {x['pontual_done']} tarefa(s) concluída(s) · {_dur(x['minutes']) if x['minutes'] else 'nada'} apontado")
     if prev:
         out.append(f"  {prev_label}: {prev['pontual_done']} concluída(s), {_dur(prev['minutes'])} apontado")
-    out += [f"  - {d['title']}" + (f" {{{d['project']}}}" if d["project"] else "") for d in x["deliveries"][:15]]
+    out += [f"  - {_quoted(d, d['title'])}{_by(d)}" + (f" {{{d['project']}}}" if d["project"] else "")
+            for d in x["deliveries"][:15]]
     out += [f"  tempo em {p['name'] or 'sem projeto'}: {_dur(p['minutes'])}" for p in x["projects"] if p["minutes"]]
     if x["missed"]:
         out.append("  rotinas que ficaram para trás: " + ", ".join(x["missed"]))
@@ -698,9 +788,7 @@ def _stop_at(value) -> datetime | None:
     tz, txt = services.app_tz(), str(value).strip()
     try:
         if len(txt) <= 5:
-            txt = txt.lower().replace("h", ":")  # "18h", "18h30"
-            txt = txt + "00" if txt.endswith(":") else txt
-            hh, mm = (int(x) for x in txt.split(":"))
+            hh, mm = parse_hour(txt)  # "18h", "18h30", "07:30" (o mesmo do remind_at)
             now = datetime.now(tz)
             at = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
             at = at if at <= now else at - timedelta(days=1)
@@ -750,14 +838,17 @@ def t_set_recurring(ctx, args):
     rid = args.get("recurring_id")
     if rid is None:
         raise ToolError("informe recurring_id (veja list_recurring)")
-    if "paused_until" in args:  # só pausa/retoma, a não ser que venha também done/day/note
+    if "paused_until" in args:  # só pausa/retoma; marca só com done explícito
         try:
             msg = _pause(ctx, int(rid), args["paused_until"]).strip()
         except ToolError as e:
             if str(e) == "não encontrado":
                 raise ToolError(f"rotina R{rid} não encontrada (veja list_recurring)") from None
             raise
-        if not ({"done", "day", "note"} & set(args)):
+        if "done" not in args:
+            if {"note", "day"} & set(args):  # o motivo da pausa não vira um "feito" falso
+                msg += (" A rotina NÃO foi marcada: a pausa não leva motivo (note). Para marcar com evidência, "
+                        "mande done:true junto.")
             return msg
         return msg + " " + _set_done(ctx, rid, data)
     return _set_done(ctx, rid, data)
@@ -833,7 +924,7 @@ def t_list_renewals(ctx, args):
 
 def t_find_similar(ctx, args):
     rows = search_routes.find_similar(ctx["user_id"], str(args.get("title", "")))
-    return "\n\n".join(f"#{r['id']} {r['title']}\nComo resolveu: {r['resolution']}" for r in rows) \
+    return "\n\n".join(f"#{r['id']} {_quoted(r, r['title'])}{_by(r)}\nComo resolveu: {r['resolution']}" for r in rows) \
         or "(nada parecido resolvido antes)"
 
 
@@ -847,13 +938,48 @@ def t_get_history(ctx, args):
     mine = {r["id"] for r in db.query_all(
         "SELECT id FROM audit_log WHERE user_id = %s AND token_id = %s AND id = ANY(%s)",
         (ctx["user_id"], ctx.get("token_id"), [r["id"] for r in rows]))} if rows and ctx.get("token_id") else set()
+    terceiros = _assigned_titles(ctx["user_id"], rows)
     out = []
     for r in rows:
+        if r["id"] in terceiros:  # título escrito por quem atribuiu: entre « », com o nome
+            title, by = terceiros[r["id"]]
+            r["summary"] = r["summary"].replace(f"“{title}”", _quoted({"assigned_by_name": by}, title))
+            if "atribu" not in r["summary"]:
+                r["summary"] += f" (atribuída por {by})"
         who = {"web": "app", "api": f"API ({r['token_name']})", "mcp": f"IA ({r['token_name']})",
                "admin": "admin"}.get(r["actor"], r["actor"])
         flags = " [desfeita]" if r["undone"] else (" [pode desfazer]" if r["can_undo"] and r["id"] in mine else "")
         out.append(f"#{r['id']} {r['created_at'].astimezone(services.app_tz()):%d/%m %H:%M} {who}: {r['summary']}{flags}")
     return "\n".join(out) or "(sem histórico)"
+
+
+def _assigned_titles(uid: int, rows: list) -> dict:
+    """Linhas do histórico sobre tarefa atribuída: {id da linha: (título, quem atribuiu)}."""
+    if not rows:
+        return {}
+    snaps = db.query_all(
+        """SELECT id, entity, entity_id, COALESCE(after, before) AS s FROM audit_log
+            WHERE user_id = %s AND id = ANY(%s)""", (uid, [r["id"] for r in rows]))
+    task_of = {}
+    for a in snaps:
+        s = a["s"] if isinstance(a["s"], dict) else {}
+        tid = a["entity_id"] if a["entity"] == "worklog" else s.get("task_id")
+        if tid and s.get("title"):
+            task_of[a["id"]] = (tid, s["title"], s.get("assigned_by"))
+    if not task_of:
+        return {}
+    by_task = {r["id"]: r["assigned_by"] for r in db.query_all(
+        "SELECT id, assigned_by FROM worklog_tasks WHERE user_id = %s AND id = ANY(%s)",
+        (uid, list({v[0] for v in task_of.values()})))}
+    ids = {by_task.get(t) or a for t, _, a in task_of.values()} - {None}
+    names = {r["id"]: r["n"] for r in db.query_all(
+        "SELECT id, COALESCE(display_name, email) AS n FROM users WHERE id = ANY(%s)", (list(ids),))} if ids else {}
+    out = {}
+    for hid, (tid, title, snap_by) in task_of.items():
+        who = names.get(by_task.get(tid) or snap_by)
+        if who:
+            out[hid] = (title, who)
+    return out
 
 
 def t_undo(ctx, args):
@@ -937,7 +1063,8 @@ TOOLS = {
                         "ticket": {"type": ["string", "null"], "maxLength": 40, "description": "Número do chamado (GLPI, TomTicket...)"},
                         "after_hours": {"type": "boolean", "default": False, "description": "Plantão / fora do horário"},
                         "created_at": {**WHEN, "description": "Quando a tarefa começou (retroativo; padrão: agora). " + WHEN["description"]},
-                        "completed_at": {**WHEN, "description": "Quando foi concluída (implica status done; padrão: agora). " + WHEN["description"]},
+                        "completed_at": {**WHEN, "description": "Quando foi concluída (implica status done; padrão: agora). "
+                                         "Sem created_at, começou minutes antes dela (ou nela). " + WHEN["description"]},
                         "blocked_reason": {"type": ["string", "null"], "maxLength": 120,
                                            "description": "Com status blocked: o que se está aguardando"},
                         "follow_up_on": {**DATE, "type": ["string", "null"], "description": "Com status blocked: dia combinado para cobrar"},
@@ -1060,7 +1187,8 @@ TOOLS = {
                        {"type": "object", "properties": {"day": DATE}}),
     "set_recurring": (t_set_recurring, True, "Marca (done=true) ou desmarca uma rotina num dia (padrão hoje; até 7 dias atrás). "
                       "Com paused_until: pausa de hoje até a data (férias, folga; não conta como falta nem lembra) "
-                      "ou, com null, retoma agora — sem done/day/note, só pausa ou retoma.",
+                      "ou, com null, retoma agora. Com paused_until a rotina só é marcada se vier done=true explícito "
+                      "(a pausa não leva motivo: note sozinha não marca nem é gravada).",
                       {"type": "object", "required": ["recurring_id"], "properties": {
                           "recurring_id": {"type": "integer", "description": "id da rotina (R<n> em get_today/list_recurring), não de tarefa"},
                           "done": {"type": "boolean", "default": True},
@@ -1086,7 +1214,7 @@ TOOLS = {
                                                               "Com after: quantos dias depois da última marcação"},
                              "paused_until": {"type": "string", "format": "date",
                                               "description": "Já cria pausada até esta data AAAA-MM-DD (opcional)"},
-                             "remind_at": {"type": ["string", "null"], "description": "Horário HH:MM (o app lembra perto dele)"},
+                             "remind_at": {"type": ["string", "null"], "description": "Horário HH:MM ou como se fala (07:30, 7h30, 7h; o app lembra perto dele)"},
                              "require_note": {"type": "boolean", "default": False,
                                               "description": "Marcar exige evidência (note em set_recurring)"}}}),
     "start_timer": (t_start_timer, True, "Inicia o cronômetro numa tarefa aberta (se outro estiver rodando, ele para e aponta o tempo). "
@@ -1149,7 +1277,7 @@ TOOLS["update_recurring"] = (
         "recurring_id": {"type": "integer", "description": "id da rotina (R<n> em get_today/list_recurring), não de tarefa"},
         **{k: {kk: vv for kk, vv in v.items() if kk != "default"}
            for k, v in TOOLS["create_recurring"][3]["properties"].items() if k != "paused_until"},  # pausa: set_recurring
-        "remind_at": {"type": ["string", "null"], "description": "Horário HH:MM (o app lembra perto dele); null tira o horário"}}})
+        "remind_at": {"type": ["string", "null"], "description": "Horário HH:MM ou como se fala (07:30, 7h30, 7h; o app lembra perto dele); null tira o horário"}}})
 
 PROMPTS = {
     "resumo_semanal": {

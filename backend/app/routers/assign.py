@@ -180,16 +180,22 @@ def _removed(uid: int) -> list[dict]:
     no de quem atribuiu. Sem registro (desfez o recebimento, conta excluída):
     "removed" sem data."""
     rows = db.query_all(
-        """SELECT a.entity_id AS id, a.after->>'title' AS title, a.after->>'to' AS to_name,
+        """SELECT a.entity_id AS id,
+                  -- o título mais recente: o da saída, o da última alteração, o do envio
+                  COALESCE(f.title, (SELECT u.after->>'title' FROM audit_log u
+                                      WHERE u.user_id = a.user_id AND u.entity = 'assignment' AND u.entity_id = a.entity_id
+                                        AND u.action = 'assign.update' ORDER BY u.id DESC LIMIT 1),
+                           a.after->>'title') AS title,
+                  a.after->>'to' AS to_name,
                   a.after->>'to_email' AS to_email, a.created_at AS assigned_at, f.action AS end_action, f.at AS ended_at
              FROM audit_log a
              LEFT JOIN LATERAL (
-                  SELECT d.action, d.created_at AS at, d.id FROM audit_log d
+                  SELECT d.action, d.created_at AS at, d.id, d.before->>'title' AS title FROM audit_log d
                    WHERE d.user_id = COALESCE((a.after->>'to_id')::bigint,
                                               (SELECT x.id FROM users x WHERE x.email = a.after->>'to_email'))
                      AND d.entity = 'worklog' AND d.entity_id = a.entity_id AND d.action = 'worklog.delete'
                   UNION ALL
-                  SELECT d.action, d.created_at, d.id FROM audit_log d
+                  SELECT d.action, d.created_at, d.id, d.before->>'title' FROM audit_log d
                    WHERE d.user_id = a.user_id AND d.entity = 'assignment' AND d.entity_id = a.entity_id
                      AND d.action = 'assign.cancel'
                   ORDER BY id DESC LIMIT 1) f ON true
