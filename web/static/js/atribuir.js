@@ -91,8 +91,7 @@ async function loadSent(sec, ready) {
       const quando = r.ended.at ? " em " + shortDate(localDay(r.ended.at)) : "";
       chips.push(h("span", { class: "chip late", text:
         r.ended.kind === "canceled" ? "cancelada por você" + quando
-        : r.ended.kind === "deleted" ? `excluída por ${r.to_name}${quando}`
-        : `removida por ${r.to_name}` }));
+        : `excluída por ${r.to_name}${quando}` }));  // um termo só (com ou sem data)
     } else {
       chips.push(h("span", { class: "chip " + r.status, text: r.status === "done" && r.completed_at
         ? "concluída em " + shortDate(localDay(r.completed_at)) : STATUS_LABELS[r.status] }));
@@ -154,12 +153,16 @@ function consentsPanel(people) {
     h("div", { class: "panel-head" }, h("h2", { text: "Quem aceita receber tarefas" })),
     h("p", { class: "help", text: "Cada pessoa decide em Configurações > Conta. Sem o aceite, não dá para atribuir." }));
   if (!people.length) sec.append(h("p", { class: "empty", text: "Nenhuma pessoa com registro." }));
-  for (const p of people) {
+  // Só quem aceita, com o número dos outros embaixo (a lista não vira um diretório de quem recusou).
+  const others = people.filter((p) => !p.accepts).length;
+  if (people.length && others === people.length) sec.append(h("p", { class: "empty", text: "Ninguém aceita receber tarefas ainda." }));
+  for (const p of people.filter((x) => x.accepts)) {
     sec.append(h("div", { class: "list-row" }, avatar(p, "sm"),
       h("div", { class: "t" }, h("span", { text: p.display_name || p.email }), p.display_name ? h("small", { text: p.email }) : null),
       p.accepts
         ? h("span", { class: "chip done", title: "Aceitou em " + dateTime(p.accepts_assignments_at), text: "aceita · desde " + shortDate(localDay(p.accepts_assignments_at)) })
         : h("span", { class: "chip", text: "não aceita" })));
   }
+  if (others && others < people.length) sec.append(h("p", { class: "dialog-note", text: others === 1 ? "A outra pessoa não aceita receber tarefas." : `As outras ${others} pessoas não aceitam receber tarefas.` }));
   return sec;
 }

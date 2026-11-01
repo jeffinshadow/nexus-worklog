@@ -761,6 +761,15 @@ a.chip.ticket:hover { background: color-mix(in srgb, var(--primary) 12%, transpa
 .roles-legend { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0 0 14px; font-size: var(--type-body-s); }
 .roles-legend dt { font-weight: 600; }
 .roles-legend dd { margin: 0; color: var(--dim); }
+.roles-help { margin: 0 0 12px; }
+.roles-help > summary { cursor: pointer; padding: 6px 0; color: var(--on-surface-variant); font-size: var(--type-body-s); }
+.roles-help .roles-legend { margin-top: 8px; }
+.role-lines { display: flex; flex-direction: column; gap: 2px; margin: 8px 0; }
+.role-line { align-items: flex-start; }
+.role-line input { margin-top: 3px; }
+.role-line small { display: block; color: var(--dim); font-size: var(--type-caption); }
+.admin-users .list-row .t { min-width: 0; }
+.admin-users .list-row .t > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }  /* e-mail longo: reticências, nunca quebrado no meio */
 .role-row { display: grid; grid-template-columns: auto minmax(160px, 1fr) auto auto; gap: 10px 14px; align-items: center; padding: 10px 2px; border-bottom: 1px solid var(--outline-variant); }
 .role-row:last-child { border-bottom: 0; }
 .role-row .t { min-width: 0; font-size: var(--type-body); overflow-wrap: anywhere; }

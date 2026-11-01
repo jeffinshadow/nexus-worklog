@@ -41,15 +41,14 @@ export function setRequestsBadge(n) {
   navBadge("admin", n, n === 1 ? "1 pedido de convite" : `${n} pedidos de convite`);
 }
 
-// Admin: contas (convite, senha, bloquear), permissões, configurações
+// Admin: contas (convite, senha, bloquear, papéis no ⋮ de cada uma), configurações
 // gerais e identidade visual. Ver registros e relatórios é do Visualizador (Equipe).
 export async function mount(root, ctx) {
   clear(root);
-  const seg = h("div", { class: "seg", role: "tablist" });
+  const seg = h("div", { class: "seg", role: "tablist", "aria-label": "Admin" });
   const body = h("div");
   const abas = [
     ["usuarios", "Usuários", (el) => mountUsers(el, ctx.me)],
-    ["permissoes", "Permissões", (el) => mountRoles(el, ctx.me)],
     ["geral", "Geral", (el) => mountGeneral(el, ctx.me)],
     ["identidade", "Identidade visual", (el) => mountBranding(el)],
   ];
@@ -76,6 +75,9 @@ async function mountUsers(root, me) {
   const rows = users.map((u) => [userRow(u), userText(u)]);
   const list = h("section", { class: "panel admin-users" },
     h("div", { class: "panel-head" }, h("h2", { text: "Contas" }), h("div", { class: "spacer" }), inviteBtn),
+    // Os papéis de cada conta mudam no ⋮ dela ("Papéis…"); aqui, o que cada um pode.
+    h("details", { class: "roles-help" }, h("summary", { text: "O que cada papel pode" }),
+      h("dl", { class: "roles-legend" }, ...ROLES.flatMap(([, n, d]) => [h("dt", { text: n }), h("dd", { text: d })]))),
     ...searchBox(rows), ...rows.map(([el]) => el));
 
   function userRow(u) {
@@ -87,14 +89,18 @@ async function mountUsers(root, me) {
     if (self) chips.push(h("span", { class: "chip pending-chip", text: "você" }));
     // Quem ainda não aceitou o convite recebe outro link; os demais, senha temporária
     // (que também libera uma conta bloqueada). O resto fica no menu da linha.
-    const main = self ? null : u.invite_pending
-      ? h("button", { type: "button", class: "btn btn-text btn-sm", text: "Reenviar convite", onClick: () => onResend(u) })
-      : h("button", { type: "button", class: "btn btn-text btn-sm", text: u.blocked_at ? "Liberar acesso" : "Redefinir senha", onClick: () => onReset(String(u.id), !!u.blocked_at) });
-    const items = u.invite_pending
-      ? [["Cancelar convite", "close", () => onCancelInvite(u)]]
-      : [u.blocked_at ? null : ["Bloquear acesso", "alert", () => onBlock(u)], ["Excluir conta", "trash", () => onDelete(u)]];
-    const more = self ? null : h("button", { type: "button", class: "icon", title: "Mais ações", "aria-label": "Mais ações para " + u.email, "aria-haspopup": "menu",
-      onClick: (ev) => rowMenu(ev.currentTarget, u.display_name || u.email, items) }, icon("more-v"));
+    // No celular, a ação da linha vai para o ⋮ (o e-mail fica inteiro na linha).
+    const [mainText, mainFn] = self ? [] : u.invite_pending ? ["Reenviar convite", () => onResend(u)]
+      : [u.blocked_at ? "Liberar acesso" : "Redefinir senha", () => onReset(String(u.id), !!u.blocked_at)];
+    const main = self ? null : h("button", { type: "button", class: "btn btn-text btn-sm only-desk", text: mainText,
+      "aria-label": `${mainText} de ${u.email}`, onClick: mainFn });
+    const items = [
+      self ? null : u.invite_pending ? ["Cancelar convite", "close", () => onCancelInvite(u)] : u.blocked_at ? null : ["Bloquear acesso", "alert", () => onBlock(u)],
+      ["Papéis…", "person", () => editRoles(u, me, () => mountUsers(root, me))],
+      self || u.invite_pending ? null : ["Excluir conta", "trash", () => onDelete(u)],
+    ];
+    const more = h("button", { type: "button", class: "icon", title: "Mais ações", "aria-label": "Mais ações para " + u.email, "aria-haspopup": "menu",
+      onClick: (ev) => rowMenu(ev.currentTarget, u.display_name || u.email, phone() && main ? [[mainText, "key", mainFn], ...items] : items) }, icon("more-v"));
     return h("div", { class: "list-row" }, avatar(u, "sm"),
       h("div", { class: "t" }, h("span", { text: u.display_name ? `${u.display_name} · ${u.email}` : u.email }),
         h("small", {}, roleNames(u.roles), ...chips)),
@@ -273,52 +279,52 @@ async function mountUsers(root, me) {
 }
 
 
-// ---- Permissões: papéis acumuláveis por conta ----
-async function mountRoles(root, me) {
-  clear(root);
-  const users = await api.get("/admin/users");
-  const rows = users.map((u) => [roleRow(u), userText(u)]);
-  const sec = h("section", { class: "panel" },
-    h("div", { class: "panel-head" }, h("h2", { text: "Permissões" })),
-    h("p", { class: "help", text: "Cada conta pode ter qualquer combinação de papéis. Marcou ou desmarcou, já vale." }),
-    h("dl", { class: "roles-legend" }, ...ROLES.flatMap(([, n, d]) => [h("dt", { text: n }), h("dd", { text: d })])),
-    ...searchBox(rows), ...rows.map(([el]) => el));
-  root.append(h("div", { class: "settings-grid" }, sec));
-
-  // Salva na hora (nada fica pendente ao trocar de aba); erro desfaz a marca.
-  function roleRow(u) {
-    const boxes = ROLES.map(([k, n]) => {
-      const cb = h("input", { type: "checkbox", value: k, "aria-label": `${n} para ${u.email}` });
-      cb.checked = u.roles.includes(k);
-      if (k === "admin" && u.id === me.id) { cb.disabled = true; cb.title = "Você não pode tirar o seu próprio admin"; }
-      cb.addEventListener("change", () => save(cb));
-      return [cb, h("label", { class: "weekday-option" }, cb, h("span", { text: n }))];
-    });
-    const who = u.display_name || u.email;
-    async function save(cb) {
-      const roles = boxes.filter(([b]) => b.checked).map(([b]) => b.value);
-      if (!roles.length) { cb.checked = true; toast("A conta precisa de pelo menos um papel.", { error: true }); return; }
-      if (cb.value === "user" && !cb.checked && !(await confirmDialog({
-        title: `Tirar o papel Usuário de ${who}?`,
-        text: `${who} deixa de ver o próprio registro (Hoje, Tarefas, Rotinas) e de receber tarefas. Os dados ficam guardados e voltam se você marcar de novo.`,
-        confirm: "Tirar", danger: true }))) { cb.checked = true; return; }
-      for (const [b] of boxes) b.disabled = true;
-      try {
-        await api.put(`/admin/users/${u.id}/roles`, { roles });
-        u.roles = roles;
-        toast(`Permissões de ${who} salvas.`);
-      } catch (e) { cb.checked = !cb.checked; errorToast(e); }
-      finally { for (const [b] of boxes) b.disabled = b.value === "admin" && u.id === me.id; }
-    }
-    // Visualizador só vê quem liberou: mostra aqui, para o admin não procurar a pessoa na Equipe.
-    const consent = u.roles.includes("user")
-      ? h("span", { class: "chip pending-chip" + (u.viewers_allowed ? " done" : ""), title: "Cada pessoa decide em Configurações > Conta se visualizadores veem o registro dela",
-          text: u.viewers_allowed ? "registro liberado aos visualizadores" : "registro não liberado aos visualizadores" })
-      : null;
-    return h("div", { class: "role-row" }, avatar(u, "sm"),
-      h("div", { class: "t" }, h("span", { text: who }), h("small", {}, u.display_name ? u.email : null, consent)),
-      h("div", { class: "role-boxes" }, ...boxes.map(([, l]) => l)));
+// ---- Papéis de uma conta (acumuláveis), pelo ⋮ da linha em Usuários ----
+// Marcou ou desmarcou, já vale; dar Admin e tirar Usuário pedem confirmação.
+function editRoles(u, me, onChanged) {
+  const who = u.display_name || u.email;
+  let changed = false;
+  const boxes = ROLES.map(([k, n, d]) => {
+    const cb = h("input", { type: "checkbox", value: k });
+    cb.checked = u.roles.includes(k);
+    if (k === "admin" && u.id === me.id) { cb.disabled = true; cb.title = "Você não pode tirar o seu próprio admin"; }
+    cb.addEventListener("change", () => save(cb));
+    return [cb, h("label", { class: "check-line role-line" }, cb, h("span", {}, h("strong", { text: n }), h("small", { text: d })))];
+  });
+  async function save(cb) {
+    const roles = boxes.filter(([b]) => b.checked).map(([b]) => b.value);
+    if (!roles.length) { cb.checked = true; toast("A conta precisa de pelo menos um papel.", { error: true }); return; }
+    if (cb.value === "user" && !cb.checked && !(await confirmDialog({
+      title: `Tirar o papel Usuário de ${who}?`,
+      text: `${who} deixa de ver o próprio registro (Hoje, Tarefas, Rotinas) e de receber tarefas. Os dados ficam guardados e voltam se você marcar de novo.`,
+      confirm: "Tirar", danger: true }))) { cb.checked = true; return; }
+    if (cb.value === "admin" && cb.checked && !(await confirmDialog({
+      title: `Dar Admin a ${who}?`,
+      text: `${who} passa a convidar, bloquear e excluir contas, mudar papéis e as configurações gerais.`,
+      confirm: "Dar Admin" }))) { cb.checked = false; return; }
+    for (const [b] of boxes) b.disabled = true;
+    try {
+      await api.put(`/admin/users/${u.id}/roles`, { roles });
+      u.roles = roles;
+      changed = true;
+      paintConsent();
+      toast(`Papéis de ${who} salvos.`);
+    } catch (e) { cb.checked = !cb.checked; errorToast(e); }
+    finally { for (const [b] of boxes) b.disabled = b.value === "admin" && u.id === me.id; }
   }
+  // Visualizador só vê quem liberou: mostra aqui, para o admin não procurar a pessoa na Equipe.
+  const consent = h("p", { class: "dialog-note" });
+  const paintConsent = () => {
+    consent.textContent = !u.roles.includes("user") ? "" : u.viewers_allowed
+      ? "O registro desta conta está liberado aos visualizadores (cada pessoa decide em Configurações > Conta)."
+      : "O registro desta conta não está liberado aos visualizadores (cada pessoa decide em Configurações > Conta).";
+  };
+  paintConsent();
+  const dlg = modal(h("h2", { text: `Papéis de ${who}` }),
+    h("p", { class: "dialog-note", text: "Qualquer combinação. Marcou ou desmarcou, já vale." }),
+    h("div", { class: "role-lines" }, ...boxes.map(([, l]) => l)), consent,
+    h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-text", text: "Fechar", onClick: () => dlg.close() })));
+  dlg.addEventListener("close", () => { if (changed) onChanged(); }); // a linha da conta mostra os papéis novos
 }
 
 // ---- Geral: limite de datas retroativas em tarefas ----

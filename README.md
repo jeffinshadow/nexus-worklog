@@ -8,12 +8,12 @@ Prioridades: **simples > seguro > funcional > elegante**.
 
 Cada pessoa vê **apenas** os próprios dados. As contas são criadas pelo
 **admin** (convite com senha temporária); não há cadastro público. Papéis
-acumuláveis, dados em **Admin > Permissões**: **Usuário** (o próprio registro),
+acumuláveis, dados em **Admin > Usuários > ⋮ > Papéis…**: **Usuário** (o próprio registro),
 **Admin** (convites, contas, permissões, configurações), **Atribuidor de tarefas** (manda
 tarefas a quem aceitou receber) e **Visualizador de tarefas** (consulta, só
 para leitura, o quadro, a retrospectiva, os relatórios, as horas e as fotos de
 quem **aceitou** em Configurações > Conta; contas novas começam sem o aceite, e
-Admin > Permissões mostra quem liberou). O admin também tem o próprio registro;
+os Papéis… de cada conta mostram quem liberou). O admin também tem o próprio registro;
 em Admin > Usuários ele busca a conta, reenvia ou **cancela um convite** ainda
 não aceito, redefine a senha, **bloqueia o acesso** (a pessoa sai de todos os
 aparelhos, chaves e passkeys param, os dados ficam; Redefinir senha libera) ou
