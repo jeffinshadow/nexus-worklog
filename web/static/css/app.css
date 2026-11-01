@@ -1491,9 +1491,13 @@ dialog .review-intro { margin: 0 0 12px; line-height: 1.5; }
 dialog .review-count { margin: 0 0 4px; font-family: var(--font-label); font-size: max(var(--type-label), calc(12px / var(--ui-zoom))); color: var(--on-surface-variant); }
 .review-dialog .btn[aria-pressed="true"] { background: var(--primary-container); color: var(--on-primary-container); border-color: transparent; }
 .review-dialog .dialog-actions { flex-wrap: wrap; margin-top: 16px; }
-.review-dialog .review-skip { margin-right: auto; }
+dialog.review-dialog { position: relative; }
+.review-close { position: absolute; top: 12px; right: 12px; }
+.review-dialog .tour-step { padding-right: 40px; }
 .sum-review { margin-top: 12px; }
 @media (max-width: 560px) {
   .review-acts { width: 100%; }
+  .review-acts.review-choices { display: grid; grid-template-columns: 1fr 1fr; }  /* as 4 escolhas em 2x2, mesma largura */
+  .review-choices > .btn, .review-choices > input { width: 100%; }
   .review-acts > .review-inline { width: 100%; }
 }

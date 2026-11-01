@@ -170,6 +170,7 @@ def week_text(uid: int, next_ids: list[int] | None = None) -> str:
         linhas += ["", "O que vem na próxima semana:"]
         for t in proximas:
             info = (["prioridade alta"] if t["priority"] == 1 else []) + (
-                [f"prazo {t['due_date']:%d/%m}"] if t["due_date"] else [])
+                [(f"atrasada desde {t['due_date']:%d/%m}" if t["due_date"] < today else f"prazo {t['due_date']:%d/%m}")]
+                if t["due_date"] else [])
             linhas.append(f"- {_titulo(t)}" + (f" ({', '.join(info)})" if info else ""))
     return "\n".join(linhas)

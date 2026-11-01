@@ -51,9 +51,11 @@ export async function openReview(onDone) {
   const body = h("div", { class: "review-body" });
   const back = btn("Voltar", () => go(step - 1), "btn-text");
   const fwd = h("button", { type: "button", class: "btn btn-primary" });
-  const close = h("button", { type: "button", class: "btn btn-text review-skip", text: "Fechar", onClick: () => dlg.close() });
-  const actions = h("div", { class: "dialog-actions" }, close, back, fwd);
-  const dlg = modal(stepLabel, title, intro, body, actions);
+  // Fechar a qualquer hora (o que já foi tocado está salvo): o X no canto.
+  const close = h("button", { type: "button", class: "icon review-close", title: "Fechar a revisão", "aria-label": "Fechar a revisão",
+    onClick: () => dlg.close() }, icon("close"));
+  const actions = h("div", { class: "dialog-actions" }, back, fwd);
+  const dlg = modal(close, stepLabel, title, intro, body, actions);
   dlg.classList.add("review-dialog");
   dlg.addEventListener("close", () => { if (changed && onDone) onDone(); });
   const touch = () => { changed = true; };
@@ -104,6 +106,7 @@ export async function openReview(onDone) {
       : "Nada ficou em aberto. Semana fechada.";
     for (const t of lista.slice(0, 40)) {
       const { el, state, acts } = row(t, [prazo(t), esperando(t)]);
+      acts.classList.add("review-choices");
       const done = (txt) => { decided.set(t.id, txt); touch(); paintState(); };
       const paintState = () => {
         const txt = decided.get(t.id);
@@ -246,6 +249,8 @@ export async function openReview(onDone) {
         catch { area.select(); toast("Selecione e copie (Ctrl+C).", { error: true }); }
       } }, icon("copy"), "Copiar"));
     area.focus();
+    area.setSelectionRange(0, 0); // o texto começa do topo (o título da semana)
+    area.scrollTop = 0;
   }
 
   function go(n) {
