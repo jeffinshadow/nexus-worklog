@@ -336,8 +336,13 @@ async function boot() {
   } catch (e) {
     // Só sessão inválida vai ao login; sem rede ou servidor fora, avisa e deixa tentar de novo.
     if (e.status === 401 || e.message === "nao autenticado") { toLogin(); return; }
-    document.body.append(h("div", { class: "auth-wrap" }, h("p", { class: "empty", text: e.message || "Não foi possível abrir o Nexus." }),
-      h("button", { type: "button", class: "btn btn-primary", text: "Tentar de novo", onClick: () => location.reload() })));
+    // O mesmo cartão do login: a marca, a frase e o botão juntos, no meio da tela.
+    document.body.append(h("div", { class: "auth-wrap" }, h("div", { class: "auth-card boot-error", role: "alert" },
+      h("div", { class: "lockup lockup--center" }, h("img", { class: "lockup-mark", src: "/img/dragon-mark.svg", alt: "", width: "26", height: "30" }),
+        h("span", { class: "lockup-type" }, h("span", { text: "nexus" }), h("span", { text: "worklog" }))),
+      h("p", { class: "sub", text: e.message || "Não foi possível abrir o Nexus." }),
+      h("button", { type: "button", class: "btn btn-primary full", text: "Tentar de novo", onClick: () => location.reload() }))));
+    loadBranding();  // o logo da equipe, se o servidor responder
     return;
   }
   api.setCsrf(me.csrf_token);
