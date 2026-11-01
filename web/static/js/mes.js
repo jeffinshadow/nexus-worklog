@@ -1,5 +1,5 @@
 // Meu mês: o mês numa frase e três números (com o mês anterior ao lado, neutro),
-// as rotinas que mais ficaram para trás, para onde foi o tempo e o que foi
+// as rotinas (dias feitos de previstos), para onde foi o tempo e o que foi
 // entregue. O PDF do mês é a ação principal; outro período, um projeto e as
 // exportações ficam recolhidos em "Outro período ou formato" (reports.js).
 // Os números vêm de /dashboard?month= (overview), os mesmos do PDF do mês.
@@ -56,8 +56,12 @@ export async function view(root, opts) {
   const next = h("button", { type: "button", class: "icon", title: "Próximo mês", "aria-label": "Próximo mês", onClick: () => pick(nextOf(st.month)) }, icon("right"));
   const paintNav = () => {
     label.textContent = nameOf(st.month) + " de " + st.month.slice(0, 4) + (st.month === thisMonth() ? " · até hoje" : "");
+    const focused = document.activeElement;
     next.disabled = st.month >= thisMonth();
     prev.disabled = !!st.months && st.months.length > 0 && st.month <= st.months[st.months.length - 1];
+    // Chegou à ponta com o foco no botão que desligou: o foco passa para o outro (não cai no topo).
+    if (focused === prev && prev.disabled && !next.disabled) next.focus();
+    else if (focused === next && next.disabled && !prev.disabled) prev.focus();
   };
   const content = h("div", { class: "mes-content" });
 
@@ -119,7 +123,7 @@ function screen(a, opts, reload) {
   const empty = !m.recurring_total && !m.pontual_done && !m.minutes;
   const nodes = [hero(ov, mes, opts)];
   if (empty) return nodes;
-  nodes.push(h("div", { class: "mes-grid" }, routinesCard(ov, a.heatmap, mes), timeCard(ov, mes)),
+  nodes.push(h("div", { class: "mes-grid" }, routinesCard(ov, a.heatmap, mes, !!opts.dashUrl), timeCard(ov, mes)),
     deliveriesCard(ov, mes, opts, reload));
   return nodes;
 }
@@ -162,7 +166,7 @@ function hero(ov, mes, opts) {
   return h("section", { class: "mes-hero" },
     h("p", { class: "mes-sentence", text: sentence(m, mes, opts.who) }),
     empty ? (opts.dashUrl ? null : h("p", { class: "mes-prev", text: "O que você registrar no Hoje (rotinas, tarefas e tempo) aparece aqui." }))
-      : h("div", { class: "figs" },
+      : h("div", { class: "figs", "aria-hidden": "true" }, // a frase acima já diz os mesmos valores ao leitor
         fig(m.recurring_total ? `${pct(m.recurring_done, m.recurring_total)}%` : "—", m.recurring_total ? "das rotinas feitas" : "sem rotinas previstas"),
         fig(String(m.pontual_done), m.pontual_done === 1 ? "tarefa concluída" : "tarefas concluídas"),
         fig(m.minutes ? duration(m.minutes) : "—", "tempo apontado")),
@@ -177,13 +181,18 @@ function card(title, sub, ...body) {
     ...body);
 }
 
-// a) Rotinas: as que mais ficaram para trás (dias feitos de previstos); o
+// a) Rotinas: dias feitos de previstos das que tiveram dias sem marcar (para a
+// pessoa se organizar); na Equipe, só o resumo, sem lista por rotina. O
 // calendário dia a dia fica recolhido.
-function routinesCard(ov, hm, mes) {
+function routinesCard(ov, hm, mes, team) {
+  const full = ov.routines_full ?? ov.routines - ov.behind.length;
+  const feitas = (n) => (n === 1 ? "feita" : "feitas");
   let body;
   if (!ov.routines) body = h("p", { class: "mes-ok", text: `Nenhuma rotina na agenda em ${mes}.` });
-  else if (!ov.behind.length) body = h("p", { class: "mes-ok" }, icon("check"),
+  else if (full >= ov.routines) body = h("p", { class: "mes-ok" }, icon("check"),
     h("span", { text: ov.routines === 1 ? "A rotina foi feita em todos os dias previstos." : `As ${ov.routines} rotinas foram feitas em todos os dias previstos.` }));
+  else if (team || !ov.behind.length) body = h("p", { class: "mes-ok",
+    text: `${full} de ${plural(ov.routines, "rotina", "rotinas")} ${feitas(ov.routines)} em todos os dias previstos.` });
   else body = h("div", { class: "mes-rows" }, ...ov.behind.map((r) => {
     const fill = h("span");
     fill.style.width = pct(r.done, r.due) + "%";
@@ -191,11 +200,14 @@ function routinesCard(ov, hm, mes) {
       h("span", { class: "mes-rot-l", text: r.label }),
       h("span", { class: "mes-track" }, fill),
       h("span", { class: "mes-rot-n", text: `${r.done} de ${r.due} dias` }));
-  }));
+  }), full ? h("p", { class: "mes-res", text: `${full === 1 ? "A outra foi feita" : `As outras ${full} foram feitas`} em todos os dias previstos.` }) : null);
+  const rows = body.classList.contains("mes-rows");
+  // O dia a dia só a partir da primeira semana do mês (antes, não teria o que mostrar).
+  const inMonth = hm && hm.days ? hm.days.filter((d) => !d.out).length : 0;
   const days = h("div", { class: "mes-days" });
   const det = h("details", { class: "mes-more" }, h("summary", { text: "ver dia a dia" }), days);
   det.addEventListener("toggle", () => { if (det.open && !days.firstChild) days.append(heatmap(hm)); });
-  return card("Rotinas", ov.behind.length ? "as que mais ficaram para trás" : null, body, ov.routines ? det : null);
+  return card("Rotinas", rows ? "dias feitos de previstos" : null, body, ov.routines && inMonth >= 7 ? det : null);
 }
 
 // b) Para onde foi o tempo.
@@ -224,9 +236,14 @@ function deliveriesCard(ov, mes, opts, reload) {
   const sub = total > TOP ? `as ${TOP} com mais tempo, de ${total}` : null;
   let more = null;
   if (all.length > TOP) {
-    more = h("button", { type: "button", class: "btn btn-text mes-all", "aria-expanded": "false", text: `ver todas as ${total}`, onClick: () => {
+    more = h("button", { type: "button", class: "btn btn-text mes-all", text: `ver todas as ${total}`, onClick: () => {
       list.append(...all.slice(TOP).map(row));
       if (total > all.length) list.append(h("li", { class: "mes-res", text: `e mais ${total - all.length} com menos tempo (todas estão no PDF)` }));
+      // O foco segue para o primeiro item novo (o botão some; sem isso, cairia no topo).
+      const first = list.children[TOP];
+      const target = first.querySelector("button") || first;
+      if (target === first) first.tabIndex = -1;
+      target.focus();
       more.remove();
     } });
   }
@@ -256,8 +273,15 @@ function heatmap(hm) {
   const cols = Math.ceil(days.length / 7);
   const cell = 24, gap = 3, step = cell + gap, padL = 34, padT = 21;
   const w = padL + cols * step + 2, height = padT + 7 * step + 2;
+  // O leitor de tela ouve o resumo do calendário (os quadrados, sozinhos, não se leem).
+  const due = days.filter((d) => !d.out && d.slots > 0);
+  const all = due.filter((d) => d.done >= d.slots).length, none = due.filter((d) => d.done === 0).length;
+  const resumo = [plural(due.length, "dia com rotina prevista", "dias com rotina prevista")];
+  if (all) resumo.push(`${all} com todas feitas`);
+  if (due.length - all - none) resumo.push(`${due.length - all - none} com parte feita`);
+  if (none) resumo.push(`${none} sem nenhuma marcada`);
   const s = svgEl("svg", { viewBox: `0 0 ${w} ${height}`, class: "chart-svg heatmap", width: w, height, role: "img",
-    "aria-label": "Calendário das rotinas feitas em cada dia" });
+    "aria-label": `Calendário das rotinas: ${resumo.join("; ")}.` });
   let prevMonth = -1;
   for (let col = 0; col < cols; col++) {
     const dt = new Date(days[Math.min(days.length - 1, col * 7 + (col ? 0 : lead))].date + "T00:00:00");
@@ -275,18 +299,24 @@ function heatmap(hm) {
   }
   days.forEach((d, i) => {
     if (d.out) return;
-    const r = svgEl("rect", { x: padL + Math.floor(i / 7) * step, y: padT + (i % 7) * step, width: cell, height: cell, rx: 2 });
+    const x = padL + Math.floor(i / 7) * step, y = padT + (i % 7) * step;
+    const r = svgEl("rect", { x, y, width: cell, height: cell, rx: 2 });
+    let strong = false; // fundo forte: o número do dia vai claro
     if (d.slots === 0) { r.style.fill = "none"; r.style.stroke = "var(--outline-variant)"; }
     else if (d.done === 0) r.style.fill = "var(--surface-container-high)";
     else {
       const f = Math.min(1, d.done / d.slots);
       r.style.fill = "var(--primary)";
       if (f < 1) r.style.opacity = f >= 0.67 ? 0.75 : f >= 0.34 ? 0.5 : 0.28;
+      strong = f >= 0.67;
     }
     const title = svgEl("title", {});
     title.textContent = d.slots === 0 ? `${shortDate(d.date)}: sem rotina prevista` : `${shortDate(d.date)}: ${d.done} de ${d.slots} feitas`;
     r.appendChild(title);
     s.appendChild(r);
+    const n = svgEl("text", { x: x + cell / 2, y: y + cell / 2, class: "heat-day" + (strong ? " on" : "") });
+    n.textContent = String(Number(d.date.slice(8)));
+    s.appendChild(n);
   });
   const legend = h("div", { class: "heat-legend" }, h("span", { text: "menos" }));
   for (const op of [null, 0.28, 0.5, 0.75, 1]) {

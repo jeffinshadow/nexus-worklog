@@ -1026,7 +1026,7 @@ body.rail .nav a:active, body.rail .sidebar .nav-link:active { transform: scale(
   #page-actions [data-fab] { display: inline-flex; }
   .timer-mobile:not(.hidden) { position: static; margin: 0 16px 8px; }
 }
-@media (max-width: 359px) { .figs { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 359px) { .figs { grid-template-columns: 1fr 1fr; } .figs > .fig:nth-child(3):last-child { grid-column: span 2; } }
 
 /* Quem pediu menos movimento ao sistema: nada desliza nem cresce. */
 @media (prefers-reduced-motion: reduce) {
@@ -1144,6 +1144,8 @@ dialog.help-dialog > .dialog-actions { position: sticky; bottom: -24px; margin: 
 .mes-more > summary, .mes-export > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; gap: 8px; color: var(--primary-hi); font-size: var(--type-body-s); font-weight: 500; }
 .mes-days { padding: 8px 0 4px; overflow-x: auto; }
 .mes-days .heatmap { margin: 0 auto; }
+.heat-day { fill: var(--on-surface); font-size: 10px; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.heat-day.on { fill: var(--on-primary); }
 .mes-content > .mes-card { margin-bottom: var(--gap); }
 .mes-dels { list-style: none; margin: 0; padding: 0; }
 .mes-del { padding: 10px 0; border-top: 1px solid var(--outline-variant); }
