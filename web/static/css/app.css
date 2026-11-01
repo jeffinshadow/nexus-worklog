@@ -22,7 +22,7 @@ a { color: var(--primary-hi); text-decoration: none; }
 .mono { font-family: var(--font-label); }
 /* rótulos: peso médio, um respiro entre as letras e números tabulares (horas e contagens alinham) */
 .mono, .panel-head .count, .count-badge, .chip, .hist-when, .who-badge, .token-meta, .dash-section-title, .chart-svg text,
-.rank-count, .rank-streak, .readonly-note, .auth-foot, .tag, .check-row .label small, .task-sec .count, .time-form .dur, .sum-h {
+.rank-count, .rank-streak, .readonly-note, .auth-foot, .tag, .check-row .label small, .task-sec .count, .time-form .dur, .delta, .sum-h {
   font-weight: 500; letter-spacing: .02em; font-variant-numeric: tabular-nums;
 }
 /* código e chaves de API: peso normal e zero cortado (0 ≠ O) */
@@ -560,6 +560,8 @@ mark { background: color-mix(in srgb, var(--primary) 28%, transparent); color: v
 @media (max-width: 900px) { #view-busca { grid-template-columns: 1fr; } }
 
 .today-grid > .t-sum { grid-column: 1 / -1; }
+.sum-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+@media (max-width: 900px) { .sum-grid { grid-template-columns: 1fr; } }
 .sum-title { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
 .sum-title h3 { font-size: var(--type-title); font-weight: 600; }
 .sum-title .mono { font-size: var(--type-label); }
@@ -567,6 +569,9 @@ mark { background: color-mix(in srgb, var(--primary) 28%, transparent); color: v
 .fig { background: var(--surface); padding: 12px 14px; }
 .fig-n { font-size: 1.35rem; font-weight: 600; letter-spacing: -.03em; display: flex; align-items: baseline; gap: 6px; }
 .fig-l { font-size: var(--type-label); color: var(--on-surface-variant); margin-top: 2px; }
+.delta { font-family: var(--font-label); font-size: var(--type-caption); letter-spacing: 0; color: var(--dim); }
+.delta.up { color: var(--success); }
+.delta.down { color: var(--warning); }
 .sum-h { font-family: var(--font-label); font-size: var(--type-label); color: var(--primary); margin: 16px 0 6px; }
 .sum-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: var(--type-body-s); flex-wrap: wrap; }
 .sum-row .card-open { flex: 1; min-width: 0; }

@@ -19,7 +19,7 @@ Pré-requisitos (na máquina que roda o navegador):
 |---|---|
 | `e2e_tour.py SAIDA desktop\|mobile` | tour guiado (configuração + passeio), filtro do Hoje, vários projetos, projeto padrão |
 | `tour_paradas.py desktop\|mobile` | o passeio mostra todas as paradas abrindo a Ajuda de outras telas |
-| `e2e_convite.py SAIDA desktop\|mobile` | convite por link, esqueci a senha (Mailpit), confirmação de senha, resumo do Hoje |
+| `e2e_convite.py SAIDA desktop\|mobile` | convite por link, esqueci a senha (Mailpit), confirmação de senha, semanas do resumo |
 | `e2e_objetivos.py SAIDA desktop\|mobile` | menu Projetos, objetivos em ordem, tarefas vinculadas, arrastar (computador) e ⋮ (celular), status e progresso |
 | `e2e_instalar.py SAIDA` | convite para instalar (Chrome e iPhone), atalhos do ícone, compartilhar (com e sem sessão), número no ícone, manifest instalável |
 | `e2e_notificacoes.py SAIDA` | painel de notificações, ligar o aparelho, convite depois de instalado, notificação entregue ao service worker e os botões Marcar feita / Adiar (precisa de `NEXUS_E2E_SSH`) |
