@@ -9,10 +9,15 @@ Prioridades: **simples > seguro > funcional > elegante**.
 Cada pessoa vê **apenas** os próprios dados. As contas são criadas pelo
 **admin** (convite com senha temporária); não há cadastro público. Papéis
 acumuláveis, dados em **Admin > Permissões**: **Usuário** (o próprio registro),
-**Admin** (contas, permissões, configurações), **Atribuidor de tarefas** (manda
+**Admin** (convites, contas, permissões, configurações), **Atribuidor de tarefas** (manda
 tarefas a quem aceitou receber) e **Visualizador de tarefas** (consulta, só
 para leitura, o quadro, a retrospectiva, os relatórios, as horas e as fotos de
-quem **aceitou** em Configurações > Conta; contas novas começam sem o aceite).
+quem **aceitou** em Configurações > Conta; contas novas começam sem o aceite, e
+Admin > Permissões mostra quem liberou). O admin também tem o próprio registro;
+em Admin > Usuários ele busca a conta, reenvia ou **cancela um convite** ainda
+não aceito, redefine a senha, **bloqueia o acesso** (a pessoa sai de todos os
+aparelhos, chaves e passkeys param, os dados ficam; Redefinir senha libera) ou
+exclui a conta de vez.
 
 **Manual de uso, tela por tela:** [shadow.tec.br/nexus-manual](https://shadow.tec.br/nexus-manual).
 
@@ -64,6 +69,9 @@ quem **aceitou** em Configurações > Conta; contas novas começam sem o aceite)
 - **Atribuição** — quem aceita (Configurações > Conta) recebe tarefas de um
   atribuidor pelo app ou pela IA, com aviso por e-mail; a tarefa passa a ser
   dela, e quem atribuiu acompanha o status e recebe um e-mail quando ela é concluída.
+  Enquanto está "a fazer" e sem nada registrado, quem atribuiu ainda corrige
+  título, prazo e prioridade ou cancela (engano); excluída ou cancelada, a
+  linha continua em Atribuir com quem tirou e quando.
 - **Meu mês** — uma tela com duas abas e o mês escolhido uma vez no topo (o
   corrente por padrão). **Números**: aderência das rotinas, vazão, tempo por
   projeto e o que está em aberto. **PDF**: o relatório por período, por projeto ou do projeto inteiro, em
