@@ -374,8 +374,8 @@ async function mountBranding(root) {
   l1.addEventListener("input", sync);
   l2.addEventListener("input", sync);
 
-  const file = h("input", { type: "file", accept: "image/svg+xml,image/png,image/webp" });
-  const err = h("p", { class: "error-text" });
+  const file = h("input", { type: "file", accept: "image/svg+xml,image/png,image/webp", "aria-label": "Logo da equipe (SVG, PNG ou WebP)" });
+  const err = h("p", { class: "error-text", role: "alert" });
 
   const apply = (b) => {
     brand = b;

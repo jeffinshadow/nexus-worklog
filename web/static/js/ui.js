@@ -291,6 +291,21 @@ document.addEventListener("keydown", (ev) => {
   Promise.resolve(undoAction()).then(back);
 });
 
+// Abas (role="tab"): as setas, Home e End andam entre elas e já abrem a escolhida,
+// como o leitor de tela anuncia. Vale para todas as telas com abas.
+document.addEventListener("keydown", (ev) => {
+  if (!["ArrowRight", "ArrowLeft", "Home", "End"].includes(ev.key) || ev.altKey || ev.ctrlKey || ev.metaKey) return;
+  const tab = ev.target.closest ? ev.target.closest('[role="tab"]') : null;
+  const list = tab && tab.closest('[role="tablist"]');
+  if (!list) return;
+  const tabs = [...list.querySelectorAll('[role="tab"]')].filter((t) => !t.disabled && t.offsetParent);
+  const i = tabs.indexOf(tab), n = tabs.length;
+  const j = ev.key === "Home" ? 0 : ev.key === "End" ? n - 1 : (i + (ev.key === "ArrowRight" ? 1 : -1) + n) % n;
+  ev.preventDefault();
+  tabs[j].focus();
+  tabs[j].click();
+});
+
 // Atalhos de uma tecla (n, h, t, s...): ligados por padrão; dá para desligar
 // em Configurações (vale para este aparelho).
 const KEYS_KEY = "nexus.atalhos";
