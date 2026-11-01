@@ -6,6 +6,7 @@ import { h, icon, clear, longDate, shortDate, addDays } from "./dom.js";
 import { errorToast } from "./ui.js";
 import { projectChip, corProjeto } from "./projects.js";
 import { duration, openTask } from "./task.js";
+import { openReview } from "./review.js";
 
 function pct(done, total) {
   return total ? Math.round((100 * done) / total) : null;
@@ -72,6 +73,9 @@ function weekSlot(data, onChange) {
     const sub = atual ? `desde ${longDate(w.start).split(",")[0]}` : `${shortDate(w.start)} a ${shortDate(w.end)}`;
     clear(slot);
     slot.append(card(atual ? "Esta semana" : "Semana", sub, w, onChange, nav));
+    // Revisão guiada (o que fechou, o que ficou, o que vem): em qualquer dia, daqui.
+    if (atual) slot.querySelector(".sum-card").append(h("button", { type: "button", class: "btn btn-ghost btn-sm sum-review",
+      onClick: () => openReview(onChange) }, icon("check"), data.review && data.review.reviewed ? "Revisar a semana de novo" : "Revisar a semana"));
   }
   async function go(n) {
     if (n < 0) return;

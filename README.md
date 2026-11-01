@@ -29,7 +29,11 @@ exclui a conta de vez.
   daily. Cada aviso tem o próprio X; tudo é calculado a partir dos registros da
   pessoa, sem IA chamada a cada tela. As abertas filtram por "vence hoje"
   (com as atrasadas) ou "prioritárias", e o resumo da semana volta semana a
-  semana, cada uma comparada com a anterior. No primeiro acesso, um **tour
+  semana, cada uma comparada com a anterior. **Revisão da semana** guiada, em
+  3 passos (o que fechou, com "como resolveu"; o que ficou, um toque em
+  manter, reagendar, aguardando ou concluir; o que vem, até 3 prioridades), que
+  termina com o texto da semana pronto para copiar; o assistente convida no
+  último dia útil, uma vez. No primeiro acesso, um **tour
   guiado** configura o essencial (nome, dias úteis, projetos, projeto padrão,
   rotinas) e mostra a tela; a Ajuda reabre.
 - **Projetos e objetivos** — cada projeto tem objetivos (as demandas
@@ -65,8 +69,9 @@ exclui a conta de vez.
   quê (peça, cliente, aprovação) e há quantos dias; um clique monta o texto da passagem de turno
   (aberto, aguardando e por quê, concluído nas últimas 12 h, plantão). Rotina marcada aceita uma
   **evidência** curta ("backup OK, 2,1 TB"), que vai para o PDF — e pode ser
-  exigida por rotina. Espera parada há dias vira lembrete com "Cobrei", ou
-  com um dia combinado para cobrar (no Hoje, no calendário e no e-mail da manhã).
+  exigida por rotina. Tarefa aguardando há dias (5, ajustável na Conta) sem dia
+  para cobrar ganha uma pergunta: "quer marcar quando cobrar?"; com o dia
+  combinado, o lembrete aparece no Hoje (com "Cobrei"), no calendário e no aviso da manhã.
   CSV de plantão (horas do mês) e CSV de rotinas e evidências (auditoria). Registro rápido
   entende `@projeto #chamado !plantão !alta ^amanhã !aguarda motivo — 45min` (dois `@`, dois projetos); o detalhe da tarefa copia um resumo pronto para o chamado ou o cliente.
 - **Vencimentos e base de conhecimento** — certificados, licenças, domínios e

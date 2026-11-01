@@ -5851,6 +5851,93 @@
         }
       }
     },
+    "/api/review/week": {
+      "get": {
+        "tags": [
+          "review"
+        ],
+        "summary": "Week",
+        "description": "O que fechou, o que ficou (aberto e aguardando), sugestões para a próxima\nsemana, tarefas paradas e se a revisão desta semana já foi feita.",
+        "operationId": "week_api_review_week_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/review/week/done": {
+      "post": {
+        "tags": [
+          "review"
+        ],
+        "summary": "Week Done",
+        "description": "Registra a revisão da semana (o assistente para de convidar) e devolve o\ntexto da semana pronto para copiar.",
+        "operationId": "week_done_api_review_week_done_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/WeekDoneIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Data"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/review/week/dismiss": {
+      "post": {
+        "tags": [
+          "review"
+        ],
+        "summary": "Week Dismiss",
+        "description": "\"Agora não\" no convite do assistente: não volta nesta semana.",
+        "operationId": "week_dismiss_api_review_week_dismiss_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/notes/{note_id}": {
       "delete": {
         "tags": [
@@ -6254,6 +6341,13 @@
             "minimum": 0.0,
             "title": "Summary From",
             "default": 840
+          },
+          "stale_days": {
+            "type": "integer",
+            "maximum": 60.0,
+            "minimum": 1.0,
+            "title": "Stale Days",
+            "default": 5
           }
         },
         "type": "object",
@@ -8036,6 +8130,20 @@
           "url"
         ],
         "title": "WebhookIn"
+      },
+      "WeekDoneIn": {
+        "properties": {
+          "next": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "maxItems": 3,
+            "title": "Next"
+          }
+        },
+        "type": "object",
+        "title": "WeekDoneIn"
       },
       "WorklogIn": {
         "properties": {

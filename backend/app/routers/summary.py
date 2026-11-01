@@ -11,7 +11,11 @@ router = APIRouter(prefix="/api/summary", tags=["summary"])
 
 @router.get("")
 def summary(user=Depends(active_user)):
-    return get_summary(user["user_id"])
+    out = get_summary(user["user_id"])
+    # Para o assistente do Hoje: convite da revisão semanal e tarefas paradas.
+    from ..review import hints
+    out["review"] = hints(user["user_id"])
+    return out
 
 
 @router.get("/week")

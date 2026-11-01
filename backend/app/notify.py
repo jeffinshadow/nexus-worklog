@@ -131,6 +131,9 @@ def build_morning(uid: int, today: date, show: bool) -> Mail:
     m.block("Atrasadas", atrasadas, show)
     m.block("Vencem hoje", hoje, show)
     m.block("Cobrar hoje", cobrar, show)
+    # Aguardando há N dias sem dia para cobrar (no dia N e de 7 em 7): uma pergunta, não cobrança.
+    from .review import stale_days, stale_line, stale_to_remind
+    m.block("Aguardando faz tempo", [stale_line(x) for x in stale_to_remind(abertas, today, stale_days(uid))], show)
     from .routers.renewals import list_for
     vence = [f"{r['label']} — " + ("VENCIDO" if r["days_left"] < 0 else "vence hoje" if r["days_left"] == 0
                                    else f"vence em {r['days_left']} d ({r['expires_on']:%d/%m})")

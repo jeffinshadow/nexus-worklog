@@ -1468,3 +1468,32 @@ dialog.proj-dialog { max-width: 480px; width: min(480px, calc(100vw / var(--ui-z
 .ai-tabs-note { margin-top: 16px; }
 .seg.ai-tabs { display: grid; grid-template-columns: 1fr 1fr; border-radius: var(--radius-m); margin: 8px 0 12px; }
 .seg.ai-tabs button.chip-btn { border-radius: var(--radius-s); text-align: center; }
+
+/* ---------------------------------------------------- revisão da semana -- */
+/* Três passos num diálogo só (como a Ajuda): cabeçalho e botões fixos, a lista rola. */
+dialog.review-dialog { max-width: 640px; width: min(640px, calc(100vw / var(--ui-zoom) - 32px)); max-height: min(88vh / var(--ui-zoom), 900px); overflow: hidden; }
+dialog.review-dialog[open] { display: flex; flex-direction: column; }
+dialog.review-dialog h2 { margin-bottom: 6px; outline: none; }
+dialog .review-intro { margin: 0 0 12px; line-height: 1.5; }
+.review-body { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -24px; padding: 0 24px; scrollbar-width: thin; }
+.review-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 10px 0; border-bottom: 1px solid var(--outline-variant); }
+.review-row:last-child { border-bottom: 0; }
+.review-t { flex: 1 1 240px; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.review-title { color: var(--on-surface); font-size: var(--type-body); overflow-wrap: anywhere; }
+.review-res { color: var(--on-surface-variant); font-size: var(--type-body-s); line-height: 1.45; }
+.review-state { font-family: var(--font-label); font-size: max(var(--type-label), calc(12px / var(--ui-zoom))); color: var(--on-primary-container); background: var(--primary-container); padding: 2px 9px; border-radius: var(--radius-full); }
+.review-state:empty { display: none; }
+.review-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.review-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.review-inline input[type=text] { flex: 1 1 200px; min-width: 0; }
+.review-due { display: inline-flex; align-items: center; gap: 6px; font-size: var(--type-body-s); color: var(--on-surface-variant); }
+.review-new { padding: 12px 0 4px; }
+dialog .review-count { margin: 0 0 4px; font-family: var(--font-label); font-size: max(var(--type-label), calc(12px / var(--ui-zoom))); color: var(--on-surface-variant); }
+.review-dialog .btn[aria-pressed="true"] { background: var(--primary-container); color: var(--on-primary-container); border-color: transparent; }
+.review-dialog .dialog-actions { flex-wrap: wrap; margin-top: 16px; }
+.review-dialog .review-skip { margin-right: auto; }
+.sum-review { margin-top: 12px; }
+@media (max-width: 560px) {
+  .review-acts { width: 100%; }
+  .review-acts > .review-inline { width: 100%; }
+}

@@ -168,10 +168,12 @@ function assistantPanel(me) {
   reopen.checked = a.reopen_on;
   const reopenMins = h("input", { type: "number", min: "1", max: "240", value: String(a.reopen_minutes), class: "input-sm", "aria-label": "Minutos até reabrir" });
   const summaryFrom = h("input", { type: "time", value: hhmm(a.summary_from ?? 840), class: "input-sm", "aria-label": "Horário do resumo do dia" });
+  const staleDays = h("input", { type: "number", min: "1", max: "60", value: String(a.stale_days ?? 5), class: "input-sm", "aria-label": "Dias aguardando sem data de cobrança" });
   const sync = () => {
     for (const el of [mins, from, to]) el.disabled = !idle.checked;
     reopen.disabled = !falas.checked;
     summaryFrom.disabled = !falas.checked;
+    staleDays.disabled = !falas.checked;
     reopenMins.disabled = !falas.checked || !reopen.checked;
   };
   for (const el of [idle, falas, reopen]) el.addEventListener("change", sync);
@@ -181,7 +183,8 @@ function assistantPanel(me) {
     const body = { enabled: falas.checked, idle_on: idle.checked, idle_minutes: Number(mins.value),
       idle_start: toMin(from.value || "08:00"), idle_end: toMin(to.value || "18:00"),
       reopen_on: reopen.checked, reopen_minutes: Number(reopenMins.value),
-      summary_from: Math.min(toMin(summaryFrom.value || "14:00"), 1439) };
+      summary_from: Math.min(toMin(summaryFrom.value || "14:00"), 1439),
+      stale_days: Math.min(Math.max(Number(staleDays.value) || 5, 1), 60) };
     if (body.idle_start >= body.idle_end) { toast("O início do horário precisa ser antes do fim.", { error: true }); return; }
     try {
       meChanged(me, { assistant: await api.put("/me/assistant", body) });
@@ -199,6 +202,9 @@ function assistantPanel(me) {
     h("div", { class: "idle-config" },
       h("label", {}, "Resumo do dia a partir de", summaryFrom),
       h("small", { class: "muted", text: "Ou antes, assim que a primeira tarefa ou rotina do dia for concluída." })),
+    h("div", { class: "idle-config" },
+      h("label", {}, "Perguntar quando cobrar após", staleDays, "dias aguardando"),
+      h("small", { class: "muted", text: "Só para tarefas aguardando sem dia marcado para cobrar." })),
     h("div", { class: "notice-row" },
       h("label", { class: "notice-main" }, idle, h("span", {}, h("strong", { text: "Lembrete quando passar um tempo sem registro" }),
         h("small", { text: "Só com o app aberto, nos seus dias úteis e dentro do horário abaixo. Vale registro de qualquer origem: app, celular ou IA." })))),
