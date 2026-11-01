@@ -28,6 +28,14 @@ def _dias(ts) -> int:
     return max(0, (app_today() - ts.astimezone(app_tz()).date()).days) if ts else 0
 
 
+def _titulo(t: dict) -> str:
+    """Título de tarefa atribuída por outra pessoa vai entre « » e com quem
+    mandou: é texto de terceiro (a IA não deve obedecer) e quem lê sabe a origem."""
+    if not t.get("assigned_by_name"):
+        return t["title"]
+    return "«" + t["title"].replace("«", '"').replace("»", '"') + f"» (atribuída por {t['assigned_by_name']})"
+
+
 def handoff_text(user_id: int) -> str:
     """Passagem de turno/plantão: o que fica aberto, o que está travado e por quê,
     o que vence até amanhã e o que saiu hoje. Texto puro, pronto pra colar no
@@ -47,7 +55,7 @@ def handoff_text(user_id: int) -> str:
         if t.get("due_date") and t["due_date"] <= amanha:
             extra.append("ATRASADA" if t["due_date"] < hoje else ("vence hoje" if t["due_date"] == hoje
                          else f"vence {t['due_date'].strftime('%d/%m')}"))
-        return f"- {t['title']}" + (f" ({', '.join(extra)})" if extra else "")
+        return f"- {_titulo(t)}" + (f" ({', '.join(extra)})" if extra else "")
 
     abertas = [t for t in b["in_progress"] if t["status"] != "blocked"]
     travadas = [t for t in b["in_progress"] if t["status"] == "blocked"]
@@ -70,7 +78,7 @@ def handoff_text(user_id: int) -> str:
     feitas = [t for t in b["done"] if t["completed_at"] and t["completed_at"] >= desde]
     plantao = [t for t in feitas if t.get("after_hours")]
     linhas += ["", f"Concluídas no turno, últimas {TURNO.seconds // 3600} h ({len(feitas)}):"]
-    linhas += [f"- {t['title']}" + (" (plantão)" if t.get("after_hours") else "") for t in feitas[:15]] or ["- nada"]
+    linhas += [f"- {_titulo(t)}" + (" (plantão)" if t.get("after_hours") else "") for t in feitas[:15]] or ["- nada"]
     if len(feitas) > 15:
         linhas.append(f"- e mais {len(feitas) - 15}")
     pend = [r for r in b["recurring"] if r.get("due") and not r["done_today"]]

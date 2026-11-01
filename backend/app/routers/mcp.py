@@ -25,7 +25,7 @@ from ..config import config
 from ..labels import PRIO_PT, STATUS_PT
 from ..labels import dur as _dur
 from ..schemas import (AssignIn, ChecklistIn, ChecklistUpdate, FinishIn, NoteIn, ObjectiveIn, ObjectiveUpdate, OrderIn,
-                       ProjectIn, ProjectUpdate, RecurringIn, TimeIn, TimerIn, TimerStopIn, ToggleIn, WorklogIn, WorklogUpdate)
+                       ProjectIn, ProjectUpdate, RecurringIn, RecurringUpdate, TimeIn, TimerIn, TimerStopIn, ToggleIn, WorklogIn, WorklogUpdate)
 from . import assign as assign_routes
 from . import history as history_routes
 from . import objectives as objective_routes
@@ -348,7 +348,7 @@ def t_search(ctx, args):
     for t in r["tasks"]:
         t.setdefault("check_total", 0)
         lines.append(_task_line(t | {"description": None, "project_name": t["project_name"]}, today))
-        lines += [f"    {h['kind']}: {h['text']}" for h in t["hits"] if h["kind"] != "título"][:3]
+        lines += [f"    {h['kind']}: {_quoted(t, h['text'])}" for h in t["hits"] if h["kind"] != "título"][:3]
     if r["recurring"]:
         lines += ["", "Rotinas:"] + [f"  R{x['id']} {x['label']}" + ("" if x["active"] else " (removida)") for x in r["recurring"]]
     if r["projects"]:
@@ -650,13 +650,26 @@ def _review_text(st: dict) -> str:
 
 
 def t_start_timer(ctx, args):
-    res = _call(timer_routes.start, TimerIn(task_id=int(args["task_id"])), user=ctx)
+    at = _stop_at(args.get("at"))  # mesmo formato do stop_timer ("9h", HH:MM, data e hora)
+    if at:
+        if at < datetime.now(timezone.utc) - timedelta(hours=24):
+            raise ToolError("o início passou de 24 h atrás; nada foi mudado. Para trabalho já feito, use log_time")
+        running = services.running_timer(ctx["user_id"])
+        if running and running["task_id"] != int(args["task_id"]) and at < running["started_at"]:
+            inicio = running["started_at"].astimezone(services.app_tz()).strftime("%Y-%m-%d %H:%M")
+            raise ToolError(f"essa hora é antes do início do cronômetro que está rodando (#{running['task_id']}, "
+                            f"desde {inicio}); nada foi mudado. Pare o atual com stop_timer at, ou use log_time")
+    res = _call(timer_routes.start, TimerIn(task_id=int(args["task_id"]), at=at), user=ctx)
     prev = res["stopped"]
     if prev and prev.get("needs_review"):
         extra = f" (o anterior parou: {_review_text(prev)})"
     else:
         extra = f" (o anterior parou e apontou {_dur(prev['minutes'])} em #{prev['task_id']})" if prev else ""
-    return f"Cronômetro iniciado em #{res['timer']['task_id']} {res['timer']['title']}{extra}."
+    tm = res["timer"]
+    desde = tm["started_at"].astimezone(services.app_tz()).strftime("%d/%m %H:%M")
+    if prev is None and at and abs((tm["started_at"] - at).total_seconds()) > 60:
+        return f"O cronômetro já estava rodando em #{tm['task_id']} {tm['title']} desde {desde}; o início não mudou."
+    return f"Cronômetro iniciado em #{tm['task_id']} {tm['title']} (desde {desde}){extra}."
 
 
 def _stop_at(value) -> datetime | None:
@@ -798,11 +811,15 @@ def t_get_handoff(ctx, args):
 
 def t_get_history(ctx, args):
     rows = history_routes.list_history(limit=int(args.get("limit", 20)), entity=None, entity_id=None, user=ctx)
+    # [pode desfazer] só no que ESTA chave fez: o undo do MCP recusa o resto.
+    mine = {r["id"] for r in db.query_all(
+        "SELECT id FROM audit_log WHERE user_id = %s AND token_id = %s AND id = ANY(%s)",
+        (ctx["user_id"], ctx.get("token_id"), [r["id"] for r in rows]))} if rows and ctx.get("token_id") else set()
     out = []
     for r in rows:
         who = {"web": "app", "api": f"API ({r['token_name']})", "mcp": f"IA ({r['token_name']})",
                "admin": "admin"}.get(r["actor"], r["actor"])
-        flags = " [desfeita]" if r["undone"] else (" [pode desfazer]" if r["can_undo"] else "")
+        flags = " [desfeita]" if r["undone"] else (" [pode desfazer]" if r["can_undo"] and r["id"] in mine else "")
         out.append(f"#{r['id']} {r['created_at'].astimezone(services.app_tz()):%d/%m %H:%M} {who}: {r['summary']}{flags}")
     return "\n".join(out) or "(sem histórico)"
 
@@ -810,11 +827,39 @@ def t_get_history(ctx, args):
 def t_undo(ctx, args):
     # A IA só desfaz o que ela mesma (esta chave) fez — nunca o trabalho do usuário.
     hid = int(args["history_id"])
-    row = db.query_one("SELECT token_id FROM audit_log WHERE id = %s AND user_id = %s", (hid, ctx["user_id"]))
+    row = db.query_one("SELECT id, token_id, action, entity_id, before, after FROM audit_log WHERE id = %s AND user_id = %s",
+                       (hid, ctx["user_id"]))
     if not row or row["token_id"] != ctx.get("token_id"):
         raise ToolError("só dá para desfazer ações feitas por esta chave")
+    o_que = history_routes._label(history_routes._with_names(ctx["user_id"], [row])[0])  # em português, como no histórico
     res = _call(history_routes.undo, hid, user=ctx)
-    return f"Desfeito: ação #{res['undid']} ({res['action']})."
+    return f"Desfeito (ação #{res['undid']}): {o_que}."
+
+
+def t_update_recurring(ctx, args):
+    """Edita nome, agenda, horário ou evidência pela mesma rota do app (PATCH):
+    agenda nova numa rotina com passado encerra a atual e cria outra (id novo)."""
+    uid = ctx["user_id"]
+    args = dict(args)
+    rid = args.pop("recurring_id", None)
+    if rid is None:
+        raise ToolError("informe recurring_id (veja list_recurring)")
+    if "weekdays" in args:
+        args["weekdays"] = _weekdays_mask(args["weekdays"]) or None
+    data = _call(RecurringUpdate, **args)
+    try:
+        res = _call(recurring_routes.update, int(rid), data, user=ctx)
+    except ToolError as e:
+        if str(e) == "não encontrado":
+            raise ToolError(f"rotina R{rid} não encontrada (veja list_recurring)") from None
+        if str(e) == "nada mudou na rotina":
+            raise ToolError("nada a mudar: envie label, freq (com o parâmetro dela), remind_at ou require_note") from None
+        raise
+    row = db.query_one("""SELECT id, label, freq, weekdays, month_day, interval_days, require_note, remind_at
+                            FROM recurring_tasks WHERE id = %s AND user_id = %s""", (res["id"], uid))
+    novo = (f" A agenda mudou a partir de hoje: a rotina agora é R{res['id']} (R{rid} fica no histórico com os dias "
+            "anteriores; use o id novo daqui em diante).") if res.get("replaced") else ""
+    return "Atualizada: " + _routine_line(row) + novo
 
 
 # nome -> (função, escreve?, descrição, inputSchema)
@@ -885,8 +930,10 @@ TOOLS = {
                         "after_hours": {"type": "boolean"},
                         "completed_at": {**WHEN, "description": "Corrige a data de conclusão (tarefa concluída). " + WHEN["description"]},
                         "blocked_reason": {"type": ["string", "null"], "maxLength": 120,
-                                           "description": "Com status blocked: o que se está aguardando (fornecedor, cliente, aprovação...)"},
-                        "follow_up_on": {**DATE, "type": ["string", "null"], "description": "Com status blocked: dia combinado para cobrar (AAAA-MM-DD)"},
+                                           "description": "O que se está aguardando (fornecedor, cliente, aprovação...). Tarefa que já aguarda: "
+                                                          "basta mandar o motivo novo. Tarefa que não aguarda: mande status blocked junto (sem ele, dá erro)"},
+                        "follow_up_on": {**DATE, "type": ["string", "null"], "description": "Dia combinado para cobrar (AAAA-MM-DD); "
+                                         "mesma regra do blocked_reason: só em tarefa aguardando ou com status blocked junto"},
                         "resolution": {"type": ["string", "null"], "maxLength": 1000,
                                        "description": "Como foi resolvido (tarefa concluída; null apaga)"}}}),
     "get_summary": (t_get_summary, False, "Resumo para a daily/retro: o último dia útil e a semana até hoje (rotinas, tarefas concluídas, tempo por projeto, o que ficou para trás).",
@@ -1001,8 +1048,13 @@ TOOLS = {
                              "remind_at": {"type": ["string", "null"], "description": "Horário HH:MM (o app lembra perto dele)"},
                              "require_note": {"type": "boolean", "default": False,
                                               "description": "Marcar exige evidência (note em set_recurring)"}}}),
-    "start_timer": (t_start_timer, True, "Inicia o cronômetro numa tarefa aberta (se outro estiver rodando, ele para e aponta o tempo).",
-                    {"type": "object", "required": ["task_id"], "properties": {"task_id": {"type": "integer"}}}),
+    "start_timer": (t_start_timer, True, "Inicia o cronômetro numa tarefa aberta (se outro estiver rodando, ele para e aponta o tempo). "
+                    "Se a pessoa começou antes e ainda está trabalhando (“comecei às 9h”), informe at. Se o trabalho já "
+                    "terminou, não use o cronômetro: aponte com log_time.",
+                    {"type": "object", "required": ["task_id"], "properties": {
+                        "task_id": {"type": "integer"},
+                        "at": {"type": "string", "description": "Hora em que começou: HH:MM ou “9h” (a mais recente que já passou) "
+                               "ou AAAA-MM-DDTHH:MM, fuso " + config.APP_TZ + ". Padrão: agora. Até 24 h atrás"}}}),
     "stop_timer": (t_stop_timer, True,
                    "Para o cronômetro e aponta o tempo na tarefa. Se a pessoa parou antes (“parei às 18h”), informe at.",
                    {"type": "object", "properties": {
@@ -1039,11 +1091,24 @@ TOOLS = {
                         "after_hours": {"type": "boolean", "default": False}}}),
     "list_assigned": (t_list_assigned, False, "Atribuidor: tarefas que você atribuiu, com o status atual.",
                       {"type": "object", "properties": {}}),
-    "get_history": (t_get_history, False, "Últimas ações na conta (app, API ou IA), com o que pode ser desfeito.",
+    "get_history": (t_get_history, False, "Últimas ações na conta (app, API ou IA). [pode desfazer] marca o que esta chave "
+                    "pode desfazer com undo (só o que ela mesma fez); o resto a pessoa desfaz no app, em Histórico.",
                     {"type": "object", "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 20}}}),
     "undo": (t_undo, True, "Desfaz uma ação do histórico (só a mais recente de cada item).",
              {"type": "object", "required": ["history_id"], "properties": {"history_id": {"type": "integer"}}}),
 }
+
+# Mesmos campos do create_recurring (sem padrões: o que não vier não muda), mais o id.
+TOOLS["update_recurring"] = (
+    t_update_recurring, True,
+    "Edita uma rotina: nome, agenda (freq com o parâmetro dela), horário do lembrete (remind_at; null tira) ou se "
+    "exige evidência. Envie só o que muda. Mudar a agenda de uma rotina que já tem dias passados cria um id novo "
+    "a partir de hoje (o passado fica como estava). A IA não remove rotinas.",
+    {"type": "object", "required": ["recurring_id"], "properties": {
+        "recurring_id": {"type": "integer", "description": "id da rotina (R<n> em get_today/list_recurring), não de tarefa"},
+        **{k: {kk: vv for kk, vv in v.items() if kk != "default"}
+           for k, v in TOOLS["create_recurring"][3]["properties"].items()},
+        "remind_at": {"type": ["string", "null"], "description": "Horário HH:MM (o app lembra perto dele); null tira o horário"}}})
 
 PROMPTS = {
     "resumo_semanal": {
