@@ -34,7 +34,7 @@ class DeleteMeIn(BaseModel):
 
 
 class ConsentIn(BaseModel):
-    accept: bool  # aceitar receber tarefas de um atribuidor
+    accept: bool  # aceitar (receber tarefas de um atribuidor / ser visto pelo visualizador)
 
 
 class AssignIn(BaseModel):

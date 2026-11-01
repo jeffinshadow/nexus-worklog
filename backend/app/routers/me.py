@@ -108,9 +108,9 @@ def put_assistant(data: AssistantIn, user=Depends(web_active_csrf)):
 
 @router.get("/visibility")
 def visibility(user=Depends(web_active)):
-    """Quem, além da pessoa, alcança o registro dela (Configurações > Conta):
-    visualizador (registros, relatórios e fotos de todos) e admin (que concede
-    papéis). Só nome e papel; sem e-mail."""
+    """Quem, além da pessoa, tem papel que alcança o registro dela (Configurações >
+    Conta): visualizador (registro, relatórios e fotos de quem aceitou, ver
+    PUT /me/viewers) e admin (que concede papéis). Só nome e papel; sem e-mail."""
     rows = db.query_all(
         """SELECT u.email, u.display_name, array_agg(r.role ORDER BY r.role) AS roles
              FROM users u JOIN user_roles r ON r.user_id = u.id
@@ -184,6 +184,18 @@ def put_assignments(data: ConsentIn, user=Depends(web_active_csrf)):
         audit.record(user, "assignments.consent", "user", uid,
                      before={"accept": before is not None}, after={"accept": after is not None})
     return {"accepts_assignments_at": after}
+
+
+@router.put("/viewers")
+def put_viewers(data: ConsentIn, user=Depends(web_active_csrf)):
+    """Aceite do visualizador (só pelo app): com ele, quem tem o papel viewer vê
+    o registro da pessoa em Equipe (quadro, números, PDF, horas, fotos)."""
+    uid = user["user_id"]
+    before = db.query_one("SELECT viewers_allowed FROM users WHERE id = %s", (uid,))["viewers_allowed"]
+    db.execute("UPDATE users SET viewers_allowed = %s WHERE id = %s", (data.accept, uid))
+    if before != data.accept:
+        audit.record(user, "viewers.consent", "user", uid, before={"accept": before}, after={"accept": data.accept})
+    return {"viewers_allowed": data.accept}
 
 
 @router.post("/delete")

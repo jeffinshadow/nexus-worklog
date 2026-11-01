@@ -3334,7 +3334,7 @@
           "me"
         ],
         "summary": "Visibility",
-        "description": "Quem, além da pessoa, alcança o registro dela (Configurações > Conta):\nvisualizador (registros, relatórios e fotos de todos) e admin (que concede\npapéis). Só nome e papel; sem e-mail.",
+        "description": "Quem, além da pessoa, tem papel que alcança o registro dela (Configurações >\nConta): visualizador (registro, relatórios e fotos de quem aceitou, ver\nPUT /me/viewers) e admin (que concede papéis). Só nome e papel; sem e-mail.",
         "operationId": "visibility_api_me_visibility_get",
         "responses": {
           "200": {
@@ -3536,6 +3536,46 @@
         "summary": "Put Assignments",
         "description": "Consentimento para receber tarefas de um atribuidor (só pelo app).\nDesligar não mexe nas tarefas já recebidas.",
         "operationId": "put_assignments_api_me_assignments_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsentIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/me/viewers": {
+      "put": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Put Viewers",
+        "description": "Aceite do visualizador (só pelo app): com ele, quem tem o papel viewer vê\no registro da pessoa em Equipe (quadro, números, PDF, horas, fotos).",
+        "operationId": "put_viewers_api_me_viewers_put",
         "requestBody": {
           "content": {
             "application/json": {
@@ -4186,7 +4226,7 @@
           "viewer"
         ],
         "summary": "Team Time Csv",
-        "description": "Apontamentos de todos os usuários (some por cliente/projeto na planilha).",
+        "description": "Apontamentos de quem aceitou o visualizador (some por cliente/projeto na planilha).",
         "operationId": "team_time_csv_api_viewer_export_apontamentos_csv_get",
         "responses": {
           "200": {

@@ -51,16 +51,18 @@ def _tasks(uid: int) -> list[dict]:
             WHERE w.user_id = %s ORDER BY w.created_at""", (uid,))
 
 
-def time_csv(uid: int | None, filename: str) -> Response:
-    """Apontamentos em CSV. uid=None = de todos (admin: horas da equipe por
-    cliente; o projeto vai por nome, pois cada pessoa tem os seus)."""
+def time_csv(uid: int | None, filename: str, viewable_only: bool = False) -> Response:
+    """Apontamentos em CSV. uid=None = de todos (visualizador: horas da equipe
+    por cliente; o projeto vai por nome, pois cada pessoa tem os seus).
+    viewable_only = só de quem aceitou o visualizador."""
     rows = db.query_all(
         """SELECT e.day, e.minutes, w.id AS task_id, w.title, p.name AS project, e.note, e.actor, e.token_name,
                   w.ticket, w.after_hours, u.email
              FROM time_entries e JOIN worklog_tasks w ON w.id = e.task_id
              JOIN users u ON u.id = e.user_id
              LEFT JOIN projects p ON p.id = w.project_id
-            WHERE (%(uid)s::bigint IS NULL OR e.user_id = %(uid)s) ORDER BY e.day, u.email, e.id""", {"uid": uid})
+            WHERE (%(uid)s::bigint IS NULL OR e.user_id = %(uid)s) AND (NOT %(vo)s OR u.viewers_allowed)
+            ORDER BY e.day, u.email, e.id""", {"uid": uid, "vo": viewable_only})
     header = ["data", "minutos", "horas", "tarefa_id", "tarefa", "projeto", "observacao", "origem", "chamado", "plantao"]
     data = [[r["day"], r["minutes"], str(round(r["minutes"] / 60, 2)).replace(".", ","), r["task_id"], r["title"],
              r["project"] or "", r["note"] or "", r["token_name"] or r["actor"], r["ticket"] or "",
@@ -185,7 +187,7 @@ def export(kind: str, user=Depends(active_user)):
             "exported_at": datetime.now(app_tz()),
             "user": db.query_one("SELECT email, work_days, created_at FROM users WHERE id = %s", (uid,)),
             "profile": db.query_one(
-                """SELECT display_name, theme, ticket_url, default_project_id, accepts_assignments_at,
+                """SELECT display_name, theme, ticket_url, default_project_id, accepts_assignments_at, viewers_allowed,
                           EXISTS (SELECT 1 FROM user_avatars a WHERE a.user_id = users.id) AS has_avatar
                      FROM users WHERE id = %s""", (uid,)),
             "prefs": {"email": prefs("notification_prefs"), "push": prefs("push_prefs"),

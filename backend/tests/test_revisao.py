@@ -190,6 +190,7 @@ def test_mcp_hoje_respeita_agenda_e_resumo(usuario):
 def test_admin_exporta_horas_da_equipe(admin, usuario, novo_usuario):
     outro = novo_usuario("outro@example.com")
     for u, m in ((usuario, 30), (outro, 45)):
+        u.put("/me/viewers", {"accept": True})
         pid = u.post("/projects", {"name": "Loja X"}).json()["id"]
         tid = u.post("/worklog", {"title": "Cabear", "project_id": pid}).json()["id"]
         u.post(f"/worklog/{tid}/time", {"minutes": m})

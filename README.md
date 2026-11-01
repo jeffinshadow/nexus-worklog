@@ -11,7 +11,8 @@ Cada pessoa vê **apenas** os próprios dados. As contas são criadas pelo
 acumuláveis, dados em **Admin > Permissões**: **Usuário** (o próprio registro),
 **Admin** (contas, permissões, configurações), **Atribuidor de tarefas** (manda
 tarefas a quem aceitou receber) e **Visualizador de tarefas** (consulta, só
-para leitura, o quadro, a retrospectiva e os relatórios de cada pessoa).
+para leitura, o quadro, a retrospectiva, os relatórios, as horas e as fotos de
+quem **aceitou** em Configurações > Conta; contas novas começam sem o aceite).
 
 **Manual de uso, tela por tela:** [shadow.tec.br/nexus-manual](https://shadow.tec.br/nexus-manual).
 
@@ -260,8 +261,13 @@ incidente e outra quando volta. Logs com rotação (10 MB × 5 por serviço).
     dump que a continha é descartado (até 14 deploys depois).
   - **Pedidos de convite** (nome, e-mail e motivo de quem ainda não tem conta):
     apagados 30 dias depois de decididos, ou em 180 dias sem resposta.
-  - **Quem vê o seu registro**: o visualizador (registros, relatórios e fotos de
-    todos) e o admin (que concede papéis); os nomes aparecem em Configurações > Conta.
+  - **Quem vê o seu registro**: só você, até você ligar "Permitir que
+    visualizadores vejam meu registro" em Configurações > Conta. Ligado, o
+    visualizador vê (sem editar) quadro, números, PDF, horas e fotos; quem não
+    aceitou não aparece em Equipe nem no CSV da equipe. O admin não vê
+    registros. A linha "Quem pode ver seu registro" mostra os nomes, e a mudança
+    fica no seu histórico. Contas que já existiam quando o aceite chegou
+    (sql/027) ficaram ligadas; contas novas começam desligadas.
 - **Sem rastreamento**: só o cookie de sessão; e-mails sem pixel nem links
   redirecionados; CSV exportado neutraliza fórmulas.
 
