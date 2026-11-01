@@ -1,7 +1,7 @@
 import logging
 import re
 from datetime import date, datetime, time, timedelta, timezone
-from typing import Literal, Optional
+from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from psycopg.errors import UniqueViolation
@@ -185,12 +185,18 @@ def list_tasks(
     by: Literal["created", "completed"] = "created",
     status: Literal["open", "done", "all"] = "all",
     limit: int = Query(default=200, ge=1, le=500),
+    external_ref: Annotated[Optional[str], Query(min_length=1, max_length=120)] = None,  # Annotated: idem (MCP)
     user=Depends(active_user),
 ):
     """Tarefas por período (dias inclusivos, fuso da app), pela criação ou
-    pela conclusão: para conferir o que já foi lançado sem baixar tudo."""
+    pela conclusão: para conferir o que já foi lançado sem baixar tudo.
+    Com external_ref: só a tarefa com essa chave (lista vazia se não houver)."""
     col = "w.completed_at" if by == "completed" else "w.created_at"
     cond, params = ["w.user_id = %(uid)s"], {"uid": user["user_id"], "tz": app_tz().key, "lim": limit}
+    if external_ref is not None:
+        found = _by_ref(user["user_id"], external_ref.strip())
+        cond.append("w.id = %(ref_id)s")
+        params["ref_id"] = found["id"] if found else 0
     if start:
         cond.append(f"({col} AT TIME ZONE %(tz)s)::date >= %(start)s")
         params["start"] = start
@@ -384,16 +390,35 @@ def delete(task_id: int, user=Depends(active_user_csrf)):
 
 # ------------------------------------------------------------- anotações --
 
+NOTE_COLS = "id, task_id, body, actor, token_name, created_at, external_ref"
+TIME_COLS = "id, task_id, minutes, day, note, actor, token_name, created_at, external_ref"
+
+
+def _child_by_ref(table: str, cols: str, uid: int, ref):
+    """Anotação/apontamento já criado com essa chave externa (idempotência)."""
+    return ref and db.query_one(f"SELECT {cols} FROM {table} WHERE user_id = %s AND external_ref = %s", (uid, ref))
+
+
 @router.post("/{task_id}/notes", status_code=201)
-def add_note(task_id: int, data: NoteIn, user=Depends(active_user_csrf)):
+def add_note(task_id: int, data: NoteIn, response: Response = None, user=Depends(active_user_csrf)):
+    """Com external_ref já usado, devolve a anotação que existe (200, existing)."""
     task = _own_task(user["user_id"], task_id)
-    row = db.query_one(
-        """INSERT INTO task_notes (task_id, user_id, body, actor, token_name)
-           VALUES (%s, %s, %s, %s, %s) RETURNING id, body, actor, token_name, created_at""",
-        (task_id, user["user_id"], data.body.strip(), user.get("actor", "web"), user.get("token_name")),
-    )
+    if found := _child_by_ref("task_notes", NOTE_COLS, user["user_id"], data.external_ref):
+        response.status_code = 200
+        return {**found, "existing": True}
+    try:
+        row = db.query_one(
+            f"""INSERT INTO task_notes (task_id, user_id, body, actor, token_name, external_ref)
+               VALUES (%s, %s, %s, %s, %s, %s) RETURNING {NOTE_COLS}""",
+            (task_id, user["user_id"], data.body.strip(), user.get("actor", "web"), user.get("token_name"),
+             data.external_ref),
+        )
+    except UniqueViolation:  # duas chamadas iguais ao mesmo tempo: a segunda devolve a primeira
+        response.status_code = 200
+        return {**_child_by_ref("task_notes", NOTE_COLS, user["user_id"], data.external_ref), "existing": True}
     audit.record(user, "note.create", "note", row["id"],
-                 after={"task_id": task_id, "title": task["title"], "body": row["body"][:120]})
+                 after={"task_id": task_id, "title": task["title"], "body": row["body"][:120],
+                        "external_ref": data.external_ref})
     return row
 
 
@@ -462,8 +487,13 @@ def delete_item(item_id: int, user=Depends(active_user_csrf)):
 # ------------------------------------------------------------------ tempo --
 
 @router.post("/{task_id}/time", status_code=201)
-def log_time(task_id: int, data: TimeIn, user=Depends(active_user_csrf)):
+def log_time(task_id: int, data: TimeIn, response: Response = None, user=Depends(active_user_csrf)):
+    """Com external_ref já usado, devolve o apontamento que existe (200, existing)
+    sem somar de novo: a automação que repete por timeout não aponta em dobro."""
     task = _own_task(user["user_id"], task_id)
+    if found := _child_by_ref("time_entries", TIME_COLS, user["user_id"], data.external_ref):
+        response.status_code = 200
+        return {**found, "existing": True}
     today = app_today()
     day = data.day or today
     if day > today:
@@ -471,15 +501,19 @@ def log_time(task_id: int, data: TimeIn, user=Depends(active_user_csrf)):
     if (today - day).days > TIME_MAX_PAST_DAYS:
         raise HTTPException(status_code=400, detail=f"apontamento até {TIME_MAX_PAST_DAYS} dias atrás")
     check_day_total(user["user_id"], day, data.minutes)
-    row = db.query_one(
-        """INSERT INTO time_entries (task_id, user_id, minutes, day, note, actor, token_name)
-           VALUES (%s, %s, %s, %s, %s, %s, %s)
-        RETURNING id, minutes, day, note, actor, token_name, created_at""",
-        (task_id, user["user_id"], data.minutes, day, (data.note or "").strip() or None,
-         user.get("actor", "web"), user.get("token_name")),
-    )
+    try:
+        row = db.query_one(
+            f"""INSERT INTO time_entries (task_id, user_id, minutes, day, note, actor, token_name, external_ref)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING {TIME_COLS}""",
+            (task_id, user["user_id"], data.minutes, day, (data.note or "").strip() or None,
+             user.get("actor", "web"), user.get("token_name"), data.external_ref),
+        )
+    except UniqueViolation:
+        response.status_code = 200
+        return {**_child_by_ref("time_entries", TIME_COLS, user["user_id"], data.external_ref), "existing": True}
     audit.record(user, "time.create", "time", row["id"],
-                 after={"task_id": task_id, "title": task["title"], "minutes": data.minutes, "day": day})
+                 after={"task_id": task_id, "title": task["title"], "minutes": data.minutes, "day": day,
+                        "external_ref": data.external_ref})
     return row
 
 

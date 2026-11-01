@@ -428,6 +428,12 @@ class ProjectUpdate(BaseModel):
 
 class NoteIn(BaseModel):
     body: str = Field(min_length=1, max_length=2000)
+    external_ref: Optional[str] = Ref  # repetida devolve a existente
+
+    @model_validator(mode="after")
+    def _norm(self):
+        self.external_ref = _ref(self.external_ref)
+        return self
 
 
 class ChecklistIn(BaseModel):
@@ -443,6 +449,12 @@ class TimeIn(BaseModel):
     minutes: int = Field(ge=1, le=1440)
     day: Optional[date] = None  # padrão: hoje
     note: Optional[str] = Field(default=None, max_length=200)
+    external_ref: Optional[str] = Ref  # repetido devolve o existente
+
+    @model_validator(mode="after")
+    def _norm(self):
+        self.external_ref = _ref(self.external_ref)
+        return self
 
 
 # Avisos por e-mail: os padrões daqui valem também quando o usuário ainda não
