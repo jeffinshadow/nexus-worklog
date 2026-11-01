@@ -8,13 +8,13 @@ Prioridades: **simples > seguro > funcional > elegante**.
 
 Cada pessoa vê **apenas** os próprios dados. As contas são criadas pelo
 **admin** (convite com senha temporária); não há cadastro público. Papéis
-acumuláveis, dados em **Admin > Usuários > ⋮ > Papéis…**: **Usuário** (o próprio registro),
-**Admin** (convites, contas, papéis, configurações), **Atribuidor de tarefas** (manda
-tarefas a quem aceitou receber) e **Visualizador de tarefas** (consulta, só
+acumuláveis, dados em **Admin > Contas > ⋮ > Papéis…**: **Usuário** (o próprio registro),
+**Admin** (convites, contas, papéis, configurações), **Manda tarefas** (libera a tela Atribuir:
+manda tarefas a quem aceitou receber) e **Vê a equipe** (libera a tela Equipe: consulta, só
 para leitura, o quadro, a retrospectiva, os relatórios, as horas e as fotos de
 quem **aceitou** em Configurações > Conta; contas novas começam sem o aceite, e
 os Papéis… de cada conta mostram quem liberou). O admin também tem o próprio registro;
-em Admin > Usuários ele busca a conta, reenvia ou **cancela um convite** ainda
+em Admin > Contas ele busca a conta, reenvia ou **cancela um convite** ainda
 não aceito, redefine a senha, **bloqueia o acesso** (a pessoa sai de todos os
 aparelhos, chaves e passkeys param, os dados ficam; Redefinir senha libera) ou
 exclui a conta de vez.
@@ -201,7 +201,7 @@ cd nexus-worklog
      STARTTLS), `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM`, `APP_URL`
 2. `docker compose up -d --build` — o nginx fica em `127.0.0.1:${WEB_PORT}`.
 3. Entre com o admin: a troca de senha é obrigatória no primeiro acesso.
-   Depois, **Admin > Novo usuário** cria as contas.
+   Depois, **Admin > Convidar pessoa** cria as contas.
 
 Desenvolvimento com e-mail falso: `docker-compose.mailpit.yml` (instruções no
 próprio arquivo).
@@ -262,7 +262,7 @@ incidente e outra quando volta. Logs com rotação (10 MB × 5 por serviço).
   em sandbox.
 - **Seus dados (LGPD)**: cada pessoa exporta tudo em JSON ou CSV (Meu mês > Relatórios) e
   exclui a própria conta em Configurações > Conta (com a senha); o admin também
-  exclui uma conta (Admin > Usuários, confirmando o e-mail). Tarefas, rotinas,
+  exclui uma conta (Admin > Contas, confirmando o e-mail). Tarefas, rotinas,
   tempo, anotações, chaves e histórico vão junto; ficam só o e-mail e as contagens
   no histórico de quem excluiu (180 dias). O último admin não sai. O JSON leva
   também perfil, preferências, modelos, projetos com objetivos e as chaves
@@ -276,8 +276,8 @@ incidente e outra quando volta. Logs com rotação (10 MB × 5 por serviço).
   - **Pedidos de convite** (nome, e-mail e motivo de quem ainda não tem conta):
     apagados 30 dias depois de decididos, ou em 180 dias sem resposta.
   - **Quem vê o seu registro**: só você, até você ligar "Permitir que
-    visualizadores vejam meu registro" em Configurações > Conta. Ligado, o
-    visualizador vê (sem editar) quadro, números, PDF, horas e fotos; quem não
+    quem tem o papel “Vê a equipe” veja meu registro" em Configurações > Conta. Ligado,
+    quem tem esse papel vê (sem editar) quadro, números, PDF, horas e fotos; quem não
     aceitou não aparece em Equipe nem no CSV da equipe. O admin não vê
     registros. A linha "Quem pode ver seu registro" mostra os nomes, e a mudança
     fica no seu histórico. Contas que já existiam quando o aceite chegou

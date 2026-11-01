@@ -48,7 +48,7 @@ ACTION_LABELS = {
     "user.block": "bloqueou o acesso",
     "user.invite_cancel": "cancelou o convite",
     "assignments.consent": "alterou o aceite de tarefas atribuídas",
-    "viewers.consent": "alterou o aceite do visualizador",
+    "viewers.consent": "alterou quem vê a equipe pode ver seu registro",
     "user.roles": "alterou as permissões",
     "user.delete": "excluiu a conta",
     "renewal.create": "cadastrou o vencimento",
@@ -144,8 +144,8 @@ def _label(row) -> str:
     if row["action"] == "assignments.consent" and row["after"]:
         return "passou a aceitar tarefas atribuídas" if row["after"].get("accept") else "deixou de aceitar tarefas atribuídas"
     if row["action"] == "viewers.consent" and row["after"]:
-        return ("passou a permitir que visualizadores vejam seu registro" if row["after"].get("accept")
-                else "deixou de permitir que visualizadores vejam seu registro")
+        return ("passou a permitir que quem vê a equipe veja seu registro" if row["after"].get("accept")
+                else "deixou de permitir que quem vê a equipe veja seu registro")
     if row["action"] == "user.roles" and row["after"]:
         from ..roles import LABELS
         papeis = ", ".join(LABELS.get(r, r) for r in row["after"].get("roles", [])) or "nenhum"

@@ -7,8 +7,8 @@ import { avatar } from "./profile.js";
 const ROLES = [
   ["user", "Usuário", "tem o próprio registro (Hoje, Tarefas, Rotinas) e pode receber tarefas"],
   ["admin", "Admin", "convites, contas, papéis e configurações gerais"],
-  ["assigner", "Atribuidor de tarefas", "manda tarefas para quem aceitou receber"],
-  ["viewer", "Visualizador de tarefas", "vê, sem editar, os registros de quem permitir (cada pessoa libera em Configurações > Conta)"],
+  ["assigner", "Manda tarefas", "libera a tela Atribuir: manda tarefas para quem aceitou receber"],
+  ["viewer", "Vê a equipe", "libera a tela Equipe: vê, sem editar, o registro (quadro, números, PDF, horas e fotos) de quem permitir (cada pessoa libera em Configurações > Conta)"],
 ];
 
 const phone = () => matchMedia("(max-width: 860px)").matches;
@@ -48,7 +48,7 @@ export async function mount(root, ctx) {
   const seg = h("div", { class: "seg", role: "tablist", "aria-label": "Admin" });
   const body = h("div");
   const abas = [
-    ["usuarios", "Usuários", (el) => mountUsers(el, ctx.me)],
+    ["usuarios", "Contas", (el) => mountUsers(el, ctx.me)],
     ["geral", "Geral", (el) => mountGeneral(el, ctx.me)],
     ["identidade", "Identidade visual", (el) => mountBranding(el)],
   ];
@@ -71,7 +71,7 @@ async function mountUsers(root, me) {
   clear(root);
   const users = await api.get("/admin/users");
   const emailById = new Map(users.map((u) => [String(u.id), u.email]));
-  const inviteBtn = h("button", { type: "button", class: "btn btn-primary", onClick: onInvite }, icon("add"), "Novo usuário");
+  const inviteBtn = h("button", { type: "button", class: "btn btn-primary", onClick: onInvite }, icon("add"), "Convidar pessoa");
   const rows = users.map((u) => [userRow(u), userText(u)]);
   const list = h("section", { class: "panel admin-users" },
     h("div", { class: "panel-head" }, h("h2", { text: "Contas" }), h("div", { class: "spacer" }), inviteBtn),
@@ -211,7 +211,7 @@ async function mountUsers(root, me) {
     catch (e) { errorToast(e, "Não foi possível reenviar."); }
   }
 
-  // ---- Novo usuário (convite). Com e-mail no servidor: link por e-mail (a
+  // ---- Convidar pessoa (convite). Com e-mail no servidor: link por e-mail (a
   // pessoa cria a senha); sem: senha temporária, trocada no 1º login ----
   async function onInvite() {
     const byLink = await api.get("/auth/options").then((o) => o.email).catch(() => false);
@@ -253,7 +253,7 @@ async function mountUsers(root, me) {
         submit.disabled = false;
       }
     }));
-    const dlg = modal(h("h2", { text: "Novo usuário" }), form);
+    const dlg = modal(h("h2", { text: "Convidar pessoa" }), form);
     input.focus();
   }
 
@@ -279,7 +279,7 @@ async function mountUsers(root, me) {
 }
 
 
-// ---- Papéis de uma conta (acumuláveis), pelo ⋮ da linha em Usuários ----
+// ---- Papéis de uma conta (acumuláveis), pelo ⋮ da linha em Contas ----
 // Marcou ou desmarcou, já vale; dar Admin e tirar Usuário pedem confirmação.
 function editRoles(u, me, onChanged) {
   const who = u.display_name || u.email;
@@ -316,8 +316,8 @@ function editRoles(u, me, onChanged) {
   const consent = h("p", { class: "dialog-note" });
   const paintConsent = () => {
     consent.textContent = !u.roles.includes("user") ? "" : u.viewers_allowed
-      ? "O registro desta conta está liberado aos visualizadores (cada pessoa decide em Configurações > Conta)."
-      : "O registro desta conta não está liberado aos visualizadores (cada pessoa decide em Configurações > Conta).";
+      ? "O registro desta conta está liberado a quem vê a equipe (cada pessoa decide em Configurações > Conta)."
+      : "O registro desta conta não está liberado a quem vê a equipe (cada pessoa decide em Configurações > Conta).";
   };
   paintConsent();
   const dlg = modal(h("h2", { text: `Papéis de ${who}` }),

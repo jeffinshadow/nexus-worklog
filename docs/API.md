@@ -37,8 +37,8 @@ Authorization: Bearer nxs_...
   header `X-CSRF-Token` (senão 403).
 
 **Papéis** (acumuláveis, em `roles` no `/api/auth/me`): `user` (o próprio registro),
-`admin` (contas, permissões, configurações), `assigner` (atribui tarefas) e `viewer`
-(registros e relatórios de quem aceitou, `PUT /api/me/viewers`). Todo dado é filtrado por `user_id`; `/api/admin/*`
+`admin` (contas, permissões, configurações), `assigner` ("Manda tarefas", tela Atribuir) e `viewer` ("Vê a equipe", tela Equipe:
+registros e relatórios de quem aceitou, `PUT /api/me/viewers`). Todo dado é filtrado por `user_id`; `/api/admin/*`
 e `/api/viewer/*` exigem o papel com sessão do app.
 
 | Código | Quando |
@@ -105,7 +105,7 @@ apaga as passkeys da conta; "Esqueci a senha" mantém e avisa por e-mail.
 | `GET /activity` | S | `{last_activity, timer}`: último registro de qualquer origem (tarefa, rotina, anotação, checklist, tempo, cronômetro) e o cronômetro rodando |
 | `PUT /tickets` | S W | `{ticket_url}` — endereço do sistema de chamados; `{id}` vira o número (sem `{id}`, vai no fim) |
 | `PUT /assignments` | S W | `{accept}` — aceitar receber tarefas de um atribuidor (desligar não mexe nas recebidas) |
-| `PUT /viewers` | S W | `{accept}` → `{viewers_allowed}` — permitir que visualizadores vejam seu registro (quadro, números, PDF, horas, fotos). Contas novas começam com `false`; vai ao histórico (`viewers.consent`) |
+| `PUT /viewers` | S W | `{accept}` → `{viewers_allowed}` — permitir que quem tem o papel "Vê a equipe" (`viewer`) veja seu registro (quadro, números, PDF, horas, fotos). Contas novas começam com `false`; vai ao histórico (`viewers.consent`) |
 | `POST /delete` | S W | `{password}` — exclui a conta e todos os dados dela; o último admin não sai |
 
 ## Cronômetro e modelos
@@ -310,7 +310,7 @@ Aparecem no Hoje (só os no aviso), no e-mail da manhã e no calendário (dia de
 | `POST /users/{id}/delete` | W | `{confirm_email}` — exclui a conta e todos os dados (não a própria, nunca o último admin); e-mail e contagens ficam no histórico de quem excluiu |
 | `GET /settings` · `PUT /settings` | W | `{retro_days (1–366), support_contact?}` |
 
-## Visualizador — `/api/viewer` (só pelo app, papel viewer)
+## Vê a equipe — `/api/viewer` (só pelo app, papel viewer; tela Equipe)
 
 | Rota | | Observação |
 | --- | --- | --- |

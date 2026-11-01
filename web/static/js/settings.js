@@ -15,7 +15,9 @@ const TABS = [
   ["ia", "IA e API"],
 ];
 const OLD_TABS = { dias: "conta", chaves: "ia" }; // links antigos
-const ROLE_SHORT = { admin: "admin", assigner: "atribui tarefas", viewer: "visualizador" };
+// Os mesmos nomes do Admin (cada papel com o nome do que ele faz; a tela vem junto).
+const ROLE_SHORT = { admin: "Admin", assigner: "Manda tarefas", viewer: "Vê a equipe" };
+const ROLE_SCREEN = { admin: "tela Admin", assigner: "tela Atribuir", viewer: "tela Equipe" };
 
 // Dias úteis como máscara de bits, domingo = bit 0 (igual ao backend).
 const DAYS = [
@@ -752,7 +754,7 @@ function assignments(me) {
     finally { cb.disabled = false; }
   });
   return [
-    h("p", { class: "help", text: "Quem tem o papel de atribuir tarefas pode mandar tarefas para você, mas só se você permitir aqui. A tarefa recebida é sua: você edita, conclui ou exclui. Quem mandou só corrige ou cancela enquanto ela está a fazer e você não registrou nada nela." }),
+    h("p", { class: "help", text: "Quem tem o papel “Manda tarefas” (tela Atribuir) pode mandar tarefas para você, mas só se você permitir aqui. A tarefa recebida é sua: você edita, conclui ou exclui. Quem mandou só corrige ou cancela enquanto ela está a fazer e você não registrou nada nela." }),
     h("label", { class: "check-line" }, cb, h("span", { text: "Permitir que me atribuam tarefas" })),
     since];
 }
@@ -849,7 +851,7 @@ function account(me) {
   }));
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Conta" })),
-    h("p", { class: "help mono", text: [me.email, ...(me.roles || []).filter((r) => r !== "user").map((r) => ROLE_SHORT[r])].join(" · ") }),
+    h("p", { class: "help mono", text: [me.email, ...(me.roles || []).filter((r) => r !== "user").map((r) => `${ROLE_SHORT[r]} (${ROLE_SCREEN[r]})`)].join(" · ") }),
     form);
 }
 
@@ -863,7 +865,7 @@ function seenBy(me) {
   let list = [];
   const paint = () => {
     const viewers = list.filter((p) => p.roles.includes("viewer")).map((p) => p.name);
-    help.textContent = `${viewers.length ? `Visualizadores (${viewers.join(", ")})` : "Visualizadores (hoje, ninguém tem esse papel)"} veem, sem editar, seu quadro, seus números, seus relatórios em PDF, suas horas e suas fotos. Só se você permitir.`;
+    help.textContent = `Quem tem o papel “Vê a equipe” (${viewers.length ? viewers.join(", ") : "hoje, ninguém"}) vê na tela Equipe, sem editar, seu quadro, seus números, seus relatórios em PDF, suas horas e suas fotos. Só se você permitir.`;
     const names = list.map((p) => `${p.name} (${p.roles.map((r) => ROLE_SHORT[r]).join(", ")})`);
     line.textContent = cb.checked
       ? `Quem pode ver seu registro: ${names.length ? names.join(", ") : "só você"}.`
@@ -877,9 +879,9 @@ function seenBy(me) {
       const res = await api.put("/me/viewers", { accept: cb.checked });
       meChanged(me, res);
       paint();
-      toast(cb.checked ? "Pronto: visualizadores veem seu registro." : "Visualizadores não veem mais seu registro.");
+      toast(cb.checked ? "Pronto: quem vê a equipe vê seu registro." : "Quem vê a equipe não vê mais seu registro.");
     } catch (e) { cb.checked = !cb.checked; errorToast(e); }
     finally { cb.disabled = false; }
   });
-  return [help, h("label", { class: "check-line" }, cb, h("span", { text: "Permitir que visualizadores vejam meu registro" })), line];
+  return [help, h("label", { class: "check-line" }, cb, h("span", { text: "Permitir que quem tem o papel “Vê a equipe” veja meu registro" })), line];
 }
