@@ -9,8 +9,15 @@ let CSRF = null;
 // é texto; validação (lista do FastAPI), rede e respostas sem JSON, genéricas.
 function messageFor(status, data) {
   const d = data && data.detail;
-  if (typeof d === "string" && d) return d;
-  if (Array.isArray(d)) return "Dados inválidos: confira os campos.";
+  if (typeof d === "string" && d) return d[0].toUpperCase() + d.slice(1) + (/[.!?]$/.test(d) ? "" : ".");
+  if (Array.isArray(d)) {
+    // Os validadores de schemas.py falam português ("Value error, ..."); o resto
+    // é inglês do pydantic e vira o texto genérico.
+    const raw = String((d[0] && d[0].msg) || "");
+    const m = raw.replace(/^Value error, /, "").trim();
+    if (m && (raw !== m || /[à-ú]/i.test(m))) return m[0].toUpperCase() + m.slice(1) + (/[.!?]$/.test(m) ? "" : ".");
+    return "Algum campo está inválido. Confira e tente de novo.";
+  }
   if (status === 429) return "Muitas tentativas. Aguarde um pouco e tente de novo.";
   if (status >= 500) return "O servidor teve um problema. Tente de novo em instantes.";
   return "Não foi possível concluir. Tente de novo.";
