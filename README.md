@@ -17,7 +17,15 @@ os Papéis… de cada conta mostram quem liberou). O admin também tem o própri
 em Admin > Contas ele busca a conta, reenvia ou **cancela um convite** ainda
 não aceito, redefine a senha, **bloqueia o acesso** (a pessoa sai de todos os
 aparelhos, chaves e passkeys param, os dados ficam; Redefinir senha libera) ou
-exclui a conta de vez.
+exclui a conta de vez. No convite, o admin já informa o nome e escolhe os papéis.
+
+**Para empresas e instituições** (Admin > Para empresas; tudo desligado por padrão,
+porque o padrão é o organizador pessoal): **visibilidade da equipe** ("Cada pessoa
+escolhe" ou "Visível para quem gerencia", em que quem tem o papel Vê a equipe vê todos e
+a chave de aceite fica bloqueada, à vista, com o motivo; as escolhas de cada um ficam
+guardadas), **nome e e-mail definidos pela administração** (desligado, cada pessoa
+troca os seus na Conta, e o e-mail novo só vale depois de confirmado por link) e
+**tour obrigatório no primeiro acesso**. Cada mudança fica no histórico do admin.
 
 **Manual de uso, tela por tela:** [shadow.tec.br/nexus-manual](https://shadow.tec.br/nexus-manual).
 
