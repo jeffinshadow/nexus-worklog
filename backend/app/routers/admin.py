@@ -27,6 +27,7 @@ def _ensure_user(user_id: int) -> dict:
 def list_users(admin=Depends(require_admin)):
     rows = db.query_all(
         f"""SELECT u.id, u.email, u.role, u.created_at, u.accepts_assignments_at, u.invite_pending,
+                   u.viewers_allowed, u.blocked_at,
                    -- convite pendente cujo link já venceu: o admin reenvia
                    (u.invite_pending AND NOT EXISTS (
                        SELECT 1 FROM auth_links l WHERE l.user_id = u.id AND l.kind = 'invite'
@@ -100,6 +101,48 @@ def resend_invite(user_id: int, admin=Depends(require_admin_csrf)):
     audit.record({**admin, "actor": "admin"}, "user.invite_resend", "user", user_id,
                  after={"email": target["email"], "by": admin["email"]}, user_id=user_id)
     return _send_invite(user_id, target["email"], admin)
+
+
+@router.post("/users/{user_id}/cancel-invite")
+def cancel_invite(user_id: int, admin=Depends(require_admin_csrf)):
+    """Desfaz um convite que ainda não foi aceito: a conta (sem dados, a pessoa
+    nunca entrou) sai e o link deixa de valer. Sem digitar o e-mail."""
+    target = _ensure_user(user_id)
+    if not db.query_one("SELECT 1 FROM users WHERE id = %s AND invite_pending", (user_id,)):
+        raise HTTPException(status_code=400, detail="essa conta já aceitou o convite: para tirar, use Excluir conta")
+    if not roles.delete_account(user_id):
+        raise HTTPException(status_code=400, detail="o sistema precisa de pelo menos um admin")
+    audit.record({**admin, "actor": "admin"}, "user.invite_cancel", "user", user_id,
+                 before={"email": target["email"]})
+    return {"ok": True, "email": target["email"]}
+
+
+@router.post("/users/{user_id}/block")
+def block_user(user_id: int, admin=Depends(require_admin_csrf)):
+    """Corta o acesso agora, sem apagar nada (celular perdido, pessoa de férias
+    ou que saiu): senha trocada por uma que ninguém sabe, sessões, chaves de
+    API, calendário, notificações e passkeys desligados, links de e-mail sem
+    valor e "Esqueci a senha" sem efeito. Redefinir senha libera de novo."""
+    if user_id == admin["user_id"]:
+        raise HTTPException(status_code=400, detail="você não pode bloquear a sua própria conta")
+    target = _ensure_user(user_id)
+    if db.query_one("SELECT 1 FROM users WHERE id = %s AND invite_pending", (user_id,)):
+        raise HTTPException(status_code=400, detail="o convite ainda não foi aceito: use Cancelar convite")
+    db.execute("""UPDATE users SET password_hash = %s, must_change_password = true, blocked_at = now()
+                   WHERE id = %s""", (hash_password(generate_temp_password(32)), user_id))
+    _cut_access(user_id)
+    db.execute("UPDATE auth_links SET used_at = now() WHERE user_id = %s AND used_at IS NULL", (user_id,))
+    audit.record({**admin, "actor": "admin"}, "user.block", "user", user_id,
+                 after={"by": admin["email"], "email": target["email"]}, user_id=user_id)
+    return {"ok": True, "email": target["email"]}
+
+
+def _cut_access(user_id: int) -> None:
+    """Encerra TODAS as sessões e corta o que não depende da senha: chaves de
+    API, link do calendário e passkeys (entrar sem senha derrubaria o corte)."""
+    db.execute("DELETE FROM sessions WHERE user_id = %s", (user_id,))
+    revoke_access(user_id)
+    db.execute("DELETE FROM webauthn_credentials WHERE user_id = %s", (user_id,))
 
 
 @router.put("/users/{user_id}/roles")
@@ -177,17 +220,14 @@ def reset_password(user_id: int, admin=Depends(require_admin_csrf)):
     target = _ensure_user(user_id)
 
     temp = generate_temp_password()
+    # Também libera uma conta bloqueada (blocked_at volta a vazio).
     db.execute(
-        "UPDATE users SET password_hash = %s, must_change_password = true, invite_pending = false WHERE id = %s",
+        """UPDATE users SET password_hash = %s, must_change_password = true, invite_pending = false,
+                            blocked_at = NULL WHERE id = %s""",
         (hash_password(temp), user_id),
     )
-    # Encerra TODAS as sessoes do alvo e corta os acessos que nao dependem da
-    # senha (conta comprometida ou pessoa que saiu): chaves de API e o link
-    # do calendario. Ele so volta com a senha temporaria.
-    db.execute("DELETE FROM sessions WHERE user_id = %s", (user_id,))
-    revoke_access(user_id)
-    # As passkeys também: entrar sem senha numa conta que o admin bloqueou derrubaria o reset.
-    db.execute("DELETE FROM webauthn_credentials WHERE user_id = %s", (user_id,))
+    # Conta comprometida ou pessoa que saiu: ela só volta com a senha temporária.
+    _cut_access(user_id)
     audit.record({**admin, "actor": "admin"}, "user.reset_password", "password", user_id,
                  after={"by": admin["email"]}, user_id=user_id)
     return {"email": target["email"], "temp_password": temp}

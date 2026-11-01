@@ -1,16 +1,38 @@
 import { api } from "./api.js";
 import { h, icon, clear, field } from "./dom.js";
-import { codeBox, confirmDialog, errorToast, modal, navBadge, toast, busy, warnBox } from "./ui.js";
+import { codeBox, confirmDialog, errorToast, modal, navBadge, toast, busy, warnBox, popupMenu, sheet } from "./ui.js";
 import { applyBranding } from "./branding.js";
 import { avatar } from "./profile.js";
-import { consentsPanel } from "./atribuir.js";
 
 const ROLES = [
   ["user", "Usuário", "tem o próprio registro (Hoje, Tarefas, Rotinas) e pode receber tarefas"],
-  ["admin", "Admin", "contas, permissões e configurações gerais"],
+  ["admin", "Admin", "convites, contas, permissões e configurações gerais"],
   ["assigner", "Atribuidor de tarefas", "manda tarefas para quem aceitou receber"],
-  ["viewer", "Visualizador de tarefas", "vê os registros e tira relatórios de todos"],
+  ["viewer", "Visualizador de tarefas", "vê, sem editar, os registros de quem permitir (cada pessoa libera em Configurações > Conta)"],
 ];
+
+const phone = () => matchMedia("(max-width: 860px)").matches;
+
+// Menu "mais ações" de uma linha: no computador ao lado do botão; no celular, de baixo.
+function rowMenu(btn, title, items) {
+  if (phone()) { sheet(title, items); return; }
+  const r = btn.getBoundingClientRect();
+  popupMenu(r.left, r.bottom + 4, items);
+}
+
+// Busca por nome ou e-mail nas listas de contas (só aparece com lista longa).
+function searchBox(rows) {
+  const input = h("input", { type: "search", placeholder: "Buscar por nome ou e-mail", "aria-label": "Buscar conta por nome ou e-mail", autocomplete: "off" });
+  const none = h("p", { class: "empty hidden", text: "Nenhuma conta com esse nome ou e-mail." });
+  input.addEventListener("input", () => {
+    const q = input.value.trim().toLowerCase();
+    let shown = 0;
+    for (const [el, text] of rows) { const ok = !q || text.includes(q); el.classList.toggle("hidden", !ok); shown += ok; }
+    none.classList.toggle("hidden", shown > 0);
+  });
+  return rows.length > 6 ? [h("div", { class: "field admin-search" }, input), none] : [];
+}
+const userText = (u) => `${u.display_name || ""} ${u.email}`.toLowerCase();
 
 const dateShort = (iso) => new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 
@@ -19,16 +41,15 @@ export function setRequestsBadge(n) {
   navBadge("admin", n, n === 1 ? "1 pedido de convite" : `${n} pedidos de convite`);
 }
 
-// Admin: contas (convite, senha), permissões, quem aceita tarefas, configurações
+// Admin: contas (convite, senha, bloquear), permissões, configurações
 // gerais e identidade visual. Ver registros e relatórios é do Visualizador (Equipe).
 export async function mount(root, ctx) {
   clear(root);
   const seg = h("div", { class: "seg", role: "tablist" });
   const body = h("div");
   const abas = [
-    ["usuarios", "Usuários", (el) => mountUsers(el)],
+    ["usuarios", "Usuários", (el) => mountUsers(el, ctx.me)],
     ["permissoes", "Permissões", (el) => mountRoles(el, ctx.me)],
-    ["aceites", "Tarefas atribuídas", async (el) => { clear(el); el.append(h("div", { class: "settings-grid" }, consentsPanel(await api.get("/assign/people")))); }],
     ["geral", "Geral", (el) => mountGeneral(el, ctx.me)],
     ["identidade", "Identidade visual", (el) => mountBranding(el)],
   ];
@@ -42,55 +63,94 @@ export async function mount(root, ctx) {
     }));
   }
   root.append(seg, body);
-  await mountUsers(body);
+  await mountUsers(body, ctx.me);
 }
 
 const roleNames = (roles) => ROLES.filter(([k]) => roles.includes(k)).map(([, n]) => n).join(" · ") || "sem papel";
 
-async function mountUsers(root) {
+async function mountUsers(root, me) {
   clear(root);
   const users = await api.get("/admin/users");
   const emailById = new Map(users.map((u) => [String(u.id), u.email]));
   const inviteBtn = h("button", { type: "button", class: "btn btn-primary", onClick: onInvite }, icon("add"), "Novo usuário");
-  const list = h("section", { class: "panel" },
+  const rows = users.map((u) => [userRow(u), userText(u)]);
+  const list = h("section", { class: "panel admin-users" },
     h("div", { class: "panel-head" }, h("h2", { text: "Contas" }), h("div", { class: "spacer" }), inviteBtn),
-    ...users.map((u) => h("div", { class: "list-row" }, avatar(u, "sm"),
+    ...searchBox(rows), ...rows.map(([el]) => el));
+
+  function userRow(u) {
+    const self = u.id === me.id;
+    const chips = [];
+    if (u.invite_pending) chips.push(h("span", { class: "chip pending-chip " + (u.invite_expired ? "late" : "today"), text: u.invite_expired ? "convite vencido" : "convite pendente",
+      title: u.invite_expired ? "O link de 7 dias venceu: reenvie o convite" : "Aguardando a pessoa criar a senha" }));
+    if (u.blocked_at) chips.push(h("span", { class: "chip pending-chip late", text: "acesso bloqueado", title: "Para liberar, use Liberar acesso" }));
+    if (self) chips.push(h("span", { class: "chip pending-chip", text: "você" }));
+    // Quem ainda não aceitou o convite recebe outro link; os demais, senha temporária
+    // (que também libera uma conta bloqueada). O resto fica no menu da linha.
+    const main = self ? null : u.invite_pending
+      ? h("button", { type: "button", class: "btn btn-text btn-sm", text: "Reenviar convite", onClick: () => onResend(u) })
+      : h("button", { type: "button", class: "btn btn-text btn-sm", text: u.blocked_at ? "Liberar acesso" : "Redefinir senha", onClick: () => onReset(String(u.id), !!u.blocked_at) });
+    const items = u.invite_pending
+      ? [["Cancelar convite", "close", () => onCancelInvite(u)]]
+      : [u.blocked_at ? null : ["Bloquear acesso", "alert", () => onBlock(u)], ["Excluir conta", "trash", () => onDelete(u)]];
+    const more = self ? null : h("button", { type: "button", class: "icon", title: "Mais ações", "aria-label": "Mais ações para " + u.email, "aria-haspopup": "menu",
+      onClick: (ev) => rowMenu(ev.currentTarget, u.display_name || u.email, items) }, icon("more-v"));
+    return h("div", { class: "list-row" }, avatar(u, "sm"),
       h("div", { class: "t" }, h("span", { text: u.display_name ? `${u.display_name} · ${u.email}` : u.email }),
-        h("small", {}, roleNames(u.roles), u.invite_pending
-          ? h("span", { class: "chip pending-chip " + (u.invite_expired ? "late" : "today"), text: u.invite_expired ? "convite vencido" : "convite pendente",
-              title: u.invite_expired ? "O link de 7 dias venceu: reenvie o convite" : "Aguardando a pessoa criar a senha" })
-          : null)),
-      // Quem ainda não aceitou o convite recebe outro link; os demais, senha temporária.
-      u.invite_pending
-        ? h("button", { type: "button", class: "btn btn-text btn-sm", text: "Reenviar convite", onClick: () => onResend(u) })
-        : h("button", { type: "button", class: "btn btn-text btn-sm", text: "Redefinir senha", onClick: () => onReset(String(u.id)) }),
-      h("button", { type: "button", class: "icon", title: "Excluir conta", "aria-label": "Excluir a conta de " + u.email, onClick: () => onDelete(u) }, icon("trash")))));
+        h("small", {}, roleNames(u.roles), ...chips)),
+      main, more);
+  }
+
   // Pedidos de convite que chegaram pela tela de login (só com e-mail configurado).
+  // Os abertos primeiro; os já respondidos ficam recolhidos (saem sozinhos em 30 dias).
   const pedidos = await api.get("/admin/invite-requests").catch(() => []);
   const ORIGEM = { colega: "indicação de colega", site: "site da ShadowTec", github: "GitHub", outro: "outro" };
   const abertos = pedidos.filter((r) => r.status === "pending");
+  const decididos = pedidos.filter((r) => r.status !== "pending");
   setRequestsBadge(abertos.length);
+  const requestRow = (r) => h("div", { class: "request-row" + (r.status === "pending" ? "" : " decided") },
+    h("div", { class: "t" },
+      h("span", { class: "request-who" }, h("strong", { text: r.name }), " · ", r.email),
+      h("small", { text: `${ORIGEM[r.source]}${r.source_note ? ` (${r.source_note})` : ""} · ${dateShort(r.created_at)}` }),
+      h("p", { class: "request-reason", text: r.reason })),
+    r.status === "pending"
+      ? h("div", { class: "request-actions" },
+          r.has_account ? h("span", { class: "chip", text: "já tem conta" }) : null,
+          h("button", { type: "button", class: "btn btn-primary btn-sm", disabled: r.has_account ? "disabled" : null, onClick: busy(async () => {
+            try { const res = await api.post(`/admin/invite-requests/${r.id}/invite`); await mountUsers(root, me); showInvite(res); }
+            catch (e) { errorToast(e, "Não foi possível convidar."); }
+          }) }, icon("send"), "Convidar"),
+          h("button", { type: "button", class: "btn btn-text btn-sm", text: "Recusar", onClick: async () => {
+            if (!(await confirmDialog({ title: `Recusar o pedido de ${r.name}?`, text: "Nenhum e-mail é enviado para quem pediu. O pedido fica na lista por 30 dias.", confirm: "Recusar" }))) return;
+            try { await api.post(`/admin/invite-requests/${r.id}/decline`); await mountUsers(root, me); } catch (e) { errorToast(e); }
+          } }))
+      : h("span", { class: "chip " + (r.status === "invited" ? "done" : ""), text: r.status === "invited" ? "convidado" : "recusado" }));
   const requests = pedidos.length ? h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Pedidos de convite" }),
       abertos.length ? h("span", { class: "count", text: String(abertos.length) }) : null),
-    ...pedidos.map((r) => h("div", { class: "request-row" + (r.status === "pending" ? "" : " decided") },
-      h("div", { class: "t" },
-        h("span", { class: "request-who" }, h("strong", { text: r.name }), " · ", r.email),
-        h("small", { text: `${ORIGEM[r.source]}${r.source_note ? ` (${r.source_note})` : ""} · ${dateShort(r.created_at)}` }),
-        h("p", { class: "request-reason", text: r.reason })),
-      r.status === "pending"
-        ? h("div", { class: "request-actions" },
-            r.has_account ? h("span", { class: "chip", text: "já tem conta" }) : null,
-            h("button", { type: "button", class: "btn btn-primary btn-sm", disabled: r.has_account ? "disabled" : null, onClick: busy(async () => {
-              try { const res = await api.post(`/admin/invite-requests/${r.id}/invite`); await mountUsers(root); showInvite(res); }
-              catch (e) { errorToast(e, "Não foi possível convidar."); }
-            }) }, icon("send"), "Convidar"),
-            h("button", { type: "button", class: "btn btn-text btn-sm", text: "Recusar", onClick: async () => {
-              if (!(await confirmDialog({ title: `Recusar o pedido de ${r.name}?`, text: "Nenhum e-mail é enviado para quem pediu. O pedido fica na lista por 30 dias.", confirm: "Recusar" }))) return;
-              try { await api.post(`/admin/invite-requests/${r.id}/decline`); await mountUsers(root); } catch (e) { errorToast(e); }
-            } }))
-        : h("span", { class: "chip " + (r.status === "invited" ? "done" : ""), text: r.status === "invited" ? "convidado" : "recusado" })))) : null;
+    ...(abertos.length ? abertos.map(requestRow) : [h("p", { class: "empty", text: "Nenhum pedido esperando resposta." })]),
+    decididos.length ? h("details", { class: "requests-decided" },
+      h("summary", { text: `Já respondidos (${decididos.length})` }), ...decididos.map(requestRow)) : null) : null;
   root.append(h("div", { class: "settings-grid" }, requests, list));
+
+  // ---- Cancelar convite (ninguém entrou ainda: a conta não tem dados) ----
+  async function onCancelInvite(u) {
+    if (!(await confirmDialog({ title: "Cancelar o convite?", text: `O link mandado para ${u.email} deixa de valer e a conta sai da lista. Se precisar, convide de novo depois.`, confirm: "Cancelar convite", danger: true }))) return;
+    try { await api.post(`/admin/users/${u.id}/cancel-invite`); toast(`Convite de ${u.email} cancelado.`); mountUsers(root, me); }
+    catch (e) { errorToast(e, "Não foi possível cancelar o convite."); }
+  }
+
+  // ---- Bloquear acesso: corta agora, sem apagar nada; "Liberar acesso" (senha temporária) volta ----
+  async function onBlock(u) {
+    const ok = await confirmDialog({
+      title: "Bloquear o acesso?",
+      text: `${u.email} sai de todos os aparelhos agora e não entra mais: a senha vira uma que ninguém sabe, e as chaves de API, o link do calendário e as passkeys param de funcionar. Tarefas, rotinas e histórico ficam guardados. Para liberar, use “Liberar acesso”: gera uma senha temporária para você repassar.`,
+      confirm: "Bloquear", danger: true,
+    });
+    if (!ok) return;
+    try { await api.post(`/admin/users/${u.id}/block`); toast(`Acesso de ${u.email} bloqueado. Os dados ficam.`); mountUsers(root, me); }
+    catch (e) { errorToast(e, "Não foi possível bloquear."); }
+  }
 
   // ---- Excluir conta (LGPD): apaga a conta e todos os dados dela; confirma com o e-mail ----
   function onDelete(u) {
@@ -98,6 +158,7 @@ async function mountUsers(root) {
     const err = h("p", { class: "error-text" });
     const form = h("form", {},
       h("p", { class: "help", text: `Apaga a conta ${u.email} e tudo o que está nela: tarefas, rotinas, tempo, anotações, chaves de API e histórico. Não dá para desfazer. Tarefas que essa pessoa atribuiu a outras continuam com quem recebeu. O e-mail e as contagens ficam registrados no seu histórico (180 dias).` }),
+      h("p", { class: "help", text: "Só quer cortar o acesso agora (férias, celular perdido)? Use “Bloquear acesso” no menu da conta: a pessoa sai de todos os aparelhos e os dados ficam." }),
       field("Digite o e-mail da conta para confirmar", input), err,
       h("div", { class: "dialog-actions" },
         h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
@@ -109,7 +170,7 @@ async function mountUsers(root) {
         const res = await api.post(`/admin/users/${u.id}/delete`, { confirm_email: input.value.trim() });
         dlg.close();
         toast(`Conta ${res.email} excluída (${res.tasks} tarefas, ${res.routines} rotinas).`);
-        mountUsers(root);
+        mountUsers(root, me);
       } catch (e) { err.textContent = e.message || "Não foi possível excluir."; }
     }));
     const dlg = modal(h("h2", { text: "Excluir conta?" }), form);
@@ -117,9 +178,14 @@ async function mountUsers(root) {
   }
 
   // ---- Redefinir senha (senha temporária, troca forçada no próximo login) ----
-  async function onReset(uid) {
+  // Numa conta bloqueada, é o "Liberar acesso".
+  async function onReset(uid, blocked = false) {
     const email = emailById.get(uid) || "";
-    const ok = await confirmDialog({
+    const ok = await confirmDialog(blocked ? {
+      title: "Liberar o acesso?",
+      text: `Gera uma senha temporária para ${email} entrar de novo. Repasse a ela; no primeiro login, ela cria uma senha nova.`,
+      confirm: "Liberar",
+    } : {
       title: "Redefinir senha?",
       text: `Gera uma senha temporária para ${email}. As sessões, as chaves de API e o link de calendário da conta são revogados; no próximo login, a pessoa define uma senha nova.`,
       confirm: "Redefinir", danger: true,
@@ -128,6 +194,7 @@ async function mountUsers(root) {
     try {
       const res = await api.post(`/admin/users/${uid}/reset-password`);
       showPassword(res.email, res.temp_password);
+      if (blocked) mountUsers(root, me);
     } catch (e) {
       errorToast(e, "Não foi possível redefinir a senha.");
     }
@@ -171,7 +238,7 @@ async function mountUsers(root) {
         const res = await api.post("/admin/users", { email: input.value.trim() });
         dlg.close();
         if (res.invite_url) showInvite(res); else showPassword(res.email, res.temp_password);
-        mountUsers(root); // recarrega a lista com o novo usuário
+        mountUsers(root, me); // recarrega a lista com o novo usuário
       } catch (e) {
         err.textContent =
           e.status === 409 ? "Esse e-mail já tem conta." :
@@ -210,34 +277,48 @@ async function mountUsers(root) {
 async function mountRoles(root, me) {
   clear(root);
   const users = await api.get("/admin/users");
+  const rows = users.map((u) => [roleRow(u), userText(u)]);
   const sec = h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Permissões" })),
-    h("p", { class: "help", text: "Cada conta pode ter qualquer combinação de papéis. Marque e salve a linha." }),
-    h("dl", { class: "roles-legend" }, ...ROLES.flatMap(([, n, d]) => [h("dt", { text: n }), h("dd", { text: d })])));
-  for (const u of users) {
+    h("p", { class: "help", text: "Cada conta pode ter qualquer combinação de papéis. Marcou ou desmarcou, já vale." }),
+    h("dl", { class: "roles-legend" }, ...ROLES.flatMap(([, n, d]) => [h("dt", { text: n }), h("dd", { text: d })])),
+    ...searchBox(rows), ...rows.map(([el]) => el));
+  root.append(h("div", { class: "settings-grid" }, sec));
+
+  // Salva na hora (nada fica pendente ao trocar de aba); erro desfaz a marca.
+  function roleRow(u) {
     const boxes = ROLES.map(([k, n]) => {
       const cb = h("input", { type: "checkbox", value: k, "aria-label": `${n} para ${u.email}` });
       cb.checked = u.roles.includes(k);
       if (k === "admin" && u.id === me.id) { cb.disabled = true; cb.title = "Você não pode tirar o seu próprio admin"; }
+      cb.addEventListener("change", () => save(cb));
       return [cb, h("label", { class: "weekday-option" }, cb, h("span", { text: n }))];
     });
-    const save = h("button", { type: "button", class: "btn btn-ghost btn-sm", text: "Salvar" });
-    save.addEventListener("click", async () => {
-      const roles = boxes.filter(([cb]) => cb.checked).map(([cb]) => cb.value);
-      if (!roles.length) { toast("Marque pelo menos um papel.", { error: true }); return; }
-      save.disabled = true;
+    const who = u.display_name || u.email;
+    async function save(cb) {
+      const roles = boxes.filter(([b]) => b.checked).map(([b]) => b.value);
+      if (!roles.length) { cb.checked = true; toast("A conta precisa de pelo menos um papel.", { error: true }); return; }
+      if (cb.value === "user" && !cb.checked && !(await confirmDialog({
+        title: `Tirar o papel Usuário de ${who}?`,
+        text: `${who} deixa de ver o próprio registro (Hoje, Tarefas, Rotinas) e de receber tarefas. Os dados ficam guardados e voltam se você marcar de novo.`,
+        confirm: "Tirar", danger: true }))) { cb.checked = true; return; }
+      for (const [b] of boxes) b.disabled = true;
       try {
         await api.put(`/admin/users/${u.id}/roles`, { roles });
         u.roles = roles;
-        toast(`Permissões de ${u.display_name || u.email} salvas.`);
-      } catch (e) { errorToast(e); }
-      finally { save.disabled = false; }
-    });
-    sec.append(h("div", { class: "role-row" }, avatar(u, "sm"),
-      h("div", { class: "t" }, h("span", { text: u.display_name || u.email }), u.display_name ? h("small", { text: u.email }) : null),
-      h("div", { class: "role-boxes" }, ...boxes.map(([, l]) => l)), save));
+        toast(`Permissões de ${who} salvas.`);
+      } catch (e) { cb.checked = !cb.checked; errorToast(e); }
+      finally { for (const [b] of boxes) b.disabled = b.value === "admin" && u.id === me.id; }
+    }
+    // Visualizador só vê quem liberou: mostra aqui, para o admin não procurar a pessoa na Equipe.
+    const consent = u.roles.includes("user")
+      ? h("span", { class: "chip pending-chip" + (u.viewers_allowed ? " done" : ""), title: "Cada pessoa decide em Configurações > Conta se visualizadores veem o registro dela",
+          text: u.viewers_allowed ? "registro liberado aos visualizadores" : "registro não liberado aos visualizadores" })
+      : null;
+    return h("div", { class: "role-row" }, avatar(u, "sm"),
+      h("div", { class: "t" }, h("span", { text: who }), h("small", {}, u.display_name ? u.email : null, consent)),
+      h("div", { class: "role-boxes" }, ...boxes.map(([, l]) => l)));
   }
-  root.append(h("div", { class: "settings-grid" }, sec));
 }
 
 // ---- Geral: limite de datas retroativas em tarefas ----
@@ -249,11 +330,11 @@ async function mountGeneral(root, me) {
   const quota = h("input", { type: "number", min: "0", max: "100000", value: String(cfg.photo_quota_mb), required: "required" });
   const err = h("p", { class: "error-text" });
   const form = h("form", {},
-    field("Dias para trás", days),
-    h("p", { class: "dialog-note", text: "Vale para criar ou concluir tarefas com data passada, pelo app, pela API e pela IA. As rotinas seguem com 7 dias." }),
+    field("Datas passadas em tarefas (dias)", days),
+    h("p", { class: "dialog-note field-note", text: "Vale para criar ou concluir tarefas com data passada, pelo app, pela API e pela IA. As rotinas seguem com 7 dias." }),
     field("Contato de suporte (aparece em Ajuda)", contact),
     field("Espaço de fotos por pessoa (MB)", quota),
-    h("p", { class: "dialog-note", text: "Fotos das tarefas e das rotinas, já reduzidas no aparelho (em geral 200 a 400 KB cada). 0 = ninguém envia fotos novas." }),
+    h("p", { class: "dialog-note field-note", text: "Fotos das tarefas e das rotinas, já reduzidas no aparelho (em geral 200 a 400 KB cada). 0 = ninguém envia fotos novas." }),
     err, h("button", { type: "submit", class: "btn btn-primary", text: "Salvar" }));
   form.addEventListener("submit", busy(async (ev) => {
     ev.preventDefault();

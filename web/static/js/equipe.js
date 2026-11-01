@@ -48,6 +48,7 @@ export async function mount(root) {
         b.disabled = true;
         try { await api.download("/viewer/export/apontamentos.csv"); } catch (e) { errorToast(e, "Não foi possível exportar."); } finally { b.disabled = false; }
       } }, icon("download"), "Horas da equipe (CSV)")),
+    h("p", { class: "dialog-note equipe-note", text: "Aparecem aqui só as pessoas que liberaram o registro para visualizadores (cada uma decide em Configurações > Conta)." }),
     subtabs,
     note,
     content);

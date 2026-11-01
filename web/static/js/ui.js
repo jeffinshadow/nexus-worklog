@@ -181,15 +181,33 @@ export function initTooltips() {
   addEventListener("scroll", hide, true);
 }
 
-// Número no item do menu (ex.: tarefas atrasadas); 0 apaga.
+// Número no item do menu (ex.: tarefas atrasadas); 0 apaga. No celular, o que
+// não está na barra de baixo (Admin, por exemplo) acende o número também em
+// "Mais" e no item dentro dela.
+const badges = new Map();
 export function navBadge(view, n, label) {
-  for (const a of document.querySelectorAll(`#tabbar [data-view="${view}"], #nav [data-view="${view}"]`)) {
-    let b = a.querySelector(".nav-badge");
-    if (!n) { if (b) b.remove(); continue; }
-    if (!b) { b = h("span", { class: "nav-badge" }); (a.querySelector(".tab-ind") || a).append(b); }
-    b.textContent = n > 99 ? "99+" : String(n);
-    b.setAttribute("aria-label", label || String(n));
+  badges.set(view, [n, label]);
+  for (const a of document.querySelectorAll(`#tabbar [data-view="${view}"], #nav [data-view="${view}"], #view-mais [data-view="${view}"]`)) paintBadge(a, n, label);
+  let more = 0;
+  for (const [v, [k]] of badges) {
+    const tab = document.querySelector(`#tabbar [data-view="${v}"]`);
+    if (k && (!tab || tab.classList.contains("hidden"))) more += k;
   }
+  const tab = document.querySelector('#tabbar [data-view="mais"]');
+  if (tab) paintBadge(tab, more, more === 1 ? "1 aviso em Mais" : `${more} avisos em Mais`);
+}
+
+// A tela "Mais" é montada de novo a cada visita: repõe os números.
+export function repaintBadges() {
+  for (const [v, [n, label]] of badges) navBadge(v, n, label);
+}
+
+function paintBadge(a, n, label) {
+  let b = a.querySelector(".nav-badge");
+  if (!n) { if (b) b.remove(); return; }
+  if (!b) { b = h("span", { class: "nav-badge" }); (a.querySelector(".tab-ind") || a).append(b); }
+  b.textContent = n > 99 ? "99+" : String(n);
+  b.setAttribute("aria-label", label || String(n));
 }
 
 // Confirmação com botões próprios. Resolve true/false.

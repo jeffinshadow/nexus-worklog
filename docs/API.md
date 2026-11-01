@@ -298,10 +298,12 @@ Aparecem no Hoje (só os no aviso), no e-mail da manhã e no calendário (dia de
 
 | Rota | | Observação |
 | --- | --- | --- |
-| `GET /users` | | contas, com `roles` e `accepts_assignments_at` |
+| `GET /users` | | contas, com `roles`, `accepts_assignments_at`, `viewers_allowed` (liberou o registro ao visualizador), `invite_pending`/`invite_expired` e `blocked_at` |
 | `POST /users` | W | `{email}` → senha temporária (troca no 1º acesso); nasce com o papel `user` |
 | `PUT /users/{id}/roles` | W | `{roles: [...]}` (ao menos um); não tira o próprio admin nem deixa o sistema sem admin |
-| `POST /users/{id}/reset-password` | W | senha temporária; encerra sessões e revoga chaves e calendário |
+| `POST /users/{id}/reset-password` | W | senha temporária; encerra sessões e revoga chaves, calendário e passkeys; numa conta bloqueada, libera o acesso |
+| `POST /users/{id}/block` | W | bloqueia o acesso sem apagar nada: senha que ninguém sabe, sessões, chaves, calendário, notificações e passkeys cortados, links de e-mail sem valor e "Esqueci a senha" sem efeito (`blocked_at`); não a própria conta, nem convite pendente. `reset-password` libera |
+| `POST /users/{id}/cancel-invite` | W | convite ainda não aceito: a conta (sem dados) sai e o link deixa de valer; 400 se a pessoa já entrou (aí é `delete`) |
 | `POST /users/{id}/delete` | W | `{confirm_email}` — exclui a conta e todos os dados (não a própria, nunca o último admin); e-mail e contagens ficam no histórico de quem excluiu |
 | `GET /settings` · `PUT /settings` | W | `{retro_days (1–366), support_contact?}` |
 
@@ -319,7 +321,9 @@ Aparecem no Hoje (só os no aviso), no e-mail da manhã e no calendário (dia de
 | --- | --- | --- |
 | `GET /people` | | admin (app) ou atribuidor: contas com registro e se aceitam (`accepts`, desde quando) |
 | `POST /` | W | atribuidor: `{user_id, title, description?, due_date?, priority?, ticket?, after_hours?}` → a tarefa nasce na conta de quem aceitou, com e-mail; não a si mesmo |
-| `GET /sent` | | atribuidor: tarefas que atribuiu, com status atual |
+| `GET /sent` | | atribuidor: tarefas que atribuiu, com status atual e `editable`; as que saíram da conta de quem recebeu nos últimos 60 dias vêm com `status: "removed"` e `ended: {kind: deleted\|canceled\|removed, at}` |
+| `PATCH /{id}` | W | atribuidor que mandou: `{title?, due_date?, priority?}` enquanto a tarefa está `todo` e sem tempo, anotação, checklist, foto ou cronômetro (senão 409); e-mail para quem recebeu, que pode desfazer pelo histórico |
+| `POST /{id}/cancel` | W | idem: a tarefa sai da conta de quem recebeu (e-mail avisando) e fica em `/sent` como cancelada |
 
 ## Operação
 

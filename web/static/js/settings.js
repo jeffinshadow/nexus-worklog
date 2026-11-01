@@ -708,8 +708,8 @@ function assignmentsPanel(me) {
     finally { cb.disabled = false; }
   });
   return h("section", { class: "panel" },
-    h("div", { class: "panel-head" }, h("h2", { text: "Tarefas atribuídas" })),
-    h("p", { class: "help", text: "Quem tem a função de atribuidor de tarefas pode mandar tarefas para você, mas só se você permitir aqui. A tarefa recebida é sua: você edita, conclui ou exclui." }),
+    h("div", { class: "panel-head" }, h("h2", { text: "Receber tarefas" })),
+    h("p", { class: "help", text: "Quem tem a função de atribuidor de tarefas pode mandar tarefas para você, mas só se você permitir aqui. A tarefa recebida é sua: você edita, conclui ou exclui. Quem mandou só corrige ou cancela enquanto ela está a fazer e você não registrou nada nela." }),
     h("label", { class: "weekday-option" }, cb, h("span", { text: "Permitir que me atribuam tarefas" })),
     since);
 }

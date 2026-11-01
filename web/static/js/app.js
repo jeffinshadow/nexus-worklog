@@ -26,7 +26,7 @@ import { initTimer, stopTimer, timerState } from "./timer.js";
 import { openWorklog } from "./board.js";
 import { openTask, closeSidePanel } from "./task.js";
 import { startTour } from "./tour.js";
-import { modal, busy, initTooltips, initRailPeek, syncRail, calmMotion, toast, singleKeysOn } from "./ui.js";
+import { modal, busy, initTooltips, initRailPeek, syncRail, calmMotion, toast, singleKeysOn, repaintBadges } from "./ui.js";
 
 let me = null;
 
@@ -231,11 +231,12 @@ function mountMore(el) {
     h("a", { href: "#/config?aba=conta", class: "more-me" }, avatar(me, "md"),
       h("span", { class: "who-text" }, h("span", { class: "who-name", text: me.name, title: me.name }), h("span", { class: "who-email", text: me.email, title: me.email }))),
     h("div", { class: "menu-list" },
-      ...items.map(([v, ic, label]) => h("a", { href: "#/" + v }, icon(ic), h("span", { text: label }))),
+      ...items.map(([v, ic, label]) => h("a", { href: "#/" + v, "data-view": v }, icon(ic), h("span", { text: label }))),
       h("button", { type: "button", class: "nav-btn", onClick: showHelp }, icon("help"), h("span", { text: "Ajuda" })),
       h("button", { type: "button", class: "nav-btn logout", onClick: logout }, icon("logout"), h("span", { text: "Sair" }))
     )
   );
+  repaintBadges(); // ex.: pedidos de convite no item Admin
 }
 
 // Ajuda em seções: começar (tour e manual), onde fica cada coisa, marcadores do
@@ -259,6 +260,9 @@ function showHelp(focus) {
         ["Projetos", "Cada projeto com os objetivos em ordem de execução e as tarefas de cada um."],
         ["Meu mês", "O mês em números (rotinas, tarefas, tempo por projeto) e o PDF do período ou de um projeto, com a exportação dos dados."]] : []),
       ["Histórico", "Tudo o que mudou, com desfazer."],
+      ...(has("assigner") ? [["Atribuir", "Manda uma tarefa para quem aceitou receber. Enquanto ela está a fazer, você ainda corrige ou cancela; depois, é da pessoa."]] : []),
+      ...(has("viewer") ? [["Equipe", "O registro de quem permitiu (cada pessoa decide em Configurações > Conta), só para ver e tirar relatório."]] : []),
+      ...(has("admin") ? [["Admin", "Convites e pedidos de convite, contas (senha, bloquear, excluir), permissões, configurações gerais e identidade visual."]] : []),
       ["Configurações", user ? "Modelos, avisos, calendário, IA e a sua conta (projeto padrão, dias úteis)." : "IA e API, e a sua conta."],
     ])),
     user ? sec("add", "Registro rápido (no Hoje)",
@@ -277,9 +281,14 @@ function showHelp(focus) {
       ["n", "nova tarefa", true], ["/", "buscar", true], ["h t", "Hoje, Tarefas", true], ["r l", "Meu mês: números, PDF", true],
       ["s", "parar o cronômetro", true], ["?", "ver todos os atalhos", true],
     ])) : null,
-    sec("mail", "Suporte", me.support_contact
-      ? h("p", { class: "help" }, "Fale com ", h("strong", { text: me.support_contact }), ".")
-      : h("p", { class: "help", text: "Dúvidas ou problemas: fale com quem administra o Nexus na sua equipe." })),
+    // Para o admin, o Suporte é ele mesmo: diz onde fica o contato que os outros veem.
+    has("admin")
+      ? sec("mail", "Suporte", h("p", { class: "help", text: me.support_contact
+          ? `As pessoas veem aqui: “${me.support_contact}”. Você muda em Admin > Geral.`
+          : "Você administra este Nexus. Em Admin > Geral, ponha o contato de suporte que as pessoas vão ver aqui." }))
+      : sec("mail", "Suporte", me.support_contact
+        ? h("p", { class: "help" }, "Fale com ", h("strong", { text: me.support_contact }), ".")
+        : h("p", { class: "help", text: "Dúvidas ou problemas: fale com quem administra o Nexus na sua equipe." })),
     h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-text", text: "Fechar", onClick: () => dlg.close() })));
   dlg.classList.add("help-dialog");
   // Pedido de uma seção (ex.: "ver marcadores" no Hoje): rola até ela.

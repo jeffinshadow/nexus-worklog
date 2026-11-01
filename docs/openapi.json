@@ -1663,6 +1663,88 @@
         }
       }
     },
+    "/api/admin/users/{user_id}/cancel-invite": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Cancel Invite",
+        "description": "Desfaz um convite que ainda não foi aceito: a conta (sem dados, a pessoa\nnunca entrou) sai e o link deixa de valer. Sem digitar o e-mail.",
+        "operationId": "cancel_invite_api_admin_users__user_id__cancel_invite_post",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/users/{user_id}/block": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Block User",
+        "description": "Corta o acesso agora, sem apagar nada (celular perdido, pessoa de férias\nou que saiu): senha trocada por uma que ninguém sabe, sessões, chaves de\nAPI, calendário, notificações e passkeys desligados, links de e-mail sem\nvalor e \"Esqueci a senha\" sem efeito. Redefinir senha libera de novo.",
+        "operationId": "block_user_api_admin_users__user_id__block_post",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/users/{user_id}/roles": {
       "put": {
         "tags": [
@@ -4436,7 +4518,7 @@
           "assign"
         ],
         "summary": "Sent",
-        "description": "Tarefas que esta pessoa atribuiu, com o status atual (as mais recentes).",
+        "description": "Tarefas que esta pessoa atribuiu, com o status atual (as mais recentes).\n`editable`: ainda dá para corrigir ou cancelar. As que saíram da conta de\nquem recebeu continuam aqui (status \"removed\", com `ended`).",
         "operationId": "sent_api_assign_sent_get",
         "responses": {
           "200": {
@@ -4444,6 +4526,98 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assign/{task_id}": {
+      "patch": {
+        "tags": [
+          "assign"
+        ],
+        "summary": "Update Sent",
+        "description": "Corrige título, prazo ou prioridade de uma tarefa atribuída que ainda não começou.",
+        "operationId": "update_sent_api_assign__task_id__patch",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignEditIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assign/{task_id}/cancel": {
+      "post": {
+        "tags": [
+          "assign"
+        ],
+        "summary": "Cancel Sent",
+        "description": "Cancela uma atribuição feita por engano: a tarefa (ainda não começada)\nsai da conta de quem recebeu, que é avisada por e-mail.",
+        "operationId": "cancel_sent_api_assign__task_id__cancel_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -5790,6 +5964,51 @@
           "retro_days"
         ],
         "title": "AppSettingsIn"
+      },
+      "AssignEditIn": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 3.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          }
+        },
+        "type": "object",
+        "title": "AssignEditIn",
+        "description": "Quem atribuiu ajusta enquanto a tarefa está \"a fazer\". Só o que vier muda\n(due_date: null tira o prazo)."
       },
       "AssignIn": {
         "properties": {

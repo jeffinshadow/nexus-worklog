@@ -79,6 +79,8 @@ def login(data: LoginIn, request: Request, response: Response):
         falhou()
     if not verify_password(user["password_hash"], data.password):
         falhou()
+    if user.get("blocked_at"):  # a senha já é uma que ninguém sabe; isto é a segunda tranca
+        raise HTTPException(status_code=403, detail="Acesso bloqueado pelo administrador. Fale com ele para voltar.")
 
     if needs_rehash(user["password_hash"]):
         db.execute(
@@ -161,7 +163,8 @@ def forgot(data: ForgotIn, request: Request):
     email = data.email.lower()
     if not reset_limiter.allow(f"ip:{client_ip(request)}") or not reset_email_limiter.allow(f"em:{email}"):
         raise HTTPException(status_code=429, detail="muitos pedidos, tente mais tarde")
-    user = db.query_one("SELECT id, email FROM users WHERE email = %s", (email,))
+    # Conta bloqueada pelo admin não recebe link (a resposta é a mesma).
+    user = db.query_one("SELECT id, email FROM users WHERE email = %s AND blocked_at IS NULL", (email,))
     if user:
         link = links.url("reset", links.issue(user["id"], "reset"))
         threading.Thread(target=_send_quiet, args=(user["email"], _reset_mail(user["email"], link)), daemon=True).start()

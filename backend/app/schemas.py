@@ -55,6 +55,22 @@ class AssignIn(BaseModel):
         return self
 
 
+class AssignEditIn(BaseModel):
+    """Quem atribuiu ajusta enquanto a tarefa está "a fazer". Só o que vier muda
+    (due_date: null tira o prazo)."""
+    title: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    due_date: Optional[date] = None
+    priority: Optional[int] = Field(default=None, ge=1, le=3)
+
+    @model_validator(mode="after")
+    def _norm(self):
+        if self.title is not None:
+            self.title = self.title.strip()
+            if not self.title:
+                raise ValueError("título em branco")
+        return self
+
+
 class LoginIn(BaseModel):
     email: EmailStr
     password: str = Field(max_length=128)  # senha gigante = Argon2 caro à toa
