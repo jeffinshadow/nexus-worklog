@@ -491,7 +491,7 @@ dialog.task-dialog { max-width: 640px; padding: 0; max-height: min(88vh / var(--
 .time-form .btn { height: 40px; }  /* mesma altura dos campos ao lado */
 .time-form .dur { font-family: var(--font-label); }
 @media (max-width: 560px) { .time-form { grid-template-columns: 1fr 1fr; } .time-form > :nth-child(3), .time-form > :nth-child(4) { grid-column: span 2; } }
-.mini-row { display: grid; grid-template-columns: 48px 56px 1fr auto; gap: 10px; align-items: center; padding: 4px 0; font-size: var(--type-body-s); }
+.mini-row { display: grid; grid-template-columns: 48px 56px 1fr auto auto; gap: 10px; align-items: center; padding: 4px 0; font-size: var(--type-body-s); }
 .mini-row .when, .mini-row .amount { font-size: var(--type-label); color: var(--dim); }
 .mini-row .amount { color: var(--primary-hi); }
 .mini-row .what { min-width: 0; color: var(--on-surface-variant); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -499,6 +499,10 @@ dialog.task-dialog { max-width: 640px; padding: 0; max-height: min(88vh / var(--
 .mini-row:hover button.icon, .note:hover .note-meta button.icon, .mini-row button.icon:focus-visible, .note-meta button.icon:focus-visible { opacity: 1; }
 .mini-row button.icon .ico, .note-meta button.icon .ico { width: 16px; height: 16px; }
 
+/* Corrigir apontamento/anotação no lugar da linha */
+.row-edit-actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
+.time-form.row-edit { padding: 8px; border-radius: var(--radius-m); background: var(--surface-container-high); border: 1px solid var(--card-border); }
+.note.row-edit textarea { width: 100%; margin: 6px 0 8px; min-height: 72px; }
 .note-form { display: flex; gap: 8px; align-items: flex-end; margin-bottom: 12px; }
 .note-form textarea { flex: 1; min-height: 44px; }
 .note-form .btn { height: 44px; }

@@ -522,6 +522,18 @@ class NoteIn(BaseModel):
         return self
 
 
+class NoteUpdate(BaseModel):
+    """Corrigir o texto de uma anotação (a hora original fica)."""
+    body: str = Field(min_length=1, max_length=2000)
+
+    @model_validator(mode="after")
+    def _norm(self):
+        self.body = self.body.strip()
+        if not self.body:
+            raise ValueError("anotação em branco")
+        return self
+
+
 class ChecklistIn(BaseModel):
     label: str = Field(min_length=1, max_length=200)
 
@@ -541,6 +553,13 @@ class TimeIn(BaseModel):
     def _norm(self):
         self.external_ref = _ref(self.external_ref)
         return self
+
+
+class TimeUpdate(BaseModel):
+    """Corrigir um apontamento. Só o que vier muda (note: null ou vazio tira a observação)."""
+    minutes: Optional[int] = Field(default=None, ge=1, le=1440)
+    day: Optional[date] = None
+    note: Optional[str] = Field(default=None, max_length=200)
 
 
 # Avisos por e-mail: os padrões daqui valem também quando o usuário ainda não

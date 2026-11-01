@@ -253,6 +253,7 @@ export async function openTask(taskId, onChange, opts = {}) {
   // ---- edição no lugar
   // Salva só o que mudou; na falha, avisa e redesenha com o que está no servidor.
   let cur = null, refocus = null, savedTimer = null, editing = false;
+  let rowEdit = null; // "time:<id>" ou "note:<id>": a linha que está sendo corrigida
   let pending = Promise.resolve(); // o último salvamento (o "Pronto" espera ele)
   const saved = h("span", { class: "saved-mark", "aria-live": "polite" });
   function save(patch, redraw = false) {
@@ -460,11 +461,15 @@ export async function openTask(taskId, onChange, opts = {}) {
     }));
     sec.append(form);
     for (const e of t.time) {
+      if (rowEdit === "time:" + e.id) { sec.append(timeEditForm(e, today)); continue; }
+      const what = `${duration(e.minutes)} em ${shortDate(e.day)}`;
       sec.append(h("div", { class: "mini-row" },
         h("span", { class: "mono when", text: shortDate(e.day) }),
         h("span", { class: "mono amount", text: duration(e.minutes) }),
         h("span", { class: "what" }, e.note || "", actorBadge(e)),
-        h("button", { type: "button", class: "icon", title: "Excluir apontamento", "aria-label": "Excluir apontamento", onClick: async () => {
+        h("button", { type: "button", class: "icon", title: "Corrigir apontamento", "aria-label": "Corrigir apontamento de " + what,
+          onClick: () => editRow("time:" + e.id, "Duração do apontamento") }, icon("edit")),
+        h("button", { type: "button", class: "icon", title: "Excluir apontamento", "aria-label": "Excluir apontamento de " + what, onClick: async () => {
           try {
             await api.del(`/time/${e.id}`);
             touch();
@@ -473,6 +478,72 @@ export async function openTask(taskId, onChange, opts = {}) {
         } }, icon("trash"))));
     }
     return sec;
+  }
+
+  // Corrigir um apontamento ou uma anotação no lugar da linha: Salvar (ou Enter) e
+  // Cancelar (ou Esc). O aviso traz o Desfazer, como nas exclusões.
+  function editRow(key, focusLabel) {
+    rowEdit = key;
+    refocus = focusLabel;
+    paint();
+  }
+  function closeRow(backLabel) {
+    rowEdit = null;
+    paint();
+    if (backLabel) refocusBy(body, backLabel);
+  }
+  function timeEditForm(e, today) {
+    const back = "Corrigir apontamento de " + `${duration(e.minutes)} em ${shortDate(e.day)}`;
+    const dur = h("input", { type: "text", class: "dur", value: duration(e.minutes).replace(" min", ""), "aria-label": "Duração do apontamento" });
+    dur.addEventListener("input", () => dur.setCustomValidity(""));
+    const day = h("input", { type: "date", value: e.day, max: today, min: addDays(today, -366), "aria-label": "Dia do apontamento" });
+    const note = h("input", { type: "text", maxlength: "200", value: e.note || "", placeholder: "o que foi feito (opcional)", "aria-label": "Observação do apontamento" });
+    const form = h("form", { class: "time-form row-edit" }, dur, day, note,
+      h("div", { class: "row-edit-actions" },
+        h("button", { type: "button", class: "btn btn-text btn-sm", text: "Cancelar", onClick: () => closeRow(back) }),
+        h("button", { type: "submit", class: "btn btn-primary btn-sm", text: "Salvar" })));
+    form.addEventListener("keydown", (ev) => { if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); closeRow(back); } });
+    form.addEventListener("submit", busy(async (ev) => {
+      ev.preventDefault();
+      const minutes = parseDuration(dur.value);
+      if (!minutes || minutes > 1440) { dur.setCustomValidity("Duração inválida. Ex.: 45, 1h30, 2:15."); dur.reportValidity(); return; }
+      try {
+        await api.patch(`/time/${e.id}`, { minutes, day: day.value || e.day, note: note.value.trim() || null });
+        rowEdit = null;
+        await touch();
+        refocusBy(body, "Corrigir apontamento de " + `${duration(minutes)} em ${shortDate(day.value || e.day)}`);
+        toast(`Apontamento corrigido: ${duration(minutes)}.`, { action: "Desfazer", onAction: () => undoLatest("time", e.id, after) });
+      } catch (err) { errorToast(err, "Não foi possível corrigir."); }
+    }));
+    return form;
+  }
+  function noteEditForm(n) {
+    const text = h("textarea", { rows: "3", maxlength: "2000", "aria-label": "Texto da anotação" });
+    text.value = n.body;
+    const back = "Editar anotação de " + dateTime(n.created_at);
+    const save = busy(async () => {
+      const v = text.value.trim();
+      if (!v) { text.setCustomValidity("Escreva a anotação, ou cancele."); text.reportValidity(); return; }
+      if (v === n.body) { closeRow(back); return; }
+      try {
+        await api.patch(`/notes/${n.id}`, { body: v });
+        rowEdit = null;
+        await touch();
+        refocusBy(body, back);
+        toast("Anotação corrigida.", { action: "Desfazer", onAction: () => undoLatest("note", n.id, after) });
+      } catch (e) { errorToast(e, "Não foi possível corrigir."); }
+    });
+    text.addEventListener("input", () => text.setCustomValidity(""));
+    text.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); closeRow(back); }
+      else if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); save(); }
+    });
+    return h("div", { class: "note row-edit" },
+      h("div", { class: "note-meta" }, h("span", { class: "mono", text: dateTime(n.created_at) })),
+      text,
+      h("div", { class: "row-edit-actions" },
+        h("button", { type: "button", class: "btn btn-text btn-sm", text: "Cancelar", onClick: () => closeRow(back) }),
+        h("button", { type: "button", class: "btn btn-primary btn-sm", text: "Salvar", onClick: save })));
   }
 
   // ---- anotações
@@ -491,9 +562,13 @@ export async function openTask(taskId, onChange, opts = {}) {
     sec.append(h("div", { class: "note-form" }, text,
       h("button", { type: "button", class: "btn btn-ghost btn-sm", onClick: send }, "Anotar")));
     for (const n of t.notes) {
+      if (rowEdit === "note:" + n.id) { sec.append(noteEditForm(n)); continue; }
+      const when = dateTime(n.created_at);
       sec.append(h("div", { class: "note" },
-        h("div", { class: "note-meta" }, h("span", { class: "mono", text: dateTime(n.created_at) }), actorBadge(n),
-          n.pending ? h("span", { class: "chip today", text: "esperando conexão" }) : h("button", { type: "button", class: "icon", title: "Excluir anotação", "aria-label": "Excluir anotação", onClick: async () => {
+        h("div", { class: "note-meta" }, h("span", { class: "mono", text: when }), actorBadge(n),
+          n.pending || t.offline ? null : h("button", { type: "button", class: "icon", title: "Editar anotação", "aria-label": "Editar anotação de " + when,
+            onClick: () => editRow("note:" + n.id, "Texto da anotação") }, icon("edit")),
+          n.pending ? h("span", { class: "chip today", text: "esperando conexão" }) : h("button", { type: "button", class: "icon", title: "Excluir anotação", "aria-label": "Excluir anotação de " + when, onClick: async () => {
             try {
               await api.del(`/notes/${n.id}`);
               touch();
