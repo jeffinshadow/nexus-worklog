@@ -21,6 +21,7 @@ router = APIRouter(prefix="/api/history", tags=["history"])
 
 UNDOABLE = {
     "worklog.create", "worklog.assign", "worklog.update", "worklog.finish", "worklog.delete",
+    "worklog.assign_update",
     "recurring.create", "recurring.update", "recurring.deactivate", "recurring.toggle", "recurring.replace",
     "recurring.pause", "recurring.resume",
     "note.create", "note.delete", "checklist.create", "checklist.update", "checklist.delete",
@@ -39,6 +40,12 @@ ACTION_LABELS = {
     "worklog.delete": "excluiu a tarefa",
     "worklog.assign": "recebeu a tarefa",
     "assign.send": "atribuiu a tarefa",
+    "assign.update": "alterou a tarefa atribuída",
+    "assign.cancel": "cancelou a tarefa atribuída",
+    "worklog.assign_update": "teve alterada por quem atribuiu a tarefa",
+    "worklog.assign_cancel": "teve cancelada por quem atribuiu a tarefa",
+    "user.block": "bloqueou o acesso",
+    "user.invite_cancel": "cancelou o convite",
     "assignments.consent": "alterou o aceite de tarefas atribuídas",
     "viewers.consent": "alterou o aceite do visualizador",
     "user.roles": "alterou as permissões",
@@ -122,6 +129,15 @@ def _label(row) -> str:
         return f"excluiu a conta {row['before'].get('email', '')} e todos os dados dela"
     if row["action"] == "assign.send":
         return f"atribuiu a tarefa “{name}” a {snap.get('to', '')}"
+    if row["action"] in ("assign.update", "assign.cancel"):
+        verbo = "alterou" if row["action"] == "assign.update" else "cancelou"
+        return f"{verbo} a tarefa “{name}”, atribuída a {snap.get('to', '')}"
+    if row["action"] in ("worklog.assign_update", "worklog.assign_cancel"):
+        verbo = "alterou" if row["action"] == "worklog.assign_update" else "cancelou"
+        return f"{snap.get('by') or 'quem atribuiu'} {verbo} a tarefa “{name}”, que tinha atribuído a você"
+    if row["action"] in ("user.block", "user.invite_cancel"):
+        email = (row["after"] or row["before"] or {}).get("email", "")
+        return f"{ACTION_LABELS[row['action']]} de {email}" if row["action"] == "user.block" else f"cancelou o convite de {email}"
     if row["action"] == "assignments.consent" and row["after"]:
         return "passou a aceitar tarefas atribuídas" if row["after"].get("accept") else "deixou de aceitar tarefas atribuídas"
     if row["action"] == "viewers.consent" and row["after"]:
@@ -390,7 +406,7 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
                SELECT 1 FROM photos WHERE task_id = %(t)s AND deleted_at IS NULL LIMIT 1""", {"t": eid}):
             raise HTTPException(status_code=409, detail="a tarefa já tem anotações, checklist, tempo ou fotos; para tirá-la, exclua pela tela")
         db.execute("DELETE FROM worklog_tasks WHERE id = %s AND user_id = %s", (eid, uid))
-    elif a in ("worklog.update", "worklog.finish"):
+    elif a in ("worklog.update", "worklog.finish", "worklog.assign_update"):
         _need_task(uid, eid)
         _restore_worklog(uid, before)
     elif a == "worklog.delete":
