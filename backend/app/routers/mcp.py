@@ -12,7 +12,7 @@ Chave "read" só enxerga as ferramentas de leitura. A IA não exclui tarefas,
 projetos nem objetivos (arquivar o projeto, sim).
 """
 import unicodedata
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Request
@@ -25,7 +25,7 @@ from ..config import config
 from ..labels import PRIO_PT, STATUS_PT
 from ..labels import dur as _dur
 from ..schemas import (AssignIn, ChecklistIn, ChecklistUpdate, FinishIn, NoteIn, ObjectiveIn, ObjectiveUpdate, OrderIn,
-                       ProjectIn, ProjectUpdate, RecurringIn, TimeIn, TimerIn, ToggleIn, WorklogIn, WorklogUpdate)
+                       ProjectIn, ProjectUpdate, RecurringIn, TimeIn, TimerIn, TimerStopIn, ToggleIn, WorklogIn, WorklogUpdate)
 from . import assign as assign_routes
 from . import history as history_routes
 from . import objectives as objective_routes
@@ -65,6 +65,7 @@ PRIO = {nome: n for n, nome in PRIO_PT.items()}  # "alta" -> 1
 DATE = {"type": "string", "format": "date", "description": "Data AAAA-MM-DD"}
 EXTRA_PROJECTS = {"type": "array", "items": {"type": "string"}, "maxItems": 10,
                   "description": "Outros projetos além do principal (a tarefa atende mais de uma frente); a lista substitui a anterior"}
+FORGOTTEN_TIMER_MIN = 8 * 60  # cronômetro rodando há mais que isso: provavelmente esquecido
 WHEN = {"type": "string", "description": "Data (AAAA-MM-DD) ou data e hora (AAAA-MM-DDTHH:MM), fuso " + config.APP_TZ + ". Nunca no futuro; até o limite retroativo da conta"}
 
 
@@ -199,7 +200,9 @@ def t_get_today(ctx, args):
     if b.get("timer"):
         tm = b["timer"]
         mins = int((datetime.now(timezone.utc) - tm["started_at"]).total_seconds() // 60)
-        lines += [f"Cronômetro rodando em #{tm['task_id']} {tm['title']} há {_dur(max(mins, 1))}.", ""]
+        esquecido = (" (provavelmente esquecido: pergunte a que horas parou e use stop_timer com at)"
+                     if mins > FORGOTTEN_TIMER_MIN else "")
+        lines += [f"Cronômetro rodando em #{tm['task_id']} {tm['title']} há {_dur(max(mins, 1))}{esquecido}.", ""]
     rec = [r for r in b["recurring"] if r["due"]]
     lines.append(f"Rotinas de hoje ({sum(r['done_today'] for r in rec)}/{len(rec)} feitas):")
     lines += _recurring_rows(rec) or ["  (nenhuma)"]
@@ -625,18 +628,57 @@ def t_get_week(ctx, args):
                                      "mesma parte da semana passada" if back == 0 else "semana anterior"))
 
 
+def _review_text(st: dict) -> str:
+    """Cronômetro esquecido (rodou demais): parou sem apontar nada."""
+    desde = st["started_at"].astimezone(services.app_tz()).strftime("%Y-%m-%d %H:%M") if st.get("started_at") else "muito tempo"
+    return (f"estava rodando em #{st['task_id']} desde {desde}; nada foi apontado. "
+            "Pergunte quanto tempo foi de fato e informe com log_time")
+
+
 def t_start_timer(ctx, args):
     res = _call(timer_routes.start, TimerIn(task_id=int(args["task_id"])), user=ctx)
     prev = res["stopped"]
-    extra = f" (o anterior parou e apontou {_dur(prev['minutes'])} em #{prev['task_id']})" if prev else ""
+    if prev and prev.get("needs_review"):
+        extra = f" (o anterior parou: {_review_text(prev)})"
+    else:
+        extra = f" (o anterior parou e apontou {_dur(prev['minutes'])} em #{prev['task_id']})" if prev else ""
     return f"Cronômetro iniciado em #{res['timer']['task_id']} {res['timer']['title']}{extra}."
 
 
+def _stop_at(value) -> datetime | None:
+    """Hora em que parou: HH:MM (a mais recente que já passou: hoje ou ontem) ou
+    AAAA-MM-DDTHH:MM, no fuso da app."""
+    if not value:
+        return None
+    tz, txt = services.app_tz(), str(value).strip()
+    try:
+        if len(txt) <= 5:
+            txt = txt.lower().replace("h", ":")  # "18h", "18h30"
+            txt = txt + "00" if txt.endswith(":") else txt
+            hh, mm = (int(x) for x in txt.split(":"))
+            now = datetime.now(tz)
+            at = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+            at = at if at <= now else at - timedelta(days=1)
+        else:
+            at = datetime.fromisoformat(txt)
+            at = at if at.tzinfo else at.replace(tzinfo=tz)
+    except ValueError:
+        raise ToolError(f"hora inválida: {value} (use HH:MM ou AAAA-MM-DDTHH:MM)") from None
+    return at.astimezone(timezone.utc)
+
+
 def t_stop_timer(ctx, args):
-    res = _call(timer_routes.stop, user=ctx)
+    at = _stop_at(args.get("at"))
+    running = services.running_timer(ctx["user_id"])
+    if at and running and at < running["started_at"]:
+        inicio = running["started_at"].astimezone(services.app_tz()).strftime("%Y-%m-%d %H:%M")
+        raise ToolError(f"essa hora é antes do início do cronômetro ({inicio}); nada foi mudado")
+    res = _call(timer_routes.stop, TimerStopIn(at=at), user=ctx)
     st = res["stopped"]
     if not st:  # o dia do cronômetro já tinha 24h apontadas: parou, mas nada foi somado
         return "Cronômetro parado. O dia dele já tinha 24h apontadas; nada foi somado."
+    if st.get("needs_review"):
+        return "Cronômetro parado: " + _review_text(st) + "."
     return f"Cronômetro parado: {_dur(st['minutes'])} apontados em #{st['task_id']} ({st['day'].isoformat()})."
 
 
@@ -947,8 +989,11 @@ TOOLS = {
                                               "description": "Marcar exige evidência (note em set_recurring)"}}}),
     "start_timer": (t_start_timer, True, "Inicia o cronômetro numa tarefa aberta (se outro estiver rodando, ele para e aponta o tempo).",
                     {"type": "object", "required": ["task_id"], "properties": {"task_id": {"type": "integer"}}}),
-    "stop_timer": (t_stop_timer, True, "Para o cronômetro e aponta o tempo na tarefa.",
-                   {"type": "object", "properties": {}}),
+    "stop_timer": (t_stop_timer, True,
+                   "Para o cronômetro e aponta o tempo na tarefa. Se a pessoa parou antes (“parei às 18h”), informe at.",
+                   {"type": "object", "properties": {
+                       "at": {"type": "string", "description": "Hora em que parou: HH:MM (a mais recente que já passou) "
+                              "ou AAAA-MM-DDTHH:MM, fuso " + config.APP_TZ + ". Padrão: agora. Até 24 h atrás"}}}),
     "list_templates": (t_list_templates, False, "Lista os modelos de tarefa do usuário (procedimentos com checklist pronto).",
                        {"type": "object", "properties": {}}),
     "create_from_template": (t_create_from_template, True, "Cria uma tarefa a partir de um modelo (com o checklist dele).",
