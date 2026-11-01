@@ -133,7 +133,7 @@ function profilePanel(me, rerender) {
       file.value = "";
     }
   });
-  const form = h("form", {}, field("Nome de exibição", name), err,
+  const form = h("form", {}, field("Nome de exibição", name), locked ? null : err,
     locked ? h("p", { class: "dialog-note lock-note", id: "name-locked" }, icon("lock"), IDENTITY_LOCKED)
       : h("button", { type: "submit", class: "btn btn-primary", text: "Salvar nome" }));
   form.addEventListener("submit", busy(async (ev) => {
@@ -917,8 +917,9 @@ function emailBlock(me) {
   const paint = () => {
     clear(box);
     box.append(h("h3", { class: "sum-h", text: "E-mail" }));
-    const input = h("input", { type: "email", maxlength: "254", autocomplete: "email", value: me.email, required: "required" });
+    const input = h("input", { type: "email", maxlength: "254", autocomplete: "email", value: "", placeholder: "nome@empresa.com.br", required: "required" });
     if (identityLocked(me)) {
+      input.value = me.email;
       input.disabled = true;
       input.setAttribute("aria-describedby", "email-locked");
       box.append(field("E-mail da conta", input), h("p", { class: "dialog-note lock-note", id: "email-locked" }, icon("lock"), IDENTITY_LOCKED));
@@ -932,6 +933,7 @@ function emailBlock(me) {
           try { meChanged(me, await api.del("/me/email")); toast("Troca de e-mail cancelada. O link deixa de valer."); paint(); }
           catch (e) { errorToast(e); }
         }) })));
+      return;  // um pedido por vez: desistir libera o formulário de novo
     }
     const pw = h("input", { type: "password", autocomplete: "current-password", required: "required", maxlength: "128" });
     const err = h("p", { class: "error-text", role: "alert" });

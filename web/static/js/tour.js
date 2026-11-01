@@ -74,8 +74,15 @@ function setup(me, must) {
     const body = h("div", { class: "tour-body" });
     const dlg = h("dialog", { class: "tour-dialog", "aria-labelledby": "tour-title" }, body);
     document.body.append(dlg);
-    dlg.addEventListener("close", () => { dlg.remove(); resolve(result); });
+    let ended = false;
+    dlg.addEventListener("close", () => {
+      // Obrigatório: só sai pelo botão principal. Se o navegador fechou mesmo assim
+      // (Esc repetido, gesto de voltar), abre de novo no mesmo passo.
+      if (must && !ended) { dlg.showModal(); paint().catch(() => {}); return; }
+      dlg.remove(); resolve(result);
+    });
     // Obrigatório: Esc não fecha (o tour termina pelo botão principal).
+    dlg.addEventListener("keydown", (ev) => { if (must && ev.key === "Escape") ev.preventDefault(); });
     dlg.addEventListener("cancel", (ev) => { if (must) ev.preventDefault(); else result = "close"; });
 
     const org = me.org || {};
@@ -85,7 +92,7 @@ function setup(me, must) {
     const total = steps.length - 2; // boas-vindas e "pronto" não contam
     const next = () => { step++; dir = 1; paint(); };
     const back = () => { step--; dir = -1; paint(); };
-    const end = (r) => { result = r; dlg.close(); };
+    const end = (r) => { ended = true; result = r; dlg.close(); };
 
     // Passo que não carrega (rede, servidor) não prende ninguém: segue na mesma direção.
     async function paint() {
