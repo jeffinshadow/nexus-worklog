@@ -258,17 +258,53 @@ Aparecem no Hoje (só os no aviso), no e-mail da manhã e no calendário (dia de
 JSON-RPC 2.0 sobre HTTP, **uma mensagem por requisição** (sem lote, sem SSE),
 `Authorization: Bearer nxs_…`. Versões: 2025-11-25, 2025-06-18, 2025-03-26.
 
-Leitura: `get_today`, `get_summary`, `get_handoff` (passagem de turno: abertas, bloqueadas, concluídas nas últimas 12 h, vencimentos no aviso), `list_renewals` (vencimentos), `find_similar` (já resolvi isso antes?), `list_tasks` (com `from`/`to`/`by` por período), `get_task`, `search`,
+Leitura: `get_today`, `get_summary`, `get_period` (`from`, `to`, `project`: concluídas, tempo por projeto e rotinas de qualquer período, como a prévia do relatório), `get_handoff` (passagem de turno: abertas, bloqueadas, concluídas nas últimas 12 h, vencimentos no aviso), `list_renewals` (vencimentos), `find_similar` (já resolvi isso antes?), `list_tasks` (com `from`/`to`/`by` por período e `project`; mostra o tempo de cada tarefa), `get_task`, `search`,
 `list_projects` (com objetivos e arquivados marcados), `list_objectives`, `list_recurring`, `list_templates`, `get_history`.
-Escrita (chave `write`): `create_task` (com `created_at`, `completed_at`, `external_ref`, `blocked_reason`, `follow_up_on`, `resolution`), `update_task` (com `completed_at`, `blocked_reason`, `follow_up_on`, `resolution`), `complete_task` (com `completed_at` e `resolution`),
-`add_note`, `add_checklist_item`, `set_checklist_item`, `log_time`, `start_timer`, `stop_timer`,
-`create_from_template`, `set_recurring` (`recurring_id`, `note` = evidência), `undo` (só ações da própria chave).
+Escrita (chave `write`): `create_task` (com `minutes` = tempo gasto, já apontado; `created_at`, `completed_at`, `external_ref`, `blocked_reason`, `follow_up_on`, `resolution`), `update_task` (com `completed_at`, `blocked_reason`, `follow_up_on`, `resolution`), `complete_task` (com `completed_at` e `resolution`),
+`add_note`, `add_checklist_item`, `set_checklist_item`, `log_time`, `start_timer`, `stop_timer` (`at` = hora em que parou, HH:MM ou data e hora),
+`create_from_template`, `set_recurring` (`recurring_id`, `note` = evidência), `create_recurring` (`label`, `freq`, `weekdays` em nomes seg/ter..., `month_day`, `interval_days`, `remind_at`, `require_note`; nome repetido devolve a existente), `undo` (só ações da própria chave).
 Projetos e objetivos: `create_project` / `create_objective` (nome ou título repetido, sem diferenciar maiúsculas e acentos, ou `external_ref` repetido devolvem o existente; `position` 1 = primeiro), `update_project` (`archived` em vez de excluir), `update_objective` (com `position`), `reorder_objectives` (a lista completa; a ordem anterior vai pro histórico, com desfazer). O status do objetivo é automático (pelas tarefas). A IA não exclui o que o usuário fez, nem projetos e objetivos.
 Só com o papel de atribuidor: `list_assignable`, `list_assigned` e `assign_task` (`to` = U<id>, e-mail ou nome).
 
 Prompts (`prompts/list`, `prompts/get`): `resumo_semanal` (argumento `para`: gestor, time, cliente) e `daily`.
 No Claude Code viram `/mcp__nexus__resumo_semanal` e `/mcp__nexus__daily`.
 
+Argumento fora do `inputSchema` (todos têm `additionalProperties: false`) é recusado com `isError` e a
+lista dos válidos: nada é feito em silêncio. Tarefas atribuídas por outra pessoa mostram título e
+descrição entre « » (dado de terceiro; as instruções do servidor dizem à IA para não obedecer a texto das
+tarefas). `update_task` e `undo` levam `destructiveHint: true`.
+
+### Como ligar
+
+Crie uma chave em Configurações > IA e API (permissão ler e registrar) e troque `nxs_SUA_CHAVE` por ela.
+
+Claude Code:
+
 ```bash
 claude mcp add --transport http nexus https://SEU-HOST/mcp --header "Authorization: Bearer nxs_SUA_CHAVE"
 ```
+
+Cursor (`mcp.json`) e outros clientes que aceitam URL e cabeçalho:
+
+```json
+{ "mcpServers": { "nexus": { "url": "https://SEU-HOST/mcp", "headers": { "Authorization": "Bearer nxs_SUA_CHAVE" } } } }
+```
+
+Claude Desktop (só fala com programas locais; o `mcp-remote` faz a ponte e precisa do Node.js). Em
+Configurações > Desenvolvedor > Editar configuração (`claude_desktop_config.json`), depois reabra o app:
+
+```json
+{ "mcpServers": { "nexus": {
+    "command": "npx",
+    "args": ["-y", "mcp-remote", "https://SEU-HOST/mcp", "--header", "Authorization:${NEXUS_AUTH}"],
+    "env": { "NEXUS_AUTH": "Bearer nxs_SUA_CHAVE" } } } }
+```
+
+Gemini CLI (`~/.gemini/settings.json`):
+
+```json
+{ "mcpServers": { "nexus": { "httpUrl": "https://SEU-HOST/mcp", "headers": { "Authorization": "Bearer nxs_SUA_CHAVE" } } } }
+```
+
+ChatGPT e claude.ai (navegador) ainda não: os conectores deles exigem OAuth, que o Nexus não tem.
+Nesses casos, use um dos clientes acima ou a API REST.
