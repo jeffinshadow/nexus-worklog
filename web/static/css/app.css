@@ -1478,6 +1478,7 @@ dialog.proj-dialog { max-width: 480px; width: min(480px, calc(100vw / var(--ui-z
 dialog.pack-dialog { max-width: 540px; width: min(540px, calc(100vw / var(--ui-zoom) - 24px)); }
 dialog.pack-dialog .dialog-actions { flex-wrap: wrap; }
 dialog.pack-dialog .btn { white-space: nowrap; }
+@media (max-width: 420px) { dialog.pack-dialog .pack-items .dialog-actions .btn-text:not(:first-child) { display: none; } }
 dialog .pack-intro { margin: -8px 0 14px; }
 .pack-list { display: grid; gap: 8px; }
 .pack-card { display: flex; align-items: center; gap: 14px; width: 100%; min-height: 64px; padding: 10px 14px; text-align: left;

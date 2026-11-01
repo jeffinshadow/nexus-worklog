@@ -103,6 +103,7 @@ export function openPacks(onDone) {
       h("div", { class: "dialog-actions" },
         h("button", { type: "button", class: "btn btn-text", text: "Voltar", onClick: () => areas(packs) }),
         h("div", { class: "spacer" }), close, ok));
+    form.classList.add("pack-items"); // no celular estreito, só Voltar e Criar (cabem numa linha)
     form.addEventListener("submit", busy(async () => {
       const sel = picker.value();
       if (!sel.items.length && !sel.project) { toast("Marque pelo menos um item.", { error: true }); return; }

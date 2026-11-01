@@ -85,7 +85,13 @@ try:
             ev("document.getElementById('fab')?.click()"); time.sleep(1); coleta("nova tarefa")
             ev("document.querySelectorAll('dialog[open]').forEach(d=>d.close())")
             ev("document.querySelector('.list-row .only-mob[aria-label^=\"Mais ações\"]')?.click()"); time.sleep(.8); coleta("menu ⋮ da linha")
+            ev("document.querySelectorAll('dialog[open]').forEach(d=>d.close())")
+            ev("document.querySelector('.t-rec .panel-head button.accent')?.click()"); time.sleep(1); coleta("nova rotina")
+            ev("document.getElementById('rec-pack-btn')?.click()"); time.sleep(1.5); coleta("pacotes: áreas")
+            ev("document.querySelector('dialog[open] .pack-card')?.click()"); time.sleep(1); coleta("pacotes: itens")
+            ev("document.querySelectorAll('dialog[open]').forEach(d=>d.close())")
 finally:
     p.terminate()
+print("alvos menores que 44 px:", sum(sum(d["tam"].values()) for d in res.values()) or "nenhum")
 for cls, d in sorted(res.items(), key=lambda kv: -sum(kv[1]["tam"].values())):
     print(f"{cls:42s} {', '.join(f'{k}×{v}' for k, v in d['tam'].most_common(3)):30s} «{d['ex']}»  [{', '.join(sorted(d['telas']))[:70]}]")
