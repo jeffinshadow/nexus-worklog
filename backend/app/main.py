@@ -4,10 +4,12 @@ import pathlib
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Request
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import JSONResponse
 from psycopg import errors as pg_errors
 from psycopg_pool import PoolTimeout
 from pydantic import BaseModel, EmailStr, Field, TypeAdapter, ValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import db, notify, roles
 from .config import config
@@ -63,6 +65,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Shadow Nexus Worklog",
+    description="API REST do Nexus Worklog. Referência, erros e exemplos: docs/API.md.",
     lifespan=lifespan,
     docs_url=None,
     redoc_url=None,
@@ -70,11 +73,24 @@ app = FastAPI(
 )
 
 
+# Retry-After em todo 429/503: a automação espera em vez de repetir em rajada.
+# Um minuto cobre as janelas curtas; as longas (login, convite) recusam de novo.
+RETRY_AFTER = {429: "60", 503: "5"}
+
+
 @app.exception_handler(Busy)
 @app.exception_handler(PoolTimeout)
 @app.exception_handler(pg_errors.QueryCanceled)  # statement_timeout (db.py)
 async def _busy(request: Request, exc: Exception):
-    return JSONResponse({"detail": "servidor ocupado, tente de novo em instantes"}, status_code=503)
+    return JSONResponse({"detail": "servidor ocupado, tente de novo em instantes"}, status_code=503,
+                        headers={"Retry-After": RETRY_AFTER[503]})
+
+
+@app.exception_handler(StarletteHTTPException)
+async def _http_error(request: Request, exc: StarletteHTTPException):
+    if exc.status_code in RETRY_AFTER and "Retry-After" not in (exc.headers or {}):
+        exc.headers = {**(exc.headers or {}), "Retry-After": RETRY_AFTER[exc.status_code]}
+    return await http_exception_handler(request, exc)
 
 
 @app.get("/api/health")

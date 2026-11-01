@@ -105,6 +105,11 @@ para leitura, o quadro, a retrospectiva e os relatórios de cada pessoa).
   ordem anterior fica no histórico, com desfazer). Nome ou título repetido
   devolve o que já existe; o status do objetivo continua automático. A IA não
   exclui tarefa, projeto nem objetivo.
+- **Integração** — API REST aberta, sem conector para produto específico:
+  `external_ref` em tarefas, projetos, anotações e tempo (repetir não duplica),
+  feed de mudanças (`/api/history?after=`) e webhooks de saída assinados
+  (HMAC-SHA256). Contrato em [`docs/openapi.json`](docs/openapi.json); receitas
+  `curl` em [`docs/API.md`](docs/API.md#integração-passo-a-passo).
 
 ## Telas
 
@@ -253,6 +258,7 @@ backend/sql/       migrações numeradas (o modelo de dados está aqui)
 backend/tests/     suíte (pytest + Postgres real)
 web/static/        index.html, login.html, js/ (um módulo por tela), css/
 docs/API.md        referência da API e do MCP (o Swagger fica desligado)
+docs/openapi.json  contrato da API, gerado por tools/openapi.py (o teste confere)
 ```
 
 Fuso da aplicação em `APP_TZ` (define "hoje", semana — que começa no

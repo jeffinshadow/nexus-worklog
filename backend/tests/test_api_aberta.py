@@ -3,6 +3,8 @@ import hashlib
 import hmac
 import ipaddress
 import json
+import os
+import pathlib
 
 import pytest
 
@@ -225,3 +227,34 @@ def test_webhook_so_eventos_do_dono_e_sem_fotos(usuario, novo_usuario, dns):
     assert webhooks.payload({"id": 1, "created_at": None, "actor": "web", "token_name": None, "action": "photo.create",
                              "entity": "photo", "entity_id": 3, "before": None,
                              "after": {"task_id": 1, "image": "base64..."}})["data"] is None
+
+
+# ------------------------------------------------------------ contrato (D1) --
+
+def test_openapi_em_dia():
+    """docs/openapi.json versionado = o que o app gera (rode tools/openapi.py)."""
+    from app.main import app
+    path = pathlib.Path(os.environ.get("OPENAPI_FILE") or pathlib.Path(__file__).parents[2] / "docs" / "openapi.json")
+    assert path.exists(), "falta docs/openapi.json: rode tools/openapi.py"
+    atual = json.dumps(app.openapi(), indent=2, ensure_ascii=False) + "\n"
+    assert path.read_text(encoding="utf-8") == atual, "docs/openapi.json desatualizado: rode tools/openapi.py"
+    assert "/api/history" in app.openapi()["paths"] and "/api/webhooks" in app.openapi()["paths"]
+
+
+def test_retry_after_no_429_e_503(usuario):
+    import asyncio
+    from app import main, security
+    b = Bearer(criar_chave(usuario)["token"])
+    security.token_limiter._hits.clear()
+    try:
+        for _ in range(security.token_limiter.max):
+            b.get("/timer")
+        r = b.get("/timer")
+        assert r.status_code == 429 and r.headers["Retry-After"] == "60"
+    finally:
+        security.token_limiter._hits.clear()
+    r = asyncio.run(main._busy(None, security.Busy()))
+    assert r.status_code == 503 and r.headers["Retry-After"] == "5"
+    # Os outros erros seguem sem o header e com o detail de sempre.
+    r = usuario.get("/worklog/999999")
+    assert r.status_code == 404 and "Retry-After" not in r.headers and r.json() == {"detail": "não encontrado"}
