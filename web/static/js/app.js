@@ -137,7 +137,10 @@ async function route() {
     await view.mount(el, { me, setActions: actions, setEyebrow, setAssist: assist, go });
   } catch (e) {
     clear(el);
-    el.append(h("p", { class: "empty", text: e && e.status === 0 ? e.message : "Não foi possível carregar. Tente de novo." }));
+    // Servidor fora (ou o app abriu do cache do aparelho): a frase e o botão, como na abertura.
+    el.append(h("div", { class: "auth-card view-error", role: "alert" },
+      h("p", { class: "sub", text: e && e.status === 0 ? e.message : "Não foi possível carregar." }),
+      h("button", { type: "button", class: "btn btn-primary full", text: "Tentar de novo", onClick: () => route() })));
   } finally {
     clearTimeout(loading);
     el.removeAttribute("aria-busy");
@@ -347,15 +350,20 @@ async function boot() {
   } catch (e) {
     // Só sessão inválida vai ao login; sem rede ou servidor fora, avisa e deixa tentar de novo.
     if (e.status === 401 || e.message === "nao autenticado") { toLogin(); return; }
+    document.getElementById("boot-splash")?.remove();
+    document.querySelector(".skip-link")?.remove(); // o <main> está escondido: o atalho não levaria a nada
     // O mesmo cartão do login: a marca, a frase e o botão juntos, no meio da tela.
+    const retry = h("button", { type: "button", class: "btn btn-primary full", text: "Tentar de novo", onClick: () => location.reload() });
     document.body.append(h("div", { class: "auth-wrap" }, h("div", { class: "auth-card boot-error", role: "alert" },
       h("div", { class: "lockup lockup--center" }, h("img", { class: "lockup-mark", src: "/img/dragon-mark.svg", alt: "", width: "26", height: "30" }),
         h("span", { class: "lockup-type" }, h("span", { text: "nexus" }), h("span", { text: "worklog" }))),
       h("p", { class: "sub", text: e.message || "Não foi possível abrir o Nexus." }),
-      h("button", { type: "button", class: "btn btn-primary full", text: "Tentar de novo", onClick: () => location.reload() }))));
+      retry)));
+    retry.focus();
     loadBranding();  // o logo da equipe, se o servidor responder
     return;
   }
+  document.getElementById("boot-splash")?.remove();
   api.setCsrf(me.csrf_token);
   setTimeZone(me.tz);
   if (window.nexusTheme && me.theme && me.theme !== window.nexusTheme.get()) window.nexusTheme.set(me.theme);  // a escolha da conta vale aqui também
