@@ -43,7 +43,7 @@ a { color: var(--primary-hi); text-decoration: none; }
 
 /* ------------------------------------------------------------- botões -- */
 button { font-family: inherit; font-size: var(--type-body); cursor: pointer; color: inherit; }
-button:disabled { opacity: .45; cursor: not-allowed; }
+button:disabled { opacity: .38; cursor: not-allowed; }  /* desabilitado: uma opacidade só (Material 3) */
 /* Botão de ação: sempre com .btn (+ .btn-primary/-ghost/-text/-danger, .btn-sm).
    Ícones, abas e links-botão têm classes próprias. */
 .btn {
@@ -53,13 +53,15 @@ button:disabled { opacity: .45; cursor: not-allowed; }
   background: var(--primary); color: var(--on-primary);
   transition: background-color .2s, border-color .2s, color .2s, transform .2s var(--ease);
 }
-.btn:hover:not(:disabled) { filter: brightness(1.08); }
+/* Hover = camada da cor do texto a 8% (Material 3); pressionado = 12% (--press, em movimento). */
+:root { --hover: color-mix(in srgb, currentColor 8%, transparent); }
+.btn:hover:not(:disabled), .icon-btn:hover, button.icon:hover:not(:disabled), .seg button.chip-btn:hover { background-image: linear-gradient(var(--hover), var(--hover)); }
 .btn-ghost { background: color-mix(in srgb, var(--tint) 3%, transparent); color: var(--on-surface); border-color: var(--line-2); }
-.btn-ghost:hover:not(:disabled) { border-color: color-mix(in srgb, var(--tint) 30%, transparent); filter: none; }
+.btn-ghost:hover:not(:disabled) { border-color: color-mix(in srgb, var(--tint) 30%, transparent); }
 .btn-text { background: transparent; color: var(--on-surface-variant); padding: 0 12px; }
-.btn-text:hover:not(:disabled) { color: var(--on-surface); filter: none; }
+.btn-text:hover:not(:disabled) { color: var(--on-surface); }
 .btn-danger { background: transparent; color: var(--error); border-color: color-mix(in srgb, var(--error) 35%, transparent); }
-.btn-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--error) 8%, transparent); filter: none; }
+.btn-danger:hover:not(:disabled) { background-color: color-mix(in srgb, var(--error) 8%, transparent); }
 .btn-sm { height: 32px; padding: 0 12px; font-size: var(--type-body-s); }
 .full { width: 100%; }
 
@@ -68,7 +70,7 @@ button:disabled { opacity: .45; cursor: not-allowed; }
   border-radius: 50%; border: 1px solid transparent; background: transparent;
   color: var(--on-surface-variant); transition: background-color .2s, color .2s;
 }
-.icon-btn:hover, button.icon:hover { background: var(--surface-container-high); color: var(--on-surface); }
+.icon-btn:hover, button.icon:hover { color: var(--on-surface); }
 .icon-btn.accent { color: var(--primary-hi); }
 
 /* -------------------------------------------------------------- campos -- */
@@ -153,7 +155,7 @@ input::placeholder { color: var(--dim); }
     border-top: 1px solid var(--outline-variant);
   }
   .tabbar a { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0; color: var(--dim); font-size: var(--type-label); font-weight: 500; }
-  .tabbar a .ico { width: 22px; height: 22px; }
+  .tabbar a .ico { width: 24px; height: 24px; }
   .tabbar a.active { color: var(--primary-hi); }
 }
 
@@ -270,7 +272,7 @@ button.column-toggle { display: none; }
 .who-badge { display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-label); font-size: var(--type-caption); padding: 1px 8px; border-radius: var(--radius-full); border: 1px solid var(--outline-variant); color: var(--on-surface-variant); vertical-align: 1px; }
 .who-badge.mcp, .who-badge.api { color: var(--primary-hi); border-color: color-mix(in srgb, var(--primary) 40%, transparent); }
 .who-badge.admin { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 35%, transparent); }
-.who-badge .ico { width: 12px; height: 12px; }
+.who-badge .ico { width: 16px; height: 16px; }
 @media (max-width: 560px) { .hist-row { grid-template-columns: 1fr auto; } .hist-when { grid-column: 1 / -1; } }
 
 /* -------------------------------------------------------- configurações -- */
@@ -295,7 +297,7 @@ button.column-toggle { display: none; }
 .codebox .copy { position: absolute; top: 6px; right: 6px; }
 .token-box { font-family: var(--font-label); font-size: var(--type-body); padding: 14px; margin: 12px 0 0; border-radius: var(--radius-m); background: var(--surface-deep); border: 1px solid color-mix(in srgb, var(--primary) 45%, transparent); user-select: all; word-break: break-all; color: var(--primary-hi); }
 .warnbox { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; margin-top: 12px; border-radius: var(--radius-m); border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent); background: color-mix(in srgb, var(--warning) 6%, transparent); color: var(--warning-ink); font-size: var(--type-body-s); }
-.warnbox .ico { color: var(--warning); width: 18px; height: 18px; margin-top: 2px; }
+.warnbox .ico { color: var(--warning); width: 20px; height: 20px; margin-top: 2px; }
 
 /* --------------------------------------------------------- mais (mobile) -- */
 .menu-list { display: flex; flex-direction: column; }
@@ -432,7 +434,7 @@ textarea { resize: vertical; min-height: 64px; line-height: 1.5; }
 .chip.project { display: inline-flex; align-items: center; gap: 6px; color: var(--on-surface); }
 .chip.prio-1 { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 45%, transparent); }
 .tag { display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-label); font-size: max(var(--type-label), calc(12px / var(--ui-zoom))); color: var(--dim); }
-.tag .ico { width: 13px; height: 13px; }
+.tag .ico { width: 16px; height: 16px; }
 .tag.ok { color: var(--success); }
 
 .card-open { all: unset; cursor: pointer; border-radius: 4px; }
@@ -458,7 +460,7 @@ dialog.task-dialog { max-width: 640px; padding: 0; max-height: min(88vh / var(--
 .task-sec-head .ico { width: 16px; height: 16px; }
 .task-sec .count { font-family: var(--font-label); font-size: var(--type-label); color: var(--dim); }
 .task-sec .check-row button.icon { width: 28px; height: 28px; }
-.task-sec .check-row button.icon .ico { width: 15px; height: 15px; }
+.task-sec .check-row button.icon .ico { width: 16px; height: 16px; }
 .task-add { margin: 6px 0 12px; }
 .progress.thin { height: 4px; margin: 0 0 8px; }
 /* Editar no próprio detalhe: título e descrição parecem texto e viram campo
@@ -477,7 +479,7 @@ dialog.task-dialog { max-width: 640px; padding: 0; max-height: min(88vh / var(--
 .title-main .resolution { margin: 0 0 10px; color: var(--on-surface-variant); font-size: var(--type-body); white-space: pre-wrap; }
 .edit-toggle { flex: none; }
 .task-title .assigned-note { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; font-size: var(--type-body-s); color: var(--on-surface-variant); }
-.assigned-note .ico { width: 14px; height: 14px; }
+.assigned-note .ico { width: 16px; height: 16px; }
 .props { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
 .props > .field { min-width: 0; margin-bottom: 12px; }
 .props > .field label { font-size: var(--type-caption); }
@@ -497,9 +499,9 @@ dialog.task-dialog { max-width: 640px; padding: 0; max-height: min(88vh / var(--
 .mini-row .when, .mini-row .amount { font-size: var(--type-label); color: var(--dim); }
 .mini-row .amount { color: var(--primary-hi); }
 .mini-row .what { min-width: 0; color: var(--on-surface-variant); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.mini-row button.icon, .note-meta button.icon { width: 28px; height: 28px; opacity: .5; }
+.mini-row button.icon, .note-meta button.icon { width: 28px; height: 28px; opacity: .7; }
 .mini-row:hover button.icon, .note:hover .note-meta button.icon, .mini-row button.icon:focus-visible, .note-meta button.icon:focus-visible { opacity: 1; }
-.mini-row button.icon .ico, .note-meta button.icon .ico { width: 15px; height: 15px; }
+.mini-row button.icon .ico, .note-meta button.icon .ico { width: 16px; height: 16px; }
 
 .note-form { display: flex; gap: 8px; align-items: flex-end; margin-bottom: 12px; }
 .note-form textarea { flex: 1; min-height: 44px; }
@@ -611,13 +613,13 @@ mark { background: color-mix(in srgb, var(--primary) 28%, transparent); color: v
 .assist-items { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; }
 .assist-item { position: relative; display: flex; gap: 10px; align-items: flex-start; padding: 10px 40px 10px 12px; border-radius: var(--radius-m); background: color-mix(in srgb, var(--tint) 2.8%, transparent); }
 .assist-item > .assist-mark { width: 24px; height: 24px; margin-top: -1px; }
-.assist-item > .assist-mark .ico { width: 13px; height: 13px; }
+.assist-item > .assist-mark .ico { width: 16px; height: 16px; }
 .assist-item-body { flex: 1; min-width: 0; }
 .assist-item .assist-item-body > p:first-child { margin-top: 0; }
 .assist-item .assist-actions { margin-bottom: 2px; }
-.assist-item-close { position: absolute; top: 4px; right: 4px; width: 30px; height: 30px; opacity: .55; }
+.assist-item-close { position: absolute; top: 4px; right: 4px; width: 30px; height: 30px; opacity: .7; }
 .assist-item-close:hover, .assist-item-close:focus-visible { opacity: 1; }
-.assist-item-close .ico { width: 15px; height: 15px; }
+.assist-item-close .ico { width: 16px; height: 16px; }
 .assist-item-body > .assist-ask:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
 /* As falas seguem a área útil (990px reais, em .main > *). */
 .assist { position: relative; display: flex; gap: 14px; align-items: flex-start; border-color: color-mix(in srgb, var(--primary) 32%, transparent);
@@ -625,9 +627,9 @@ mark { background: color-mix(in srgb, var(--primary) 28%, transparent); color: v
 .assist.compact { padding: 14px 18px; }
 .assist-mark { flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
   color: var(--primary-hi); background: color-mix(in srgb, var(--primary) 12%, transparent); border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent); }
-.assist-mark .ico { width: 18px; height: 18px; }
+.assist-mark .ico { width: 20px; height: 20px; }
 .assist.compact .assist-mark { width: 28px; height: 28px; }
-.assist.compact .assist-mark .ico { width: 15px; height: 15px; }
+.assist.compact .assist-mark .ico { width: 16px; height: 16px; }
 .assist-body { flex: 1; min-width: 0; padding-right: 26px; }
 .assist-close { position: absolute; top: 8px; right: 8px; }
 .assist-body p { margin: 3px 0; color: var(--on-surface-variant); font-size: var(--type-body); line-height: 1.5; max-width: 90ch; }
@@ -680,7 +682,7 @@ mark { background: color-mix(in srgb, var(--primary) 28%, transparent); color: v
 .photo-thumb:hover, .photo-thumb:focus-visible { border-color: color-mix(in srgb, var(--primary) 60%, transparent); }
 .photo-add { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--on-surface-variant); font-size: var(--type-caption); border-style: dashed; }
 .photo-add:hover { color: var(--on-surface); border-color: color-mix(in srgb, var(--tint) 30%, transparent); }
-.photo-add .ico { width: 22px; height: 22px; }
+.photo-add .ico { width: 24px; height: 24px; }
 dialog.photo-dialog { max-width: min(1200px, calc(96vw / var(--ui-zoom))); width: auto; padding: 0; background: var(--surface-deep); }
 .photo-viewer { display: flex; flex-direction: column; }
 .photo-bar { display: flex; align-items: center; gap: 2px; padding: 6px 8px 6px 14px; border-bottom: 1px solid var(--outline-variant); }
@@ -977,7 +979,7 @@ body.rail-peek .sidebar { width: var(--sidebar-w); z-index: 45; box-shadow: var(
 .pop-menu button { display: flex; align-items: center; gap: 12px; width: 100%; height: 40px; padding: 0 16px; border: 0;
   background: transparent; color: var(--on-surface); font: inherit; text-align: left; cursor: pointer; }
 .pop-menu button:hover, .pop-menu button:focus-visible { background: var(--surface-container-high); outline: none; }
-.pop-menu .ico { width: 18px; height: 18px; color: var(--on-surface-variant); }
+.pop-menu .ico { width: 20px; height: 20px; color: var(--on-surface-variant); }
 .tooltip { position: fixed; z-index: 1001; max-width: 260px; padding: 5px 9px; border-radius: var(--radius-s); pointer-events: none;
   font: 500 calc(var(--type-caption) * var(--ui-zoom))/1.35 var(--font-sans); color: var(--surface); background: var(--on-surface);
   opacity: 0; transition: opacity .12s; left: -9999px; top: 0; }
@@ -1063,7 +1065,7 @@ body.rail .nav a:active, body.rail .sidebar .nav-link:active { transform: scale(
 .chip-x { border: 0; background: transparent; color: inherit; padding: 0; margin: 0 -4px 0 0; width: 18px; height: 18px;
   display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; cursor: pointer; }
 .chip-x:hover { background: var(--outline-variant); }
-.chip-x .ico { width: 12px; height: 12px; }
+.chip-x .ico { width: 16px; height: 16px; }
 
 /* ------------------------------------------------------------ tour guiado -- */
 dialog.tour-dialog { max-width: 560px; width: min(560px, calc(100vw / var(--ui-zoom) - 32px)); }
@@ -1074,7 +1076,7 @@ dialog .tour-intro { margin: 0 0 14px; line-height: 1.5; }
 .tour-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
 .tour-chips:empty { display: none; }
 .tour-suggest { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; border-style: dashed; }
-.tour-suggest .ico { width: 12px; height: 12px; }
+.tour-suggest .ico { width: 16px; height: 16px; }
 .tour-picks { margin: 0 0 12px; }
 .tour-layer { position: fixed; inset: 0; z-index: 95; }
 .tour-shade { position: fixed; background: color-mix(in srgb, var(--shadow) 66%, transparent); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
@@ -1111,7 +1113,7 @@ dialog.help-dialog { max-width: 600px; width: min(600px, calc(100vw / var(--ui-z
 .help-sec { padding: 14px 0; border-top: 1px solid var(--outline-variant); }
 .help-sec:first-of-type { border-top: 0; padding-top: 0; }
 .help-sec h3 { display: flex; align-items: center; gap: 8px; font-size: var(--type-title); font-weight: 600; margin: 0 0 10px; color: var(--on-surface); }
-.help-sec h3 .ico { width: 18px; height: 18px; color: var(--primary); }
+.help-sec h3 .ico { width: 20px; height: 20px; color: var(--primary); }
 .help-start { display: flex; flex-wrap: wrap; gap: 8px; }
 .help-list { display: grid; grid-template-columns: max-content 1fr; gap: 8px 14px; margin: 0; font-size: var(--type-body-s); }
 .help-list dt { color: var(--on-surface); font-weight: 500; }
@@ -1186,7 +1188,7 @@ dialog.help-dialog > .dialog-actions { position: sticky; bottom: -24px; margin: 
 .grip:active { cursor: grabbing; }
 .obj-block.unassigned { border-style: dashed; }
 .chip.objective { display: inline-flex; align-items: center; gap: 4px; }
-.chip.objective .ico { width: 12px; height: 12px; }
+.chip.objective .ico { width: 16px; height: 16px; }
 /* Projeto aberto: o título da página é o nome; aqui só a volta, a cor e o ⋮ */
 .proj-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .proj-bar .proj-back { margin: 0 0 0 -8px; }
