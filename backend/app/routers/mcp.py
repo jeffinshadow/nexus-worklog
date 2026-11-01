@@ -348,7 +348,7 @@ def t_search(ctx, args):
     for t in r["tasks"]:
         t.setdefault("check_total", 0)
         lines.append(_task_line(t | {"description": None, "project_name": t["project_name"]}, today))
-        lines += [f"    {h['kind']}: {h['text']}" for h in t["hits"] if h["kind"] != "título"][:3]
+        lines += [f"    {h['kind']}: {_quoted(t, h['text'])}" for h in t["hits"] if h["kind"] != "título"][:3]
     if r["recurring"]:
         lines += ["", "Rotinas:"] + [f"  R{x['id']} {x['label']}" + ("" if x["active"] else " (removida)") for x in r["recurring"]]
     if r["projects"]:
