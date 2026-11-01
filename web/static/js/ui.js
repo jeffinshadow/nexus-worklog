@@ -317,6 +317,41 @@ export function setSingleKeys(on) {
 
 // Foco que não se perde quando a lista é redesenhada: depois de render(),
 // volta ao controle de mesmo nome (aria-label) dentro de scope.
+// Anúncio para o leitor de tela numa região viva que não é recriada com a tela.
+let liveRegion = null;
+export function announce(text) {
+  if (!liveRegion) { liveRegion = h("div", { class: "sr-only", role: "status", "aria-live": "polite" }); document.body.append(liveRegion); }
+  liveRegion.textContent = "";
+  setTimeout(() => { liveRegion.textContent = text; }, 60);
+}
+
+// Setas de período (dia no Hoje, semana, mês, Equipe): a tela se redesenha e o
+// botão focado some. Espera o rótulo mudar, devolve o foco à mesma seta (ou à
+// outra, se esta ficou desabilitada no limite) e anuncia o período novo.
+document.addEventListener("click", (ev) => {
+  const btn = ev.target.closest && ev.target.closest(".day-nav button[aria-label]");
+  if (!btn) return;
+  const label = btn.getAttribute("aria-label");
+  const oldNav = btn.closest(".day-nav"), oldLab = oldNav.querySelector(".day-nav-label"), oldText = oldLab?.textContent;
+  const index = [...document.querySelectorAll(".day-nav")].indexOf(oldNav);
+  const t0 = performance.now();
+  const tick = () => {
+    if (performance.now() - t0 > 4000) return;
+    const navs = [...document.querySelectorAll(".day-nav")];
+    const nav = oldNav.isConnected ? oldNav : navs.filter((n) => n.querySelector(`button[aria-label="${CSS.escape(label)}"]`))[0] || navs[index];
+    const lab = nav && nav.querySelector(".day-nav-label");
+    if (!lab || lab.textContent === oldText) { requestAnimationFrame(tick); return; }
+    const a = document.activeElement;
+    if (!a || a === document.body || !a.isConnected || a === btn) {
+      const same = nav.querySelector(`button[aria-label="${CSS.escape(label)}"]`);
+      const el = same && !same.disabled ? same : nav.querySelector("button:not([disabled])");
+      if (el) el.focus();
+    }
+    if (lab !== oldLab || !lab.hasAttribute("aria-live")) announce(lab.textContent);  // rótulo recriado: a região viva nova não fala
+  };
+  requestAnimationFrame(tick);
+});
+
 export function refocusBy(scope, label) {
   if (!scope || !label) return;
   const el = scope.querySelector(`[aria-label="${CSS.escape(label)}"]`);
