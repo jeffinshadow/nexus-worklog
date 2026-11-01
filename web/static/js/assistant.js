@@ -202,7 +202,7 @@ async function copyDaily(b, sum) {
     area.value = text;
     const dlg = modal(h("h2", { text: "Resumo para a equipe" }),
       h("p", { class: "dialog-note", text: "Não consegui copiar sozinho. O texto já está selecionado: use Ctrl+C." }), area,
-      h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Fechar", onClick: () => dlg.close() })));
+      h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-text", text: "Fechar", onClick: () => dlg.close() })));
     setTimeout(() => area.select(), 0);
   }
 }

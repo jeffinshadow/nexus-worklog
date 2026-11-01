@@ -240,7 +240,7 @@ function mountMore(el) {
 
 // Ajuda em seções: começar (tour e manual), onde fica cada coisa, marcadores do
 // registro rápido, atalhos (só no computador) e a quem recorrer (Admin > Geral).
-function showHelp() {
+function showHelp(focus) {
   const user = has("user");
   const sec = (ic, title, ...body) => h("section", { class: "help-sec" }, h("h3", {}, icon(ic), h("span", { text: title })), ...body);
   const list = (rows) => h("dl", { class: "help-list" }, ...rows.flatMap(([k, v, code]) =>
@@ -280,8 +280,10 @@ function showHelp() {
     sec("mail", "Suporte", me.support_contact
       ? h("p", { class: "help" }, "Fale com ", h("strong", { text: me.support_contact }), ".")
       : h("p", { class: "help", text: "Dúvidas ou problemas: fale com quem administra o Nexus na sua equipe." })),
-    h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Fechar", onClick: () => dlg.close() })));
+    h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-text", text: "Fechar", onClick: () => dlg.close() })));
   dlg.classList.add("help-dialog");
+  // Pedido de uma seção (ex.: "ver marcadores" no Hoje): rola até ela.
+  if (focus === "marcadores") [...dlg.querySelectorAll(".help-sec")].find((s) => /Registro rápido/.test(s.textContent))?.scrollIntoView({ block: "start" });
 }
 
 // Erros de JavaScript vão para o log do servidor (sem terceiros). Poucos por página.
@@ -336,8 +338,13 @@ async function boot() {
   } catch (e) {
     // Só sessão inválida vai ao login; sem rede ou servidor fora, avisa e deixa tentar de novo.
     if (e.status === 401 || e.message === "nao autenticado") { toLogin(); return; }
-    document.body.append(h("div", { class: "auth-wrap" }, h("p", { class: "empty", text: e.message || "Não foi possível abrir o Nexus." }),
-      h("button", { type: "button", class: "btn btn-primary", text: "Tentar de novo", onClick: () => location.reload() })));
+    // O mesmo cartão do login: a marca, a frase e o botão juntos, no meio da tela.
+    document.body.append(h("div", { class: "auth-wrap" }, h("div", { class: "auth-card boot-error", role: "alert" },
+      h("div", { class: "lockup lockup--center" }, h("img", { class: "lockup-mark", src: "/img/dragon-mark.svg", alt: "", width: "26", height: "30" }),
+        h("span", { class: "lockup-type" }, h("span", { text: "nexus" }), h("span", { text: "worklog" }))),
+      h("p", { class: "sub", text: e.message || "Não foi possível abrir o Nexus." }),
+      h("button", { type: "button", class: "btn btn-primary full", text: "Tentar de novo", onClick: () => location.reload() }))));
+    loadBranding();  // o logo da equipe, se o servidor responder
     return;
   }
   api.setCsrf(me.csrf_token);
@@ -386,7 +393,8 @@ async function boot() {
     document.getElementById("appbar").classList.toggle("show", shown && e.intersectionRatio < 1 && e.boundingClientRect.top < barH());
   }, { rootMargin: `-${Math.round(barH())}px 0px 0px 0px`, threshold: [0, 1] }).observe(pageTitle);
   document.getElementById("btn-logout").addEventListener("click", logout);
-  document.getElementById("btn-help").addEventListener("click", showHelp);
+  document.getElementById("btn-help").addEventListener("click", () => showHelp());
+  window.addEventListener("nexus:help", (ev) => showHelp(ev.detail));
   // Busca na barra lateral; "/" foca a busca de qualquer tela.
   const sideQ = document.getElementById("side-search-q");
   document.getElementById("side-search").addEventListener("submit", (ev) => {
@@ -462,7 +470,7 @@ async function boot() {
     const dlg = modal(h("h2", { text: "Atalhos de teclado" }),
       h("dl", { class: "shortcuts" }, ...Object.entries(SHORTCUTS).flatMap(([k, [label]]) => [h("dt", {}, h("kbd", { text: k })), h("dd", { text: label })])),
       h("p", { class: "dialog-note", text: "Funcionam fora dos campos de texto. Esc fecha qualquer janela. Dá para desligá-los em Configurações." }),
-      h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Fechar", onClick: () => dlg.close() })));
+      h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-text", text: "Fechar", onClick: () => dlg.close() })));
   }
   document.addEventListener("keydown", (ev) => {
     if (ev.ctrlKey || ev.metaKey || ev.altKey) return;

@@ -126,13 +126,13 @@ export async function mount(root, opts = {}) {
 
   // Exportação dos dados (só no próprio usuário; o admin exporta PDF).
   if (!opts.exportBase) {
-    // Cada exportação é um item de lista (Material 3): ícone, título, descrição
+    // Cada exportação é um item de lista (Material 3): título, descrição
     // e o download no fim; a linha toda é o botão.
     const dl = (path, label, help) => {
       const b = h("button", { type: "button", class: "export-item", onClick: async () => {
         b.disabled = true;
         try { await api.download(typeof path === "function" ? path() : path); } catch (e) { errorToast(e, "Não foi possível exportar."); } finally { b.disabled = false; }
-      } }, h("span", { class: "export-ico" }, icon(label.includes("JSON") ? "folder" : label.includes("ZIP") ? "image" : "list")),
+      } },
         h("span", { class: "export-text" }, h("span", { class: "export-title", text: label }), h("span", { class: "export-help", text: help })),
         icon("download"));
       return b;

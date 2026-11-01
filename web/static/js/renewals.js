@@ -100,8 +100,8 @@ export function newRenewal(rerender) {
 
 export async function renewalsPanel(rerender) {
   const list = await api.get("/renewals");
+  // A página já se chama Vencimentos: o cartão começa direto pela explicação.
   const sec = h("section", { class: "panel" },
-    h("div", { class: "panel-head" }, icon("calendar"), h("h2", { text: "Vencimentos" })),
     h("p", { class: "help", text: "Certificados, licenças, domínios, garantias e contratos. Avisam no Hoje, no e-mail da manhã e no calendário a partir dos dias de antecedência de cada um. O Nexus não consulta nada de fora: vale a data informada aqui." }));
   if (!list.length) sec.append(h("p", { class: "empty", text: "Nenhum vencimento ainda. Cadastre certificados, licenças, contratos ou garantias e o Nexus avisa antes de vencer." }));
   for (const r of list) sec.append(row(r, rerender));
@@ -119,7 +119,7 @@ export async function todayRenewals(refresh) {
   }
   if (!list.length) return null;
   const sec = h("section", { class: "panel t-venc" },
-    h("div", { class: "panel-head" }, icon("calendar"), h("h2", { text: "Vencimentos" }),
+    h("div", { class: "panel-head" }, h("h2", { text: "Vencimentos" }),
       h("span", { class: "count warn", text: String(list.length) })));
   for (const r of list) sec.append(row(r, refresh, true));
   return sec;

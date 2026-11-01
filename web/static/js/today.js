@@ -139,9 +139,8 @@ export async function mount(root, ctx, opts = {}) {
   fillProjectSelect(proj, lastProj !== null ? Number(lastProj) || null : ctx.me.default_project_id || null)
     .then(() => proj.addEventListener("change", () => sessionStorage.setItem(LAST_PROJECT, proj.value)))
     .catch(() => {});
-  const phone = matchMedia("(max-width: 860px)").matches;
   const quick = h("input", { type: "text", maxlength: "200", "aria-label": "Registrar tarefa rápida",
-    placeholder: phone ? "Nova tarefa e Enter" : "O que você fez? Enter registra · @projeto — 15min" });
+    placeholder: "O que você fez? — 15min" });
   // "Já resolvido antes" também aqui (por onde entra a maioria das tarefas):
   // o título sem os marcadores, depois de uma pausa na digitação.
   const hint = h("div", { class: "similar hidden", "aria-live": "polite" });
@@ -187,7 +186,8 @@ export async function mount(root, ctx, opts = {}) {
         late.length ? `${late.length} atrasada${late.length > 1 ? "s" : ""}` : "",
         blocked.length ? `${blocked.length} aguardando` : ""].filter(Boolean).join(" · ") })),
     h("div", { class: "quick-row" }, quick, proj),
-    h("p", { class: "quick-hint", text: "No fim, se quiser: @projeto #chamado !alta ^amanhã !aguarda motivo — 15min" }), hint);
+    h("p", { class: "quick-hint" }, "Enter registra. Projeto, chamado e prazo no próprio texto: ",
+      h("button", { type: "button", class: "link-btn", text: "ver marcadores", onClick: () => window.dispatchEvent(new CustomEvent("nexus:help", { detail: "marcadores" })) })), hint);
   // Filtro (fica na aba): o número de cada opção ajuda a decidir antes de clicar.
   let filter = sessionStorage.getItem(OPEN_FILTER) || "all";
   if (!FILTERS.some(([k]) => k === filter)) filter = "all";

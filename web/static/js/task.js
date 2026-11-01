@@ -472,7 +472,7 @@ async function copySummary(t) {
     const area = h("textarea", { rows: "10", readonly: "readonly", class: "handoff-text", "aria-label": "Resumo da tarefa" });
     area.value = text;
     const dlg = modal(h("h2", { text: "Resumo da tarefa" }), area,
-      h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Fechar", onClick: () => dlg.close() })));
+      h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-text", text: "Fechar", onClick: () => dlg.close() })));
     area.select();
   }
 }
