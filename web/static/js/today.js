@@ -38,7 +38,7 @@ export async function mount(root, ctx, opts = {}) {
     opts.summary ? Promise.resolve(opts.summary) : api.get("/summary").catch(() => null),
   ]);
   const today = b.today;
-  ctx.setEyebrow(weekdayDate(today) + (b.work_day ? "" : " · não útil"), weekdayDate(today));
+  ctx.setEyebrow(weekdayDate(today) + (b.work_day ? "" : " · não útil"));
   ctx.setActions(
     h("button", { type: "button", class: "btn btn-ghost", title: "Texto pronto com o que fica aberto, bloqueado e o que foi concluído nas últimas 12 h", onClick: showHandoff }, icon("copy"), "Passagem de turno"),
     h("button", { type: "button", class: "btn btn-primary", "data-fab": "", onClick: () => openWorklog(refresh) }, icon("add"), "Tarefa")

@@ -88,14 +88,12 @@ async function route() {
   const eyebrow = document.getElementById("page-eyebrow");
   const changed = shownView !== name;
   if (changed) closeSidePanel(); // o detalhe lateral é da tela que ficou para trás
-  if (shownView) kept[shownView] = { assist: document.getElementById("assist-slot").firstChild, eyebrow: eyebrow.textContent, sub: document.getElementById("appbar-sub").textContent,
+  if (shownView) kept[shownView] = { assist: document.getElementById("assist-slot").firstChild, eyebrow: eyebrow.textContent,
     actions: [...document.getElementById("page-actions").childNodes] };
   shownView = name;
   const prev = kept[name] || {};
   document.getElementById("page-title").textContent = view.title;
-  document.getElementById("appbar-title").textContent = view.title;
-  fitBar();
-  setEyebrow(view.eyebrow || prev.eyebrow || "", view.eyebrow || prev.sub || "");
+  setEyebrow(view.eyebrow || prev.eyebrow || "");
   document.title = `${view.title} · Nexus Worklog`;
   setActions(...(prev.actions || []));
 
@@ -168,21 +166,9 @@ function setAssist(node) {
   if (node) slot.append(node);
 }
 
-// A linha abaixo do título; no celular, sobe para a barra do topo junto com ele
-// (bar: versão mais curta, quando a linha toda não cabe ao lado do título).
-function setEyebrow(text, bar = text) {
+// A linha abaixo do título.
+function setEyebrow(text) {
   document.getElementById("page-eyebrow").textContent = text;
-  document.getElementById("appbar-sub").textContent = bar;
-  fitBar();
-}
-
-// Na barra, o subtítulo só aparece inteiro: se não cabe ao lado do título, sai.
-function fitBar() {
-  const head = document.querySelector(".appbar-heading");
-  if (!head || !document.getElementById("appbar").classList.contains("show")) return;
-  const sub = document.getElementById("appbar-sub");
-  head.classList.remove("no-sub");
-  if (sub.scrollWidth > sub.clientWidth + 1) head.classList.add("no-sub");
 }
 
 function go(name) {
@@ -382,15 +368,13 @@ async function boot() {
   }, { passive: true });
   // Barra inferior: no máximo 5 itens; quem atribui troca a Busca por Atribuir.
   if (has("assigner")) document.querySelector('#tabbar [data-view="busca"]').classList.add("hidden");
-  // Celular: quando o título da tela passa por baixo da barra do topo, ela mostra o nome da tela.
+  // Celular: quando o título da tela passa por baixo da barra do topo, ela ganha a linha de baixo.
   const pageTitle = document.getElementById("page-title");
   const barH = () => document.getElementById("appbar").getBoundingClientRect().height || 56;
   new IntersectionObserver(([e]) => {
     const shown = !pageTitle.closest(".hidden");
     document.getElementById("appbar").classList.toggle("show", shown && e.intersectionRatio < 1 && e.boundingClientRect.top < barH());
-    fitBar();
   }, { rootMargin: `-${Math.round(barH())}px 0px 0px 0px`, threshold: [0, 1] }).observe(pageTitle);
-  addEventListener("resize", fitBar, { passive: true });
   document.getElementById("btn-logout").addEventListener("click", logout);
   document.getElementById("btn-help").addEventListener("click", showHelp);
   // Busca na barra lateral; "/" foca a busca de qualquer tela.
