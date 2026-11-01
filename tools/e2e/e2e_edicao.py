@@ -51,7 +51,7 @@ try:
     tid2 = api("POST", "/worklog", {"title": f"Status {marca}"})["b"]["id"]
     cmd("Page.navigate", url=B + f"/#/tarefas?id={tid2}"); time.sleep(3.5)
     ev("document.querySelector('.task-dialog .edit-toggle').click()"); time.sleep(1)
-    ev("(()=>{const s=document.querySelector('.task-dialog select[aria-label=Status]');s.value='done';s.dispatchEvent(new Event('change'))})()"); time.sleep(2)
+    ev("(()=>{const s=document.querySelector('.task-dialog select[aria-label=Situação]');s.value='done';s.dispatchEvent(new Event('change'))})()"); time.sleep(2)
     check("status Concluída dentro da edição conclui", api("GET", f"/worklog/{tid2}")["b"]["status"] == "done")
     # avisos: testar espera salvar
     cmd("Page.navigate", url=B + "/#/config?aba=avisos"); time.sleep(3.5)
