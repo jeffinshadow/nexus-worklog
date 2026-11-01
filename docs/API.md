@@ -99,7 +99,7 @@ apaga as passkeys da conta; "Esqueci a senha" mantém e avisa por e-mail.
 | --- | --- | --- |
 | `PUT /profile` | S W | `{display_name}` (até 60; vazio = volta ao nome do e-mail) |
 | `POST /avatar` · `DELETE /avatar` | S W | corpo bruto PNG, JPEG ou WebP até 256 KB (tipo pelo conteúdo; SVG não). O app recorta e reduz antes |
-| `GET /avatar/{user_id}?v=` | S | a própria foto; o admin vê a de todos |
+| `GET /avatar/{user_id}?v=` | S | a própria foto; o admin vê a de todos; o atribuidor, a de quem aceitou receber tarefas (e não está bloqueado); o visualizador, a de quem aceitou ser visto; o resto 404 |
 | `PUT /assistant` | S W | `{enabled, idle_on, idle_minutes (5–480), idle_start, idle_end}` — janela em minutos do dia |
 | `GET /visibility` | S | `[{name, roles}]`: quem, além de você, tem papel `viewer` ou `admin` (a linha "Quem pode ver seu registro" em Conta; o visualizador só vê se `viewers_allowed`) |
 | `GET /activity` | S | `{last_activity, timer}`: último registro de qualquer origem (tarefa, rotina, anotação, checklist, tempo, cronômetro) e o cronômetro rodando |
@@ -113,7 +113,7 @@ apaga as passkeys da conta; "Esqueci a senha" mantém e avisa por e-mail.
 | Rota | | Corpo / observação |
 | --- | --- | --- |
 | `GET /api/timer` | | `{timer}`: `{task_id, title, started_at}` ou null (um por pessoa, vale em qualquer aparelho) |
-| `POST /api/timer/start` | W | `{task_id, at?}` — `at` = hora em que iniciou no aparelho (feito sem sinal, até 24 h atrás); tarefa aberta; se outro estiver rodando, ele para e aponta (`stopped`, mesma regra do stop). "A fazer" vira "em andamento" |
+| `POST /api/timer/start` | W | `{task_id, at?}` — `at` = hora em que iniciou no aparelho (feito sem sinal, até 24 h atrás); tarefa aberta; se outro estiver rodando, ele para e aponta (`stopped`, mesma regra do stop). "A fazer" vira "em andamento". `at` que cai em cima de tempo de cronômetro já apontado (outro aparelho parou depois) → 409, nada muda |
 | `POST /api/timer/stop` | W | `{at?}` (hora em que parou, sem sinal) — para e aponta o tempo (nota "cronômetro", no dia em que começou), só o que ainda cabe nas 24 h daquele dia; dia cheio = `stopped: null` (para assim mesmo). Concluir a tarefa também para |
 | `DELETE /api/timer` | W | descarta sem apontar |
 | `GET /api/templates` · `POST` · `PUT /{id}` · `DELETE /{id}` | (W) | `{name, title, description, priority, project_id, after_hours, checklist: [itens]}` — até 50 modelos, 30 itens |
@@ -132,8 +132,8 @@ apaga as passkeys da conta; "Esqueci a senha" mantém e avisa por e-mail.
 
 | Rota | | Corpo |
 | --- | --- | --- |
-| `POST /` | W | `{label, freq?, weekdays?, month_day?, interval_days?, require_note?, remind_at?}` — `require_note` = marcar exige evidência; `remind_at` (`HH:MM`) = horário do lembrete |
-| `PATCH /{id}` | W | `{label?, require_note?, freq?…}` — mudar a agenda exige `freq` + o parâmetro dela; se a rotina já tem passado, ela é encerrada hoje e uma nova (devolvida em `id`) começa hoje — uma ação só no histórico |
+| `POST /` | W | `{label, freq?, weekdays?, month_day?, interval_days?, require_note?, remind_at?}` — `require_note` = marcar exige evidência; `remind_at` (`HH:MM`, também `7h30`/`7h`) = horário do lembrete |
+| `PATCH /{id}` | W | `{label?, require_note?, freq?…}` — mudar a agenda exige `freq` + o parâmetro dela; se a rotina já tem passado, ela é encerrada hoje e uma nova (devolvida em `id`) começa hoje — uma ação só no histórico. Para `freq: "after"`, a nova conta da última marcação da antiga (próxima = última + N novo) |
 | `DELETE /{id}` | W | remove daqui para a frente (o passado fica) |
 | `GET /reminders` | R | rotinas com horário devidas hoje: `{today, items: [{id, label, remind_at, require_note, done}]}` (o lembrete da tela) |
 | `POST /{id}/pause` | W | `{until}` (`AAAA-MM-DD`, de hoje até 1 ano) — pausa de hoje até `until`, inclusive (férias, folga, prédio fechado); já pausada = muda o fim. Volta sozinha no dia seguinte |
@@ -168,13 +168,13 @@ pausada leva a pausa para a nova.
 | Rota | | Corpo / observação |
 | --- | --- | --- |
 | `GET /` | | `?from=&to=` (dias, inclusive) `&by=created\|completed&status=open\|done\|all&limit=` (até 500): tarefas por período, com `external_ref`. `?external_ref=` = só a tarefa com essa chave (lista vazia se não houver) |
-| `POST /` | W | `{title, description?, status?, due_date?, project_id?, priority?, ticket?, after_hours?, created_at?, completed_at?, external_ref?, blocked_reason?, follow_up_on?, resolution?}` (`resolution` só com status done: como foi resolvido) (prioridade 1 alta, 2 normal, 3 baixa; `ticket` = número do chamado, sem o "#"; `after_hours` = plantão). Datas retroativas: `AAAA-MM-DD` (criação às 9h, conclusão às 18h) ou data e hora, fuso da app; nunca no futuro, nunca conclusão antes da criação, até `retro_days` (padrão 60). `completed_at` sem `status` = já concluída. `external_ref` repetido devolve a existente (200, `existing: true`) |
+| `POST /` | W | `{title, description?, status?, due_date?, project_id?, priority?, ticket?, after_hours?, created_at?, completed_at?, external_ref?, blocked_reason?, follow_up_on?, resolution?}` (`resolution` só com status done: como foi resolvido) (prioridade 1 alta, 2 normal, 3 baixa; `ticket` = número do chamado, sem o "#"; `after_hours` = plantão). Datas retroativas: `AAAA-MM-DD` (criação às 9h, conclusão às 18h) ou data e hora, fuso da app; nunca no futuro, nunca conclusão antes da criação, até `retro_days` (padrão 60). `completed_at` sem `status` = já concluída; sem `created_at`, começou na própria conclusão (só a data: 9h do dia). `external_ref` repetido devolve a existente (200, `existing: true`) |
 | `GET /{id}` | | tarefa + `checklist`, `notes`, `time`, `minutes`, `today` |
 | `PATCH /{id}` | W | campos a mudar (concluir uma atribuída avisa quem atribuiu, uma vez); `description`/`due_date`/`project_id`/`ticket` = `null` apaga; `completed_at` corrige a data de uma concluída; `resolution` (até 1000; null apaga; só em tarefa concluída) = como foi resolvido; `blocked_reason` (até 120) e `follow_up_on` (dia combinado para cobrar; em dia não útil vai para o dia útil anterior) com status `blocked` = o que se aguarda (`blocked_at` marca desde quando; sair de `blocked` limpa tudo). Na tela, `blocked` se chama "aguardando" |
 | `POST /{id}/finish` | W | conclui agora, ou `{completed_at, resolution?}` (mesmas regras; `resolution` = como foi resolvido, até 1000, entra na busca); limpa a espera (`blocked_reason`, `blocked_at`, `follow_up_on`); com o cronômetro rodando nela, ele para e aponta. Tarefa atribuída: quem atribuiu recebe um e-mail, uma vez |
 | `POST /{id}/duplicate` | W | `201 {id}` — tarefa nova `todo` com título, descrição, projetos (principal e outros), prioridade e checklist (desmarcado); sem tempo, fotos, anotações, chamado nem datas. Entra no histórico como criação (desfazer apaga a cópia) |
 | `DELETE /{id}` | W | exclui junto anotações, checklist e tempo (o desfazer devolve tudo) |
-| `POST /{id}/notes` | W | `{body, external_ref?}` (até 2000) — `external_ref` repetido devolve a existente (200, `existing: true`) |
+| `POST /{id}/notes` | W | `{body, external_ref?, at?}` (até 2000) — `external_ref` repetido devolve a existente (200, `existing: true`); `at` = hora do aparelho (feita sem sinal e enviada depois): até 24 h atrás (senão 400), no futuro vale agora |
 | `DELETE /api/notes/{id}` | W | |
 | `POST /{id}/checklist` | W | `{label}` |
 | `PATCH /api/checklist/{id}` | W | `{label?, done?}` |
@@ -186,7 +186,7 @@ pausada leva a pausa para a nova.
 
 | Rota | | Corpo |
 | --- | --- | --- |
-| `POST /api/worklog/{id}/photos` | S W | `{image, thumb, width?, height?}` em base64 — PNG, JPEG ou WebP pelo conteúdo; foto até 1 MB (o app já reduz a 1600 px e regrava, sem EXIF/GPS), miniatura até 96 KB; até 10 por tarefa; cota por pessoa em Admin > Geral |
+| `POST /api/worklog/{id}/photos` | S W | `{image, thumb, width?, height?, at?}` em base64 (`at` = hora do aparelho, mesma regra das anotações) — PNG, JPEG ou WebP pelo conteúdo; foto até 1 MB (o app já reduz a 1600 px e regrava, sem EXIF/GPS), miniatura até 96 KB; até 10 por tarefa; cota por pessoa em Admin > Geral |
 | `POST /api/recurring/{id}/photos?day=` · `GET` | S W | o mesmo, como evidência da rotina no dia (até 7 dias atrás) |
 | `GET /api/photos/{id}?thumb=` | S | a imagem (dona, ou visualizador se a dona aceitou); cache privado e imutável |
 | `DELETE /api/photos/{id}` | S W | some na hora; volta pelo histórico em até 7 dias, depois sai de vez |
@@ -229,7 +229,10 @@ quantas fotos a tarefa tem.
 **Feed de mudanças.** Cada item: `{id, at, action, entity, entity_id, actor, token_name, external_ref?}`.
 `action` = `entidade.verbo` (`worklog.create`, `worklog.update`, `worklog.finish`, `worklog.delete`,
 `note.create`, `time.create`, `recurring.toggle`, `project.update`, `undo`...); `external_ref` vem quando o item tem um.
-Exclusão é uma **lápide** (`*.delete`, o id do item que sumiu). Para buscar o estado atual, leia o item pela
+Exclusão é uma **lápide** (`*.delete`, o id do item que sumiu). Tarefa atribuída: `worklog.assign` = chegou
+(criação); `worklog.assign_update` = quem atribuiu mudou título, prazo ou prioridade (trate como `worklog.update`);
+cancelamento por quem atribuiu = `worklog.delete` (lápide comum). Registros antigos podem trazer
+`worklog.assign_cancel`, que também é exclusão. Para buscar o estado atual, leia o item pela
 rota dele (`GET /api/worklog/{entity_id}`). Guarde o último `id` e peça `after=<ele>` de novo; lista vazia =
 em dia. `after=0` começa do mais velho guardado. O histórico guarda 180 dias: um cursor mais velho que isso
 (integração parada há meses) recebe **410** — recomece com `after=0`. Os eventos dos últimos 2 segundos só
@@ -303,7 +306,7 @@ Aparecem no Hoje (só os no aviso), no e-mail da manhã e no calendário (dia de
 | `PUT /users/{id}/roles` | W | `{roles: [...]}` (ao menos um); não tira o próprio admin nem deixa o sistema sem admin |
 | `POST /users/{id}/reset-password` | W | senha temporária; encerra sessões e revoga chaves, calendário e passkeys; numa conta bloqueada, libera o acesso |
 | `POST /users/{id}/block` | W | bloqueia o acesso sem apagar nada: senha que ninguém sabe, sessões, chaves, calendário, notificações e passkeys cortados, links de e-mail sem valor e "Esqueci a senha" sem efeito (`blocked_at`); não a própria conta, nem convite pendente. `reset-password` libera |
-| `POST /users/{id}/cancel-invite` | W | convite ainda não aceito: a conta (sem dados) sai e o link deixa de valer; 400 se a pessoa já entrou (aí é `delete`) |
+| `POST /users/{id}/cancel-invite` | W | convite ainda não aceito: a conta (sem dados) sai e o link deixa de valer; o pedido de convite que a gerou volta a pendente; 400 se a pessoa já entrou (aí é `delete`) |
 | `POST /users/{id}/delete` | W | `{confirm_email}` — exclui a conta e todos os dados (não a própria, nunca o último admin); e-mail e contagens ficam no histórico de quem excluiu |
 | `GET /settings` · `PUT /settings` | W | `{retro_days (1–366), support_contact?}` |
 
@@ -313,17 +316,17 @@ Aparecem no Hoje (só os no aviso), no e-mail da manhã e no calendário (dia de
 | --- | --- | --- |
 | `GET /users` | | contas com registro próprio (papel `user`) que deram o aceite (`PUT /api/me/viewers`) |
 | `GET /users/{id}/board` · `/dashboard` · `/projects` · `/reports/export` | | visão só leitura da pessoa; sem o aceite, 404 |
-| `GET /export/apontamentos.csv` | | horas de quem aceitou, com coluna `usuario` |
+| `GET /export/apontamentos.csv?start=&end=` | | horas de quem aceitou, com coluna `usuario`, do período (`AAAA-MM-DD`; padrão: o mês corrente; até 1 ano) |
 
 ## Atribuição — `/api/assign`
 
 | Rota | | Observação |
 | --- | --- | --- |
-| `GET /people` | | admin (app) ou atribuidor: contas com registro e se aceitam (`accepts`, desde quando) |
+| `GET /people` | | admin (app) ou atribuidor: contas com registro e se aceitam (`accepts`, desde quando); conta com acesso bloqueado vem com `blocked: true` e `accepts: false` (não recebe atribuição: 404). Foto (`avatar`) só de quem aceita, salvo para o admin |
 | `POST /` | W | atribuidor: `{user_id, title, description?, due_date?, priority?, ticket?, after_hours?}` → a tarefa nasce na conta de quem aceitou, com e-mail; não a si mesmo |
-| `GET /sent` | | atribuidor: tarefas que atribuiu, com status atual e `editable`; as que saíram da conta de quem recebeu nos últimos 60 dias vêm com `status: "removed"` e `ended: {kind: deleted\|canceled\|removed, at}` |
-| `PATCH /{id}` | W | atribuidor que mandou: `{title?, due_date?, priority?}` enquanto a tarefa está `todo` e sem tempo, anotação, checklist, foto ou cronômetro (senão 409); e-mail para quem recebeu, que pode desfazer pelo histórico |
-| `POST /{id}/cancel` | W | idem: a tarefa sai da conta de quem recebeu (e-mail avisando) e fica em `/sent` como cancelada |
+| `GET /sent` | | atribuidor: tarefas que atribuiu, com status atual, `editable` (ainda dá para alterar) e `cancelable` (ainda dá para cancelar); as que saíram da conta de quem recebeu nos últimos 60 dias vêm com `status: "removed"` e `ended: {kind: deleted\|canceled\|removed, at}` |
+| `PATCH /{id}` | W | atribuidor que mandou: `{title?, due_date?, priority?}` enquanto a tarefa está `todo` e sem tempo, anotação, checklist, foto ou cronômetro (senão 409). Só o que muda de fato (nada diferente → 400); campo que quem recebeu já mudou → 409 e nada muda. E-mail para quem recebeu, que pode desfazer pelo histórico |
+| `POST /{id}/cancel` | W | idem, e só se quem recebeu não mudou nada na tarefa (senão 409): ela sai da conta de quem recebeu (e-mail avisando; no histórico/feed dela, `worklog.delete`, desfazível) e fica em `/sent` como cancelada, com o título mais recente |
 
 ## Operação
 
@@ -339,9 +342,9 @@ JSON-RPC 2.0 sobre HTTP, **uma mensagem por requisição** (sem lote, sem SSE),
 
 Leitura: `get_today`, `get_summary`, `get_period` (`from`, `to`, `project`: concluídas, tempo por projeto e rotinas de qualquer período, como a prévia do relatório), `get_handoff` (passagem de turno: abertas, aguardando, concluídas nas últimas 12 h, vencimentos no aviso), `list_renewals` (vencimentos), `find_similar` (já resolvi isso antes?), `list_tasks` (com `from`/`to`/`by` por período e `project`; mostra o tempo de cada tarefa), `get_task`, `search`,
 `list_projects` (com objetivos e arquivados marcados), `list_objectives`, `list_recurring`, `list_templates`, `get_history`.
-Escrita (chave `write`): `create_task` (com `minutes` = tempo gasto, já apontado; `created_at`, `completed_at`, `external_ref`, `blocked_reason`, `follow_up_on`, `resolution`), `update_task` (com `completed_at`, `blocked_reason`, `follow_up_on`, `resolution`; motivo ou dia de cobrar sem `status` só numa tarefa que já aguarda, senão erro pedindo `status: "blocked"` junto — vale também para o `PATCH`), `complete_task` (com `completed_at` e `resolution`),
+Escrita (chave `write`): `create_task` (com `minutes` = tempo gasto, já apontado; `created_at`, `completed_at` — só com a conclusão, começou `minutes` antes dela —, `external_ref`, `blocked_reason`, `follow_up_on`, `resolution`), `update_task` (com `completed_at`, `blocked_reason`, `follow_up_on`, `resolution`; motivo ou dia de cobrar sem `status` só numa tarefa que já aguarda, senão erro pedindo `status: "blocked"` junto — vale também para o `PATCH`), `complete_task` (com `completed_at` e `resolution`),
 `add_note`, `add_checklist_item`, `set_checklist_item`, `log_time`, `start_timer` (`at` = hora em que começou), `stop_timer` (`at` = hora em que parou; os dois em HH:MM, "9h" ou data e hora, até 24 h atrás),
-`create_from_template`, `set_recurring` (`recurring_id`, `note` = evidência; `paused_until` = pausa até a data, `null` = retoma — sem `done`/`day`/`note`, só pausa ou retoma), `create_recurring` (`label`, `freq` — inclui `after`, N dias depois da última vez —, `weekdays` em nomes seg/ter..., `month_day`, `interval_days`, `remind_at`, `require_note`, `paused_until`; nome repetido devolve a existente), `update_recurring` (`recurring_id` e só o que muda: `label`, `freq` com o parâmetro, `remind_at`, `null` tira, `require_note`; usa o `PATCH /api/recurring/{id}`), `undo` (só ações da própria chave; `get_history` marca `[pode desfazer]` só nelas).
+`create_from_template`, `set_recurring` (`recurring_id`, `note` = evidência; `paused_until` = pausa até a data, `null` = retoma; com `paused_until` só marca se vier `done: true` explícito — `note` sozinha não marca nem é gravada), `create_recurring` (`label`, `freq` — inclui `after`, N dias depois da última vez —, `weekdays` em nomes seg/ter..., `month_day`, `interval_days`, `remind_at`, `require_note`, `paused_until`; nome repetido devolve a existente), `update_recurring` (`recurring_id` e só o que muda: `label`, `freq` com o parâmetro, `remind_at`, `null` tira, `require_note`; usa o `PATCH /api/recurring/{id}`), `undo` (só ações da própria chave; `get_history` marca `[pode desfazer]` só nelas).
 Projetos e objetivos: `create_project` / `create_objective` (nome ou título repetido, sem diferenciar maiúsculas e acentos, ou `external_ref` repetido devolvem o existente; `position` 1 = primeiro), `update_project` (`archived` em vez de excluir), `update_objective` (com `position`), `reorder_objectives` (a lista completa; a ordem anterior vai pro histórico, com desfazer). O status do objetivo é automático (pelas tarefas). Pelo MCP a IA não exclui nada (tarefas, rotinas, projetos, objetivos). A mesma chave `write`, porém, vale para a API REST, que exclui (com desfazer no Histórico): uma IA com terminal (Claude Code, Gemini CLI) consegue chamá-la. Para quem só quer consultas, use uma chave `read`.
 Só com o papel de atribuidor: `list_assignable`, `list_assigned` e `assign_task` (`to` = U<id>, e-mail ou nome).
 

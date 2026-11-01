@@ -41,7 +41,7 @@ exclui a conta de vez.
 - **Rotinas** — verificações que se repetem (backups, alertas, fila…), com agenda:
   dias úteis, dias da semana, mensal (inclui "último dia"), a cada N dias ou
   **N dias depois da última vez** (trocar o filtro 30 dias depois da última
-  troca: a data se move quando se marca). Marcação até 7 dias para trás; feito
+  troca: a data se move quando se marca; mudar o N mantém a última vez). Marcação até 7 dias para trás; feito
   fora da agenda conta como *extra*. **Pausar até uma data** (férias, folga,
   prédio fechado): nesses dias a rotina não conta como falta nem lembra, e
   volta sozinha; a pausa vale de hoje em diante, sem mexer no passado.
@@ -70,8 +70,9 @@ exclui a conta de vez.
   atribuidor pelo app ou pela IA, com aviso por e-mail; a tarefa passa a ser
   dela, e quem atribuiu acompanha o status e recebe um e-mail quando ela é concluída.
   Enquanto está "a fazer" e sem nada registrado, quem atribuiu ainda corrige
-  título, prazo e prioridade ou cancela (engano); excluída ou cancelada, a
-  linha continua em Atribuir com quem tirou e quando.
+  título, prazo e prioridade (só o que a pessoa não mudou) ou cancela (engano;
+  só se ela não mexeu em nada); excluída ou cancelada, a linha continua em
+  Atribuir com quem tirou e quando. Conta com acesso bloqueado não recebe.
 - **Meu mês** — uma tela com duas abas e o mês escolhido uma vez no topo (o
   corrente por padrão). **Números**: aderência das rotinas, vazão, tempo por
   projeto e o que está em aberto. **PDF**: o relatório por período, por projeto ou do projeto inteiro, em
@@ -139,7 +140,7 @@ Capturas de uma conta de demonstração, com dados fictícios.
 *Tarefas — o número do chamado vira link, o plantão aparece em roxo, a que está aguardando mostra o quê e quando cobrar, e o cronômetro roda no menu.*
 
 ![Detalhe de uma tarefa com checklist, fotos, tempo e anotações](docs/screenshots/03-tarefa.webp)
-*Detalhe da tarefa — checklist, fotos (câmera, print colado ou arrastado), apontamentos de tempo e anotações num lugar só; o botão no topo expande para ler com calma. No menu da tarefa, “Duplicar tarefa” cria outra igual (título, descrição, projetos, prioridade e checklist desmarcado), sem tempo, fotos, anotações nem datas.*
+*Detalhe da tarefa — checklist, fotos (câmera, print colado ou arrastado), apontamentos de tempo e anotações num lugar só; o botão no topo expande para ler com calma. No menu da tarefa, “Duplicar tarefa” cria outra igual (título, descrição, projetos, objetivo, prioridade e checklist desmarcado), sem tempo, fotos, anotações nem datas.*
 
 ![Meu mês, aba Números, com aderência, vazão, tempo por projeto e backlog](docs/screenshots/04-retrospectiva.webp)
 *Meu mês (aba Números) — aderência de cada rotina, vazão por semana, tempo por cliente e saúde do backlog, com uma leitura do assistente no topo.*

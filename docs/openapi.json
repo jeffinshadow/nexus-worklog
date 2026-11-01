@@ -1098,7 +1098,7 @@
           "worklog"
         ],
         "summary": "Duplicate",
-        "description": "Tarefa nova \"a fazer\" com o título, a descrição, os projetos, a prioridade\ne o checklist (desmarcado) desta. Sem tempo, fotos, anotações nem datas.",
+        "description": "Tarefa nova \"a fazer\" com o título, a descrição, os projetos, o objetivo, a\nprioridade e o checklist (desmarcado) desta. Sem tempo, fotos, anotações nem datas.",
         "operationId": "duplicate_api_worklog__task_id__duplicate_post",
         "parameters": [
           {
@@ -4439,14 +4439,60 @@
           "viewer"
         ],
         "summary": "Team Time Csv",
-        "description": "Apontamentos de quem aceitou o visualizador (some por cliente/projeto na planilha).",
+        "description": "Apontamentos de quem aceitou o visualizador (some por cliente/projeto na\nplanilha), do período start..end (padrão: o mês corrente; até 1 ano).",
         "operationId": "team_time_csv_api_viewer_export_apontamentos_csv_get",
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -4459,7 +4505,7 @@
           "assign"
         ],
         "summary": "List People",
-        "description": "Contas com registro próprio e se aceitam receber tarefas (desde quando).",
+        "description": "Contas com registro próprio e se aceitam receber tarefas (desde quando).\nConta com acesso bloqueado não aceita (`blocked`: a tela diz por quê). A\nfoto só de quem aceita (a mesma regra de GET /api/me/avatar/{id}); o admin vê todas.",
         "operationId": "list_people_api_assign_people_get",
         "responses": {
           "200": {
@@ -4518,7 +4564,7 @@
           "assign"
         ],
         "summary": "Sent",
-        "description": "Tarefas que esta pessoa atribuiu, com o status atual (as mais recentes).\n`editable`: ainda dá para corrigir ou cancelar. As que saíram da conta de\nquem recebeu continuam aqui (status \"removed\", com `ended`).",
+        "description": "Tarefas que esta pessoa atribuiu, com o status atual (as mais recentes).\n`editable`: ainda dá para corrigir (o que quem recebeu não mudou);\n`cancelable`: ainda dá para cancelar. As que saíram da conta de\nquem recebeu continuam aqui (status \"removed\", com `ended`).",
         "operationId": "sent_api_assign_sent_get",
         "responses": {
           "200": {
@@ -4538,7 +4584,7 @@
           "assign"
         ],
         "summary": "Update Sent",
-        "description": "Corrige título, prazo ou prioridade de uma tarefa atribuída que ainda não começou.",
+        "description": "Corrige título, prazo ou prioridade de uma tarefa atribuída que ainda não\ncomeçou. Só o que de fato muda; campo que quem recebeu já mudou não é\nregravado por cima (409, nada muda).",
         "operationId": "update_sent_api_assign__task_id__patch",
         "parameters": [
           {
@@ -4589,7 +4635,7 @@
           "assign"
         ],
         "summary": "Cancel Sent",
-        "description": "Cancela uma atribuição feita por engano: a tarefa (ainda não começada)\nsai da conta de quem recebeu, que é avisada por e-mail.",
+        "description": "Cancela uma atribuição feita por engano: a tarefa (ainda não começada e\nsem nada mudado por quem recebeu) sai da conta dela, que é avisada por\ne-mail. No histórico dela fica a exclusão (worklog.delete, desfazível).",
         "operationId": "cancel_sent_api_assign__task_id__cancel_post",
         "parameters": [
           {
@@ -6539,6 +6585,18 @@
               }
             ],
             "title": "External Ref"
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
           }
         },
         "type": "object",
@@ -6725,6 +6783,18 @@
               }
             ],
             "title": "Height"
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
           }
         },
         "type": "object",
