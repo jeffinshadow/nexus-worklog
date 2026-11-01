@@ -45,14 +45,14 @@ export async function mount(root, opts = {}) {
   // assistente só na própria (o admin vendo outra pessoa não recebe "sua rotina").
   if (!opts.dashUrl && opts.setAssist) opts.setAssist(retroCard(a, opts.me));
   root.append(
-    outside ? null : periodNav(a, () => mount(root, opts), root),
-    section("Rotinas · consistência", [
+    ...(outside ? [] : [periodNav(a, () => mount(root, opts), root)]),
+    section("Rotinas · em dia", [
       h("div", { class: "consist-grid" },
         chartCard("Rotinas feitas por dia", (mes ? `${cap(mes)}` : "Últimas 4 semanas") + " — quanto das rotinas previstas foi feito em cada dia.", heatmap(a.heatmap), "compact heat"),
         chartCard("Cada rotina", (mes ? `${cap(mes)}` : "Últimos 30 dias") + " — dias feitos ÷ dias previstos de cada uma.", taskRanking(a.task_adherence, ph), "grow"),
       ),
     ]),
-    section("Tarefas · fluxo", [
+    section("Tarefas · concluídas", [
       h("div", { class: "chart-grid fluxo-grid" },
         chartCard("Concluídas por semana", mes ? `Semanas de ${mes} (as das pontas começam ou terminam no mês vizinho).` : "Últimas 4 semanas.", throughput(a.throughput, ph)),
         chartCard("Tempo por projeto", `Horas apontadas ${ph}. Tarefa em mais de um projeto conta em cada um.`, projectTime(a.projects, ph)),
