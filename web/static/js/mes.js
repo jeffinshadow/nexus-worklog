@@ -1,16 +1,17 @@
-// Meu mês: o mês numa frase e três números (com o mês anterior ao lado, neutro),
-// as rotinas (dias feitos de previstos), para onde foi o tempo e o que foi
-// entregue. O PDF do mês é a ação principal; outro período, um projeto e as
-// exportações ficam recolhidos em "Outro período ou formato" (reports.js).
-// Os números vêm de /dashboard?month= (overview), os mesmos do PDF do mês.
-// A Equipe usa view() com as rotas da pessoa. Links antigos: #/mes?aba=pdf,
-// #/relatorios e o "Gerar relatório" da sexta (?periodo=semana) abrem a
-// exportação; #/dashboard chega aqui pelo app.js.
+// Meu mês: o mês numa frase com o PDF, um PAINEL (indicadores com os últimos
+// 6 meses e a palavra neutra da média da própria pessoa, o calendário do mês,
+// o ritmo por semana, o tempo por projeto e as rotinas que pedem atenção) e,
+// embaixo, o que foi entregue. Outro período, um projeto e as exportações ficam
+// recolhidos em "Outro período ou formato" (reports.js). Os números vêm de
+// /dashboard?month= (overview), a mesma conta do PDF do mês. A Equipe usa
+// view() com as rotas da pessoa: sem tendência, sem média e sem ranking de
+// rotinas (o servidor nem manda). Links antigos: #/mes?aba=pdf, #/relatorios e
+// o "Gerar relatório" da sexta (?periodo=semana) abrem a exportação;
+// #/dashboard chega aqui pelo app.js.
 import { api } from "./api.js";
-import { h, icon, clear, addDays, localDay, shortDate } from "./dom.js";
+import { h, icon, clear, addDays, localDay } from "./dom.js";
 import { errorToast } from "./ui.js";
-import { projectBars } from "./summary.js";
-import { projectChip } from "./projects.js";
+import { projectChip, corProjeto } from "./projects.js";
 import { duration, openTask } from "./task.js";
 import * as reports from "./reports.js";
 
@@ -116,15 +117,23 @@ export async function view(root, opts) {
 }
 
 // ------------------------------------------------------------------ a tela --
+// Ao redor: a frase do mês e o PDF (em cima), o que foi entregue e "Outro
+// período ou formato" (embaixo). No meio, o PAINEL: um contêiner próprio numa
+// grade de 12 colunas (no celular, uma coluna na mesma ordem):
+//   [Rotinas em dia 4][Tarefas concluídas 4][Horas apontadas 4]
+//   [Calendário do mês 8                   ][Ritmo do mês 4   ]
+//   [Tempo por projeto 8                   ][Rotinas: atenção 4]
 
 function screen(a, opts, reload) {
   const ov = a.overview;
   const m = ov.month, mes = nameOf(a.period.month);
   const empty = !m.recurring_total && !m.pontual_done && !m.minutes;
   const nodes = [hero(ov, mes, opts)];
-  if (empty) return nodes;
-  nodes.push(h("div", { class: "mes-grid" }, routinesCard(ov, a.heatmap, mes, !!opts.dashUrl), timeCard(ov, mes)),
-    deliveriesCard(ov, mes, opts, reload));
+  // Mês ainda vazio: o painel só aparece se houver meses anteriores para situar (a própria pessoa).
+  const history = ov.trend.slice(0, -1).some((t) => t.recurring_total || t.pontual_done || t.minutes);
+  if (empty && !history) return nodes;
+  nodes.push(panel(ov, a.period.month, mes, !!opts.dashUrl));
+  if (!empty) nodes.push(deliveriesCard(ov, mes, opts, reload));
   return nodes;
 }
 
@@ -143,19 +152,8 @@ function sentence(m, mes, who) {
   return `${quando}${sujeito} ${lista}.`;
 }
 
-// "em setembro: 62%, 17 tarefas, 28h10" — sem setas nem cor: só para situar.
-function previousLine(p) {
-  if (!p) return null;
-  const partes = [];
-  if (p.recurring_total) partes.push(`${pct(p.recurring_done, p.recurring_total)}% das rotinas`);
-  partes.push(plural(p.pontual_done, "tarefa", "tarefas"));
-  partes.push(p.minutes ? duration(p.minutes) : "sem tempo apontado");
-  return h("p", { class: "mes-prev", text: `em ${nameOf(p.month)}: ${partes.join(", ")}` });
-}
-
 function hero(ov, mes, opts) {
   const m = ov.month;
-  const fig = (value, lbl) => h("div", { class: "fig" }, h("p", { class: "fig-n", text: value }), h("p", { class: "fig-l", text: lbl }));
   const empty = !m.recurring_total && !m.pontual_done && !m.minutes;
   const base = opts.exportBase || "/reports/export";
   const btn = h("button", { type: "button", class: "btn btn-primary", onClick: async () => {
@@ -166,12 +164,7 @@ function hero(ov, mes, opts) {
   return h("section", { class: "mes-hero" },
     h("p", { class: "mes-sentence", text: sentence(m, mes, opts.who) }),
     empty ? (opts.dashUrl ? null : h("p", { class: "mes-prev", text: "O que você registrar no Hoje (rotinas, tarefas e tempo) aparece aqui." }))
-      : h("div", { class: "figs", "aria-hidden": "true" }, // a frase acima já diz os mesmos valores ao leitor
-        fig(m.recurring_total ? `${pct(m.recurring_done, m.recurring_total)}%` : "—", m.recurring_total ? "das rotinas feitas" : "sem rotinas previstas"),
-        fig(String(m.pontual_done), m.pontual_done === 1 ? "tarefa concluída" : "tarefas concluídas"),
-        fig(m.minutes ? duration(m.minutes) : "—", "tempo apontado")),
-    previousLine(ov.previous),
-    empty ? null : h("div", { class: "mes-actions" }, btn));
+      : h("div", { class: "mes-actions" }, btn));
 }
 
 function card(title, sub, ...body) {
@@ -181,43 +174,366 @@ function card(title, sub, ...body) {
     ...body);
 }
 
-// a) Rotinas: dias feitos de previstos das que tiveram dias sem marcar (para a
-// pessoa se organizar); na Equipe, só o resumo, sem lista por rotina. O
-// calendário dia a dia fica recolhido.
-function routinesCard(ov, hm, mes, team) {
+// ---------------------------------------------------------------- o painel --
+
+function tile(span, cls, title, sub, ...body) {
+  return h("section", { class: `mm-tile mm-${span} ${cls}` },
+    h("h2", { class: "mm-title", text: title }),
+    sub ? h("p", { class: "mm-sub", text: sub }) : null,
+    ...body);
+}
+
+function panel(ov, month, mes, team) {
+  // O calendário aparece com rotina no mês; no mês corrente, também se os meses anteriores tinham.
+  const hasRoutines = ov.routines > 0 || ov.days.some((d) => d.due || d.extra || d.paused)
+    || (ov.month.now && ov.trend.slice(0, -1).some((t) => t.recurring_total));
+  const tiles = [...kpis(ov, month, team)];
+  if (hasRoutines) tiles.push(calendarTile(ov, month));
+  tiles.push(rhythmTile(ov, month), projectsTile(ov, mes, 8));
+  if (hasRoutines) tiles.push(attentionTile(ov, mes, team));
+  return h("section", { class: "mm-panel", "aria-label": `Painel de ${mes}` }, ...tiles);
+}
+
+// --------------------------------------------------------- 1) indicadores --
+
+// A palavra neutra: só situa o mês na média da própria pessoa (sem cor, sem seta).
+const WORDS = { "acima": "acima da sua média", "na média": "na sua média", "abaixo": "abaixo da sua média" };
+
+function monthsBack(month, n) { // os n meses que terminam em `month`, do mais antigo ao mais novo
+  const out = [month];
+  while (out.length < n) out.unshift(prevOf(out[0]));
+  return out;
+}
+
+function foot(ov, key, avgText) {
+  const word = ov.compare && ov.compare[key];
+  if (word) return h("p", { class: "mm-foot" }, h("span", { class: "chip mm-word", text: WORDS[word] }), h("span", { class: "mm-avg", text: avgText }));
+  if (ov.average && ov.month.now && !ov.average.scale) return h("p", { class: "mm-foot" }, h("span", { class: "mm-avg", text: "cedo para comparar com a sua média" }));
+  if (!ov.average && ov.trend.length) return h("p", { class: "mm-foot" }, h("span", { class: "mm-avg", text: "a média aparece com dois meses inteiros de registro" }));
+  return null;
+}
+
+function kpis(ov, month, team) {
+  const m = ov.month, avg = ov.average;
+  const slots = monthsBack(month, 6);
+  const byMonth = Object.fromEntries(ov.trend.map((t) => [t.month, t]));
+  const trend = !team && ov.trend.length > 1;
+  const days = ov.days;
+  const taskDays = days.filter((d) => d.pontual_done).length;
+  const timeDays = days.filter((d) => d.minutes).length;
+
+  // Rotinas em dia: o anel do mês + a linha dos 6 meses.
+  const p = m.recurring_total ? pct(m.recurring_done, m.recurring_total) : null;
+  const rot = tile(4, "mm-kpi", "Rotinas em dia", null,
+    h("div", { class: "mm-kpi-main" }, ring(p),
+      h("p", { class: "mm-fact", text: m.recurring_total ? `${m.recurring_done} de ${m.recurring_total} previstas` : "sem rotinas previstas" })),
+    trend ? lineChart(slots, byMonth, avg && avg.recurring_pct, month) : null,
+    trend ? foot(ov, "routines", avg && avg.recurring_pct != null ? `média: ${Math.round(avg.recurring_pct)}%` : "") : null);
+
+  const tasks = tile(4, "mm-kpi", "Tarefas concluídas", null,
+    h("div", { class: "mm-kpi-main" }, h("p", { class: "mm-n", text: String(m.pontual_done) }),
+      h("p", { class: "mm-fact", text: m.pontual_done ? `em ${plural(taskDays, "dia", "dias")}` : "nenhuma no mês" })),
+    trend ? barChart(slots, byMonth, "pontual_done", avg && avg.pontual_done, month, (v) => String(v), "tarefas") : null,
+    trend ? foot(ov, "tasks", avg ? `média: ${fmtAvg(avg.pontual_done)} por mês` : "") : null);
+
+  const hours = tile(4, "mm-kpi", "Horas apontadas", null,
+    h("div", { class: "mm-kpi-main" }, h("p", { class: "mm-n", text: m.minutes ? duration(m.minutes) : "—" }),
+      h("p", { class: "mm-fact", text: m.minutes ? `em ${plural(timeDays, "dia", "dias")}, ${duration(Math.round(m.minutes / timeDays))} por dia` : "nada apontado" })),
+    trend ? barChart(slots, byMonth, "minutes", avg && avg.minutes, month, (v) => duration(v), "horas") : null,
+    trend ? foot(ov, "minutes", avg ? `média: ${duration(Math.round(avg.minutes))} por mês` : "") : null);
+  return [rot, tasks, hours];
+}
+
+const fmtAvg = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(1).replace(".", ","));
+const monLabel = (key) => MON[Number(key.slice(5)) - 1];
+
+function ring(p) {
+  const r = 30, c = 2 * Math.PI * r;
+  const s = svgEl("svg", { viewBox: "0 0 76 76", class: "mm-ring", "aria-hidden": "true" });
+  s.append(svgEl("circle", { cx: 38, cy: 38, r, class: "mm-ring-track" }));
+  if (p) {
+    const v = svgEl("circle", { cx: 38, cy: 38, r, class: "mm-ring-val", transform: "rotate(-90 38 38)" });
+    v.setAttribute("stroke-dasharray", `${(c * p) / 100} ${c}`);
+    s.append(v);
+  }
+  const t = svgEl("text", { x: 38, y: 39, class: "mm-ring-n" });
+  t.textContent = p === null ? "—" : `${p}%`;
+  s.append(t);
+  return h("div", { class: "mm-ring-box" }, s);
+}
+
+// Geometria comum às duas miniaturas de 6 meses (viewBox 240 × 74).
+const MW = 240, TOPY = 14, BASEY = 50, LBLY = 68;
+const slotX = (i) => 20 + i * 40; // centro de cada um dos 6 meses
+
+function monthAxis(s, slots, month) {
+  slots.forEach((k, i) => {
+    const t = svgEl("text", { x: slotX(i), y: LBLY, class: "mm-axis" + (k === month ? " cur" : "") });
+    t.textContent = monLabel(k);
+    s.append(t);
+  });
+}
+
+function avgLine(s, y) {
+  s.append(svgEl("line", { x1: 2, x2: MW - 2, y1: y, y2: y, class: "mm-avg-line" }));
+}
+
+function lineChart(slots, byMonth, avgPct, month) {
+  const pts = slots.map((k, i) => {
+    const t = byMonth[k];
+    return t && t.recurring_total ? { i, k, v: pct(t.recurring_done, t.recurring_total) } : null;
+  }).filter(Boolean);
+  // Escala de um piso (dezena abaixo do menor valor, com folga) a 100%: a variação aparece sem exagero.
+  const lo = Math.max(0, Math.floor((Math.min(...pts.map((q) => q.v), avgPct ?? 100) - 10) / 10) * 10);
+  const y = (v) => BASEY - ((BASEY - TOPY) * (v - lo)) / (100 - lo || 1);
+  const desc = pts.map((q) => `${MONTHS[Number(q.k.slice(5)) - 1]} ${q.v}%`).join(", ");
+  const s = svgEl("svg", { viewBox: `0 0 ${MW} 74`, class: "mm-spark", role: "img",
+    "aria-label": `Rotinas em dia nos últimos meses: ${desc || "sem rotinas"}${avgPct != null ? `; sua média ${Math.round(avgPct)}%` : ""}.` });
+  s.append(svgEl("line", { x1: 2, x2: MW - 2, y1: BASEY, y2: BASEY, class: "mm-base" }));
+  if (avgPct != null) avgLine(s, y(avgPct));
+  // A linha só liga meses vizinhos (mês sem rotina = interrupção).
+  let run = [];
+  const flush = () => { if (run.length > 1) s.append(svgEl("polyline", { points: run.map((q) => `${slotX(q.i)},${y(q.v)}`).join(" "), class: "mm-line" })); run = []; };
+  pts.forEach((q, j) => { if (j && q.i !== pts[j - 1].i + 1) flush(); run.push(q); });
+  flush();
+  for (const q of pts) {
+    const cur = q.k === month;
+    const dot = svgEl("circle", { cx: slotX(q.i), cy: y(q.v), r: cur ? 4.5 : 3, class: "mm-dot" + (cur ? " cur" : "") });
+    const ti = svgEl("title", {});
+    ti.textContent = `${MONTHS[Number(q.k.slice(5)) - 1]}: ${q.v}%`;
+    dot.append(ti);
+    s.append(dot);
+  }
+  monthAxis(s, slots, month);
+  return s;
+}
+
+function barChart(slots, byMonth, key, avg, month, fmt, what) {
+  const vals = slots.map((k) => (byMonth[k] ? byMonth[k][key] : null));
+  const top = Math.max(1, avg || 0, ...vals.filter((v) => v != null));
+  const y = (v) => BASEY - ((BASEY - TOPY) * v) / top;
+  const desc = slots.map((k, i) => (vals[i] == null ? null : `${MONTHS[Number(k.slice(5)) - 1]} ${fmt(vals[i])}`)).filter(Boolean).join(", ");
+  const s = svgEl("svg", { viewBox: `0 0 ${MW} 74`, class: "mm-spark", role: "img",
+    "aria-label": `${what[0].toUpperCase() + what.slice(1)} nos últimos meses: ${desc}${avg ? `; sua média ${fmt(key === "minutes" ? Math.round(avg) : fmtAvg(avg))}` : ""}.` });
+  s.append(svgEl("line", { x1: 2, x2: MW - 2, y1: BASEY, y2: BASEY, class: "mm-base" }));
+  slots.forEach((k, i) => {
+    const v = vals[i];
+    if (v == null || !v) return;
+    const cur = k === month;
+    const top_ = y(v);
+    const r = svgEl("rect", { x: slotX(i) - 11, y: top_, width: 22, height: Math.max(2, BASEY - top_), rx: 3, class: "mm-bar" + (cur ? " cur" : "") });
+    const ti = svgEl("title", {});
+    ti.textContent = `${MONTHS[Number(k.slice(5)) - 1]}: ${fmt(v)}${byMonth[k].now ? " (até hoje)" : ""}`;
+    r.append(ti);
+    s.append(r);
+    if (cur) {
+      const t = svgEl("text", { x: slotX(i), y: top_ - 4, class: "mm-val" });
+      t.textContent = fmt(v);
+      s.append(t);
+    }
+  });
+  if (avg) avgLine(s, y(avg));
+  monthAxis(s, slots, month);
+  return s;
+}
+
+// --------------------------------------------------- 2) calendário do mês --
+
+const WEEKDAYS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+const WEEKDAYS_FULL = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
+
+// Degrau de cada dia: 0 (nada feito), 1–33%, 34–66%, 67–99%, 100% das rotinas previstas.
+function level(d) {
+  if (d.done >= d.due) return 4;
+  if (!d.done) return 0;
+  const f = Math.floor((100 * d.done) / d.due);
+  return f <= 33 ? 1 : f <= 66 ? 2 : 3;
+}
+
+function dayInfo(d, iso, mes, today) {
+  const n = Number(iso.slice(8));
+  const when = `${n} de ${mes}`;
+  if (!d) return { cls: "fut", label: `${when}: ainda não chegou` };
+  const extra = d.extra ? `, mais ${plural(d.extra, "extra", "extras")}` : "";
+  if (d.due) return { cls: "l" + level(d), label: `${when}: ${d.done} de ${plural(d.due, "rotina", "rotinas")}${extra}` };
+  if (d.extra) return { cls: "extra", label: `${when}: nenhuma prevista, ${plural(d.extra, "extra feita", "extras feitas")}` };
+  if (d.paused) return { cls: "paused", label: `${when}: rotinas pausadas` };
+  if (iso === today) return { cls: "none", label: `${when}: hoje, nada marcado ainda` };
+  return { cls: "none", label: `${when}: sem rotina prevista` };
+}
+
+function calendarTile(ov, month) {
+  const mes = nameOf(month);
+  const today = localDay(Date.now());
+  const byDate = Object.fromEntries(ov.days.map((d) => [d.date, d]));
+  const first = month + "-01";
+  const size = Number(addDays(nextOf(month) + "-01", -1).slice(8));
+  const lead = new Date(first + "T12:00:00Z").getUTCDay();
+  const cells = [];
+  for (let i = 0; i < lead; i++) cells.push(null);
+  for (let n = 1; n <= size; n++) cells.push(`${month}-${String(n).padStart(2, "0")}`);
+  while (cells.length % 7) cells.push(null);
+
+  const head = h("tr", {}, ...WEEKDAYS.map((w, i) => h("th", { scope: "col", abbr: WEEKDAYS_FULL[i], text: w })));
+  const rows = [];
+  for (let r = 0; r < cells.length; r += 7) {
+    rows.push(h("tr", {}, ...cells.slice(r, r + 7).map((iso) => {
+      if (!iso) return h("td", { class: "out" });
+      const info = dayInfo(byDate[iso], iso, mes, today);
+      return h("td", { class: `${info.cls}${iso === today ? " today" : ""}`, title: info.label },
+        h("span", { class: "mm-dn", "aria-hidden": "true", text: String(Number(iso.slice(8))) }),
+        h("span", { class: "sr-only", text: info.label }));
+    })));
+  }
+  // O resumo do mês em texto (para todo mundo, e é o que o leitor ouve primeiro).
+  const due = ov.days.filter((d) => d.due);
+  const all = due.filter((d) => d.done >= d.due).length, none = due.filter((d) => !d.done).length;
+  const partes = [];
+  if (all) partes.push(`${all} com todas feitas`);
+  if (due.length - all - none) partes.push(`${due.length - all - none} com parte feita`);
+  if (none) partes.push(`${none} sem nenhuma marcada`);
+  const extras = ov.days.filter((d) => !d.due && d.extra).length;
+  const resumo = due.length
+    ? `${plural(due.length, "dia com rotina prevista", "dias com rotina prevista")}: ${partes.join(", ")}${extras ? `; ${plural(extras, "dia", "dias")} só com extras` : ""}.`
+    : `Nenhum dia com rotina prevista${extras ? `; ${plural(extras, "dia", "dias")} só com extras` : ""}.`;
+  const sub = h("p", { class: "mm-sub", id: `mm-cal-${month}`, text: resumo });
+  const table = h("table", { class: "mm-cal", "aria-describedby": sub.id },
+    h("caption", { class: "sr-only", text: `Rotinas dia a dia em ${mes}` }), h("thead", {}, head), h("tbody", {}, ...rows));
+
+  const sw = (cls, text) => h("span", { class: `mm-sw ${cls}`, title: text });
+  const legend = h("div", { class: "mm-legend", "aria-hidden": "true" },
+    h("span", { class: "mm-leg-scale" }, h("span", { text: "menos" }), sw("l0", "nenhuma feita"), sw("l1", "até um terço"),
+      sw("l2", "até dois terços"), sw("l3", "quase todas"), sw("l4", "todas"), h("span", { text: "mais" })),
+    h("span", { class: "mm-leg-item" }, sw("extra", "só extras"), h("span", { text: "só extras" })),
+    h("span", { class: "mm-leg-item" }, sw("none", "sem rotina prevista"), h("span", { text: "sem previsão" })));
+  return tile(8, "mm-cal-tile", "Rotinas no mês, dia a dia", null, sub, table, legend);
+}
+
+// ------------------------------------------------------ 3) ritmo do mês --
+
+// As semanas do mês inteiro (domingo a sábado, cortadas no mês): as que ainda
+// não chegaram ficam com o lugar marcado, para o gráfico não mudar de forma.
+function monthWeeks(month) {
+  const size = Number(addDays(nextOf(month) + "-01", -1).slice(8));
+  const out = [];
+  for (let n = 1; n <= size; n++) {
+    const iso = `${month}-${String(n).padStart(2, "0")}`;
+    if (n === 1 || new Date(iso + "T12:00:00Z").getUTCDay() === 0) out.push({ start: iso, end: iso });
+    else out[out.length - 1].end = iso;
+  }
+  return out;
+}
+
+function weekBars(weeks, key, fmt, title, mes) {
+  const W = 300, base = 92, topY = 18, slot = W / weeks.length;
+  const vals = weeks.map((w) => (w.data ? w.data[key] : null));
+  const top = Math.max(1, ...vals.filter((v) => v != null));
+  const desc = weeks.map((w, i) => `${w.label}: ${vals[i] == null ? "ainda não chegou" : fmt(vals[i])}`).join("; ");
+  const s = svgEl("svg", { viewBox: `0 0 ${W} 114`, class: "mm-weeks", role: "img", "aria-label": `${title} por semana em ${mes}: ${desc}.` });
+  s.append(svgEl("line", { x1: 2, x2: W - 2, y1: base, y2: base, class: "mm-base" }));
+  weeks.forEach((w, i) => {
+    const cx = slot * i + slot / 2, v = vals[i];
+    if (v) {
+      const y = base - ((base - topY) * v) / top;
+      const r = svgEl("rect", { x: cx - 13, y, width: 26, height: Math.max(2, base - y), rx: 3, class: "mm-bar cur" });
+      const ti = svgEl("title", {});
+      ti.textContent = `${w.label}: ${fmt(v)}`;
+      r.append(ti);
+      s.append(r);
+    }
+    if (v != null) {
+      const t = svgEl("text", { x: cx, y: (v ? base - ((base - topY) * v) / top : base) - 5, class: "mm-val" });
+      t.textContent = fmt(v);
+      s.append(t);
+    }
+    const l = svgEl("text", { x: cx, y: 110, class: "mm-axis" });
+    l.textContent = w.label;
+    s.append(l);
+  });
+  return h("div", { class: "mm-week-chart" }, h("p", { class: "mm-chart-t", text: title }), s);
+}
+
+function rhythmTile(ov, month) {
+  const mes = nameOf(month);
+  const got = Object.fromEntries(ov.weeks.map((w) => [w.start, w]));
+  const weeks = monthWeeks(month).map((w) => ({ ...w, data: got[w.start] || null,
+    label: `${Number(w.start.slice(8))}–${Number(w.end.slice(8))}` }));
+  return tile(4, "mm-rhythm", "Ritmo do mês", "por semana, de domingo a sábado",
+    weekBars(weeks, "pontual_done", (v) => String(v), "Tarefas concluídas", mes),
+    weekBars(weeks, "minutes", (v) => (v ? duration(v) : "0"), "Horas apontadas", mes));
+}
+
+// -------------------------------------------------- 4) tempo por projeto --
+
+const DONUT_MAX = 6; // fatias; o resto vira "outros"
+
+function projectsTile(ov, mes, span) {
+  if (!ov.projects.length) return tile(span, "mm-proj", "Tempo por projeto", null, h("p", { class: "mes-ok", text: `Nada apontado em ${mes}.` }));
+  let items = ov.projects.map((p) => ({ name: p.name || "Sem projeto", color: p.color, minutes: p.minutes }));
+  if (items.length > DONUT_MAX) {
+    const rest = items.slice(DONUT_MAX - 1);
+    items = [...items.slice(0, DONUT_MAX - 1), { name: `outros ${rest.length}`, color: null, minutes: rest.reduce((a, p) => a + p.minutes, 0) }];
+  }
+  const sum = items.reduce((a, p) => a + p.minutes, 0);
+  const r = 46, c = 2 * Math.PI * r, gap = items.length > 1 ? 2 : 0;
+  const s = svgEl("svg", { viewBox: "0 0 120 120", class: "mm-donut", "aria-hidden": "true" });
+  s.append(svgEl("circle", { cx: 60, cy: 60, r, class: "mm-donut-track" }));
+  let at = 0;
+  for (const p of items) {
+    const len = (c * p.minutes) / sum;
+    const seg = svgEl("circle", { cx: 60, cy: 60, r, class: "mm-seg", transform: "rotate(-90 60 60)" });
+    seg.setAttribute("stroke-dasharray", `${Math.max(0.5, len - gap)} ${c}`);
+    seg.setAttribute("stroke-dashoffset", String(-at));
+    seg.style.stroke = corProjeto(p.color);
+    s.append(seg);
+    at += len;
+  }
+  const n = svgEl("text", { x: 60, y: 57, class: "mm-donut-n" });
+  n.textContent = duration(ov.month.minutes);
+  const l = svgEl("text", { x: 60, y: 75, class: "mm-donut-l" });
+  l.textContent = "no mês";
+  s.append(n, l);
+  const legend = h("ul", { class: "mm-proj-list" }, ...items.map((p) => {
+    const dot = h("span", { class: "mm-proj-dot", "aria-hidden": "true" });
+    dot.style.background = corProjeto(p.color);
+    return h("li", {}, dot, h("span", { class: "mm-proj-name", text: p.name }),
+      h("span", { class: "mm-proj-h", text: duration(p.minutes) }),
+      h("span", { class: "mm-proj-p", text: `${Math.round((100 * p.minutes) / sum)}%` }));
+  }));
+  return tile(span, "mm-proj", "Tempo por projeto",
+    ov.multi_project ? "tarefa em mais de um projeto conta em cada um" : null,
+    h("div", { class: "mm-proj-body" }, h("div", { class: "mm-donut-box" }, s), legend));
+}
+
+// ------------------------------------------ 5) rotinas que pedem atenção --
+// Na Equipe, só o resumo (sem ranking das rotinas de outra pessoa).
+
+function attentionTile(ov, mes, team) {
   const full = ov.routines_full ?? ov.routines - ov.behind.length;
-  const feitas = (n) => (n === 1 ? "feita" : "feitas");
-  let body;
-  if (!ov.routines) body = h("p", { class: "mes-ok", text: `Nenhuma rotina na agenda em ${mes}.` });
-  else if (full >= ov.routines) body = h("p", { class: "mes-ok" }, icon("check"),
-    h("span", { text: ov.routines === 1 ? "A rotina foi feita em todos os dias previstos." : `As ${ov.routines} rotinas foram feitas em todos os dias previstos.` }));
-  else if (team || !ov.behind.length) body = h("p", { class: "mes-ok",
-    text: `${full} de ${plural(ov.routines, "rotina", "rotinas")} ${feitas(ov.routines)} em todos os dias previstos.` });
-  else body = h("div", { class: "mes-rows" }, ...ov.behind.map((r) => {
+  const title = team ? "Rotinas do mês" : "Rotinas que pedem atenção";
+  if (!ov.routines) return tile(4, "mm-att", title, null, h("p", { class: "mes-ok",
+    text: ov.month.now ? "Nenhum dia de rotina previsto até agora." : `Nenhuma rotina na agenda em ${mes}.` }));
+  if (full >= ov.routines) return tile(4, "mm-att", title, null, h("p", { class: "mes-ok" }, icon("check"),
+    h("span", { text: ov.routines === 1 ? "A rotina foi feita em todos os dias previstos." : `As ${ov.routines} rotinas foram feitas em todos os dias previstos.` })));
+  if (team || !ov.behind.length) {
+    const fill = h("span");
+    fill.style.width = pct(full, ov.routines) + "%";
+    return tile(4, "mm-att", title, null, h("p", { class: "mes-ok",
+      text: `${full} de ${plural(ov.routines, "rotina", "rotinas")} ${full === 1 ? "feita" : "feitas"} em todos os dias previstos.` }),
+    h("span", { class: "mes-track mm-meter", "aria-hidden": "true" }, fill));
+  }
+  return tile(4, "mm-att", title, "dias feitos de previstos", h("div", { class: "mes-rows" }, ...ov.behind.map((r) => {
     const fill = h("span");
     fill.style.width = pct(r.done, r.due) + "%";
     return h("div", { class: "mes-rot", title: `${r.label}: feita em ${r.done} de ${r.due} dias previstos` },
       h("span", { class: "mes-rot-l", text: r.label }),
       h("span", { class: "mes-track" }, fill),
-      h("span", { class: "mes-rot-n", text: `${r.done} de ${r.due} dias` }));
-  }), full ? h("p", { class: "mes-res", text: `${full === 1 ? "A outra foi feita" : `As outras ${full} foram feitas`} em todos os dias previstos.` }) : null);
-  const rows = body.classList.contains("mes-rows");
-  // O dia a dia só a partir da primeira semana do mês (antes, não teria o que mostrar).
-  const inMonth = hm && hm.days ? hm.days.filter((d) => !d.out).length : 0;
-  const days = h("div", { class: "mes-days" });
-  const det = h("details", { class: "mes-more" }, h("summary", { text: "ver dia a dia" }), days);
-  det.addEventListener("toggle", () => { if (det.open && !days.firstChild) days.append(heatmap(hm)); });
-  return card("Rotinas", rows ? "dias feitos de previstos" : null, body, ov.routines && inMonth >= 7 ? det : null);
+      h("span", { class: "mes-rot-n", text: `${r.done} de ${r.due}` }));
+  })), full ? h("p", { class: "mes-res", text: `${full === 1 ? "A outra foi feita" : `As outras ${full} foram feitas`} em todos os dias previstos.` }) : null);
 }
 
-// b) Para onde foi o tempo.
-function timeCard(ov, mes) {
-  if (!ov.projects.length) return card("Para onde foi o tempo", null, h("p", { class: "mes-ok", text: `Nada apontado em ${mes}.` }));
-  return card("Para onde foi o tempo", ov.multi_project ? "tarefa em mais de um projeto conta em cada um" : null,
-    h("div", { class: "mes-bars" }, ...projectBars(ov.projects)));
-}
+// ------------------------------------------- o que foi entregue (fora) --
 
-// c) O que foi entregue: as de mais tempo primeiro; "ver todas" abre o resto.
 function deliveriesCard(ov, mes, opts, reload) {
   const all = ov.deliveries, total = ov.month.pontual_done;
   if (!all.length) return card("O que foi entregue", null, h("p", { class: "mes-ok", text: `Nenhuma tarefa concluída em ${mes}.` }));
@@ -250,79 +566,13 @@ function deliveriesCard(ov, mes, opts, reload) {
   return card("O que foi entregue", sub, list, more);
 }
 
-// --------------------------------------------- calendário (ver dia a dia) --
+// ------------------------------------------------------------------ SVG --
 
 const NS = "http://www.w3.org/2000/svg";
 const MON = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
-const WEEKDAYS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 
 function svgEl(tag, attrs) {
   const el = document.createElementNS(NS, tag);
   for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
   return el;
-}
-
-function heatmap(hm) {
-  const box = (msg) => h("p", { class: "chart-empty", text: msg });
-  if (!hm || !hm.days || hm.days.every((d) => d.slots === 0)) return box("nenhuma rotina na agenda neste mês");
-  const inMonth = hm.days.filter((d) => !d.out).length;
-  if (inMonth < 7) return box(inMonth === 1 ? "o mês começou hoje: o calendário aparece a partir da primeira semana"
-    : `só ${inMonth} dias do mês até agora: o calendário aparece a partir da primeira semana`);
-  const days = hm.days; // semanas inteiras, começando num domingo
-  const lead = Math.max(0, days.findIndex((d) => !d.out));
-  const cols = Math.ceil(days.length / 7);
-  const cell = 24, gap = 3, step = cell + gap, padL = 34, padT = 21;
-  const w = padL + cols * step + 2, height = padT + 7 * step + 2;
-  // O leitor de tela ouve o resumo do calendário (os quadrados, sozinhos, não se leem).
-  const due = days.filter((d) => !d.out && d.slots > 0);
-  const all = due.filter((d) => d.done >= d.slots).length, none = due.filter((d) => d.done === 0).length;
-  const resumo = [plural(due.length, "dia com rotina prevista", "dias com rotina prevista")];
-  if (all) resumo.push(`${all} com todas feitas`);
-  if (due.length - all - none) resumo.push(`${due.length - all - none} com parte feita`);
-  if (none) resumo.push(`${none} sem nenhuma marcada`);
-  const s = svgEl("svg", { viewBox: `0 0 ${w} ${height}`, class: "chart-svg heatmap", width: w, height, role: "img",
-    "aria-label": `Calendário das rotinas: ${resumo.join("; ")}.` });
-  let prevMonth = -1;
-  for (let col = 0; col < cols; col++) {
-    const dt = new Date(days[Math.min(days.length - 1, col * 7 + (col ? 0 : lead))].date + "T00:00:00");
-    if (dt.getMonth() !== prevMonth) {
-      const t = svgEl("text", { x: padL + col * step, y: padT - 6, class: "heat-axis" });
-      t.textContent = MON[dt.getMonth()];
-      s.appendChild(t);
-      prevMonth = dt.getMonth();
-    }
-  }
-  for (const row of [1, 3, 5]) {
-    const t = svgEl("text", { x: 0, y: padT + row * step + cell - 6, class: "heat-axis" });
-    t.textContent = WEEKDAYS[row];
-    s.appendChild(t);
-  }
-  days.forEach((d, i) => {
-    if (d.out) return;
-    const x = padL + Math.floor(i / 7) * step, y = padT + (i % 7) * step;
-    const r = svgEl("rect", { x, y, width: cell, height: cell, rx: 2 });
-    let lvl = 0; // degrau sólido do azul (--heat-1..4); nos dois mais fortes o número do dia tem cor própria
-    if (d.slots === 0) { r.style.fill = "none"; r.style.stroke = "var(--outline-variant)"; }
-    else if (d.done === 0) r.style.fill = "var(--surface-container-high)";
-    else {
-      const f = Math.min(1, d.done / d.slots);
-      lvl = f >= 1 ? 4 : f >= 0.67 ? 3 : f >= 0.34 ? 2 : 1;
-      r.style.fill = `var(--heat-${lvl})`;
-    }
-    const title = svgEl("title", {});
-    title.textContent = d.slots === 0 ? `${shortDate(d.date)}: sem rotina prevista` : `${shortDate(d.date)}: ${d.done} de ${d.slots} feitas`;
-    r.appendChild(title);
-    s.appendChild(r);
-    const n = svgEl("text", { x: x + cell / 2, y: y + cell / 2, class: "heat-day" + (lvl >= 3 ? " s" + lvl : "") });
-    n.textContent = String(Number(d.date.slice(8)));
-    s.appendChild(n);
-  });
-  const legend = h("div", { class: "heat-legend" }, h("span", { text: "menos" }));
-  for (const lvl of [0, 1, 2, 3, 4]) {
-    const sw = h("span", { class: "heat-cell" });
-    sw.style.background = lvl ? `var(--heat-${lvl})` : "var(--surface-container-high)";
-    legend.append(sw);
-  }
-  legend.append(h("span", { text: "mais" }));
-  return h("div", {}, s, legend);
 }
