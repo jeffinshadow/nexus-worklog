@@ -6,6 +6,15 @@ import { errorToast, toast } from "./ui.js";
 
 export const PALETA = ["#5294E2", "#81C995", "#FDD663", "#C58AF9", "#F28B82", "#78D9EC", "#F6AE6B", "#A1A1A8"];
 
+// A cor gravada no banco é um hex da PALETA; na tela ela vira o token do tema
+// (--proj-1..8 em tokens.css: pastéis no escuro, versões AA no claro). Hex
+// desconhecido passa como está; sem cor, o cinza apagado.
+export function corProjeto(hex) {
+  if (!hex) return "var(--dim)";
+  const i = PALETA.findIndex((c) => c.toLowerCase() === String(hex).toLowerCase());
+  return i < 0 ? hex : `var(--proj-${i + 1})`;
+}
+
 let cache = null;
 
 export async function listProjects(force = false) {
@@ -21,7 +30,7 @@ export function invalidateProjects() {
 export function projectChip(t) {
   if (!t.project_name) return null;
   const dot = h("span", { class: "dot" });
-  dot.style.background = t.project_color || "var(--dim)";
+  dot.style.background = corProjeto(t.project_color);
   return h("span", { class: "chip project" }, dot, t.project_name);
 }
 

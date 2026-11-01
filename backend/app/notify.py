@@ -94,24 +94,24 @@ class Mail:
         brand = branding()
         parts = []
         for heading, items in self.blocks:
-            parts.append(f'<p style="margin:22px 0 8px;font:600 14px/1.4 Arial,sans-serif;color:#18181b">{e(heading)}</p>')
+            parts.append(f'<p style="margin:22px 0 8px;font:600 14px/1.4 Arial,sans-serif;color:#F0EDEE">{e(heading)}</p>')
             if items:
                 lis = "".join(f'<li style="margin:0 0 6px">{e(i)}</li>' for i in items)
-                parts.append(f'<ul style="margin:0;padding:0 0 0 18px;font:14px/1.5 Arial,sans-serif;color:#3f3f46">{lis}</ul>')
-        return f"""<!doctype html><html lang="pt-BR"><body style="margin:0;padding:0;background:#f4f5f7">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:24px 12px"><tr><td align="center">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e4e4e7">
-<tr><td style="background:#121213;padding:18px 24px;border-bottom:2px solid #5294E2">
-<span style="font:700 15px/1.1 Arial,sans-serif;color:#ffffff">{e(brand['line1'])}</span>
-<span style="font:700 15px/1.1 Arial,sans-serif;color:#a1a1a8"> {e(brand['line2'])}</span></td></tr>
+                parts.append(f'<ul style="margin:0;padding:0 0 0 18px;font:14px/1.5 Arial,sans-serif;color:#ACABAD">{lis}</ul>')
+        return f"""<!doctype html><html lang="pt-BR"><head><meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark"></head><body style="margin:0;padding:0;background:#131314">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#131314;padding:24px 12px"><tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#1A1A1C;border-radius:16px;overflow:hidden;border:1px solid #323235">
+<tr><td style="background:#161718;padding:18px 24px;border-bottom:2px solid #5294E2">
+<span style="font:700 15px/1.1 Arial,sans-serif;color:#F0EDEE">{e(brand['line1'])}</span>
+<span style="font:700 15px/1.1 Arial,sans-serif;color:#ACABAD"> {e(brand['line2'])}</span></td></tr>
 <tr><td style="padding:24px 24px 28px">
-<p style="margin:0 0 6px;font:600 20px/1.3 Arial,sans-serif;color:#18181b">{e(self.title)}</p>
-<p style="margin:0;font:14px/1.5 Arial,sans-serif;color:#52525b">{e(self.intro)}</p>
+<p style="margin:0 0 6px;font:600 20px/1.3 Arial,sans-serif;color:#F0EDEE">{e(self.title)}</p>
+<p style="margin:0;font:14px/1.5 Arial,sans-serif;color:#ACABAD">{e(self.intro)}</p>
 {''.join(parts)}
 <p style="margin:26px 0 0"><a href="{e(self.href)}" style="display:inline-block;background:#5294E2;color:#0b0d10;text-decoration:none;font:600 14px/1 Arial,sans-serif;padding:12px 20px;border-radius:999px">{e(self.button)}</a></p>
 </td></tr></table>
-<p style="max-width:560px;margin:14px auto 0;font:12px/1.5 Arial,sans-serif;color:#86868e">{e(self.reason)}
-{f'<a href="{e(config.APP_URL)}/#/config?aba={e(self.settings_tab)}" style="color:#86868e">Mudar ou desligar</a>.' if self.settings_tab else ''}</p>
+<p style="max-width:560px;margin:14px auto 0;font:12px/1.5 Arial,sans-serif;color:#919093">{e(self.reason)}
+{f'<a href="{e(config.APP_URL)}/#/config?aba={e(self.settings_tab)}" style="color:#8AB8F0">Mudar ou desligar</a>.' if self.settings_tab else ''}</p>
 </td></tr></table></body></html>"""
 
 

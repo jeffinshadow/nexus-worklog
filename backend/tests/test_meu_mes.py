@@ -127,3 +127,99 @@ def test_pdf_de_um_dia_sem_todos_teve():
          "recurring_done": 0, "recurring_extra": 0, "open": 0, "overdue": 0}
     frase = _lede({"summary": s})
     assert "todos teve" not in frase and frase.startswith("O dia teve atividade registrada.")
+
+
+# ------------------------------------------------- Meu mês v2 (o painel) --
+
+def _meses_atras(m: date, n: int) -> date:
+    for _ in range(n):
+        m = _mes_anterior(m)
+    return m
+
+
+def test_tendencia_de_seis_meses_bate_com_o_pdf(usuario):
+    """A série dos 6 meses usa a MESMA conta do PDF, mês a mês."""
+    hoje = dia_hoje(usuario)
+    mes = _mes_anterior(hoje)
+    uid = uid_de(usuario)
+    db.execute("UPDATE users SET created_at = now() - interval '400 days' WHERE id = %s", (uid,))
+    rot = usuario.post("/recurring", {"label": "Ronda", "freq": "weekly", "weekdays": 127}).json()["id"]
+    recuar_criacao(rot, 400)
+    for i in range(6):  # do mês escolhido ao 5º anterior: i+1 tarefas, i+2 marcações
+        m = _meses_atras(mes, i)
+        for k in range(i + 1):
+            _concluida(usuario, f"T{i}-{k}", m.replace(day=k + 1), 30 * (k + 1))
+        for k in range(i + 2):
+            db.execute("INSERT INTO recurring_completions (task_id, user_id, completed_date) VALUES (%s, %s, %s)",
+                       (rot, uid, m.replace(day=k + 1)))
+    ov = usuario.get(f"/dashboard?month={mes:%Y-%m}").json()["overview"]
+    assert [t["month"] for t in ov["trend"]] == [f"{_meses_atras(mes, i):%Y-%m}" for i in range(5, -1, -1)]
+    for t in ov["trend"]:
+        m = date.fromisoformat(t["month"] + "-01")
+        pdf = usuario.get(f"/reports/preview?start={m}&end={_fim(m)}").json()
+        for k in ("recurring_done", "recurring_total", "pontual_done", "minutes"):
+            assert t[k] == pdf[k], (t["month"], k)
+    assert ov["trend"][-1]["pontual_done"] == 1 and ov["trend"][0]["pontual_done"] == 6
+    # Média dos 5 anteriores (2..6 tarefas = 4); o mês tem 1: abaixo. Sem vermelho: só a palavra.
+    assert ov["average"]["months"] == 5 and ov["average"]["pontual_done"] == 4.0
+    assert ov["compare"]["tasks"] == "abaixo" and ov["compare"]["routines"] == "abaixo"
+    # Semanas (domingo a sábado, cortadas no mês) somam o mês; dias = um por dia do mês.
+    assert sum(w["pontual_done"] for w in ov["weeks"]) == ov["month"]["pontual_done"]
+    assert sum(w["minutes"] for w in ov["weeks"]) == ov["month"]["minutes"]
+    assert ov["weeks"][0]["start"] == f"{mes}" and ov["weeks"][-1]["end"] == f"{_fim(mes)}"
+    assert len(ov["days"]) == _fim(mes).day
+    d1 = ov["days"][0]
+    assert (d1["due"], d1["done"], d1["extra"], d1["paused"]) == (1, 1, 0, False)
+    assert sum(d["done"] for d in ov["days"]) == ov["month"]["recurring_done"]
+    assert sum(d["due"] for d in ov["days"]) == ov["month"]["recurring_total"]
+
+
+def test_palavra_neutra_na_media_e_sem_media_cedo(usuario):
+    hoje = dia_hoje(usuario)
+    mes = _mes_anterior(hoje)
+    uid = uid_de(usuario)
+    db.execute("UPDATE users SET created_at = %s WHERE id = %s", (f"{_meses_atras(mes, 3)} 08:00-03", uid))
+    for i in range(4):  # 2 tarefas de 1h por mês, sempre: na média
+        m = _meses_atras(mes, i)
+        _concluida(usuario, f"A{i}", m.replace(day=2), 60)
+        _concluida(usuario, f"B{i}", m.replace(day=3), 60)
+    ov = usuario.get(f"/dashboard?month={mes:%Y-%m}").json()["overview"]
+    assert len(ov["trend"]) == 4  # só desde o primeiro registro
+    assert ov["compare"]["tasks"] == "na média" and ov["compare"]["minutes"] == "na média"
+    assert ov["compare"]["routines"] is None  # sem rotinas, sem palavra
+    # Um só mês anterior: ainda sem média.
+    ov2 = usuario.get(f"/dashboard?month={_meses_atras(mes, 2):%Y-%m}").json()["overview"]
+    assert ov2["average"] is None and set(ov2["compare"].values()) == {None}
+
+
+def test_dia_pausado_e_extra_no_calendario(usuario):
+    hoje = dia_hoje(usuario)
+    mes = _mes_anterior(hoje)
+    uid = uid_de(usuario)
+    db.execute("UPDATE users SET created_at = now() - interval '100 days' WHERE id = %s", (uid,))
+    seg = usuario.post("/recurring", {"label": "Segunda", "freq": "weekly", "weekdays": 2}).json()["id"]
+    recuar_criacao(seg, 100)
+    # extra: marcada num dia fora da agenda (o primeiro dia do mês que não é segunda)
+    extra_dia = next(mes.replace(day=k) for k in range(1, 8) if mes.replace(day=k).weekday() != 0)
+    db.execute("INSERT INTO recurring_completions (task_id, user_id, completed_date) VALUES (%s, %s, %s)",
+               (seg, uid, extra_dia))
+    db.execute("INSERT INTO recurring_pauses (recurring_id, start_d, end_d) VALUES (%s, %s, %s)",
+               (seg, mes.replace(day=15), mes.replace(day=28)))
+    ov = usuario.get(f"/dashboard?month={mes:%Y-%m}").json()["overview"]
+    por_dia = {d["date"]: d for d in ov["days"]}
+    e = por_dia[f"{extra_dia}"]
+    assert (e["due"], e["done"], e["extra"]) == (0, 0, 1)
+    seg_pausada = next(mes.replace(day=k) for k in range(15, 22) if mes.replace(day=k).weekday() == 0)
+    p = por_dia[f"{seg_pausada}"]
+    assert p["paused"] is True and p["due"] == 0
+    assert por_dia[f"{mes.replace(day=14)}"]["paused"] is False  # antes da pausa
+
+
+def test_equipe_sem_tendencia_nem_media(admin, usuario):
+    hoje, mes, _ = _preparar(usuario)
+    usuario.put("/me/viewers", {"accept": True})
+    ov = admin.get(f"/viewer/users/{uid_de(usuario)}/dashboard?month={mes:%Y-%m}").json()["overview"]
+    assert ov["trend"] == [] and ov["average"] is None and ov["compare"] is None
+    assert ov["days"] and ov["weeks"]  # o mês dela, como no PDF, continua
+    own = usuario.get(f"/dashboard?month={mes:%Y-%m}").json()["overview"]
+    assert len(own["trend"]) >= 2  # a própria pessoa vê a tendência

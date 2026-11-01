@@ -364,7 +364,8 @@ def get_dashboard(user_id: int, month: date | None = None) -> dict:
         user_id, min(win["heat_start"], win["adh_start"]) - timedelta(days=_STREAK_LOOKBACK), win["end"]
     )
     out = get_dashboard_analytics(user_id, tasks, completions, mask, today, win)
-    first = first_record_day(user_id).replace(day=1)
+    first_day = first_record_day(user_id)
+    first = first_day.replace(day=1)
     months, m = [], today.replace(day=1)
     while m >= first:
         months.append(m.strftime("%Y-%m"))
@@ -373,7 +374,7 @@ def get_dashboard(user_id: int, month: date | None = None) -> dict:
                      "start": win["adh_start"], "end": win["end"], "now": win["now"]}
     out["months"] = months  # do mais recente ao primeiro registro
     if month is not None:
-        out["overview"] = month_overview(user_id, month, first)
+        out["overview"] = month_overview(user_id, month, first_day)
     return out
 
 
@@ -387,26 +388,112 @@ def _totals(r: dict) -> dict:
             "recurring_total": s["recurring_total"], "pontual_done": s["pontual_done"], "minutes": s["minutes"]}
 
 
-def month_overview(user_id: int, month: date, first_month: date | None = None) -> dict:
+TREND_MONTHS = 6           # meses da tendência (o escolhido e os 5 anteriores)
+# Faixa de "na média" (a palavra neutra dos indicadores): rotinas, até 5 pontos
+# percentuais da média; tarefas e horas, até 15% da média (no mínimo 1 tarefa e
+# 1 hora). Média = os meses anteriores da tendência em que a pessoa já registrava
+# (sem o primeiro, se começou no meio dele), pelo menos 2. No mês corrente, tarefas
+# e horas comparam com a média proporcional aos dias já passados, e só depois da
+# primeira semana (antes disso, cedo demais para dizer).
+AVG_MIN_MONTHS = 2
+AVG_BAND_PP = 5
+AVG_BAND_REL = 0.15
+AVG_BAND_MIN = {"pontual_done": 1, "minutes": 60}
+AVG_FIRST_DAYS = 7
+
+
+def _add_months(m: date, n: int) -> date:
+    y, mm = divmod(m.year * 12 + m.month - 1 + n, 12)
+    return date(y, mm + 1, 1)
+
+
+def _word(value: float, avg: float, band: float) -> str:
+    if value > avg + band:
+        return "acima"
+    if value < avg - band:
+        return "abaixo"
+    return "na média"
+
+
+def _compare(cur: dict, olds: list[dict], scale: float) -> tuple[dict | None, dict]:
+    """A média da pessoa nos meses anteriores e a palavra neutra de cada indicador."""
+    words = {"routines": None, "tasks": None, "minutes": None}
+    if len(olds) < AVG_MIN_MONTHS:
+        return None, words
+    n = len(olds)
+    due = sum(o["recurring_total"] for o in olds)
+    avg = {"months": n, "scale": round(scale, 3),
+           "recurring_pct": round(100 * sum(o["recurring_done"] for o in olds) / due, 1) if due else None,
+           "pontual_done": round(sum(o["pontual_done"] for o in olds) / n, 1),
+           "minutes": round(sum(o["minutes"] for o in olds) / n)}
+    if avg["recurring_pct"] is not None and cur["recurring_total"]:
+        words["routines"] = _word(100 * cur["recurring_done"] / cur["recurring_total"], avg["recurring_pct"], AVG_BAND_PP)
+    if scale:
+        for key, word in (("pontual_done", "tasks"), ("minutes", "minutes")):
+            ref = avg[key] * scale
+            words[word] = _word(cur[key], ref, max(AVG_BAND_MIN[key], AVG_BAND_REL * ref))
+    return avg, words
+
+
+def month_overview(user_id: int, month: date, first_day: date | None = None) -> dict:
     """O resumo de Meu mês: os números do mês (os MESMOS do PDF do mês, porque
-    vêm de get_report_range), os do mês anterior inteiro (para comparar, se a
-    pessoa já registrava), as rotinas com dias sem marcar, o tempo por
-    projeto e as entregas com tempo e "como resolveu"."""
+    vêm de get_report_range), os do mês anterior inteiro, a tendência dos
+    últimos TREND_MONTHS meses (mesma conta, mês a mês) com a média da pessoa e
+    a palavra neutra, as semanas e os dias do mês (o calendário), as rotinas com
+    dias sem marcar, o tempo por projeto e as entregas com "como resolveu"."""
     today = app_today()
     end = min(_month_end(month), today)
-    prev = (month - timedelta(days=1)).replace(day=1)
-    first_month = first_month or first_record_day(user_id).replace(day=1)
+    prev = _add_months(month, -1)
+    first_day = first_day or first_record_day(user_id)
+    first_month = first_day.replace(day=1)
     has_prev = prev >= first_month
-    inputs = _report_inputs(user_id, prev if has_prev else month, end)  # uma leitura para os dois meses
+    trend_start = max(_add_months(month, 1 - TREND_MONTHS), first_month)
+    read_from = min(trend_start, prev) if has_prev else month
+    inputs = _report_inputs(user_id, read_from, end)  # uma leitura para todos os meses
     cur = get_report_range(user_id, month, end, inputs=inputs, with_open=False)
     old = get_report_range(user_id, prev, _month_end(prev), inputs=inputs, with_open=False) if has_prev else None
+
+    # Tendência: do mais antigo ao escolhido, só meses em que a pessoa já registrava.
+    trend, m = [], trend_start
+    while m < month:
+        r = old if old and m == prev else get_report_range(user_id, m, _month_end(m), inputs=inputs, with_open=False)
+        trend.append({**_totals(r), "month": m.strftime("%Y-%m")})
+        m = _add_months(m, 1)
+    now = end == today
+    trend.append({**_totals(cur), "month": month.strftime("%Y-%m"), "now": now})
+    # Média: os meses anteriores inteiros (sem o primeiro, se começou no meio dele).
+    olds = [t for t in trend[:-1] if not (t["month"] == first_month.strftime("%Y-%m") and first_day.day > 1)]
+    scale = 1.0
+    if now:
+        elapsed, size = (end - month).days + 1, _month_end(month).day
+        scale = elapsed / size if elapsed >= AVG_FIRST_DAYS else 0.0
+    average, compare = _compare(_totals(cur), olds, scale)
+
+    # Semanas do mês (domingo a sábado, cortadas no mês) e os dias (o calendário).
+    weeks: list[dict] = []
+    for s in cur["series"]:
+        if not weeks or s["date"].weekday() == 6:  # 6 = domingo
+            weeks.append({"start": s["date"], "end": s["date"], "pontual_done": 0, "minutes": 0})
+        w = weeks[-1]
+        w["end"] = s["date"]
+        w["pontual_done"] += s["pontual"]
+        w["minutes"] += s["minutes"]
+    days = [{"date": s["date"], "due": s["recurring_total"], "done": s["recurring_done"] - s["recurring_extra"],
+             "extra": s["recurring_extra"], "paused": s["paused"], "pontual_done": s["pontual"],
+             "minutes": s["minutes"]} for s in cur["series"]]
+
     stats = [r for r in cur["recurring_stats"] if r["due"]]
     behind = sorted((r for r in stats if r["done"] < r["due"]),
                     key=lambda r: (r["done"] / r["due"], -r["due"], r["label"].lower()))
     deliveries = sorted(cur["deliveries"], key=lambda w: (-w["minutes"], -w["completed_at"].timestamp()))
     return {
-        "month": {**_totals(cur), "now": end == today},
+        "month": {**_totals(cur), "now": now},
         "previous": {**_totals(old), "month": prev.strftime("%Y-%m")} if old else None,
+        "trend": trend,
+        "average": average,
+        "compare": compare,
+        "weeks": weeks,
+        "days": days,
         "routines": len(stats),
         "routines_full": sum(1 for r in stats if r["done"] >= r["due"]),  # feitas em todos os dias previstos
         "behind": [{"label": r["label"], "due": r["due"], "done": r["done"]} for r in behind[:OVERVIEW_BEHIND]],
@@ -709,7 +796,10 @@ def get_report_range(user_id: int, start: date, end: date, project: dict | None 
         tempo = time_by_date.get(d, [])
         minutes = sum(e["minutes"] for e in tempo)
         series.append({"date": d, "work_day": is_work_day(d, mask), "recurring_done": n_done + len(extras),
-                       "recurring_total": len(rec), "pontual": len(pont), "minutes": minutes})
+                       "recurring_total": len(rec), "recurring_extra": len(extras),
+                       # pausado: nada previsto porque a(s) rotina(s) do dia estavam em pausa
+                       "paused": not rec and any(pause_end(t, d) for t in vigentes),
+                       "pontual": len(pont), "minutes": minutes})
         total_done += n_done
         total_slots += len(rec)
         total_extra += len(extras)

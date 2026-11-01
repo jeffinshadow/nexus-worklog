@@ -6,7 +6,7 @@
 import { api } from "./api.js";
 import { h, icon, clear, field } from "./dom.js";
 import { errorToast } from "./ui.js";
-import { listProjects } from "./projects.js";
+import { listProjects, corProjeto } from "./projects.js";
 
 const DAYS = [[1, "Seg"], [2, "Ter"], [3, "Qua"], [4, "Qui"], [5, "Sex"], [6, "Sáb"], [0, "Dom"]];
 // Exemplos de várias áreas de suporte (TI, manutenção, atendimento): ninguém se sente fora.
@@ -152,7 +152,7 @@ function setup(me) {
         clear(chips);
         for (const p of list) {
           const dot = h("span", { class: "dot" });
-          dot.style.background = p.color || "var(--dim)";
+          dot.style.background = corProjeto(p.color);
           chips.append(h("span", { class: "chip project" }, dot, p.name));
         }
         for (const s of PROJ_HINTS.filter((s) => !list.some((p) => p.name.toLowerCase() === s.toLowerCase())))
@@ -265,7 +265,7 @@ const STOPS = [
   [['#nav [data-view="projetos"]'], "Projetos",
     "Cada projeto com os objetivos (as demandas principais) na ordem de execução e as tarefas de cada um. Arraste para mudar a ordem; o progresso de cada objetivo se calcula sozinho."],
   [['#nav [data-view="mes"]', '#tabbar [data-view="mes"]'], "Meu mês",
-    "Como foi o mês numa frase, o que ficou para trás, para onde foi o tempo, o que foi entregue e o PDF do mês, para prestar contas. O Histórico guarda cada mudança, com desfazer."],
+    "Como foi o mês numa frase e num painel: rotinas, tarefas e horas com os últimos 6 meses ao lado, o calendário do mês e o tempo por projeto. O PDF do mês sai num botão, para prestar contas. O Histórico guarda cada mudança, com desfazer."],
   [["#btn-help", '#tabbar [data-view="mais"]'], "Ajuda",
     "Atalhos, o manual tela por tela e este tour de novo, quando quiser."],
 ];
