@@ -171,9 +171,9 @@ def put_settings(data: AppSettingsIn, admin=Depends(require_admin_csrf)):
 def reset_password(user_id: int, admin=Depends(require_admin_csrf)):
     """Redefine a senha de um usuario para uma temporaria gerada (mostrada uma
     unica vez ao admin). Forca troca no proximo login e encerra as sessoes do
-    alvo. Sem envolvimento de e-mail. Para a propria conta, use a troca normal."""
+    alvo. Sem envolvimento de e-mail. Para a própria conta, use a troca normal."""
     if user_id == admin["user_id"]:
-        raise HTTPException(status_code=400, detail="use a troca de senha da sua propria conta")
+        raise HTTPException(status_code=400, detail="use a troca de senha da sua própria conta")
     target = _ensure_user(user_id)
 
     temp = generate_temp_password()

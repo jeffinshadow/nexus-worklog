@@ -1,3 +1,4 @@
+import logging
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -9,6 +10,7 @@ from ..security import RateLimiter
 from ..services import app_today
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
+log = logging.getLogger("uvicorn.error")
 
 test_limiter = RateLimiter(max_hits=3, window_seconds=600)
 
@@ -65,5 +67,6 @@ def send_test(kind: Literal["morning", "weekly"] = "morning", user=Depends(web_a
     try:
         mailer.send(user["email"], mail.subject, mail.text(), mail.html(), attachments=mail.attachments or None)
     except mailer.MailError as e:
-        raise HTTPException(status_code=502, detail=str(e)) from e
+        log.warning("teste de e-mail (usuário %s) falhou: %s", user["user_id"], e)
+        raise HTTPException(status_code=502, detail="O e-mail não saiu: o servidor de e-mail recusou o envio. Avise o administrador.") from e
     return {"ok": True, "to": user["email"]}

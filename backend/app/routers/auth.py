@@ -70,7 +70,8 @@ def login(data: LoginIn, request: Request, response: Response):
         log.warning("login falhou: ip=%s conta=%s", ip, token_hash(email)[:12])  # sem o e-mail em claro
         login_limiter.allow(fail_keys[0])
         login_email_limiter.allow(fail_keys[1])
-        raise HTTPException(status_code=401, detail="credenciais invalidas")
+        dica = ", ou use Esqueci a senha" if mailer.configured() else ""
+        raise HTTPException(status_code=401, detail=f"E-mail ou senha incorretos. Confira e tente de novo{dica}.")
 
     user = db.query_one("SELECT * FROM users WHERE email = %s", (email,))
     if not user:

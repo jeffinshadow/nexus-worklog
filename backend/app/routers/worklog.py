@@ -25,7 +25,7 @@ def check_day_total(uid: int, day, minutes: int, status: int = 400) -> None:
     total = db.query_one("SELECT COALESCE(sum(minutes), 0)::int AS m FROM time_entries WHERE user_id = %s AND day = %s",
                          (uid, day))["m"]
     if total + minutes > 1440:
-        raise HTTPException(status_code=status, detail="passaria de 24h apontadas nesse dia")
+        raise HTTPException(status_code=status, detail="com esse tempo, o dia passaria de 24 h apontadas; confira se o dia ou as horas estão certos")
 
 
 def _check_project(uid: int, project_id) -> None:

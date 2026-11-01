@@ -4,7 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..deps import active_user
-from ..services import app_today, board_day_range, get_board
+from ..services import RETRO_DAYS, app_today, board_day_range, get_board
 
 router = APIRouter(prefix="/api/board", tags=["board"])
 
@@ -15,7 +15,7 @@ def check_board_day(day: Optional[date]) -> Optional[date]:
         return None
     min_day, today = board_day_range(app_today())
     if not (min_day <= day <= today):
-        raise HTTPException(status_code=400, detail="dia fora da janela de edição")
+        raise HTTPException(status_code=400, detail=f"só dá para marcar rotinas dos últimos {RETRO_DAYS} dias")
     return day
 
 

@@ -78,7 +78,7 @@ def update(task_id: int, data: RecurringUpdate, user=Depends(active_user_csrf)):
     agenda = data.agenda() if data.freq is not None else {}
     horario = "remind_at" in data.model_fields_set  # null tira o horário
     if data.label is None and not agenda and data.require_note is None and not horario:
-        raise HTTPException(status_code=400, detail="nada para atualizar")
+        raise HTTPException(status_code=400, detail="nada mudou na rotina")
     today = app_today()
     muda_agenda = any(before[k] != v for k, v in agenda.items())
     tem_passado = before["created_at"].astimezone(app_tz()).date() < today
