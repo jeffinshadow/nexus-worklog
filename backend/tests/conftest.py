@@ -2,11 +2,30 @@
 (docker-compose.test.yml); cada teste começa com o banco zerado."""
 import os
 
-import pytest
-from fastapi.testclient import TestClient
+import psycopg
 
-from app import db, main, security
-from app.main import app
+
+def _banco_do_worker():
+    """Com pytest-xdist (-n N), cada processo usa um banco só dele (nexus_test_gw0,
+    gw1…), criado na hora no mesmo Postgres descartável. Sem xdist, nada muda."""
+    worker = os.environ.get("PYTEST_XDIST_WORKER")
+    if not worker:
+        return
+    base, nome = os.environ["DATABASE_URL"].rsplit("/", 1)
+    proprio = f"{nome}_{worker}"
+    with psycopg.connect(os.environ["DATABASE_URL"], autocommit=True) as conn:
+        if not conn.execute("SELECT 1 FROM pg_database WHERE datname = %s", (proprio,)).fetchone():
+            conn.execute(f'CREATE DATABASE "{proprio}"')
+    os.environ["DATABASE_URL"] = f"{base}/{proprio}"
+
+
+_banco_do_worker()  # antes de importar o app: a config lê DATABASE_URL na importação
+
+import pytest  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+
+from app import db, main, security  # noqa: E402
+from app.main import app  # noqa: E402
 
 ADMIN_EMAIL = os.environ["ADMIN_EMAIL"]
 ADMIN_PW_INICIAL = os.environ["ADMIN_INITIAL_PASSWORD"]
