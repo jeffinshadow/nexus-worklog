@@ -116,6 +116,7 @@ export function moreButton(t, onDone) {
           ? ["Parar o cronômetro e apontar", "stop", () => stopTimer(onDone)]
           : ["Iniciar o cronômetro", "play", () => startTimer(t, onDone)],
         canBlock(t) ? ["Aguardando…", "clock", () => blockTask(t, onDone)] : null,
+        ["Duplicar tarefa", "add", () => duplicateTask(t, onDone)],
         ["Abrir (ver e editar)", "right", () => openTask(t.id, onDone)],
       ]);
     } }, icon("more-v"));
@@ -138,6 +139,7 @@ export function withMenu(el, t, onDone) {
         : ["Iniciar o cronômetro", "play", () => startTimer(t, onDone)],
       t.status === "done" ? null : ["Concluir", "check", () => finishTask(t, onDone)],
       canBlock(t) ? ["Aguardando…", "clock", () => blockTask(t, onDone)] : null,
+      ["Duplicar tarefa", "add", () => duplicateTask(t, onDone)],
       ["Excluir", "trash", () => deleteTask(t, onDone)],
     ];
     if (matchMedia("(max-width: 860px)").matches) { sheet(t.title, items); return; }
@@ -198,6 +200,17 @@ export function blockTask(t, onDone) {
     } catch (e) { err.textContent = e.message; }
   });
   setTimeout(() => reason.focus(), 0);
+}
+
+// Duplicar: tarefa nova "a fazer" com título, descrição, projetos, prioridade e
+// checklist (desmarcado); sem tempo, fotos, anotações nem datas. Abre a nova.
+export async function duplicateTask(t, onDone) {
+  try {
+    const { id } = await api.post(`/worklog/${t.id}/duplicate`);
+    toast("Tarefa duplicada.", { action: "Desfazer", onAction: () => undoLatest("worklog", id, onDone) });
+    if (onDone) onDone();
+    openTask(id, onDone);
+  } catch (e) { errorToast(e, "Não foi possível duplicar."); }
 }
 
 export async function deleteTask(t, onDone) {

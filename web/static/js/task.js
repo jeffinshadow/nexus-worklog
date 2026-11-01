@@ -6,7 +6,7 @@
 import { api } from "./api.js";
 import { h, icon, clear, addDays, shortDate, dateTime, field, localDateTime } from "./dom.js";
 import { errorToast, modal, toast, undoLatest, busy, sheet, syncRail, growFrom, refocusBy } from "./ui.js";
-import { finishTask, deleteTask, followUpDay, isOverdue, ticketUrl, taskChips } from "./board.js";
+import { finishTask, deleteTask, duplicateTask, followUpDay, isOverdue, ticketUrl, taskChips } from "./board.js";
 import { extraProjectsField, fillObjectiveSelect, fillProjectSelect } from "./projects.js";
 import { session } from "./session.js";
 import { timerButton, timerState, startTimer, stopTimer } from "./timer.js";
@@ -140,6 +140,8 @@ export async function openTask(taskId, onChange) {
           onClick: () => { editing = true; markEditing(t.id); refocus = "Título"; paint(); } }, icon("edit"));
 
     const remove = async () => { if (await deleteTask(t, onChange)) dlg.close(); };
+    // A cópia leva o que está salvo: espera o último campo e abre no lugar desta.
+    const dup = async () => { await pending; dlg.close(); duplicateTask(cur, onChange); };
     const head = h("div", { class: "task-head" },
       h("div", { class: "task-title" }, h("div", { class: "title-row" }, h("div", { class: "title-main" }, ...titleBlock), toggle),
         t.assigned_by_name ? h("p", { class: "assigned-note" }, icon("send"), "Atribuída por " + t.assigned_by_name) : null),
@@ -151,6 +153,7 @@ export async function openTask(taskId, onChange) {
           : null,
         h("button", { type: "button", class: "icon", title: "Copiar resumo (para o chamado ou o cliente)", "aria-label": "Copiar resumo", onClick: async () => { await pending; copySummary(cur); } }, icon("copy")),
         h("button", { type: "button", class: "icon", title: "Salvar como modelo", "aria-label": "Salvar como modelo", onClick: async () => { await pending; saveAsTemplate(cur); } }, icon("list")),
+        h("button", { type: "button", class: "icon", title: "Duplicar tarefa", "aria-label": "Duplicar tarefa", onClick: dup }, icon("add")),
         h("button", { type: "button", class: "icon", title: "Excluir", "aria-label": "Excluir", onClick: remove }, icon("trash")),
         h("button", { type: "button", class: "icon", title: "Fechar", "aria-label": "Fechar", onClick: () => dlg.close() }, icon("close"))));
 
@@ -166,6 +169,7 @@ export async function openTask(taskId, onChange) {
       h("button", { type: "button", class: "icon", title: "Mais ações", "aria-label": "Mais ações", onClick: () => sheet(t.title, [
         ["Copiar resumo (para o chamado ou o cliente)", "copy", async () => { await pending; copySummary(cur); }],
         ["Salvar como modelo", "list", async () => { await pending; saveAsTemplate(cur); }],
+        ["Duplicar tarefa", "add", dup],
         ["Excluir tarefa", "trash", remove],
       ]) }, icon("more-v")));
     const running = (timerState() || {}).task_id === t.id;

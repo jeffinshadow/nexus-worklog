@@ -375,6 +375,32 @@ def finish(task_id: int, data: Optional[FinishIn] = None, user=Depends(active_us
     return {"ok": True}
 
 
+@router.post("/{task_id}/duplicate", status_code=201)
+def duplicate(task_id: int, user=Depends(active_user_csrf)):
+    """Tarefa nova "a fazer" com o título, a descrição, os projetos, a prioridade
+    e o checklist (desmarcado) desta. Sem tempo, fotos, anotações nem datas."""
+    uid = user["user_id"]
+    src = _own_task(uid, task_id)
+    # Um comando só: a tarefa, os itens e os outros projetos entram juntos (ou nada entra).
+    row = db.query_one(
+        """WITH nova AS (
+               INSERT INTO worklog_tasks (user_id, title, description, status, project_id, priority, exec_position)
+               SELECT user_id, title, description, 'todo', project_id, priority, %s
+                 FROM worklog_tasks WHERE id = %s AND user_id = %s
+               RETURNING id),
+           itens AS (
+               INSERT INTO task_checklist (task_id, user_id, label, position)
+               SELECT nova.id, %s, c.label, c.position FROM nova, task_checklist c WHERE c.task_id = %s),
+           extras AS (
+               INSERT INTO worklog_task_projects (task_id, project_id)
+               SELECT nova.id, x.project_id FROM nova, worklog_task_projects x WHERE x.task_id = %s)
+           SELECT id FROM nova""",
+        (next_position(uid, src["project_id"], None), task_id, uid, uid, task_id, task_id),
+    )
+    audit.record(user, "worklog.create", "worklog", row["id"], after=audit.worklog_snapshot(row["id"], uid))
+    return {"id": row["id"]}
+
+
 @router.delete("/{task_id}")
 def delete(task_id: int, user=Depends(active_user_csrf)):
     before = _own_task(user["user_id"], task_id)

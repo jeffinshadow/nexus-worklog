@@ -151,6 +151,7 @@ Agenda: `daily` (dias úteis do dono) · `weekly` + `weekdays` (máscara) ·
 | `GET /{id}` | | tarefa + `checklist`, `notes`, `time`, `minutes`, `today` |
 | `PATCH /{id}` | W | campos a mudar (concluir uma atribuída avisa quem atribuiu, uma vez); `description`/`due_date`/`project_id`/`ticket` = `null` apaga; `completed_at` corrige a data de uma concluída; `resolution` (até 1000; null apaga; só em tarefa concluída) = como foi resolvido; `blocked_reason` (até 120) e `follow_up_on` (dia combinado para cobrar; em dia não útil vai para o dia útil anterior) com status `blocked` = o que se aguarda (`blocked_at` marca desde quando; sair de `blocked` limpa tudo). Na tela, `blocked` se chama "aguardando" |
 | `POST /{id}/finish` | W | conclui agora, ou `{completed_at, resolution?}` (mesmas regras; `resolution` = como foi resolvido, até 1000, entra na busca); limpa a espera (`blocked_reason`, `blocked_at`, `follow_up_on`); com o cronômetro rodando nela, ele para e aponta. Tarefa atribuída: quem atribuiu recebe um e-mail, uma vez |
+| `POST /{id}/duplicate` | W | `201 {id}` — tarefa nova `todo` com título, descrição, projetos (principal e outros), prioridade e checklist (desmarcado); sem tempo, fotos, anotações, chamado nem datas. Entra no histórico como criação (desfazer apaga a cópia) |
 | `DELETE /{id}` | W | exclui junto anotações, checklist e tempo (o desfazer devolve tudo) |
 | `POST /{id}/notes` | W | `{body, external_ref?}` (até 2000) — `external_ref` repetido devolve a existente (200, `existing: true`) |
 | `DELETE /api/notes/{id}` | W | |
