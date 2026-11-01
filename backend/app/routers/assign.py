@@ -3,8 +3,9 @@
 A tarefa nasce na conta de quem recebe (ele é o dono: edita, conclui, exclui)
 com "atribuída por". Quem atribuiu acompanha o status em "Tarefas que
 atribuí" e, enquanto ela está "a fazer" e sem nada registrado, ainda pode
-corrigir título, prazo e prioridade ou cancelar o envio (engano). Depois disso
-é só de quem recebeu. Excluída ou cancelada, a linha continua na lista com o
+corrigir título, prazo e prioridade (só os que quem recebeu não mudou) ou
+cancelar o envio (engano; só se ela não mexeu em nada). Depois disso é só de
+quem recebeu. Excluída ou cancelada, a linha continua na lista com o
 que aconteceu (vem do histórico, 60 dias). Cada atribuição manda um e-mail.
 Pelo app ou por chave de API/MCP (escopo de escrita), só com o papel.
 """
@@ -139,7 +140,8 @@ def notify_assigner(task_id: int) -> None:
 @router.get("/sent")
 def sent(user=Depends(require_assigner)):
     """Tarefas que esta pessoa atribuiu, com o status atual (as mais recentes).
-    `editable`: ainda dá para corrigir ou cancelar. As que saíram da conta de
+    `editable`: ainda dá para corrigir (o que quem recebeu não mudou);
+    `cancelable`: ainda dá para cancelar. As que saíram da conta de
     quem recebeu continuam aqui (status "removed", com `ended`)."""
     rows = db.query_all(
         f"""SELECT w.id, w.title, w.status, w.due_date, w.assigned_at, w.completed_at, w.priority, w.blocked_reason,
@@ -153,6 +155,9 @@ def sent(user=Depends(require_assigner)):
     )
     today = app_today()
     for r in rows:
+        # Cancelar só enquanto quem recebeu não mexeu em nada (Alterar ainda vale
+        # para os campos que ela não mudou).
+        r["cancelable"] = bool(r["editable"] and not _touched(r["id"], r["to_id"]))
         r["to_name"] = people.profile(r.pop("to_id"))["name"]
         r["late"] = bool(r["due_date"] and r["status"] != "done" and r["due_date"] < today)
         r["ended"] = None
@@ -195,7 +200,7 @@ def _removed(uid: int) -> list[dict]:
     )
     kinds = {"worklog.delete": "deleted", "assign.cancel": "canceled"}
     return [{**r, "status": "removed", "due_date": None, "completed_at": None, "priority": 2,
-             "blocked_reason": None, "late": False, "editable": False,
+             "blocked_reason": None, "late": False, "editable": False, "cancelable": False,
              "ended": {"kind": kinds.get(r.pop("end_action"), "removed"), "at": r.pop("ended_at")}}
             for r in rows]
 
@@ -216,6 +221,22 @@ def _own_sent(task_id: int, uid: int) -> dict:
 
 STARTED_MSG = "a pessoa já começou esta tarefa: agora só ela muda; combine com ela"
 
+# O que quem recebeu pode mudar na tarefa (comparado com o que chegou a ela).
+_OWN_FIELDS = ("title", "description", "due_date", "priority", "project_id", "extra_project_ids", "objective_id",
+               "ticket", "after_hours")
+_FIELD_PT = {"title": "o título", "due_date": "o prazo", "priority": "a prioridade"}
+
+
+def _touched(task_id: int, to_id: int) -> list[str]:
+    """Campos que quem recebeu mudou na tarefa (as edições dela que não foram
+    desfeitas; as de quem atribuiu ficam em worklog.assign_update)."""
+    rows = db.query_all(
+        """SELECT before, after FROM audit_log
+            WHERE user_id = %s AND entity = 'worklog' AND entity_id = %s
+              AND action = 'worklog.update' AND undone_at IS NULL""", (to_id, task_id))
+    return [k for k in _OWN_FIELDS
+            if any(k in (r["before"] or {}) and k in (r["after"] or {}) and r["before"][k] != r["after"][k] for r in rows)]
+
 
 def _change_mail(title: str, by_name: str, verb: str, lines: list[str], link: str):
     from ..notify import Mail  # import tardio: notify importa rotas
@@ -230,15 +251,27 @@ def _change_mail(title: str, by_name: str, verb: str, lines: list[str], link: st
 
 @router.patch("/{task_id}")
 def update_sent(task_id: int, data: AssignEditIn, user=Depends(require_assigner_csrf)):
-    """Corrige título, prazo ou prioridade de uma tarefa atribuída que ainda não começou."""
+    """Corrige título, prazo ou prioridade de uma tarefa atribuída que ainda não
+    começou. Só o que de fato muda; campo que quem recebeu já mudou não é
+    regravado por cima (409, nada muda)."""
     row = _own_sent(task_id, user["user_id"])
+    before = audit.worklog_snapshot(task_id, row["user_id"])
     changes = {k: v for k, v in data.model_dump(exclude_unset=True).items() if v is not None or k == "due_date"}
+    changes = {k: v for k, v in changes.items() if audit._jsonable(v) != audit._jsonable(before[k])}
     if not changes:
         raise HTTPException(status_code=400, detail="nada para mudar")
-    before = audit.worklog_snapshot(task_id, row["user_id"])
+    mexidos = [k for k in _touched(task_id, row["user_id"]) if k in changes]
+    if mexidos:
+        quem = people.profile(row["user_id"])["name"]
+        raise HTTPException(status_code=409, detail=(
+            f"{quem} já mudou {' e '.join(_FIELD_PT[k] for k in mexidos)} desde que recebeu; "
+            "nada foi alterado. Combine com ela ou mude só o resto"))
     sets = ", ".join(f"{k} = %({k})s" for k in changes)  # chaves fixas do schema
-    if not db.execute(f"UPDATE worklog_tasks SET {sets} WHERE id = %(id)s AND assigned_by = %(by)s AND status = 'todo'",
-                      {**changes, "id": task_id, "by": user["user_id"]}):
+    # Só se ninguém mudou esses campos entre a leitura e a gravação.
+    same = " AND ".join(f"{k} IS NOT DISTINCT FROM %(old_{k})s" for k in changes)
+    if not db.execute(f"""UPDATE worklog_tasks SET {sets}
+                           WHERE id = %(id)s AND assigned_by = %(by)s AND status = 'todo' AND {same}""",
+                      {**changes, **{f"old_{k}": before[k] for k in changes}, "id": task_id, "by": user["user_id"]}):
         raise HTTPException(status_code=409, detail=STARTED_MSG)
     after = audit.worklog_snapshot(task_id, row["user_id"])
     by_name = people.profile(user["user_id"])["name"]
@@ -260,15 +293,30 @@ def update_sent(task_id: int, data: AssignEditIn, user=Depends(require_assigner_
 
 @router.post("/{task_id}/cancel")
 def cancel_sent(task_id: int, user=Depends(require_assigner_csrf)):
-    """Cancela uma atribuição feita por engano: a tarefa (ainda não começada)
-    sai da conta de quem recebeu, que é avisada por e-mail."""
+    """Cancela uma atribuição feita por engano: a tarefa (ainda não começada e
+    sem nada mudado por quem recebeu) sai da conta dela, que é avisada por
+    e-mail. No histórico dela fica a exclusão (worklog.delete, desfazível)."""
     row = _own_sent(task_id, user["user_id"])
     before = audit.worklog_snapshot(task_id, row["user_id"])
-    if not db.execute("DELETE FROM worklog_tasks WHERE id = %s AND assigned_by = %s AND status = 'todo'",
-                      (task_id, user["user_id"])):
+    if _touched(task_id, row["user_id"]):
+        raise HTTPException(status_code=409, detail=(
+            "a pessoa já mexeu nesta tarefa: cancelar apagaria o que ela escreveu. "
+            "Combine com ela (ela pode excluir) ou use Alterar"))
+    p = {"id": task_id, "by": user["user_id"], **{f"old_{k}": before[k] for k in
+                                                     ("title", "description", "due_date", "priority", "project_id")}}
+    # Tudo de novo na mesma gravação: nada registrado e nada mudado desde a leitura.
+    if not db.execute(
+            f"""DELETE FROM worklog_tasks
+                 WHERE id = %(id)s AND assigned_by = %(by)s AND status = 'todo'
+                   AND NOT EXISTS ({_STARTED.format(t="%(id)s")})
+                   AND title IS NOT DISTINCT FROM %(old_title)s AND description IS NOT DISTINCT FROM %(old_description)s
+                   AND due_date IS NOT DISTINCT FROM %(old_due_date)s AND priority = %(old_priority)s
+                   AND project_id IS NOT DISTINCT FROM %(old_project_id)s""", p):
         raise HTTPException(status_code=409, detail=STARTED_MSG)
     by_name = people.profile(user["user_id"])["name"]
-    audit.record(user, "worklog.assign_cancel", "worklog", task_id, before={**before, "by": by_name},
+    # Lápide comum (*.delete) para o feed/webhook de quem recebeu, com quem cancelou.
+    audit.record(user, "worklog.delete", "worklog", task_id,
+                 before={**before, "by": by_name, "canceled_by": by_name, "children": {}},
                  user_id=row["user_id"])
     audit.record(user, "assign.cancel", "assignment", task_id,
                  before={"title": row["title"], "to": people.profile(row["user_id"])["name"]})

@@ -123,6 +123,8 @@ def _label(row) -> str:
         return f"{ACTION_LABELS[row['action']]} “{item}” em “{snap.get('title', '')}”"
     if row["action"] in ("time.create", "time.delete"):
         return f"{ACTION_LABELS[row['action']]} “{snap.get('title', '')}” ({dur(snap.get('minutes'))})"
+    if row["action"] == "worklog.delete" and snap.get("canceled_by"):
+        return f"{snap['canceled_by']} cancelou a tarefa “{name}”, que tinha atribuído a você"
     if row["action"] == "worklog.assign" and snap.get("by"):
         return f"recebeu a tarefa “{name}”, atribuída por {snap['by']}"
     if row["action"] == "user.delete" and row["before"]:
@@ -399,11 +401,13 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
 
     a, before, after, eid = row["action"], row["before"], row["after"], row["entity_id"]
     if a in ("worklog.create", "worklog.assign"):
+        # Itens copiados pelo Duplicar (ainda desmarcados) não são trabalho da pessoa.
+        copied = [int(i) for i in (after or {}).get("copied_checklist") or []]
         if db.query_one(
             """SELECT 1 FROM task_notes WHERE task_id = %(t)s UNION ALL
-               SELECT 1 FROM task_checklist WHERE task_id = %(t)s UNION ALL
+               SELECT 1 FROM task_checklist WHERE task_id = %(t)s AND (done OR NOT id = ANY(%(c)s::bigint[])) UNION ALL
                SELECT 1 FROM time_entries WHERE task_id = %(t)s UNION ALL
-               SELECT 1 FROM photos WHERE task_id = %(t)s AND deleted_at IS NULL LIMIT 1""", {"t": eid}):
+               SELECT 1 FROM photos WHERE task_id = %(t)s AND deleted_at IS NULL LIMIT 1""", {"t": eid, "c": copied}):
             raise HTTPException(status_code=409, detail="a tarefa já tem anotações, checklist, tempo ou fotos; para tirá-la, exclua pela tela")
         db.execute("DELETE FROM worklog_tasks WHERE id = %s AND user_id = %s", (eid, uid))
     elif a in ("worklog.update", "worklog.finish", "worklog.assign_update"):
