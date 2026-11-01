@@ -61,7 +61,10 @@ const QUICK_DUR = /\s+[-–—]\s*(\d+(?:[.,]\d+)?\s*h(?:\s*\d{1,2})?(?:\s*min)?
 
 // Cria a tarefa e devolve a frase de confirmação. Erro na criação = exceção;
 // erro só no tempo = a tarefa fica e a frase avisa.
+// lastDone: a tarefa que o último registro já concluiu (para o "Como resolveu?").
+export let lastDone = null;
 export async function quickRegister(text, project_id = null) {
+  lastDone = null;
   let title = text.trim();
   const m = title.match(QUICK_DUR);
   const minutes = m ? parseDuration(m[1].replace(/\s+/g, "").replace(",", ".")) : null;
@@ -88,6 +91,7 @@ export async function quickRegister(text, project_id = null) {
   if (!comTempo) return `Tarefa registrada${com}.`;
   try {
     await api.post(`/worklog/${created.id}/time`, { minutes });
+    if (marks.blocked === null) lastDone = { id: created.id, title: marks.title };
     return `${marks.blocked !== null ? "Registrada" : "Registrada e concluída"} com ${m[1].trim()}${com}.`;
   } catch {
     return "Tarefa registrada, mas o tempo não entrou. Abra a tarefa e use Apontar.";

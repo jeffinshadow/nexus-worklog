@@ -574,7 +574,7 @@ function scheduleForm(item) {
   };
 }
 
-function askResolution(t, onDone) {
+export function askResolution(t, onDone) {
   // Ao fechar, o "Desfazer" da conclusão volta (o aviso some quando se clica numa ação).
   const undoAgain = () => toast(`Concluída: ${t.title}`, { action: "Desfazer", onAction: () => undoLatest("worklog", t.id, onDone) });
   const area = h("textarea", { rows: "4", maxlength: "1000", placeholder: "ex.: disjuntor trocado e circuito testado", "aria-label": "Como resolveu" });

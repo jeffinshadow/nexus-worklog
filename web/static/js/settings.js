@@ -1,7 +1,7 @@
 // Configurações: projetos, modelos, avisos, calendário, IA e API (chaves e webhooks), conta (perfil, assistente, chamados, dias úteis e senha).
 import { api } from "./api.js";
 import { h, icon, clear, dateTime, field, matchPasswords } from "./dom.js";
-import { codeBox, confirmDialog, errorToast, modal, toast, warnBox, busy, singleKeysOn, setSingleKeys } from "./ui.js";
+import { codeBox, confirmDialog, errorToast, modal, toast, warnBox, busy, singleKeysOn, setSingleKeys, calmMotion } from "./ui.js";
 import { defaultProjectPanel, fillProjectSelect } from "./projects.js";
 import { avatar, squarePhoto } from "./profile.js";
 import { pushPanel } from "./notificacoes.js";
@@ -54,7 +54,7 @@ export async function mount(root, ctx) {
     const tab = seg.querySelector('[aria-selected="true"]');
     if (!tab || seg.scrollWidth <= seg.clientWidth) return;
     const a = tab.getBoundingClientRect(), r = seg.getBoundingClientRect();
-    seg.scrollTo({ left: seg.scrollLeft + (a.left - r.left) - (r.width - a.width) / 2, behavior: smooth ? "smooth" : "auto" });
+    seg.scrollTo({ left: seg.scrollLeft + (a.left - r.left) - (r.width - a.width) / 2, behavior: smooth && !calmMotion() ? "smooth" : "auto" });
   });
   // A tela pode ser montada fora da página e entrar depois: rola quando aparecer.
   const seen = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { seen.disconnect(); showActive(false); } });
