@@ -329,7 +329,7 @@ def update(task_id: int, data: WorklogUpdate, user=Depends(active_user_csrf)):
         # descartado em silêncio. Mudar o status por tabela seria efeito escondido.
         raise HTTPException(status_code=400, detail=(
             "o motivo e o dia de cobrar só valem em tarefa aguardando: "
-            "marque a tarefa como aguardando (status blocked) junto"))
+            "marque a tarefa como aguardando (status \"blocked\") junto"))
     elif before["status"] == "blocked":
         fields.append("blocked_at = NULL")
         fields.append("blocked_reason = NULL")

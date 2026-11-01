@@ -754,7 +754,7 @@ def t_set_recurring(ctx, args):
         try:
             msg = _pause(ctx, int(rid), args["paused_until"]).strip()
         except ToolError as e:
-            if str(e) == "não encontrado":
+            if str(e).startswith("rotina não encontrada"):
                 raise ToolError(f"rotina R{rid} não encontrada (veja list_recurring)") from None
             raise
         if not ({"done", "day", "note"} & set(args)):
@@ -768,7 +768,7 @@ def _set_done(ctx, rid, data) -> str:
         res = _call(recurring_routes.toggle, int(rid), data, user=ctx)
     except ToolError as e:
         # Mudar a agenda ou o nome cria uma rotina nova (id novo) a partir daquele dia.
-        if str(e) == "não encontrado":
+        if str(e).startswith("rotina não encontrada"):
             raise ToolError(f"rotina R{rid} não encontrada (veja list_recurring)") from None
         if "não existia nesse dia" in str(e):
             raise ToolError(f"a rotina R{rid} não valia nesse dia: quando a agenda ou o nome muda, a rotina ganha "
@@ -882,7 +882,7 @@ def t_update_recurring(ctx, args):
     try:
         res = _call(recurring_routes.update, int(rid), data, user=ctx)
     except ToolError as e:
-        if str(e) == "não encontrado":
+        if str(e).startswith("rotina não encontrada"):
             raise ToolError(f"rotina R{rid} não encontrada (veja list_recurring)") from None
         if str(e) == "nada mudou na rotina":
             raise ToolError("nada a mudar: envie label, freq (com o parâmetro dela), remind_at ou require_note") from None
