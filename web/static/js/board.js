@@ -1,7 +1,7 @@
 // Quadro de tarefas: rotinas (com seletor de dia), tarefas abertas e
 // concluídas. Também exporta o diálogo de nova tarefa, usado pela tela Hoje.
 import { api } from "./api.js";
-import { h, icon, clear, field, addDays, shortDate, localDay, localDateTime, daysBetween, markInvalid } from "./dom.js";
+import { h, icon, clear, field, addDays, addWorkDays, shortDate, localDay, localDateTime, daysBetween, markInvalid } from "./dom.js";
 import { confirmDialog, errorToast, toast, undoLatest, busy, modal, sheet, navBadge, popupMenu, focusAfterRemoval, keepFocus } from "./ui.js";
 import { extraProjectsField, fillObjectiveSelect, fillProjectSelect, listProjects, projectChips } from "./projects.js";
 import { openTask, openTaskId, editingTaskId, duration, parseDuration } from "./task.js";
@@ -253,6 +253,35 @@ export function blockTask(t, onDone) {
     } catch (e) { err.textContent = e.message; markInvalid([reason], err); }
   });
   setTimeout(() => reason.focus(), 0);
+}
+
+// "Lembrar de cobrar em" direto (assistente do Hoje, revisão da semana): só o dia,
+// sugerido para daqui a 2 dias úteis. A tarefa continua aguardando o mesmo motivo.
+export function followUpTask(t, onDone) {
+  const today = localDateTime(Date.now()).slice(0, 10);
+  const follow = h("input", { type: "date", min: today, required: "required" });
+  follow.value = t.follow_up_on && t.follow_up_on >= today ? t.follow_up_on : addWorkDays(today, 2, (session.me && session.me.work_days) || 62);
+  const err = h("p", { class: "error-text", role: "alert" });
+  const form = h("form", {},
+    h("h2", { text: "Quando cobrar?" }),
+    h("p", { class: "dialog-note", text: t.blocked_reason ? `${t.title}: aguardando ${t.blocked_reason}.` : t.title }),
+    field("Lembrar de cobrar em", follow),
+    h("p", { class: "dialog-note", text: "No dia, o assistente do Hoje lembra (e a notificação da manhã, se estiver ligada)." }), err,
+    h("div", { class: "dialog-actions" },
+      h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
+      h("button", { type: "submit", class: "btn btn-primary", text: "Salvar" })));
+  const dlg = modal(form);
+  form.addEventListener("submit", busy(async (ev) => {
+    ev.preventDefault();
+    const day = followUpDay(follow.value);
+    try {
+      await api.patch(`/worklog/${t.id}`, { follow_up_on: day });
+      dlg.close();
+      toast(`Lembrete para cobrar em ${shortDate(day)}.`);
+      if (onDone) onDone(day);
+    } catch (e) { err.textContent = e.message || "Não foi possível salvar."; }
+  }));
+  setTimeout(() => follow.focus(), 0);
 }
 
 // Duplicar: tarefa nova "a fazer" com título, descrição, projetos, prioridade e

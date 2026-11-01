@@ -5,6 +5,8 @@ import { api } from "./api.js";
 import { h, icon, nowInTz, localDay, daysBetween, shortDate, addDays, addWorkDays } from "./dom.js";
 import { duration } from "./task.js";
 import { errorToast, modal, toast } from "./ui.js";
+import { followUpTask } from "./board.js";
+import { openReview } from "./review.js";
 
 export const enabled = (me) => !!(me && me.assistant && me.assistant.enabled);
 
@@ -153,9 +155,8 @@ function notes(open, today) {
       nota(t.follow_up_on < today
         ? `A cobrança de ${q(t.title)}${t.blocked_reason ? ` (${t.blocked_reason})` : ""} está atrasada desde ${shortDate(t.follow_up_on)}.`
         : `Hoje é dia de cobrar ${t.blocked_reason ? t.blocked_reason + " sobre " : ""}${q(t.title)}.`);
-    else if (t.status === "blocked" && !t.follow_up_on && d >= 3) nota(t.blocked_reason
-      ? `${q(t.title)} aguarda ${t.blocked_reason} há ${d} dias sem movimento. Vale cobrar.`
-      : `${q(t.title)} está aguardando sem movimento há ${d} dias. Vale confirmar se ainda depende de alguém.`);
+    // Aguardando sem dia para cobrar: aviso próprio, de /summary (review.stale), com N dias da Conta.
+    else if (t.status === "blocked") continue;
     else if (t.status === "in_progress" && d >= 7) nota(`${q(t.title)} está em andamento sem movimento há ${d} dias.`);
     else if (t.due_date && daysBetween(today, t.due_date) === 1) nota(`${q(t.title)} vence amanhã.`);
   }
@@ -292,6 +293,24 @@ export function todayCard(b, sum, ctx) {
       })] }]
     : [n.text] });
 
+  // Aguardando há N dias (Configurações > Conta) sem dia para cobrar: uma pergunta, não cobrança.
+  const rv = sum && sum.review;
+  if (rv && b.work_day) for (const x of rv.stale.slice(0, 2)) {
+    const task = open.find((o) => o.id === x.id) || { ...x, status: "blocked" };
+    items.push({ key: `hoje:parada:${x.id}`, lines: [{
+      line: h("p", {}, h("strong", { text: q(x.title) }), ` está aguardando há ${x.days} dias. Quer marcar quando cobrar?`),
+      actions: [action("Marcar quando cobrar", () => followUpTask(task, () => ctx.onChanged && ctx.onChanged()), true)] }] });
+  }
+  // Último dia útil da semana: convite para a revisão (uma vez; "Agora não" vale a semana toda).
+  if (rv && rv.invite) items.push({ key: "hoje:revisao", lines: [{
+    line: "Último dia útil da semana. Que tal uma revisão rápida? São 3 passos: o que fechou, o que ficou e o que vem.",
+    actions: [action("Revisar a semana", () => openReview(ctx.onChanged), true),
+      action("Agora não", async (ev) => {
+        const item = ev.currentTarget.closest(".assist-item");
+        try { await api.post("/review/week/dismiss"); } catch { /* sem rede: só esconde agora */ }
+        if (item) closeCard("hoje:revisao", item);
+      })] }] });
+
   // Tempo esquecido: concluídas hoje sem nenhum apontamento.
   const semTempo = b.done.filter((x) => x.completed_at && localDay(x.completed_at) === today && !x.minutes);
   if (semTempo.length) {
@@ -308,7 +327,7 @@ export function todayCard(b, sum, ctx) {
   // Recapitulação: "Ontem, você concluiu…" vai no texto principal; o fechamento
   // da sexta (com o botão do relatório) é um aviso.
   const r = recap(sum, t, ctx.go);
-  if (r.line && r.act) items.push({ key: "hoje:recap", lines: [{ line: r.line, actions: [r.act] }] });
+  if (r.line && r.act && !(rv && rv.invite)) items.push({ key: "hoje:recap", lines: [{ line: r.line, actions: [r.act] }] });
   if (b.work_day) items.push({ key: "hoje:daily", lines: [{ line: "Posso montar o resumo para a equipe: ontem, hoje e o que está aguardando, pronto para colar no chat.",
     actions: [action("Copiar resumo para a equipe", () => copyDaily(b, sum))] }] });
   const ask = invite(me, ctx.onProfile);

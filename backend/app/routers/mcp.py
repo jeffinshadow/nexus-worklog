@@ -50,7 +50,7 @@ INSTRUCTIONS = (
     "ver o dia (rotinas e tarefas abertas), get_summary para a daily/retro (ontem e a "
     "semana, com tempo por projeto) e get_week para semanas passadas. Registre o que o usuário contar com "
     "create_task/update_task/complete_task, log_time e add_note; marque rotinas com "
-    "set_recurring (com note = evidência); get_handoff dá a passagem de turno. Para medir o tempo enquanto o usuário trabalha, use start_timer/stop_timer; "
+    "set_recurring (com note = evidência); get_handoff dá a passagem de turno e get_week_review a revisão da semana. Para medir o tempo enquanto o usuário trabalha, use start_timer/stop_timer; "
     "procedimentos repetidos têm modelos (list_templates, create_from_template). "
     "Projetos e objetivos (as demandas do projeto, em ordem de execução): create_project/update_project, "
     "create_objective/update_objective e reorder_objectives; confira com list_projects e list_objectives. "
@@ -935,6 +935,26 @@ def t_get_handoff(ctx, args):
     return summary_routes.handoff_text(ctx["user_id"])
 
 
+def t_get_week_review(ctx, args):
+    """Revisão da semana (leitura): o que fechou, o que ficou e sugestões."""
+    from .. import review
+    r = review.week_review(ctx["user_id"])
+    today = r["today"]
+    linhas = [f"Revisão da semana {r['week_start'].isoformat()} a {r['week_end'].isoformat()}"
+              + (" (já feita pela pessoa)" if r["done_at"] else ""), "", f"O que fechou ({len(r['done'])}):"]
+    linhas += [f"- #{t['id']} {t['title']}" + (f" — {' '.join(t['resolution'].split())[:160]}" if t["resolution"]
+                                               else " (sem \"como resolveu\")") for t in r["done"][:30]] or ["- nada"]
+    linhas += ["", f"O que ficou ({len(r['open']) + len(r['waiting'])}):"]
+    linhas += [_task_line(t, today) for t in r["open"] + r["waiting"]][:30] or ["- nada"]
+    sug = {t["id"]: t for t in r["open"]}
+    linhas += ["", "Sugestões para a próxima semana:"]
+    linhas += [f"- #{i} {_quoted(sug[i], sug[i]['title'])}" for i in r["suggestions"]] or ["- nada em aberto"]
+    if r["stale"]:
+        linhas += ["", f"Aguardando há {r['stale_days']}+ dias sem dia para cobrar (sugira combinar uma data com follow_up_on):"]
+        linhas += [f"- #{x['id']} {x['title']} (há {x['days']} dias)" for x in r["stale"]]
+    return "\n".join(linhas)
+
+
 def t_get_history(ctx, args):
     rows = history_routes.list_history(limit=int(args.get("limit", 20)), entity=None, entity_id=None, user=ctx)
     # [pode desfazer] só no que ESTA chave fez: o undo do MCP recusa o resto.
@@ -1248,6 +1268,10 @@ TOOLS = {
                      "Já resolvi isso antes? Tarefas concluídas com título parecido e como foram resolvidas. "
                      "Use antes de abrir uma tarefa de problema repetido (impressora, VPN, AD...).",
                      {"type": "object", "required": ["title"], "properties": {"title": {"type": "string", "minLength": 3, "maxLength": 200}}}),
+    "get_week_review": (t_get_week_review, False,
+                        "Revisão da semana atual (domingo a sábado): o que fechou (e se falta o \"como resolveu\"), o que ficou "
+                        "aberto ou aguardando, até 3 sugestões para a próxima semana e o que aguarda há dias sem dia para cobrar.",
+                        {"type": "object", "properties": {}}),
     "get_handoff": (t_get_handoff, False,
                     "Passagem de turno/plantão: em aberto, aguardando (o quê e há quantos dias), concluídas nas "
                     "últimas 12 h, rotinas pendentes e vencimentos no aviso, em texto pronto pra colar no chat da equipe.",
