@@ -56,7 +56,9 @@ export async function mount(root, ctx) {
     const a = tab.getBoundingClientRect(), r = seg.getBoundingClientRect();
     seg.scrollTo({ left: seg.scrollLeft + (a.left - r.left) - (r.width - a.width) / 2, behavior: smooth ? "smooth" : "auto" });
   });
-  showActive(false);
+  // A tela pode ser montada fora da página e entrar depois: rola quando aparecer.
+  const seen = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { seen.disconnect(); showActive(false); } });
+  seen.observe(seg);
 
   // Troca rápida de aba: só a última resposta entra na tela.
   let seq = 0;
