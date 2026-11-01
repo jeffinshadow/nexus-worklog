@@ -998,14 +998,12 @@ body.rail-peek .sidebar { width: var(--sidebar-w); z-index: 45; box-shadow: var(
   border-radius: 0 0 var(--radius-s) var(--radius-s); background: transparent; color: var(--primary-hi); font: inherit; font-size: var(--type-body-s); text-align: left; cursor: pointer; }
 .sugg-all:hover, .sugg-all:focus-visible { background: var(--surface-container-high); outline: none; }
 
-/* Exportar dados: itens de lista com ícone, título, descrição e download. */
+/* Exportar dados: itens de lista com título, descrição e download. */
 .export-item { display: flex; align-items: center; gap: 14px; width: 100%; padding: 12px 10px; border: 0; border-top: 1px solid var(--outline-variant);
   background: transparent; color: var(--on-surface); font: inherit; text-align: left; cursor: pointer; border-radius: 0; transition: background-color .2s; }
 .export-item:first-of-type { border-top: 0; }
 .export-item:hover:not(:disabled), .export-item:focus-visible { background: color-mix(in srgb, var(--tint) 4%, transparent); }
 .export-item > .ico { flex: none; width: 20px; height: 20px; color: var(--primary-hi); }
-.export-ico { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--primary-container); color: var(--primary-hi); }
-.export-ico .ico { width: 18px; height: 18px; }
 .export-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .export-title { font-weight: 600; font-size: var(--type-body); }
 .export-help { font-size: var(--type-body-s); color: var(--on-surface-variant); line-height: 1.4; }

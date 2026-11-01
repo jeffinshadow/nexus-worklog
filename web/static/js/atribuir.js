@@ -23,7 +23,7 @@ export async function mount(root) {
 function assignForm(people, onSent) {
   const accepting = people.filter((p) => p.accepts && p.id !== session.me.id);
   const sec = h("section", { class: "panel" },
-    h("div", { class: "panel-head" }, icon("send"), h("h2", { text: "Nova tarefa" })));
+    h("div", { class: "panel-head" }, h("h2", { text: "Nova tarefa" })));
   if (!accepting.length) {
     sec.append(h("p", { class: "empty", text: "Ninguém aceitou receber tarefas ainda. Cada pessoa liga isso em Configurações > Conta." }));
     return sec;
@@ -77,7 +77,7 @@ async function loadSent(sec, ready) {
     if (rows instanceof Error) throw rows;
   } catch (e) { errorToast(e); rows = null; }
   clear(sec);
-  sec.append(h("div", { class: "panel-head" }, icon("list"), h("h2", { text: "Tarefas que atribuí" })));
+  sec.append(h("div", { class: "panel-head" }, h("h2", { text: "Tarefas que atribuí" })));
   if (!rows) return;
   if (!rows.length) {
     sec.append(h("p", { class: "empty", text: "Você ainda não atribuiu tarefas." }));
@@ -100,7 +100,7 @@ async function loadSent(sec, ready) {
 // Quem aceita receber tarefas (também na tela de Admin).
 export function consentsPanel(people) {
   const sec = h("section", { class: "panel" },
-    h("div", { class: "panel-head" }, icon("team"), h("h2", { text: "Quem aceita receber tarefas" })),
+    h("div", { class: "panel-head" }, h("h2", { text: "Quem aceita receber tarefas" })),
     h("p", { class: "help", text: "Cada pessoa decide em Configurações > Conta. Sem o aceite, não dá para atribuir." }));
   if (!people.length) sec.append(h("p", { class: "empty", text: "Nenhuma pessoa com registro." }));
   for (const p of people) {

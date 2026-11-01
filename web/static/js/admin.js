@@ -71,7 +71,7 @@ async function mountUsers(root) {
   const abertos = pedidos.filter((r) => r.status === "pending");
   setRequestsBadge(abertos.length);
   const requests = pedidos.length ? h("section", { class: "panel" },
-    h("div", { class: "panel-head" }, icon("mail"), h("h2", { text: "Pedidos de convite" }),
+    h("div", { class: "panel-head" }, h("h2", { text: "Pedidos de convite" }),
       abertos.length ? h("span", { class: "count", text: String(abertos.length) }) : null),
     ...pedidos.map((r) => h("div", { class: "request-row" + (r.status === "pending" ? "" : " decided") },
       h("div", { class: "t" },
@@ -211,7 +211,7 @@ async function mountRoles(root, me) {
   clear(root);
   const users = await api.get("/admin/users");
   const sec = h("section", { class: "panel" },
-    h("div", { class: "panel-head" }, icon("admin"), h("h2", { text: "Permissões" })),
+    h("div", { class: "panel-head" }, h("h2", { text: "Permissões" })),
     h("p", { class: "help", text: "Cada conta pode ter qualquer combinação de papéis. Marque e salve a linha." }),
     h("dl", { class: "roles-legend" }, ...ROLES.flatMap(([, n, d]) => [h("dt", { text: n }), h("dd", { text: d })])));
   for (const u of users) {
@@ -266,7 +266,7 @@ async function mountGeneral(root, me) {
     } catch (e) { err.textContent = e.message || "Não foi possível salvar."; }
   }));
   root.append(h("div", { class: "settings-grid" }, h("section", { class: "panel" },
-    h("div", { class: "panel-head" }, icon("calendar"), h("h2", { text: "Geral" })), form)));
+    h("div", { class: "panel-head" }, h("h2", { text: "Geral" })), form)));
 }
 
 

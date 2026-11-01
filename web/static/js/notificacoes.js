@@ -164,7 +164,7 @@ export async function pushPanel(rerender) {
   });
 
   return h("section", { class: "panel" },
-    h("div", { class: "panel-head" }, icon("bell"), h("h2", { text: "Notificações nos aparelhos" })),
+    h("div", { class: "panel-head" }, h("h2", { text: "Notificações nos aparelhos" })),
     h("p", { class: "help", text: "Avisos do sistema no celular e no computador, mesmo com o Nexus fechado. Cada aparelho liga separado; o conteúdo vai criptografado, sem serviço de terceiros além do push do próprio navegador." }),
     h("div", { class: "push-here" }, h("p", { text: status }), action),
     ...checks.map((c) => c.el),

@@ -179,7 +179,7 @@ function assistantPanel(me) {
     } catch (e) { errorToast(e, "Não foi possível salvar."); }
   });
   return h("section", { class: "panel" },
-    h("div", { class: "panel-head" }, icon("spark"), h("h2", { text: "Assistente" })),
+    h("div", { class: "panel-head" }, h("h2", { text: "Assistente" })),
     h("div", { class: "notice-row" },
       h("label", { class: "notice-main" }, falas, h("span", {}, h("strong", { text: "Falas do assistente" }),
         h("small", { text: "A saudação e o resumo do Hoje, a leitura dos números e a prévia do PDF em Meu mês, e as notas em Tarefas e Busca. Tudo calculado a partir dos seus próprios registros." })))),
@@ -217,7 +217,7 @@ async function templatesPanel(rerender) {
     : [h("p", { class: "empty", text: "Nenhum modelo ainda. Salve como modelo uma tarefa que se repete (com checklist) para criá-la em um toque." })];
   return h("div", { class: "settings-grid" },
     h("section", { class: "panel" },
-      h("div", { class: "panel-head" }, icon("list"), h("h2", { text: "Modelos de tarefa" }),
+      h("div", { class: "panel-head" }, h("h2", { text: "Modelos de tarefa" }),
         h("button", { type: "button", class: "btn btn-primary btn-sm", onClick: () => editTemplate(null, rerender) }, icon("add"), "Novo modelo")),
       h("p", { class: "help", text: "Procedimentos que se repetem (onboarding de colaborador, troca de equipamento, servidor novo) viram um modelo com checklist pronto. Use em “+ Tarefa”, escolhendo o modelo, ou salve uma tarefa existente como modelo pelo detalhe dela." })),
     h("section", { class: "panel" },
@@ -402,7 +402,7 @@ async function notices() {
   const KIND_PT = { morning: "seu dia", evening: "fim do dia", weekly: "semana", test: "teste" };
   const recent = p.recent.filter((r) => r.ok !== null || r.error !== "nada a avisar");
   const mailPanel = h("section", { class: "panel" },
-      h("div", { class: "panel-head" }, icon("mail"), h("h2", { text: "Avisos por e-mail" })),
+      h("div", { class: "panel-head" }, h("h2", { text: "Avisos por e-mail" })),
       h("p", { class: "help" }, "Enviados para ", h("strong", { class: "mono", text: p.email }),
         ". Sem rastreamento de abertura ou de cliques; só sai e-mail quando há algo a avisar."),
       p.mail_configured ? null : warnBox("O envio de e-mail ainda não está configurado neste servidor. Você pode deixar tudo escolhido; os avisos começam quando ele for ligado."),
@@ -427,7 +427,7 @@ async function calendarFeed(rerender) {
   const rec = h("input", { type: "checkbox" });
   rec.checked = st.active ? st.include_recurring : true;
   const panel = h("section", { class: "panel" },
-    h("div", { class: "panel-head" }, icon("calendar"), h("h2", { text: "Calendário" })),
+    h("div", { class: "panel-head" }, h("h2", { text: "Calendário" })),
     h("p", { class: "help", text: "Assine o Nexus no Google Agenda, Outlook ou no celular: os prazos das tarefas abertas aparecem como eventos de dia inteiro e as rotinas como eventos repetidos. A agenda atualiza sozinha (o Google pode levar algumas horas)." }),
     h("label", { class: "weekday-option" }, rec, h("span", { text: "Incluir as rotinas" })));
 
@@ -641,7 +641,7 @@ function aiHelp() {
   const url = `${location.origin}/mcp`;
   return [
     h("section", { class: "panel" },
-      h("div", { class: "panel-head" }, icon("spark"), h("h2", { text: "Use o Nexus pela sua IA" })),
+      h("div", { class: "panel-head" }, h("h2", { text: "Use o Nexus pela sua IA" })),
       h("p", { class: "help", text: "Em vez de registrar à mão, conte para a IA o que você fez (“troquei o disjuntor do quadro 3 e fiz a ronda da manhã”) e ela registra no Nexus. O Nexus fala MCP, a forma padrão de uma IA usar outros programas." }),
       h("p", { class: "help", text: "1. Crie uma chave logo abaixo (permissão ler e registrar). 2. Escolha a sua IA e cole a configuração, trocando nxs_SUA_CHAVE pela chave:" }),
       h("p", { class: "dialog-note", text: "Claude Code (terminal):" }),
@@ -667,7 +667,7 @@ function aiHelp() {
       h("p", { class: "dialog-note", text: "API REST direta (scripts, automações):" }),
       codeBox(`curl -H "Authorization: Bearer nxs_SUA_CHAVE" ${location.origin}/api/board`)),
     h("section", { class: "panel" },
-      h("div", { class: "panel-head" }, icon("spark"), h("h2", { text: "Comandos prontos" })),
+      h("div", { class: "panel-head" }, h("h2", { text: "Comandos prontos" })),
       h("p", { class: "help", text: "O Nexus oferece dois comandos para a IA: o resumo da semana (para o gestor, o time ou um cliente) e o resumo para a equipe (ontem, hoje e o que está aguardando). No Claude Code eles aparecem como comandos de barra:" }),
       codeBox("/mcp__nexus__resumo_semanal o cliente\n/mcp__nexus__daily"),
       h("p", { class: "dialog-note", text: "Em outras IAs, cole o pedido:" }),
@@ -699,7 +699,7 @@ function assignmentsPanel(me) {
     finally { cb.disabled = false; }
   });
   return h("section", { class: "panel" },
-    h("div", { class: "panel-head" }, icon("send"), h("h2", { text: "Tarefas atribuídas" })),
+    h("div", { class: "panel-head" }, h("h2", { text: "Tarefas atribuídas" })),
     h("p", { class: "help", text: "Quem tem a função de atribuidor de tarefas pode mandar tarefas para você, mas só se você permitir aqui. A tarefa recebida é sua: você edita, conclui ou exclui." }),
     h("label", { class: "weekday-option" }, cb, h("span", { text: "Permitir que me atribuam tarefas" })),
     since);
@@ -726,7 +726,7 @@ function deleteAccount(isUser) {
       location.href = "/login";
     } catch (e) { err.textContent = e.message || "Não foi possível excluir."; }
   }));
-  return h("section", { class: "panel" }, h("div", { class: "panel-head" }, icon("trash"), h("h2", { text: "Excluir a conta" })), form);
+  return h("section", { class: "panel" }, h("div", { class: "panel-head" }, h("h2", { text: "Excluir a conta" })), form);
 }
 
 // ------------------------------------------------------------------- conta --
@@ -745,7 +745,7 @@ function themePanel(me) {
   }
   paint(me.theme || "auto");
   return h("section", { class: "panel" },
-    h("div", { class: "panel-head" }, icon("settings"), h("h2", { text: "Aparência" })),
+    h("div", { class: "panel-head" }, h("h2", { text: "Aparência" })),
     h("p", { class: "help", text: "Automático acompanha o claro ou escuro do celular e do computador. Claro e Escuro forçam o tema em todos os seus aparelhos." }),
     seg);
 }
@@ -762,7 +762,7 @@ async function passkeysPanel(rerender) {
     catch (e) { if (!cancelled(e)) errorToast(e, "Não foi possível criar a passkey."); }
   }));
   return h("section", { class: "panel" },
-    h("div", { class: "panel-head" }, icon("key"), h("h2", { text: "Entrar com digital ou rosto" })),
+    h("div", { class: "panel-head" }, h("h2", { text: "Entrar com digital ou rosto" })),
     h("p", { class: "help", text: "Entre sem digitar a senha: com a digital, o rosto, o PIN do Windows ou uma chave física. A passkey fica no aparelho (ou no gerenciador de senhas dele); o Nexus guarda só a parte pública. A senha continua valendo." }),
     ...list.map((p) => h("div", { class: "token-row" },
       h("span", { class: "token-name", text: p.name || "Passkey" }),
