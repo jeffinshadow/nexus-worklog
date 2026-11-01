@@ -75,6 +75,14 @@ def user_report_export(
 
 
 @router.get("/export/apontamentos.csv")
-def team_time_csv(viewer=Depends(require_viewer)):
-    """Apontamentos de quem aceitou o visualizador (some por cliente/projeto na planilha)."""
-    return time_csv(None, f"nexus-apontamentos-equipe-{app_today().isoformat()}.csv", viewable_only=True)
+def team_time_csv(start: Optional[date] = Query(default=None), end: Optional[date] = Query(default=None),
+                  viewer=Depends(require_viewer)):
+    """Apontamentos de quem aceitou o visualizador (some por cliente/projeto na
+    planilha), do período start..end (padrão: o mês corrente; até 1 ano)."""
+    today = app_today()
+    start = start or today.replace(day=1)
+    end = min(end or today, today)
+    if end < start or (end - start).days > 366:
+        raise HTTPException(status_code=400, detail="período inválido (até 1 ano)")
+    return time_csv(None, f"nexus-apontamentos-equipe-{start.isoformat()}-a-{end.isoformat()}.csv",
+                    viewable_only=True, start=start, end=end)

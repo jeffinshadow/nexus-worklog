@@ -67,10 +67,30 @@ def delete_avatar(user=Depends(web_active_csrf)):
     return people.profile(user["user_id"])
 
 
+def _avatar_visible(user: dict, user_id: int) -> bool:
+    """A própria foto e, para o admin, a de todos. Visualizador e atribuidor só
+    veem a foto de quem aparece nas listas deles (o mesmo aceite de viewer.py e
+    assign.list_people): papel Usuário e, conforme o papel, aceitou ser visto ou
+    aceitou receber tarefas (e não está bloqueado). O resto: 404, como sem foto."""
+    roles = set(user.get("roles") or [])
+    if user_id == user["user_id"] or "admin" in roles:
+        return True
+    conds = []
+    if "viewer" in roles:
+        conds.append("u.viewers_allowed")
+    if "assigner" in roles:
+        conds.append("(u.accepts_assignments_at IS NOT NULL AND u.blocked_at IS NULL)")
+    if not conds:
+        return False
+    return bool(db.query_one(
+        f"""SELECT 1 FROM users u WHERE u.id = %(id)s
+              AND EXISTS (SELECT 1 FROM user_roles r WHERE r.user_id = u.id AND r.role = 'user')
+              AND ({' OR '.join(conds)})""", {"id": user_id}))
+
+
 @router.get("/avatar/{user_id}")
 def get_avatar(user_id: int, user=Depends(web_active)):
-    # A própria foto; admin, visualizador e atribuidor veem a de todos (listas de pessoas).
-    if user_id != user["user_id"] and not set(user["roles"]) & {"admin", "viewer", "assigner"}:
+    if not _avatar_visible(user, user_id):
         raise HTTPException(status_code=404, detail="sem foto")
     r = db.query_one("SELECT image, mime FROM user_avatars WHERE user_id = %s", (user_id,))
     if not r:

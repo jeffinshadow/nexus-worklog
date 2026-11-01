@@ -112,6 +112,14 @@ def cancel_invite(user_id: int, admin=Depends(require_admin_csrf)):
         raise HTTPException(status_code=400, detail="essa conta já aceitou o convite: para tirar, use Excluir conta")
     if not roles.delete_account(user_id):
         raise HTTPException(status_code=400, detail="o sistema precisa de pelo menos um admin")
+    # O pedido de convite que gerou a conta volta a ficar pendente (não fica "convidado"
+    # com o convite cancelado): o admin decide de novo. Só se não houver outro aberto.
+    db.execute(
+        """UPDATE invite_requests SET status = 'pending', decided_at = NULL, decided_by = NULL
+            WHERE id = (SELECT id FROM invite_requests WHERE lower(email) = lower(%(e)s) AND status = 'invited'
+                         ORDER BY decided_at DESC NULLS LAST, id DESC LIMIT 1)
+              AND NOT EXISTS (SELECT 1 FROM invite_requests WHERE lower(email) = lower(%(e)s) AND status = 'pending')""",
+        {"e": target["email"]})
     audit.record({**admin, "actor": "admin"}, "user.invite_cancel", "user", user_id,
                  before={"email": target["email"]})
     return {"ok": True, "email": target["email"]}

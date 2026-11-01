@@ -63,7 +63,28 @@ def stop_running(user: dict, only_task: int | None = None, ended_at: datetime | 
     if minutes < 1:
         return None
     entry = log_time(t["task_id"], TimeIn(minutes=minutes, day=day, note="cronômetro"), user=user)
+    # O intervalo de verdade: um início enviado depois não pode cair em cima dele.
+    db.execute("UPDATE time_entries SET started_at = %s, ended_at = %s WHERE id = %s",
+               (t["started_at"], t["started_at"] + timedelta(minutes=minutes), entry["id"]))
     return {**entry, "task_id": t["task_id"]}
+
+
+def overlap(uid: int, at: datetime) -> dict | None:
+    """Tempo de cronômetro já apontado que termina depois de `at` (com 1 min de
+    folga): começar ali contaria o mesmo intervalo duas vezes."""
+    return db.query_one(
+        """SELECT e.started_at, e.ended_at, e.task_id, w.title FROM time_entries e
+             JOIN worklog_tasks w ON w.id = e.task_id
+            WHERE e.user_id = %s AND e.ended_at > %s + interval '1 minute'
+            ORDER BY e.ended_at DESC LIMIT 1""", (uid, at))
+
+
+def overlap_msg(o: dict) -> str:
+    tz = app_tz()
+    ini, fim = o["started_at"].astimezone(tz), o["ended_at"].astimezone(tz)
+    quando = f"{ini:%H:%M} a {fim:%H:%M}" if ini.date() == fim.date() else f"{ini:%d/%m %H:%M} a {fim:%d/%m %H:%M}"
+    return (f"já há tempo de cronômetro de {quando} em #{o['task_id']} “{o['title']}”; nada foi mudado. "
+            f"Comece a partir de {fim:%H:%M} ou aponte o tempo à mão")
 
 
 @router.get("")
@@ -84,6 +105,8 @@ def start(data: TimerIn, user=Depends(active_user_csrf)):
     at = client_time(data.at)
     if current and at is not None and at < current["started_at"]:  # início feito sem sinal, já superado
         raise HTTPException(status_code=409, detail="o cronômetro já mudou em outro aparelho; nada foi alterado")
+    if at is not None and (o := overlap(user["user_id"], at)):  # início antigo, depois de outro aparelho parar
+        raise HTTPException(status_code=409, detail=overlap_msg(o))
     stopped = stop_running(user, ended_at=at)  # trocar de tarefa aponta o tempo da anterior
     db.execute("INSERT INTO task_timers (user_id, task_id, started_at) VALUES (%s, %s, COALESCE(%s, now()))",
                (user["user_id"], data.task_id, at))
