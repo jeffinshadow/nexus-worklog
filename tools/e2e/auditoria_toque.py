@@ -28,6 +28,25 @@ JS = r"""(()=>{
     }
   }
   return out; })()"""
+def pronto(ev, maximo=4.0):
+    """Espera a tela ficar pronta (carregada, fontes prontas, sem "carregando" e o texto
+    parado por 2 leituras seguidas) em vez de um tempo fixo; desiste em `maximo` s."""
+    t0, ultimo, firmes = time.time(), None, 0
+    while time.time() - t0 < maximo:
+        v = ev("""(() => { const m = document.querySelector('#main');
+          if (document.readyState !== 'complete' || document.fonts.status !== 'loaded' || !m) return -1;
+          if (document.querySelector('.refreshing,[aria-busy="true"],.skeleton')) return -1;
+          const n = m.innerText.trim().length; return n > 20 ? n : -1; })()""")
+        if v and v > 0 and v == ultimo:
+            firmes += 1
+            if firmes >= 2:
+                return
+        else:
+            firmes = 0
+        ultimo = v
+        time.sleep(.15)
+
+
 p = subprocess.Popen(["chromium", "--headless=new", "--remote-debugging-port=9594", "--remote-allow-origins=http://127.0.0.1:9594", f"--user-data-dir={tempfile.mkdtemp()}", "about:blank"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 res = collections.OrderedDict()
 try:
@@ -52,15 +71,17 @@ try:
         cmd("Network.clearBrowserCookies"); cmd("Page.navigate", url=B + "/login"); time.sleep(1.2)
         ev("localStorage.setItem('nexus.instalar.dispensado', String(Date.now()))")
         ev(f"fetch('/api/auth/login',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{email:{json.dumps(email)},password:{json.dumps(pw)}}})}})")
+        if ev("fetch('/api/auth/me').then(r=>r.status)") != 200:
+            print(f"!!! LOGIN FALHOU ({papel}): telas não percorridas"); continue
         for tela in TELAS[papel]:
-            cmd("Page.navigate", url=B + "/#/" + tela); time.sleep(.3); cmd("Page.reload"); time.sleep(2.8)
+            cmd("Page.navigate", url=B + "/#/" + tela); time.sleep(.3); cmd("Page.reload"); pronto(ev)
             coleta(tela)
         if papel == "user":
-            cmd("Page.navigate", url=B + "/#/tarefas"); time.sleep(.3); cmd("Page.reload"); time.sleep(2.8)
+            cmd("Page.navigate", url=B + "/#/tarefas"); time.sleep(.3); cmd("Page.reload"); pronto(ev)
             ev("document.querySelector('.card-open')?.click()"); time.sleep(1.5); coleta("detalhe da tarefa")
             ev("document.querySelector('.task-dialog .edit-toggle')?.click()"); time.sleep(1); coleta("detalhe em edição")
             ev("[...document.querySelectorAll('.task-appbar button')].find(b=>b.getAttribute('aria-label')==='Mais ações')?.click()"); time.sleep(.8); coleta("menu ⋮ do detalhe")
-            cmd("Page.navigate", url=B + "/#/hoje"); time.sleep(.3); cmd("Page.reload"); time.sleep(2.8)
+            cmd("Page.navigate", url=B + "/#/hoje"); time.sleep(.3); cmd("Page.reload"); pronto(ev)
             ev("document.getElementById('fab')?.click()"); time.sleep(1); coleta("nova tarefa")
             ev("document.querySelectorAll('dialog[open]').forEach(d=>d.close())")
             ev("document.querySelector('.list-row .only-mob[aria-label^=\"Mais ações\"]')?.click()"); time.sleep(.8); coleta("menu ⋮ da linha")
