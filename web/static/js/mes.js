@@ -36,10 +36,12 @@ export async function mount(root, ctx) {
   const q = new URLSearchParams(location.hash.split("?")[1] || "");
   const week = q.get("periodo") === "semana";
   const openExport = week || q.get("aba") === "pdf";
-  if (location.hash.includes("?")) window.history.replaceState(null, "", "#/mes");
+  // O endereço acompanha a exportação aberta (recarregar volta igual); a semana da sexta vale uma vez.
+  window.history.replaceState(null, "", openExport ? "#/mes?aba=pdf" : "#/mes");
   ctx.setActions();
   ctx.setAssist(null); // a frase do topo já é a leitura do mês
-  await view(root, { me: ctx.me, state: own, openExport, week });
+  await view(root, { me: ctx.me, state: own, openExport, week,
+    onExport: (open) => { if (/^#\/mes\b/.test(location.hash)) window.history.replaceState(null, "", open ? "#/mes?aba=pdf" : "#/mes"); } });
 }
 
 // opts: state {month, months} (fica entre visitas), me; na Equipe, dashUrl,
@@ -73,7 +75,10 @@ export async function view(root, opts) {
         ...(team ? { exportBase: opts.exportBase, projectsUrl: opts.projectsUrl } : {}) });
     } catch (e) { mounting = null; errorToast(e); }
   })());
-  exp.addEventListener("toggle", () => { if (exp.open) mountExport(false); });
+  exp.addEventListener("toggle", () => {
+    if (exp.open) mountExport(false);
+    if (opts.onExport) opts.onExport(exp.open);
+  });
 
   let seq = 0;
   async function load() {
@@ -125,11 +130,13 @@ function sentence(m, mes, who) {
   const sujeito = who ? ` ${who}` : " você";
   if (!m.recurring_total && !m.pontual_done && !m.minutes)
     return `${quando} nada registrado${who ? ` por ${who}` : ""}.`;
+  // Só o que aconteceu (o zero aparece nos números, sem virar cobrança na frase).
   const partes = [];
   if (m.recurring_total) partes.push(`fez ${m.recurring_done} das ${m.recurring_total} rotinas previstas (${pct(m.recurring_done, m.recurring_total)}%)`);
-  partes.push(m.pontual_done ? `concluiu ${plural(m.pontual_done, "tarefa", "tarefas")}` : "não concluiu tarefas");
-  partes.push(m.minutes ? `apontou ${duration(m.minutes)}` : "não apontou tempo");
-  return `${quando}${sujeito} ${partes.slice(0, -1).join(", ")} e ${partes[partes.length - 1]}.`;
+  if (m.pontual_done) partes.push(`concluiu ${plural(m.pontual_done, "tarefa", "tarefas")}`);
+  if (m.minutes) partes.push(`apontou ${duration(m.minutes)}`);
+  const lista = partes.length > 1 ? `${partes.slice(0, -1).join(", ")} e ${partes[partes.length - 1]}` : partes[0];
+  return `${quando}${sujeito} ${lista}.`;
 }
 
 // "em setembro: 62%, 17 tarefas, 28h10" — sem setas nem cor: só para situar.
@@ -156,7 +163,7 @@ function hero(ov, mes, opts) {
     h("p", { class: "mes-sentence", text: sentence(m, mes, opts.who) }),
     empty ? (opts.dashUrl ? null : h("p", { class: "mes-prev", text: "O que você registrar no Hoje (rotinas, tarefas e tempo) aparece aqui." }))
       : h("div", { class: "figs" },
-        fig(m.recurring_total ? `${pct(m.recurring_done, m.recurring_total)}%` : "—", m.recurring_total ? `rotinas · ${m.recurring_done} de ${m.recurring_total}` : "sem rotinas previstas"),
+        fig(m.recurring_total ? `${pct(m.recurring_done, m.recurring_total)}%` : "—", m.recurring_total ? "das rotinas feitas" : "sem rotinas previstas"),
         fig(String(m.pontual_done), m.pontual_done === 1 ? "tarefa concluída" : "tarefas concluídas"),
         fig(m.minutes ? duration(m.minutes) : "—", "tempo apontado")),
     previousLine(ov.previous),
@@ -202,13 +209,17 @@ function timeCard(ov, mes) {
 function deliveriesCard(ov, mes, opts, reload) {
   const all = ov.deliveries, total = ov.month.pontual_done;
   if (!all.length) return card("O que foi entregue", null, h("p", { class: "mes-ok", text: `Nenhuma tarefa concluída em ${mes}.` }));
-  const row = (d) => h("li", { class: "mes-del" },
-    h("div", { class: "mes-del-top" },
+  // Título; embaixo, projeto e tempo; e o "como resolveu" curto, quando houver.
+  const row = (d) => {
+    const chip = projectChip({ project_name: d.project, project_color: d.project_color });
+    const meta = chip || d.minutes ? h("div", { class: "mes-del-meta" }, chip,
+      d.minutes ? h("span", { class: "tag" }, icon("clock"), duration(d.minutes)) : null) : null;
+    return h("li", { class: "mes-del" },
       opts.dashUrl ? h("span", { class: "mes-del-t", text: d.title })
         : h("button", { type: "button", class: "card-open mes-del-t", text: d.title, onClick: () => openTask(d.id, () => reload().catch(() => {})) }),
-      projectChip({ project_name: d.project, project_color: d.project_color }),
-      d.minutes ? h("span", { class: "tag" }, icon("clock"), duration(d.minutes)) : null),
-    d.resolution ? h("p", { class: "mes-res", text: d.resolution }) : null);
+      meta,
+      d.resolution ? h("p", { class: "mes-res", text: d.resolution }) : null);
+  };
   const list = h("ul", { class: "mes-dels" }, ...all.slice(0, TOP).map(row));
   const sub = total > TOP ? `as ${TOP} com mais tempo, de ${total}` : null;
   let more = null;

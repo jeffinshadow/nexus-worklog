@@ -1144,17 +1144,22 @@ dialog.help-dialog > .dialog-actions { position: sticky; bottom: -24px; margin: 
 .mes-more > summary, .mes-export > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; gap: 8px; color: var(--primary-hi); font-size: var(--type-body-s); font-weight: 500; }
 .mes-days { padding: 8px 0 4px; overflow-x: auto; }
 .mes-days .heatmap { margin: 0 auto; }
-.mes-card:last-child, .mes-content > .mes-card { margin-bottom: var(--gap); }
+.mes-content > .mes-card { margin-bottom: var(--gap); }
 .mes-dels { list-style: none; margin: 0; padding: 0; }
 .mes-del { padding: 10px 0; border-top: 1px solid var(--outline-variant); }
 .mes-del:first-child { border-top: 0; padding-top: 2px; }
-.mes-del-top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
-.mes-del-t { flex: 1 1 200px; min-width: 0; font-size: var(--type-body); font-weight: 500; text-align: left; overflow-wrap: anywhere; }
+.mes-del-t { display: block; width: 100%; font-size: var(--type-body); font-weight: 500; text-align: left; overflow-wrap: anywhere; }
 button.mes-del-t { min-height: 44px; }
+.mes-del-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+@media (min-width: 761px) {  /* computador: projeto e tempo na mesma linha do título */
+  .mes-del { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; align-items: center; }
+  .mes-del-meta { justify-content: flex-end; }
+  .mes-del > .mes-res { grid-column: 1 / -1; margin-top: 0; }
+}
 .mes-res { margin: 4px 0 0; font-size: var(--type-body-s); color: var(--on-surface-variant); line-height: 1.4;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 li.mes-res { padding-top: 10px; border-top: 1px solid var(--outline-variant); }
-.mes-all { align-self: flex-start; min-height: 44px; margin-top: 4px; color: var(--primary-hi); }
+.mes-all { align-self: flex-start; min-height: 44px; margin: 4px 0 0 -12px; color: var(--primary-hi); }
 .mes-export { border: 1px solid var(--outline-variant); border-radius: var(--radius-l); padding: 4px 16px; margin: 0 0 var(--gap); scroll-margin-top: 80px; }
 .mes-export > summary { flex-wrap: wrap; font-size: var(--type-body); }
 .mes-export > summary small { flex-basis: 100%; margin: -6px 0 8px 28px; color: var(--on-surface-variant); font-weight: 400; font-size: var(--type-body-s); }
