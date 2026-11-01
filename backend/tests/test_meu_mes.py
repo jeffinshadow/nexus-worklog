@@ -219,7 +219,37 @@ def test_equipe_sem_tendencia_nem_media(admin, usuario):
     hoje, mes, _ = _preparar(usuario)
     usuario.put("/me/viewers", {"accept": True})
     ov = admin.get(f"/viewer/users/{uid_de(usuario)}/dashboard?month={mes:%Y-%m}").json()["overview"]
-    assert ov["trend"] == [] and ov["average"] is None and ov["compare"] is None
+    assert ov["trend"] == [] and ov["average"] is None and ov["compare"] is None and ov["previous"] is None
     assert ov["days"] and ov["weeks"]  # o mês dela, como no PDF, continua
     own = usuario.get(f"/dashboard?month={mes:%Y-%m}").json()["overview"]
     assert len(own["trend"]) >= 2  # a própria pessoa vê a tendência
+
+
+def test_primeira_rotina_e_mes_so_com_tarefas(usuario):
+    """Meu mês v2.1: o overview diz quando começou a primeira rotina; o mês
+    anterior a ela vem sem rotina prevista, com as tarefas por dia (o calendário
+    pinta por tarefas) e os números do PDF intactos."""
+    hoje = dia_hoje(usuario)
+    mes = _mes_anterior(hoje)
+    uid = uid_de(usuario)
+    db.execute("UPDATE users SET created_at = now() - interval '100 days' WHERE id = %s", (uid,))
+    sem = usuario.get(f"/dashboard?month={mes:%Y-%m}").json()["overview"]
+    assert sem["first_routine"] is None  # ainda sem rotina nenhuma
+    _concluida(usuario, "Uma", mes.replace(day=3), 30)
+    _concluida(usuario, "Outra", mes.replace(day=3), 0)
+    _concluida(usuario, "Mais uma", mes.replace(day=9), 0)
+    rot = usuario.post("/recurring", {"label": "Backup", "freq": "weekly", "weekdays": 127}).json()["id"]
+    ov = usuario.get(f"/dashboard?month={mes:%Y-%m}").json()["overview"]
+    assert ov["first_routine"] == hoje.isoformat()  # criada hoje: começou hoje
+    assert ov["routines"] == 0 and not any(d["due"] or d["extra"] for d in ov["days"])
+    por_dia = {d["date"]: d for d in ov["days"]}
+    assert por_dia[f"{mes.replace(day=3)}"]["pontual_done"] == 2 and por_dia[f"{mes.replace(day=3)}"]["minutes"] == 30
+    assert por_dia[f"{mes.replace(day=9)}"]["pontual_done"] == 1
+    pdf = usuario.get(f"/reports/preview?start={mes}&end={_fim(mes)}").json()
+    for k in ("recurring_done", "recurring_total", "pontual_done", "minutes"):
+        assert ov["month"][k] == pdf[k], k
+    # Recuada: a primeira rotina passa a ser o dia da criação dela.
+    recuar_criacao(rot, 100)
+    ov = usuario.get(f"/dashboard?month={mes:%Y-%m}").json()["overview"]
+    assert ov["first_routine"] == (hoje - timedelta(days=100)).isoformat()
+    assert ov["routines"] == 1
