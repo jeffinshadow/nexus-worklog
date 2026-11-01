@@ -240,7 +240,7 @@ function mountMore(el) {
 
 // Ajuda em seções: começar (tour e manual), onde fica cada coisa, marcadores do
 // registro rápido, atalhos (só no computador) e a quem recorrer (Admin > Geral).
-function showHelp() {
+function showHelp(focus) {
   const user = has("user");
   const sec = (ic, title, ...body) => h("section", { class: "help-sec" }, h("h3", {}, icon(ic), h("span", { text: title })), ...body);
   const list = (rows) => h("dl", { class: "help-list" }, ...rows.flatMap(([k, v, code]) =>
@@ -280,8 +280,10 @@ function showHelp() {
     sec("mail", "Suporte", me.support_contact
       ? h("p", { class: "help" }, "Fale com ", h("strong", { text: me.support_contact }), ".")
       : h("p", { class: "help", text: "Dúvidas ou problemas: fale com quem administra o Nexus na sua equipe." })),
-    h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Fechar", onClick: () => dlg.close() })));
+    h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-text", text: "Fechar", onClick: () => dlg.close() })));
   dlg.classList.add("help-dialog");
+  // Pedido de uma seção (ex.: "ver marcadores" no Hoje): rola até ela.
+  if (focus === "marcadores") [...dlg.querySelectorAll(".help-sec")].find((s) => /Registro rápido/.test(s.textContent))?.scrollIntoView({ block: "start" });
 }
 
 // Erros de JavaScript vão para o log do servidor (sem terceiros). Poucos por página.
@@ -391,7 +393,8 @@ async function boot() {
     document.getElementById("appbar").classList.toggle("show", shown && e.intersectionRatio < 1 && e.boundingClientRect.top < barH());
   }, { rootMargin: `-${Math.round(barH())}px 0px 0px 0px`, threshold: [0, 1] }).observe(pageTitle);
   document.getElementById("btn-logout").addEventListener("click", logout);
-  document.getElementById("btn-help").addEventListener("click", showHelp);
+  document.getElementById("btn-help").addEventListener("click", () => showHelp());
+  window.addEventListener("nexus:help", (ev) => showHelp(ev.detail));
   // Busca na barra lateral; "/" foca a busca de qualquer tela.
   const sideQ = document.getElementById("side-search-q");
   document.getElementById("side-search").addEventListener("submit", (ev) => {

@@ -236,7 +236,11 @@ button.column-toggle { display: none; }
 .today-grid > .t-done { grid-column: span 12; }
 @media (max-width: 1000px) {
   .today-grid > .t-rec, .today-grid > .t-open { grid-column: 1 / -1; }
-  .today-grid > .t-open { order: -1; }  /* celular: o registro rápido no topo */
+  /* Celular: a mesma ordem do computador (rotinas, depois em aberto); os
+     vencimentos, um lembrete, descem para depois das duas. */
+  .today-grid > .t-venc { order: 1; }
+  .today-grid > .t-done { order: 2; }
+  .today-grid > .t-sum { order: 3; }
 }
 .quick-row { display: flex; gap: 8px; margin-bottom: var(--gap); }
 .quick-row input { flex: 1; min-width: 0; }
@@ -1119,6 +1123,7 @@ dialog.help-dialog > .dialog-actions { position: sticky; bottom: -24px; margin: 
 .label-row label { margin-bottom: 6px; }
 .link-btn { border: 0; background: none; padding: 0; color: var(--primary); font: inherit; font-size: .8rem; cursor: pointer; margin-bottom: 6px; }
 .link-btn:hover { text-decoration: underline; }
+.quick-hint .link-btn { font-size: inherit; margin: 0; }
 .auth-title { font-size: 1.2rem; font-weight: 600; letter-spacing: -.02em; margin: 0 0 6px; text-align: center; }
 .auth-card form .btn.full + .btn.full { margin-top: 8px; }
 .ok-text { color: var(--on-surface); background: var(--primary-container); border-radius: 12px; padding: 10px 12px; font-size: .86rem; line-height: 1.45; margin: 0 0 12px; }
