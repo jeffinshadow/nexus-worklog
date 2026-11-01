@@ -192,7 +192,7 @@ function assistantPanel(me) {
     h("div", { class: "panel-head" }, h("h2", { text: "Assistente" })),
     h("div", { class: "notice-row" },
       h("label", { class: "notice-main" }, falas, h("span", {}, h("strong", { text: "Falas do assistente" }),
-        h("small", { text: "A saudação e o resumo do Hoje, a leitura dos números e a prévia do PDF em Meu mês, e as notas em Tarefas e Busca. Tudo calculado a partir dos seus próprios registros." })))),
+        h("small", { text: "A saudação e o resumo do Hoje, a prévia do PDF em Meu mês, e as notas em Tarefas e Busca. Tudo calculado a partir dos seus próprios registros." })))),
     h("div", { class: "idle-config" },
       h("label", {}, reopen, "Reabrir uma fala fechada no X depois de", reopenMins, "min"),
       h("small", { class: "muted", text: "Desligado: a fala fechada só volta ao recarregar a página." })),
@@ -293,8 +293,8 @@ function ticketsPanel(me) {
 // ---------------------------------------------------------------- atalhos --
 
 function shortcutsPanel() {
-  const keys = [["n", "nova tarefa"], ["/", "buscar"], ["h", "Hoje"], ["t", "Tarefas"], ["r", "Meu mês (números)"],
-    ["l", "Meu mês (Relatórios)"], ["s", "parar o cronômetro"], ["?", "ver todos os atalhos"]];
+  const keys = [["n", "nova tarefa"], ["/", "buscar"], ["h", "Hoje"], ["t", "Tarefas"], ["r", "Meu mês"],
+    ["l", "Meu mês (outro período ou formato)"], ["s", "parar o cronômetro"], ["?", "ver todos os atalhos"]];
   // Desligar: para quem usa controle por voz ou esbarra numa tecla sem querer.
   const on = h("input", { type: "checkbox" });
   on.checked = singleKeysOn();
@@ -368,7 +368,7 @@ async function notices() {
   const cc = h("input", { type: "email", maxlength: "254", value: p.weekly_cc || "", placeholder: "ex.: colega@empresa.com.br",
     autocomplete: "off", "aria-label": "Mandar cópia do resumo semanal para" });
   const weeklyExtra = h("div", { class: "notice-sub" },
-    h("label", { class: "check-line" }, pdf, h("span", { text: "Anexar o relatório da semana em PDF (o mesmo de Meu mês > Relatórios, com os títulos das tarefas)" })),
+    h("label", { class: "check-line" }, pdf, h("span", { text: "Anexar o relatório da semana em PDF (o mesmo de Meu mês, com os títulos das tarefas)" })),
     field("Mandar cópia para quem acompanha meu trabalho (opcional)", cc),
     h("p", { class: "dialog-note", text: "A cópia recebe o mesmo e-mail, com o PDF se estiver ligado. Use só com quem já acompanha o seu trabalho." }));
   const syncWeekly = () => { pdf.disabled = cc.disabled = !weekly.on.checked; weeklyExtra.classList.toggle("off", !weekly.on.checked); };
@@ -760,7 +760,7 @@ function deleteAccount(isUser) {
   const err = h("p", { class: "error-text" });
   const form = h("form", {},
     h("p", { class: "help", text: "Apaga a sua conta e tudo o que está nela: tarefas, rotinas, tempo apontado, anotações, chaves de API e histórico. Não dá para desfazer." }),
-    isUser ? h("p", { class: "dialog-note" }, "Quer guardar uma cópia? Baixe antes em ", h("a", { href: "#/mes?aba=pdf", text: "Meu mês > Relatórios" }), " (JSON ou CSV).") : null,
+    isUser ? h("p", { class: "dialog-note" }, "Quer guardar uma cópia? Baixe antes em ", h("a", { href: "#/mes?aba=pdf", text: "Meu mês > Outro período ou formato" }), " (JSON ou CSV).") : null,
     field("Sua senha, para confirmar", pw), err,
     h("button", { type: "submit", class: "btn btn-danger", text: "Excluir minha conta" }));
   form.addEventListener("submit", busy(async (ev) => {

@@ -886,5 +886,5 @@ def build_report_pdf(user_email: str, start: date, end: date, data: dict, brandi
         pdf.font("sans", 7.6, DIM)
         pdf.set_x(M)
         pdf.multi_cell(pdf.cw, 4, _s("O diário dia a dia sai em relatórios de até 2 meses. Para o período inteiro, "
-                                      "use a exportação CSV em Meu mês > Relatórios."), new_x="LEFT", new_y="NEXT")
+                                      "use a exportação CSV em Meu mês > Outro período ou formato."), new_x="LEFT", new_y="NEXT")
     return bytes(pdf.output())

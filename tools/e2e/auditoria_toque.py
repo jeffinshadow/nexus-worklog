@@ -3,7 +3,7 @@ import json, os, subprocess, sys, tempfile, time, urllib.request, collections
 import websocket
 B = os.environ.get("NEXUS_E2E_URL", "http://localhost:8090")
 CONTAS = [("user", os.environ["NEXUS_E2E_USER"].split(":", 1)), ("admin", os.environ["NEXUS_E2E_ADMIN"].split(":", 1))]
-TELAS = {"user": ["hoje", "tarefas", "projetos", "vencimentos", "mes?aba=numeros", "mes?aba=pdf", "historico", "busca?q=rede",
+TELAS = {"user": ["hoje", "tarefas", "projetos", "vencimentos", "mes", "mes?aba=pdf", "historico", "busca?q=rede",
                   "config?aba=modelos", "config?aba=avisos", "config?aba=calendario", "config?aba=ia", "config?aba=conta", "mais"],
          "admin": ["admin", "equipe", "atribuir"]}
 JS = r"""(()=>{

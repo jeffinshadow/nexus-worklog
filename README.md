@@ -73,10 +73,15 @@ exclui a conta de vez.
   título, prazo e prioridade (só o que a pessoa não mudou) ou cancela (engano;
   só se ela não mexeu em nada); excluída ou cancelada, a linha continua em
   Atribuir com quem tirou e quando. Conta com acesso bloqueado não recebe.
-- **Meu mês** — uma tela com duas abas e o mês escolhido uma vez no topo (o
-  corrente por padrão). **Números**: aderência das rotinas, vazão, tempo por
-  projeto e o que está em aberto. **PDF**: o relatório por período, por projeto ou do projeto inteiro, em
-  estilo editorial: o período em texto corrido, os números, o ritmo, a
+- **Meu mês** — o mês num olhar, com um seletor só (‹ mês ›, o corrente por
+  padrão): uma frase ("Em outubro você fez 50 das 81 rotinas previstas (62%),
+  concluiu 20 tarefas e apontou 31h43"), três números e o mês anterior numa
+  linha neutra; depois as rotinas que mais ficaram para trás (o calendário dia
+  a dia recolhido), para onde foi o tempo e o que foi entregue (as 5 com mais
+  tempo, com o "como resolveu", e "ver todas"). Os números são os mesmos do PDF.
+  **Baixar o PDF do mês** é a ação principal; em "Outro período ou formato"
+  ficam o PDF de outras datas, por projeto ou do projeto inteiro, e as
+  exportações. O PDF é editorial: o período em texto corrido, os números, o ritmo, a
   **matriz de rotinas** (um ponto por dia) e o diário. Pode ir toda segunda
   anexado ao resumo semanal por e-mail, com cópia opcional para quem acompanha o trabalho.
   Exportação em CSV (planilha) e JSON (backup).
@@ -142,8 +147,8 @@ Capturas de uma conta de demonstração, com dados fictícios.
 ![Detalhe de uma tarefa com checklist, fotos, tempo e anotações](docs/screenshots/03-tarefa.webp)
 *Detalhe da tarefa — checklist, fotos (câmera, print colado ou arrastado), apontamentos de tempo e anotações num lugar só; o botão no topo expande para ler com calma. No menu da tarefa, “Duplicar tarefa” cria outra igual (título, descrição, projetos, objetivo, prioridade e checklist desmarcado), sem tempo, fotos, anotações nem datas.*
 
-![Meu mês, aba Números, com aderência, vazão, tempo por projeto e backlog](docs/screenshots/04-retrospectiva.webp)
-*Meu mês (aba Números) — aderência de cada rotina, vazão por semana, tempo por cliente e saúde do backlog, com uma leitura do assistente no topo.*
+![Meu mês: a frase do mês, três números, rotinas para trás, tempo por projeto e entregas](docs/screenshots/04-retrospectiva.webp)
+*Meu mês — o mês numa frase e três números, com o mês anterior ao lado; as rotinas que mais ficaram para trás, para onde foi o tempo, o que foi entregue e o PDF do mês num botão.*
 
 ![Nova tarefa preenchida a partir de um modelo](docs/screenshots/05-modelo.webp)
 *Modelos — escolhe o modelo no “+ Tarefa” e o checklist vem junto.*
@@ -260,13 +265,13 @@ incidente e outra quando volta. Logs com rotação (10 MB × 5 por serviço).
 - **nginx**: CSP sem inline, HSTS, `nosniff`, `DENY` em frames; o link do
   calendário não vai para o log. Logo enviado validado pelo conteúdo e servido
   em sandbox.
-- **Seus dados (LGPD)**: cada pessoa exporta tudo em JSON ou CSV (Meu mês > Relatórios) e
+- **Seus dados (LGPD)**: cada pessoa exporta tudo em JSON ou CSV (Meu mês > Outro período ou formato) e
   exclui a própria conta em Configurações > Conta (com a senha); o admin também
   exclui uma conta (Admin > Usuários, confirmando o e-mail). Tarefas, rotinas,
   tempo, anotações, chaves e histórico vão junto; ficam só o e-mail e as contagens
   no histórico de quem excluiu (180 dias). O último admin não sai. O JSON leva
   também perfil, preferências, modelos, projetos com objetivos e as chaves
-  externas; as fotos vão à parte, no `fotos.zip` (Meu mês > Relatórios).
+  externas; as fotos vão à parte, no `fotos.zip` (Meu mês > Outro período ou formato).
   - **Histórico de 180 dias**: o que você exclui some da tela na hora, mas o
     "antes" fica no histórico (para o desfazer) e sai de vez em 180 dias. Para
     apagar já, exclua a conta.

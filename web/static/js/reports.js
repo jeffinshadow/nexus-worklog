@@ -1,7 +1,8 @@
-// Extração de relatório em PDF por período. A Equipe passa opts.exportBase
-// apontando para a pessoa. Em Meu mês, opts.range traz o mês escolhido lá no
-// topo (as datas começam nele; ficam só os atalhos de semana) e mount devolve
-// setRange para a troca de mês não recarregar a aba.
+// "Outro período ou formato" de Meu mês: o PDF de outras datas ou de um
+// projeto e a exportação dos dados. A Equipe passa opts.exportBase apontando
+// para a pessoa. opts.range traz o mês escolhido lá no topo (as datas começam
+// nele; ficam só os atalhos de semana) e mount devolve setRange para a troca
+// de mês não recarregar o formulário.
 import { api } from "./api.js";
 import { h, icon, clear, field, addDays, localDay } from "./dom.js";
 import { errorToast } from "./ui.js";
@@ -44,7 +45,7 @@ export async function mount(root, opts = {}) {
   const projSel = h("select", {}, h("option", { value: "", text: "Todos (relatório completo)" }));
   for (const p of projects)
     projSel.append(h("option", { value: String(p.id), text: p.name + (p.archived ? " (arquivado)" : "") }));
-  const btn = h("button", { type: "button", class: "btn btn-primary", onClick: run }, icon("reports"), "Exportar PDF");
+  const btn = h("button", { type: "button", class: "btn btn-primary", onClick: run }, icon("reports"), "Baixar PDF");
 
   // Períodos prontos como botão segmentado: o que bate com as datas fica marcado.
   // Só um: no domingo dia 1º, "Esta semana" e "Este mês" são o mesmo dia, e vale
@@ -111,7 +112,7 @@ export async function mount(root, opts = {}) {
   for (const el of [projSel, startInput, endInput]) el.addEventListener("change", refreshPreview);
 
   root.append(h("div", { class: "report-section" },
-    h("h3", { text: "Relatório em PDF" }),
+    h("h3", { text: range ? "PDF de outras datas ou de um projeto" : "Relatório em PDF" }),
     intro("Números do mês, ritmo, rotinas, tarefas concluídas, o que está em aberto e o diário com o tempo apontado. Escolhendo um projeto, sai só o que é dele — do período que você quiser ou do projeto inteiro."),
     projSel.options.length > 1 ? field("Projeto", projSel, "report-project") : null,
     scope, wholeNote, quick,

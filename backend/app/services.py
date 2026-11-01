@@ -372,7 +372,51 @@ def get_dashboard(user_id: int, month: date | None = None) -> dict:
     out["period"] = {"month": month.strftime("%Y-%m") if month else None,
                      "start": win["adh_start"], "end": win["end"], "now": win["now"]}
     out["months"] = months  # do mais recente ao primeiro registro
+    if month is not None:
+        out["overview"] = month_overview(user_id, month, first)
     return out
+
+
+OVERVIEW_BEHIND = 5        # rotinas "que mais ficaram para trás"
+OVERVIEW_DELIVERIES = 300  # entregas listadas (do maior tempo ao menor)
+
+
+def _totals(r: dict) -> dict:
+    s = r["summary"]
+    return {"start": r["start"], "end": r["end"], "recurring_done": s["recurring_done"],
+            "recurring_total": s["recurring_total"], "pontual_done": s["pontual_done"], "minutes": s["minutes"]}
+
+
+def month_overview(user_id: int, month: date, first_month: date | None = None) -> dict:
+    """O resumo de Meu mês: os números do mês (os MESMOS do PDF do mês, porque
+    vêm de get_report_range), os do mês anterior inteiro (para comparar, se a
+    pessoa já registrava), as rotinas que mais ficaram para trás, o tempo por
+    projeto e as entregas com tempo e "como resolveu"."""
+    today = app_today()
+    end = min(_month_end(month), today)
+    prev = (month - timedelta(days=1)).replace(day=1)
+    first_month = first_month or first_record_day(user_id).replace(day=1)
+    has_prev = prev >= first_month
+    inputs = _report_inputs(user_id, prev if has_prev else month, end)  # uma leitura para os dois meses
+    cur = get_report_range(user_id, month, end, inputs=inputs, with_open=False)
+    old = get_report_range(user_id, prev, _month_end(prev), inputs=inputs, with_open=False) if has_prev else None
+    stats = [r for r in cur["recurring_stats"] if r["due"]]
+    behind = sorted((r for r in stats if r["done"] < r["due"]),
+                    key=lambda r: (r["done"] / r["due"], -r["due"], r["label"].lower()))
+    deliveries = sorted(cur["deliveries"], key=lambda w: (-w["minutes"], -w["completed_at"].timestamp()))
+    return {
+        "month": {**_totals(cur), "now": end == today},
+        "previous": {**_totals(old), "month": prev.strftime("%Y-%m")} if old else None,
+        "routines": len(stats),
+        "behind": [{"label": r["label"], "due": r["due"], "done": r["done"]} for r in behind[:OVERVIEW_BEHIND]],
+        "projects": [{"name": p["name"], "color": p["color"], "minutes": p["minutes"]}
+                     for p in cur["projects"] if p["minutes"]],
+        "multi_project": cur["multi_project"],
+        "deliveries": [{"id": w["id"], "title": w["title"], "project": w["project"],
+                        "project_color": w["project_color"], "minutes": w["minutes"],
+                        "resolution": (w["resolution"] or "")[:240] or None}
+                       for w in deliveries[:OVERVIEW_DELIVERIES]],
+    }
 
 
 # Janelas dos gráficos analíticos (em dias / semanas, sempre no fuso do app).
