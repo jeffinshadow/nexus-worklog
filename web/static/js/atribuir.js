@@ -44,7 +44,7 @@ function assignForm(people, onSent) {
     field("Descrição (uma linha, opcional)", desc),
     h("div", { class: "field-row" }, field("Prazo (opcional)", due), field("Prioridade", prio)),
     h("div", { class: "field-row" }, field("Chamado (opcional)", ticket),
-      h("div", { class: "field field-check" }, h("label", { class: "weekday-option" }, after, h("span", { text: "Plantão / fora do horário" })))),
+      h("div", { class: "field field-check" }, h("label", { class: "check-line" }, after, h("span", { text: "Plantão / fora do horário" })))),
     h("p", { class: "dialog-note", text: "A pessoa recebe um e-mail e a tarefa passa a ser dela. Enquanto estiver a fazer, você ainda corrige ou cancela; depois que ela começar, você só acompanha." }),
     err, h("div", { class: "dialog-actions" }, h("div", { class: "spacer" }), submit));
   form.addEventListener("submit", async (ev) => {

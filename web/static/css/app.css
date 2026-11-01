@@ -288,6 +288,9 @@ button.column-toggle { display: none; }
 .weekday-picker legend { font-size: var(--type-caption); color: var(--on-surface-variant); margin-bottom: 8px; padding: 0; }
 .weekday-option { display: inline-flex; align-items: center; gap: 8px; margin: 0; padding: 8px 14px; border-radius: var(--radius-full); border: 1px solid var(--line-2); color: var(--on-surface); font-size: var(--type-body); cursor: pointer; }
 .weekday-option:has(input:checked) { border-color: color-mix(in srgb, var(--primary) 50%, transparent); background: var(--primary-container); }
+/* Caixa de seleção comum (fora do seletor de dias): linha simples, sem pílula. */
+.check-line { display: flex; align-items: center; gap: 10px; margin: 0; padding: 6px 0; color: var(--on-surface); font-size: var(--type-body); cursor: pointer; }
+.check-line input { flex: none; }
 .token-row { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--outline-variant); }
 .token-row:last-child { border-bottom: 0; }
 .token-name { font-weight: 600; font-size: var(--type-body); }
@@ -1247,7 +1250,7 @@ dialog.help-dialog > .dialog-actions { position: sticky; bottom: -24px; margin: 
   button.icon, a.icon, .icon-btn, button.column-toggle { min-width: 44px; min-height: 44px; }
   input:not([type=checkbox]):not([type=radio]):not([type=range]), select, .select-sm, .input-sm { min-height: 44px; }
   .inline-edit.inline-desc { min-height: 44px; }
-  label.weekday-option { min-height: 44px; }
+  label.weekday-option, label.check-line { min-height: 44px; }
   .lockup--bar { min-height: 44px; }
   .chip-x, a.chip.ticket, .link-btn { position: relative; }
   .timer-chip .timer-task { align-self: stretch; min-height: 44px; }  /* o nome da tarefa no cronômetro: a altura toda da barra */

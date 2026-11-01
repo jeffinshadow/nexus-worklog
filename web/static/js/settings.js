@@ -250,7 +250,7 @@ function editTemplate(t, rerender) {
   const form = h("form", {}, h("h2", { text: t ? "Editar modelo" : "Novo modelo" }),
     field("Nome do modelo", name), field("Título da tarefa", title), field("Descrição (uma linha)", desc),
     h("div", { class: "field-row" }, field("Prioridade", prio), field("Projeto / cliente", proj)),
-    h("label", { class: "weekday-option" }, after, h("span", { text: "Plantão / fora do horário" })),
+    h("label", { class: "check-line" }, after, h("span", { text: "Plantão / fora do horário" })),
     field("Checklist (um item por linha, até 30)", items), err,
     h("div", { class: "dialog-actions" },
       h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
@@ -367,7 +367,7 @@ async function notices() {
   const cc = h("input", { type: "email", maxlength: "254", value: p.weekly_cc || "", placeholder: "ex.: gestor@empresa.com.br (opcional)",
     autocomplete: "off", "aria-label": "Mandar cópia do resumo semanal para" });
   const weeklyExtra = h("div", { class: "notice-sub" },
-    h("label", { class: "weekday-option" }, pdf, h("span", { text: "Anexar o relatório da semana em PDF (o mesmo de Meu mês > PDF, com os títulos das tarefas)" })),
+    h("label", { class: "check-line" }, pdf, h("span", { text: "Anexar o relatório da semana em PDF (o mesmo de Meu mês > PDF, com os títulos das tarefas)" })),
     field("Mandar cópia para (gestor, cliente)", cc),
     h("p", { class: "dialog-note", text: "A cópia recebe o mesmo e-mail, com o PDF se estiver ligado. Use só com quem já acompanha o seu trabalho." }));
   const syncWeekly = () => { pdf.disabled = cc.disabled = !weekly.on.checked; weeklyExtra.classList.toggle("off", !weekly.on.checked); };
@@ -416,7 +416,7 @@ async function notices() {
         ". Sem rastreamento de abertura ou de cliques; só sai e-mail quando há algo a avisar."),
       p.mail_configured ? null : warnBox("O envio de e-mail ainda não está configurado neste servidor. Você pode deixar tudo escolhido; os avisos começam quando ele for ligado."),
       ...rows.flatMap((r) => (r === weekly ? [r.el, weeklyExtra] : [r.el])),
-      h("label", { class: "weekday-option notice-titles" }, titles, h("span", { text: "Mostrar os títulos das tarefas no e-mail (desligado: só os números)" })),
+      h("label", { class: "check-line notice-titles" }, titles, h("span", { text: "Mostrar os títulos das tarefas no e-mail (desligado: só os números)" })),
       h("div", { class: "row-actions" }, save, test, testWeek));
   for (const ev of ["input", "change"]) mailPanel.addEventListener(ev, (e) => { if (!e.target.closest(".row-actions")) setDirty(true); });
   return h("div", { class: "settings-grid" },
@@ -438,7 +438,7 @@ async function calendarFeed(rerender) {
   const panel = h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Calendário" })),
     h("p", { class: "help", text: "Assine o Nexus no Google Agenda, Outlook ou no celular: os prazos das tarefas abertas aparecem como eventos de dia inteiro e as rotinas como eventos repetidos. A agenda atualiza sozinha (o Google pode levar algumas horas)." }),
-    h("label", { class: "weekday-option" }, rec, h("span", { text: "Incluir as rotinas" })));
+    h("label", { class: "check-line" }, rec, h("span", { text: "Incluir as rotinas" })));
 
   if (!st.active) {
     panel.append(h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn btn-primary", onClick: async () => {
@@ -710,7 +710,7 @@ function assignmentsPanel(me) {
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Receber tarefas" })),
     h("p", { class: "help", text: "Quem tem a função de atribuidor de tarefas pode mandar tarefas para você, mas só se você permitir aqui. A tarefa recebida é sua: você edita, conclui ou exclui. Quem mandou só corrige ou cancela enquanto ela está a fazer e você não registrou nada nela." }),
-    h("label", { class: "weekday-option" }, cb, h("span", { text: "Permitir que me atribuam tarefas" })),
+    h("label", { class: "check-line" }, cb, h("span", { text: "Permitir que me atribuam tarefas" })),
     since);
 }
 
@@ -839,5 +839,5 @@ function seenBy(me) {
     } catch (e) { cb.checked = !cb.checked; errorToast(e); }
     finally { cb.disabled = false; }
   });
-  return [help, h("label", { class: "weekday-option" }, cb, h("span", { text: "Permitir que visualizadores vejam meu registro" })), line];
+  return [help, h("label", { class: "check-line" }, cb, h("span", { text: "Permitir que visualizadores vejam meu registro" })), line];
 }

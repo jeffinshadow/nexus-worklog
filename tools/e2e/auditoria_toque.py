@@ -8,7 +8,7 @@ TELAS = {"user": ["hoje", "tarefas", "projetos", "vencimentos", "mes?aba=numeros
          "admin": ["admin", "equipe", "atribuir"]}
 JS = r"""(()=>{
   const out=[];
-  for (const el of document.querySelectorAll('button, a[href], select, input:not([type=hidden]), summary, [role=tab], [role=radio], label.weekday-option, label.check-row')) {
+  for (const el of document.querySelectorAll('button, a[href], select, input:not([type=hidden]), summary, [role=tab], [role=radio], label.weekday-option, label.check-line, label.check-row')) {
     if (el.closest('.hidden,[hidden],.sr-only,.trap') || el.closest('dialog:not([open])')) continue;
     const cs = getComputedStyle(el); if (cs.display==='none' || cs.visibility==='hidden' || +cs.opacity===0) continue;
     const r = el.getBoundingClientRect(); if (!r.width || !r.height) continue;
