@@ -1,5 +1,5 @@
-// Resumos da tela Hoje: o último dia útil e a semana até agora (comparada
-// com os mesmos dias da semana passada). Dados de /api/summary. As setas do
+// Resumos: no Hoje, o último dia útil e a semana até agora (só totais); em Meu
+// mês, a semana comparada com os mesmos dias da semana passada. Dados de /api/summary. As setas do
 // card da semana voltam às semanas anteriores (/api/summary/week?back=N),
 // cada uma comparada com a semana inteira antes dela.
 import { api } from "./api.js";
@@ -66,12 +66,9 @@ export function projectBars(items) {
   });
 }
 
-export function summaryPanel(data, onChange) {
-  const last = data.last_day;
-  // Do último dia útil até ontem: na segunda, sexta a domingo (plantão incluso).
-  const ontem = last.start === addDays(data.today, -1);
-  const lastTitle = ontem ? "Ontem" : "Desde o último dia útil";
-  const lastSub = ontem ? longDate(last.start) : `${shortDate(last.start)} a ${shortDate(last.end)}`;
+// A semana com setas para as anteriores. compare: as diferenças com a semana
+// passada (só em Meu mês; no Hoje ficam só os totais, sem cara de cobrança).
+function weekSlot(data, onChange, compare) {
   const slot = h("div", { class: "sum-week" });
   let back = 0, oldest = null, seq = 0;
   const weeks = { 0: data.week };
@@ -85,10 +82,10 @@ export function summaryPanel(data, onChange) {
     prev.disabled = oldest !== null && back >= oldest;
     next.disabled = atual;
     const nav = h("div", { class: "day-nav" }, prev, h("span", { class: "day-nav-label", "aria-live": "polite", text: label }), next);
-    const sub = atual ? `desde ${longDate(w.start).split(",")[0]} · vs. semana passada`
-      : `${shortDate(w.start)} a ${shortDate(w.end)} · vs. semana anterior`;
+    const sub = (atual ? `desde ${longDate(w.start).split(",")[0]}` : `${shortDate(w.start)} a ${shortDate(w.end)}`)
+      + (compare ? (atual ? " · vs. semana passada" : " · vs. semana anterior") : "");
     clear(slot);
-    slot.append(card(atual ? "Esta semana" : "Semana", sub, w, w.previous, onChange, nav));
+    slot.append(card(atual ? "Esta semana" : "Semana", sub, w, compare ? w.previous : null, onChange, nav));
     compared = "os mesmos dias da semana passada";
   }
   async function go(n) {
@@ -108,6 +105,21 @@ export function summaryPanel(data, onChange) {
     paint();
   }
   paint();
+  return slot;
+}
+
+// Hoje: o último dia útil e a semana até agora, só com os totais.
+export function summaryPanel(data, onChange) {
+  const last = data.last_day;
+  // Do último dia útil até ontem: na segunda, sexta a domingo (plantão incluso).
+  const ontem = last.start === addDays(data.today, -1);
+  const lastTitle = ontem ? "Ontem" : "Desde o último dia útil";
+  const lastSub = ontem ? longDate(last.start) : `${shortDate(last.start)} a ${shortDate(last.end)}`;
   return h("section", { class: "panel t-sum" },
-    h("div", { class: "sum-grid" }, card(lastTitle, lastSub, last, null, onChange), slot));
+    h("div", { class: "sum-grid" }, card(lastTitle, lastSub, last, null, onChange), weekSlot(data, onChange, false)));
+}
+
+// Meu mês: a semana comparada com a anterior (as diferenças moram aqui).
+export function weekPanel(data, onChange) {
+  return weekSlot(data, onChange, true);
 }

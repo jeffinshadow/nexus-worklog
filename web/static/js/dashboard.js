@@ -1,7 +1,7 @@
 import { api } from "./api.js";
 import { h, icon, clear, shortDate } from "./dom.js";
 import { errorToast } from "./ui.js";
-import { projectBars } from "./summary.js";
+import { projectBars, weekPanel } from "./summary.js";
 import { retroCard } from "./assistant.js";
 
 const NS = "http://www.w3.org/2000/svg";
@@ -40,12 +40,17 @@ export async function mount(root, opts = {}) {
   const mes = p.month ? MONTHS_LONG[Number(p.month.slice(5)) - 1] : null;
   const ph = periodPhrase(p);
 
+  // A própria pessoa, no mês corrente: a semana comparada com a anterior (saiu do Hoje).
+  const corrente = !p.month || p.month === new Date().toISOString().slice(0, 7);
+  const sum = !opts.dashUrl && corrente ? await api.get("/summary").catch(() => null) : null;
+
   clear(root);
   // Retrospectiva: o "hoje" e a semana ficam na tela Hoje. A leitura do
   // assistente só na própria (o admin vendo outra pessoa não recebe "sua rotina").
   if (!opts.dashUrl && opts.setAssist) opts.setAssist(retroCard(a, opts.me));
   root.append(
     ...(outside ? [] : [periodNav(a, () => mount(root, opts), root)]),
+    ...(sum ? [section("Esta semana · comparada", [h("div", { class: "sum-grid" }, weekPanel(sum, () => mount(root, opts)))])] : []),
     section("Rotinas · em dia", [
       h("div", { class: "consist-grid" },
         chartCard("Rotinas feitas por dia", (mes ? `${cap(mes)}` : "Últimas 4 semanas") + " — quanto das rotinas previstas foi feito em cada dia.", heatmap(a.heatmap), "compact heat"),
