@@ -7,9 +7,11 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from .. import audit, db, links, mailer, people, roles
+from psycopg.errors import UniqueViolation
+
+from .. import audit, db, links, mailer, org, people, roles
 from ..deps import require_admin, require_admin_csrf
-from ..schemas import AppSettingsIn, DeleteUserIn, InviteIn, RolesIn
+from ..schemas import AdminProfileIn, AppSettingsIn, DeleteUserIn, InviteIn, OrgIn, RolesIn
 from ..security import generate_temp_password, hash_password, revoke_access
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -39,8 +41,9 @@ def list_users(admin=Depends(require_admin)):
 
 @router.post("/users", status_code=201)
 def invite_user(data: InviteIn, admin=Depends(require_admin_csrf)):
-    """Cria a conta de um convidado. Nasce com o papel Usuário; os outros se
-    dão em Permissões.
+    """Cria a conta de um convidado, com o nome (vale até o primeiro acesso; no
+    tour a pessoa confirma ou ajusta) e os papéis escolhidos ali (padrão: só
+    Usuário; mudam depois em Papéis…).
 
     Com e-mail configurado: convite por link (vale 7 dias, uso único), mandado
     por e-mail e mostrado ao admin para copiar; a pessoa cria a própria senha.
@@ -51,19 +54,22 @@ def invite_user(data: InviteIn, admin=Depends(require_admin_csrf)):
         raise HTTPException(status_code=409, detail="e-mail já cadastrado")
     by_link = mailer.configured()
     temp = generate_temp_password()
+    nome = " ".join((data.display_name or "").split()) or None
+    papeis = sorted(set(data.roles))
     db.execute(
-        """INSERT INTO users (email, password_hash, role, must_change_password, invite_pending)
-           VALUES (%s, %s, 'user', %s, %s)""",
+        """INSERT INTO users (email, password_hash, role, must_change_password, invite_pending, display_name)
+           VALUES (%s, %s, 'user', %s, %s, %s)""",
         # no convite por link a senha é aleatória e ninguém a vê: só o link entra
-        (email, hash_password(generate_temp_password(32) if by_link else temp), not by_link, by_link),
+        (email, hash_password(generate_temp_password(32) if by_link else temp), not by_link, by_link, nome),
     )
     novo = db.query_one("SELECT id FROM users WHERE email = %s", (email,))
-    roles.grant(novo["id"], ["user"])
+    roles.grant(novo["id"], papeis)
     audit.record({**admin, "actor": "admin"}, "user.invite", "user", novo["id"],
-                 after={"email": email, "by": admin["email"], "link": by_link}, user_id=novo["id"])
+                 after={"email": email, "by": admin["email"], "link": by_link, "display_name": nome, "roles": papeis},
+                 user_id=novo["id"])
     if not by_link:
-        return {"email": email, "temp_password": temp}
-    return _send_invite(novo["id"], email, admin)
+        return {"email": email, "temp_password": temp, "display_name": nome, "roles": papeis}
+    return {**_send_invite(novo["id"], email, admin), "display_name": nome, "roles": papeis}
 
 
 def _invite_mail(email: str, by_name: str, link: str):
@@ -172,6 +178,44 @@ def set_roles(user_id: int, data: RolesIn, admin=Depends(require_admin_csrf)):
     return {"id": user_id, "roles": novos}
 
 
+@router.put("/users/{user_id}/profile")
+def edit_profile(user_id: int, data: AdminProfileIn, admin=Depends(require_admin_csrf)):
+    """Admin › pessoa › Editar nome e e-mail (o caminho para mudar quando a
+    opção "Nome e e-mail definidos pela administração" está ligada; vale também
+    com ela desligada, para corrigir um convite). Campo ausente = mantém.
+    Trocar o e-mail avisa o endereço antigo e o novo (conta que já entrou). Fica
+    no log de admin (histórico de quem alterou)."""
+    target = db.query_one("SELECT id, email, display_name, invite_pending FROM users WHERE id = %s", (user_id,))
+    if not target:
+        raise HTTPException(status_code=404, detail="usuário não encontrado")
+    sent = data.model_fields_set
+    before = {"email": target["email"], "display_name": target["display_name"]}
+    after = {}
+    if "display_name" in sent:
+        nome = " ".join((data.display_name or "").split()) or None
+        if nome != target["display_name"]:
+            db.execute("UPDATE users SET display_name = %s WHERE id = %s", (nome, user_id))
+            after["display_name"] = nome
+    new = data.email.lower() if "email" in sent and data.email else None
+    if new and new != target["email"]:
+        if db.query_one("SELECT 1 FROM users WHERE email = %s AND id <> %s", (new, user_id)):
+            raise HTTPException(status_code=409, detail="esse e-mail já é de outra conta")
+        try:
+            db.execute("UPDATE users SET email = %s WHERE id = %s", (new, user_id))
+        except UniqueViolation as e:
+            raise HTTPException(status_code=409, detail="esse e-mail já é de outra conta") from e
+        links.cancel(user_id, "email")  # um pedido de troca da própria pessoa deixa de valer
+        after["email"] = new
+        if not target["invite_pending"]:  # quem nunca entrou recebe o convite (reenviar), não um aviso
+            from .auth import notify_email_change  # import tardio: auth importa outras rotas
+            notify_email_change(target["email"], new, by_admin=True)
+    if after:
+        audit.record({**admin, "actor": "admin"}, "user.profile", "user", user_id, before=before,
+                     after={**after, "by": admin["email"], "target": after.get("email", target["email"])})
+    row = db.query_one("SELECT id, email FROM users WHERE id = %s", (user_id,))
+    return {**row, **people.profile(user_id)}
+
+
 @router.post("/users/{user_id}/delete")
 def delete_user(user_id: int, data: DeleteUserIn, admin=Depends(require_admin_csrf)):
     """Exclui a conta e TODOS os dados dela (tarefas, rotinas, tempo, chaves,
@@ -216,6 +260,36 @@ def put_settings(data: AppSettingsIn, admin=Depends(require_admin_csrf)):
     audit.record({**admin, "actor": "admin"}, "app.settings", "app_settings", 1,
                  before=before, after=data.model_dump())
     return get_settings(admin)
+
+
+@router.get("/org")
+def get_org(admin=Depends(require_admin)):
+    """Para empresas e instituições: as opções globais (todas desligadas por padrão)."""
+    o = org.get()
+    return {"team_visibility": o["team_visibility"], "team_visibility_since": o["team_visibility_since"],
+            "identity_managed": o["identity_managed"], "tour_required": o["tour_required"]}
+
+
+@router.put("/org")
+def put_org(data: OrgIn, admin=Depends(require_admin_csrf)):
+    """Liga/desliga cada opção (campo ausente = mantém). Cada mudança fica no
+    log de admin (quem e quando). Visibilidade: as escolhas de cada pessoa
+    ficam guardadas; voltar para "Cada pessoa escolhe" as devolve."""
+    before = org.get()
+    ctx = {**admin, "actor": "admin"}
+    if data.team_visibility is not None and data.team_visibility != before["team_visibility"]:
+        db.execute("""UPDATE app_settings SET team_visibility = %s, updated_at = now(),
+                             team_visibility_since = CASE WHEN %s = 'managers' THEN now() ELSE team_visibility_since END
+                       WHERE id = 1""", (data.team_visibility, data.team_visibility))
+        audit.record(ctx, "app.team_visibility", "app_settings", 1, before={"team_visibility": before["team_visibility"]},
+                     after={"team_visibility": data.team_visibility, "by": admin["email"]})
+    for key in ("identity_managed", "tour_required"):
+        val = getattr(data, key)
+        if val is not None and val != before[key]:
+            db.execute(f"UPDATE app_settings SET {key} = %s, updated_at = now() WHERE id = 1", (val,))
+            audit.record(ctx, f"app.{key}", "app_settings", 1, before={key: before[key]},
+                         after={key: val, "by": admin["email"]})
+    return get_org(admin)
 
 
 @router.post("/users/{user_id}/reset-password")

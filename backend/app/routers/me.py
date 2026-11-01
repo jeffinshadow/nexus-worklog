@@ -9,11 +9,12 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 
-from .. import audit, db, people, roles
+from .. import audit, db, links, mailer, org, people, roles
 from ..deps import clear_session_cookie
 from ..security import login_limiter, verify_password
 from ..deps import web_active, web_active_csrf
-from ..schemas import AssistantIn, ConsentIn, DefaultProjectIn, DeleteMeIn, ProfileIn, ThemeIn, TicketUrlIn, TourIn
+from ..schemas import (AssistantIn, ConsentIn, DefaultProjectIn, DeleteMeIn, EmailChangeIn, ProfileIn, ThemeIn,
+                       TicketUrlIn, TourIn)
 from ..services import running_timer
 from ..visibility import visible_sql
 
@@ -34,12 +35,63 @@ def _sniff(data: bytes) -> str | None:
 
 @router.put("/profile")
 def put_profile(data: ProfileIn, user=Depends(web_active_csrf)):
+    org.ensure_identity_editable()  # "Nome e e-mail definidos pela administração": só o admin muda
     uid = user["user_id"]
     before = people.profile(uid)["display_name"]
     name = " ".join(data.display_name.split()) if data.display_name else None  # sem espaços duplicados
     db.execute("UPDATE users SET display_name = %s WHERE id = %s", (name or None, uid))
     audit.record(user, "profile.update", "user", uid, before={"display_name": before}, after={"display_name": name})
     return people.profile(uid)
+
+
+def _confirm_mail(new: str, link: str):
+    from ..notify import Mail  # import tardio: notify importa rotas
+    m = Mail("Confirme o seu e-mail novo no Nexus", "Confirme o e-mail novo",
+             "Alguém (provavelmente você) pediu para usar este endereço na conta do Nexus. "
+             "O e-mail só muda depois que você confirmar. O link vale por 24 horas e funciona uma vez só.")
+    m.blocks = [("Não foi você?", ["Pode ignorar este e-mail: nada muda sem a confirmação."])]
+    m.link, m.absolute, m.button = link, True, "Confirmar o e-mail novo"
+    m.reason, m.settings_tab = f"Enviado para {new} a pedido de Configurações > Conta.", None
+    return m
+
+
+@router.post("/email")
+def request_email_change(data: EmailChangeIn, user=Depends(web_active_csrf)):
+    """Trocar o próprio e-mail: pede a senha atual e manda um link de
+    confirmação ao endereço NOVO (24 horas, uso único). O e-mail só muda quando
+    a pessoa confirma (POST /api/auth/email/confirm); o antigo recebe um aviso.
+    Bloqueado quando a administração define nome e e-mail."""
+    org.ensure_identity_editable()
+    uid = user["user_id"]
+    if not mailer.configured():
+        raise HTTPException(status_code=400, detail="o servidor não manda e-mail: peça a troca a quem administra o Nexus")
+    if not login_limiter.allow(f"pw:{uid}"):  # sessão roubada não testa senhas à vontade
+        raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
+    row = db.query_one("SELECT email, password_hash FROM users WHERE id = %s", (uid,))
+    if not row or not verify_password(row["password_hash"], data.password):
+        raise HTTPException(status_code=400, detail="senha atual incorreta")
+    new = data.new_email.lower()
+    if new == row["email"]:
+        raise HTTPException(status_code=400, detail="esse já é o e-mail da sua conta")
+    if db.query_one("SELECT 1 FROM users WHERE email = %s", (new,)):
+        raise HTTPException(status_code=409, detail="esse e-mail já é de outra conta")
+    link = links.url("email", links.issue(uid, "email", new_email=new))
+    m = _confirm_mail(new, link)
+    try:
+        mailer.send(new, m.subject, m.text(), m.html())
+    except mailer.MailError as e:
+        links.cancel(uid, "email")
+        logging.getLogger("uvicorn.error").warning("confirmação de e-mail não saiu: %s", e)
+        raise HTTPException(status_code=502, detail="não foi possível mandar o e-mail de confirmação: tente de novo mais tarde") from e
+    audit.record(user, "email.change_request", "user", uid, before={"email": row["email"]}, after={"email": new})
+    return {"email_pending": new}
+
+
+@router.delete("/email")
+def cancel_email_change(user=Depends(web_active_csrf)):
+    """Desiste da troca pendente: o link mandado ao endereço novo deixa de valer."""
+    links.cancel(user["user_id"], "email")
+    return {"email_pending": None}
 
 
 @router.post("/avatar")
@@ -184,10 +236,26 @@ def put_theme(data: ThemeIn, user=Depends(web_active_csrf)):
 
 @router.put("/tour")
 def put_tour(data: TourIn, user=Depends(web_active_csrf)):
-    """Tour guiado visto (ou pulado). false = abre de novo no próximo acesso."""
-    row = db.query_one("UPDATE users SET tour_done_at = CASE WHEN %s THEN now() END WHERE id = %s RETURNING tour_done_at",
-                       (data.done, user["user_id"]))
-    return {"tour_done_at": row["tour_done_at"]}
+    """Tour guiado visto (ou pulado, quando não é obrigatório). false = abre de
+    novo no próximo acesso. Concluído uma vez, o primeiro acesso acabou: o tour
+    obrigatório nunca mais força esta conta. Quem passou pelo tour já viu a
+    parada da visibilidade (quando ativa): o aviso único não aparece depois."""
+    row = db.query_one(
+        """UPDATE users SET tour_done_at = CASE WHEN %(d)s THEN now() END,
+                            tour_first_access = CASE WHEN %(d)s THEN false ELSE tour_first_access END,
+                            visibility_notice_at = CASE WHEN %(d)s AND EXISTS (SELECT 1 FROM app_settings
+                                 WHERE id = 1 AND team_visibility = 'managers') THEN now() ELSE visibility_notice_at END
+            WHERE id = %(u)s RETURNING tour_done_at""",
+        {"d": data.done, "u": user["user_id"]})
+    return {"tour_done_at": row["tour_done_at"], **{k: v for k, v in org.for_user(user["user_id"]).items()
+                                                   if k in ("tour_required", "visibility_notice")}}
+
+
+@router.put("/visibility-notice")
+def seen_visibility_notice(user=Depends(web_active_csrf)):
+    """"Entendi" no aviso único de que quem gerencia a equipe vê o registro de todos."""
+    db.execute("UPDATE users SET visibility_notice_at = now() WHERE id = %s", (user["user_id"],))
+    return {"visibility_notice": False}
 
 
 @router.put("/assignments")
@@ -211,6 +279,10 @@ def put_assignments(data: ConsentIn, user=Depends(web_active_csrf)):
 def put_viewers(data: ConsentIn, user=Depends(web_active_csrf)):
     """Aceite do visualizador (só pelo app): com ele, quem tem o papel viewer vê
     o registro da pessoa em Equipe (quadro, números, PDF, horas, fotos)."""
+    if org.get()["team_visibility"] == "managers":
+        # A escolha fica guardada como está e volta a valer quando a administração
+        # voltar para "Cada pessoa escolhe"; enquanto isso, não muda.
+        raise HTTPException(status_code=409, detail=org.VISIBILITY_LOCKED + " A sua escolha fica guardada e volta a valer se isso mudar.")
     uid = user["user_id"]
     before = db.query_one("SELECT viewers_allowed FROM users WHERE id = %s", (uid,))["viewers_allowed"]
     db.execute("UPDATE users SET viewers_allowed = %s WHERE id = %s", (data.accept, uid))

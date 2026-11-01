@@ -4,8 +4,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from psycopg.errors import UniqueViolation
 
-from .. import audit, db, links, mailer, people, roles
+from .. import audit, db, links, mailer, org, people, roles
 from ..config import config
 from ..deps import (
     active_user_csrf,
@@ -15,7 +16,7 @@ from ..deps import (
     web_user_csrf,
     set_session_cookie,
 )
-from ..schemas import ChangePasswordIn, ForgotIn, LinkPasswordIn, LoginIn, SettingsIn
+from ..schemas import ChangePasswordIn, EmailConfirmIn, ForgotIn, LinkPasswordIn, LoginIn, SettingsIn
 from ..services import app_today, app_tz, task_retro_days
 from .recurring import replace_routine
 from ..security import (
@@ -45,6 +46,7 @@ def _public(row: dict, csrf: str) -> dict:
         **people.profile(uid),  # display_name, name, avatar
         **(db.query_one("SELECT ticket_url, accepts_assignments_at, viewers_allowed, default_project_id, tour_done_at, theme FROM users WHERE id = %s",
                         (uid,)) or {}),
+        **org.for_user(uid),  # org (Para empresas), tour_required, visibility_notice, email_pending
         "assistant": people.assistant_prefs(uid),
         "role": row["role"],
         "roles": roles.of(uid),
@@ -180,7 +182,8 @@ def link_info(kind: Literal["invite", "reset"], token: str, request: Request):
     row = links.peek(token, kind)
     if not row:
         raise HTTPException(status_code=404, detail="link inválido, vencido ou já usado")
-    return {"email": row["email"], "display_name": row["display_name"]}
+    # name_locked: nome definido pela administração (a tela de convite só mostra).
+    return {"email": row["email"], "display_name": row["display_name"], "name_locked": org.identity_managed()}
 
 
 def _set_password(uid: int, password: str) -> None:
@@ -198,7 +201,7 @@ def accept_invite(data: LinkPasswordIn, request: Request, response: Response):
         raise HTTPException(status_code=400, detail="convite inválido, vencido ou já usado: peça um novo ao administrador")
     _set_password(uid, data.password)
     nome = " ".join((data.display_name or "").split()) or None
-    if nome:
+    if nome and not org.identity_managed():  # nome definido pela administração: fica o do convite
         db.execute("UPDATE users SET display_name = %s WHERE id = %s", (nome, uid))
     audit.record({"user_id": uid, "actor": "web"}, "user.invite_accept", "user", uid)
     return _start_session(db.query_one("SELECT * FROM users WHERE id = %s", (uid,)), response)
@@ -223,6 +226,53 @@ def reset_by_link(data: LinkPasswordIn, request: Request, response: Response):
         email = db.query_one("SELECT email FROM users WHERE id = %s", (uid,))["email"]
         threading.Thread(target=_send_quiet, args=(email, _passkeys_mail(n)), daemon=True).start()
     return _start_session(db.query_one("SELECT * FROM users WHERE id = %s", (uid,)), response)
+
+
+def _email_changed_mail(old: str, new: str, by_admin: bool):
+    from ..notify import Mail
+    m = Mail("O e-mail da sua conta do Nexus mudou", "E-mail da conta trocado",
+             f"O e-mail desta conta do Nexus passou de {old} para {new}"
+             + (" (alterado por quem administra o Nexus)." if by_admin else ", confirmado pelo link enviado ao endereço novo."))
+    m.blocks = [("Daqui em diante", [f"Entre com {new}. Os avisos do Nexus vão para lá."]),
+                ("Não reconhece esta troca?", ["Fale agora com quem administra o Nexus."])]
+    m.reason, m.settings_tab = "Aviso de segurança da sua conta.", None
+    return m
+
+
+def notify_email_change(old: str, new: str, by_admin: bool) -> None:
+    """Avisa o endereço antigo (e, na troca pelo admin, o novo) em segundo plano."""
+    if not mailer.configured():
+        return
+    for to in ([old, new] if by_admin else [old]):
+        threading.Thread(target=_send_quiet, args=(to, _email_changed_mail(old, new, by_admin)), daemon=True).start()
+
+
+@router.post("/email/confirm")
+def confirm_email(data: EmailConfirmIn, request: Request):
+    """Confirma o e-mail novo pelo link mandado a ele (Configurações > Conta >
+    Trocar e-mail). Uso único, vale 24 horas; só aqui o e-mail muda. Avisa o
+    endereço antigo. Não precisa estar logado (o link pode abrir em outro aparelho)."""
+    if not link_limiter.allow(f"ip:{client_ip(request)}"):
+        raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
+    row = links.consume_email(data.token)
+    if not row:
+        raise HTTPException(status_code=400, detail="link inválido, vencido ou já usado: peça a troca de novo em Configurações > Conta")
+    if org.identity_managed():  # a administração passou a definir os e-mails depois do pedido
+        raise HTTPException(status_code=403, detail=org.IDENTITY_LOCKED)
+    new = row["new_email"].lower()
+    user = db.query_one("SELECT id, email FROM users WHERE id = %s AND blocked_at IS NULL", (row["user_id"],))
+    if not user:
+        raise HTTPException(status_code=400, detail="link inválido, vencido ou já usado")
+    if db.query_one("SELECT 1 FROM users WHERE email = %s AND id <> %s", (new, user["id"])):
+        raise HTTPException(status_code=409, detail="esse e-mail passou a ser de outra conta: escolha outro")
+    try:
+        db.execute("UPDATE users SET email = %s WHERE id = %s", (new, user["id"]))
+    except UniqueViolation as e:  # corrida com outra conta pegando o mesmo e-mail
+        raise HTTPException(status_code=409, detail="esse e-mail passou a ser de outra conta: escolha outro") from e
+    audit.record({"user_id": user["id"], "actor": "web"}, "email.change", "user", user["id"],
+                 before={"email": user["email"]}, after={"email": new})
+    notify_email_change(user["email"], new, by_admin=False)
+    return {"ok": True, "email": new}
 
 
 @router.post("/logout")
