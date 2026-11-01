@@ -1,5 +1,7 @@
 /* Design tokens do Nexus — identidade da ShadowTec (a mesma do shadow.tec.br):
    grafite + azul #5294E2, Google Sans Flex (OFL, self-hosted); rótulos e código usam variações dela.
+   Cores: paleta híbrida (Sway dotfiles, PALETA-HIBRIDA.md): contêineres sólidos, nada de
+   transparência para fazer cor; a transparência fica só nas camadas de estado e nas sombras.
    Os NOMES das variáveis vêm da versão Material: o dashboard desenha SVG com
    eles, então só os valores mudaram. Escuro por padrão; o claro (Material 3,
    contraste AA ou mais em todo texto) vale quando o aparelho está em claro ou
@@ -14,23 +16,6 @@
 }
 
 :root {
-  /* Tons de superfície e acentos usados em app.css (antes soltos como hex). */
-  --surface-side: #151517;
-  --surface-fade: #161617;
-  --surface-deep: #0E0E0F;
-  --ink-code: #D4D4D8;
-  --warning-ink: #E9DDB4;
-  --surface-pop: #18181A;
-  --surface-toast: #232326;
-  --surface-raise: #19191b;
-  --surface-accent: #17202b;
-  --accent-purple: #C58AF9;
-  --accent-cyan: #5EC8D8;
-  --avatar-fg: #fff;
-  --tint: #fff;            /* película de hover/fundo leve: branco no escuro, preto no claro */
-  --shadow: #000;          /* sombras (o claro usa uma bem mais leve) */
-  --on-error: #2b0a07;
-
   /* Escala da interface: no desktop tudo sai em 90% (como o zoom do navegador
      em 90%), mantendo as proporções. Medidas da tela (vh/vw) e a área útil
      dividem por este fator para continuarem no tamanho real. */
@@ -48,10 +33,18 @@
   --type-body-s: .86rem;     /* corpo menor: textos de apoio, descrições */
   --type-caption: .8rem;     /* legenda: rótulos de campo, datas, metadados */
   --type-label: .75rem;      /* rótulo: chips, contadores, abas da barra (mínimo 12 px no celular) */
+  /* Peso e entrelinha por papel: títulos 500, corpo 400, rótulos 500 com um respiro entre as letras. */
+  --weight-title: 500;
+  --weight-body: 400;
+  --weight-label: 500;
+  --lh-title: 1.3;
+  --lh-body: 1.5;
+  --lh-label: 1.35;
+  --track-label: .02em;
 
   /* Raios (Material 3): pequeno, médio, grande, extragrande e pílula. */
   --radius-xs: 4px;     /* miúdos: marcas de destaque, quadradinhos de legenda, foco do cartão */
-  --radius-s: 8px;      /* detalhes: teclas, dicas, edição no lugar */
+  --radius-s: 8px;      /* detalhes: teclas, dicas, edição no lugar, aviso (snackbar) */
   --radius-m: 12px;     /* campos, itens de lista, menus, cartões de tarefa */
   --radius-l: 16px;     /* painéis, cartões de seção, FAB */
   --radius-xl: 28px;    /* diálogos, folhas e o cartão do login */
@@ -63,111 +56,221 @@
   --elev-2: 0 16px 36px -12px color-mix(in srgb, var(--shadow) 80%, transparent);
   --elev-3: 0 28px 64px -20px color-mix(in srgb, var(--shadow) 80%, transparent);
 
+  /* Movimento (Material 3): curvas padrão e enfática, e três durações. Entrar
+     usa a desaceleração; sair, a aceleração. */
+  --ease-standard: cubic-bezier(.2, 0, 0, 1);
+  --ease-standard-decel: cubic-bezier(0, 0, 0, 1);
+  --ease-standard-accel: cubic-bezier(.3, 0, 1, 1);
+  --ease-emphasized: cubic-bezier(.2, 0, 0, 1);
+  --ease-emphasized-decel: cubic-bezier(.05, .7, .1, 1);
+  --ease-emphasized-accel: cubic-bezier(.3, 0, .8, .15);
+  --dur-short: 150ms;   /* camadas de estado, chips, cores */
+  --dur-medium: 250ms;  /* menus, avisos, diálogos */
+  --dur-long: 400ms;    /* painéis e folhas que entram na tela */
+  --ease: var(--ease-emphasized-decel);
+
   /* Escala */
   --gap: 16px;
   --gap-s: 8px;
   --sidebar-w: 283px;  /* 236 + 20% */
 
-  /* Destaque (azul do Sway) */
+  /* Cores: paleta híbrida (Shadow Materia + estrutura do Material 3), escuro por padrão. */
+  /* Superfícies (grafite quase neutro, em degraus regulares como no M3). */
+  --surface: #131314;
+  --surface-deep: #0C0D0E;          /* surface-container-lowest: atrás de tudo, código */
+  --surface-side: #161718;          /* surface-container-low: menu lateral */
+  --surface-fade: #171819;
+  --surface-container: #1A1A1C;     /* cartões e painéis */
+  --surface-container-high: #222324;
+  --surface-container-highest: #2C2C2D;
+  --surface-card: #131314;          /* itens dentro de um painel (cartão de tarefa) */
+  --surface-pop: #222324;           /* menus, diálogos (no escuro sobem um degrau) */
+  --surface-toast: #2C2C2D;
+  --surface-raise: #1D1D1F;
+  --surface-accent: #262F3C;        /* = secondary-container */
+  --surface-assist: #1B2029;        /* a fala do assistente: contêiner com um toque de azul */
+  --on-surface: #F0EDEE;
+  --on-surface-variant: #ACABAD;
+  --dim: #919093;
+  --outline-variant: #323235;
+  --line-2: #49494B;                /* outline: campos, botões contornados */
+  /* Bordas por tema: no escuro, linha fina (shadow-materia); no claro, a camada tonal basta. */
+  --card-border: var(--outline-variant);
+  --card-border-hover: var(--line-2);
+  --pop-border: var(--outline-variant);
+
+  /* Primário (azul do Sway) e papéis do Material 3. */
   --primary: #5294E2;
   --primary-hi: #8AB8F0;
   --on-primary: #0B0D10;
-  --primary-container: color-mix(in srgb, #5294E2 16%, transparent);
-  --chart-muted: #2E4D72;   /* barras secundárias dos gráficos (sólido, legível) */
+  --primary-container: #183A61;
+  --on-primary-container: #D3E3FD;
+  --secondary-container: #262F3C;
+  --on-secondary-container: #D6E3FB;
+  --tertiary-container: #3E2C66;
+  --on-tertiary-container: #E9DDFF;
+  --inverse-surface: #E4E2E3;       /* aviso (snackbar) e dicas */
+  --inverse-on-surface: #303031;
+  --inverse-primary: #00569A;
+  --chart-muted: #3B5170;           /* secundário: barras secundárias dos gráficos */
+  --accent-purple: #B98EFF;         /* terciário */
+  --accent-cyan: #62C7E0;
 
-  /* Superfícies (grafite) */
-  --surface: #121213;
-  --surface-container: #18181A;
-  --surface-container-high: #212124;
-  --surface-container-highest: #2A2A2E;
-  --on-surface: #EDEDEF;
-  --on-surface-variant: #A1A1A8;
-  --dim: #86868E;
-  --outline-variant: color-mix(in srgb, #fff 8%, transparent);
-  --line-2: color-mix(in srgb, #fff 14%, transparent);
-
-  /* Semânticas (paleta Shadow Materia) */
-  --success: #81C995;
-  --warning: #FDD663;
+  /* Status: pastéis do Google levemente harmonizados, cada um com o contêiner sólido. */
+  --success: #78CA9F;
+  --success-container: #1C3F2E;
+  --on-success-container: #B6EFCB;
+  --warning: #F2DA66;
+  --warning-ink: #EADDAD;
+  --warning-container: #3D3610;
+  --on-warning-container: #EADDAD;
   --error: #F28B82;
+  --on-error: #370303;
+  --error-container: #5C1F1B;
+  --on-error-container: #FFDAD6;
+  --info-container: #0F3C47;
+  --on-info-container: #C3EEF8;
 
-  --ease: cubic-bezier(.2, .7, .1, 1);
+  /* Calendário de rotinas (Meu mês): degraus sólidos do primário e a cor do número em cada um. */
+  --heat-1: #2A3C53;
+  --heat-2: #36577F;
+  --heat-3: #4A82C4;
+  --heat-4: #5294E2;
+  --heat-3-ink: #0B0D10;
 
+  --ink-code: #D6D4D5;
+  --avatar-fg: #FFFFFF;
+  --tint: #FFFFFF;         /* camada de estado (hover/pressionado): branco no escuro, preto no claro */
+  --shadow: #000000;       /* sombras (o claro usa uma bem mais leve) */
   color-scheme: dark;
 }
 
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
-  /* Tema claro (Material 3 a partir do azul #5294E2). Contraste sobre o branco:
-     texto 16:1, secundário 9:1, apagado 6:1, azul 5,4:1, sucesso/aviso/erro 5:1+. */
-  --surface: #F6F7FA;
-  --surface-side: #EEF0F5;
-  --surface-fade: #F1F2F6;
-  --surface-deep: #E8EAF0;
-  --surface-container: #FFFFFF;
-  --surface-container-high: #EEF0F5;
-  --surface-container-highest: #E2E5EC;
+  /* Tema claro (híbrida: o mesmo azul, escurecido até AA). Hierarquia por camadas
+     tonais: cartões no contêiner, o que flutua em branco, quase sem bordas. */
+  --surface: #FBFAFF;
+  --surface-deep: #E8E8ED;
+  --surface-side: #F5F4FA;
+  --surface-fade: #F0F0F5;
+  --surface-container: #F0F0F5;
+  --surface-container-high: #E9E9EE;
+  --surface-container-highest: #E0E1E6;
+  --surface-card: #FFFFFF;
   --surface-pop: #FFFFFF;
   --surface-toast: #FFFFFF;
   --surface-raise: #FFFFFF;
-  --surface-accent: #E7EFFA;
-  --on-surface: #1A1C20;
-  --on-surface-variant: #44474F;
-  --dim: #5D6170;
-  --outline-variant: color-mix(in srgb, #1A1C20 12%, transparent);
-  --line-2: color-mix(in srgb, #1A1C20 20%, transparent);
-  --primary: #2D69BE;
-  --primary-hi: #1F579F;
+  --surface-accent: #D6E3FB;
+  --surface-assist: #EDF1FB;
+  --on-surface: #191C20;
+  --on-surface-variant: #43474E;
+  --dim: #5F636B;
+  --outline-variant: #DFE2EB;
+  --line-2: #A8ABB4;
+  --card-border: transparent;
+  --card-border-hover: var(--outline-variant);
+  --pop-border: transparent;
+  --primary: #1A6AB5;
+  --primary-hi: #00569A;
   --on-primary: #FFFFFF;
-  --primary-container: #DCE7F8;
-  --chart-muted: #A8C1E6;
-  --success: #1D7A3D;
-  --warning: #8A5800;
-  --error: #B3261E;
+  --primary-container: #CFE1FF;
+  --on-primary-container: #001C3A;
+  --secondary-container: #D6E3FB;
+  --on-secondary-container: #0E1D33;
+  --tertiary-container: #EBDDFF;
+  --on-tertiary-container: #5B3A99;
+  --inverse-surface: #2E3035;
+  --inverse-on-surface: #F0F0F5;
+  --inverse-primary: #8AB8F0;
+  --chart-muted: #A6C3ED;
+  --accent-purple: #7B51BF;
+  --accent-cyan: #007286;
+  --success: #00774F;
+  --success-container: #C4EED3;
+  --on-success-container: #00522F;
+  --warning: #776600;
+  --warning-ink: #4D4200;
+  --warning-container: #F6E388;
+  --on-warning-container: #4D4200;
+  --error: #B51F21;
   --on-error: #FFFFFF;
-  --accent-purple: #7A3EC2;
-  --accent-cyan: #00707C;
-  --ink-code: #2B2E35;
-  --warning-ink: #5A4300;
-  --tint: #000;
-  --shadow: color-mix(in srgb, #1A1C20 28%, transparent);
+  --error-container: #FFDAD6;
+  --on-error-container: #8C1D18;
+  --info-container: #C6ECF5;
+  --on-info-container: #004E5C;
+  --heat-1: #B4CAE3;
+  --heat-2: #85ADD5;
+  --heat-3: #508CC5;
+  --heat-4: #1A6AB5;
+  --heat-3-ink: #191C20;
+  --ink-code: #2E3035;
+  --avatar-fg: #FFFFFF;
+  --tint: #000000;
+  --shadow: color-mix(in srgb, #1A1C20 14%, transparent);
   color-scheme: light;
   }
 }
 :root[data-theme="light"] {
-  /* Tema claro (Material 3 a partir do azul #5294E2). Contraste sobre o branco:
-     texto 16:1, secundário 9:1, apagado 6:1, azul 5,4:1, sucesso/aviso/erro 5:1+. */
-  --surface: #F6F7FA;
-  --surface-side: #EEF0F5;
-  --surface-fade: #F1F2F6;
-  --surface-deep: #E8EAF0;
-  --surface-container: #FFFFFF;
-  --surface-container-high: #EEF0F5;
-  --surface-container-highest: #E2E5EC;
+  /* Tema claro (híbrida: o mesmo azul, escurecido até AA). Hierarquia por camadas
+     tonais: cartões no contêiner, o que flutua em branco, quase sem bordas. */
+  --surface: #FBFAFF;
+  --surface-deep: #E8E8ED;
+  --surface-side: #F5F4FA;
+  --surface-fade: #F0F0F5;
+  --surface-container: #F0F0F5;
+  --surface-container-high: #E9E9EE;
+  --surface-container-highest: #E0E1E6;
+  --surface-card: #FFFFFF;
   --surface-pop: #FFFFFF;
   --surface-toast: #FFFFFF;
   --surface-raise: #FFFFFF;
-  --surface-accent: #E7EFFA;
-  --on-surface: #1A1C20;
-  --on-surface-variant: #44474F;
-  --dim: #5D6170;
-  --outline-variant: color-mix(in srgb, #1A1C20 12%, transparent);
-  --line-2: color-mix(in srgb, #1A1C20 20%, transparent);
-  --primary: #2D69BE;
-  --primary-hi: #1F579F;
+  --surface-accent: #D6E3FB;
+  --surface-assist: #EDF1FB;
+  --on-surface: #191C20;
+  --on-surface-variant: #43474E;
+  --dim: #5F636B;
+  --outline-variant: #DFE2EB;
+  --line-2: #A8ABB4;
+  --card-border: transparent;
+  --card-border-hover: var(--outline-variant);
+  --pop-border: transparent;
+  --primary: #1A6AB5;
+  --primary-hi: #00569A;
   --on-primary: #FFFFFF;
-  --primary-container: #DCE7F8;
-  --chart-muted: #A8C1E6;
-  --success: #1D7A3D;
-  --warning: #8A5800;
-  --error: #B3261E;
+  --primary-container: #CFE1FF;
+  --on-primary-container: #001C3A;
+  --secondary-container: #D6E3FB;
+  --on-secondary-container: #0E1D33;
+  --tertiary-container: #EBDDFF;
+  --on-tertiary-container: #5B3A99;
+  --inverse-surface: #2E3035;
+  --inverse-on-surface: #F0F0F5;
+  --inverse-primary: #8AB8F0;
+  --chart-muted: #A6C3ED;
+  --accent-purple: #7B51BF;
+  --accent-cyan: #007286;
+  --success: #00774F;
+  --success-container: #C4EED3;
+  --on-success-container: #00522F;
+  --warning: #776600;
+  --warning-ink: #4D4200;
+  --warning-container: #F6E388;
+  --on-warning-container: #4D4200;
+  --error: #B51F21;
   --on-error: #FFFFFF;
-  --accent-purple: #7A3EC2;
-  --accent-cyan: #00707C;
-  --ink-code: #2B2E35;
-  --warning-ink: #5A4300;
-  --tint: #000;
-  --shadow: color-mix(in srgb, #1A1C20 28%, transparent);
+  --error-container: #FFDAD6;
+  --on-error-container: #8C1D18;
+  --info-container: #C6ECF5;
+  --on-info-container: #004E5C;
+  --heat-1: #B4CAE3;
+  --heat-2: #85ADD5;
+  --heat-3: #508CC5;
+  --heat-4: #1A6AB5;
+  --heat-3-ink: #191C20;
+  --ink-code: #2E3035;
+  --avatar-fg: #FFFFFF;
+  --tint: #000000;
+  --shadow: color-mix(in srgb, #1A1C20 14%, transparent);
   color-scheme: light;
 }
 
