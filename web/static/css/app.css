@@ -788,6 +788,14 @@ a.chip.ticket:hover { background: color-mix(in srgb, var(--primary) 12%, transpa
 button.nav-link { border: 0; background: transparent; width: 100%; font-family: inherit; text-align: left; cursor: pointer; }
 
 /* Inovação: impedimento com motivo, evidência da rotina e passagem de turno */
+/* Contexto da tarefa em texto: "● Matriz · Rede do 2º andar · #5098". */
+.task-ctx { display: inline-flex; flex-wrap: wrap; align-items: center; min-width: 0; font-size: var(--type-caption); color: var(--on-surface-variant); }
+.task-ctx > * + *::before { content: "·"; margin: 0 6px; color: var(--dim); }
+.task-ctx .chip { padding: 0; border: 0; border-radius: 0; background: none; font-family: var(--font-sans); font-size: inherit; font-weight: 400; letter-spacing: 0; color: var(--on-surface-variant); }
+.task-ctx .chip.project { color: var(--on-surface-variant); }
+.task-ctx .chip .ico { width: 14px; height: 14px; vertical-align: -2px; margin-right: 3px; }
+.task-ctx a.chip.ticket { color: var(--primary-hi); text-decoration: underline; text-underline-offset: 2px; }
+.task-ctx a.chip.ticket:hover { background: none; }
 .chip.blocked-reason { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 35%, transparent); background: color-mix(in srgb, var(--warning) 5%, transparent); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .check-row .label small.evidence { color: var(--success); display: inline-block; text-decoration: none; } /* inline-block: a rotina feita fica riscada, a evidência não */
 .handoff-text { width: 100%; font-family: var(--font-label); font-size: var(--type-body-s); line-height: 1.55; resize: vertical; }

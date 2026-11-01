@@ -61,11 +61,14 @@ export function taskChips(t, today) {
     else if (t.due_date === today) chips.push(h("span", { class: "chip today", text: "vence hoje" }));
     else chips.push(h("span", { class: "chip", text: "prazo " + shortDate(t.due_date) }));
   }
-  chips.push(...projectChips(t));
-  if (t.objective_title) chips.push(h("span", { class: "chip objective", title: "Objetivo" }, icon("target"), t.objective_title));
-  if (t.ticket) chips.push(ticketChip(t.ticket));
-  if (t.assigned_by_name) chips.push(h("span", { class: "chip assigned", title: "Atribuída por " + t.assigned_by_name, text: "de " + t.assigned_by_name }));
-  if (t.after_hours) chips.push(h("span", { class: "chip after-hours", title: "Plantão / fora do horário", text: "plantão" }));
+  // Contexto (projeto, objetivo, chamado, quem mandou, plantão): uma linha de texto
+  // com o ponto de cor, sem borda; em pílula fica só o estado (atrasada, aguardando...).
+  const ctx = [...projectChips(t)];
+  if (t.objective_title) ctx.push(h("span", { class: "chip objective", title: "Objetivo" }, icon("target"), t.objective_title));
+  if (t.ticket) ctx.push(ticketChip(t.ticket));
+  if (t.assigned_by_name) ctx.push(h("span", { class: "chip assigned", title: "Atribuída por " + t.assigned_by_name, text: "de " + t.assigned_by_name }));
+  if (t.after_hours) ctx.push(h("span", { class: "chip after-hours", title: "Plantão / fora do horário", text: "plantão" }));
+  if (ctx.length) chips.push(h("span", { class: "task-ctx" }, ...ctx));
   if (t.check_total) chips.push(h("span", { class: "tag" + (t.check_done === t.check_total ? " ok" : ""), title: "Checklist" }, icon("list"), `${t.check_done}/${t.check_total}`));
   if (t.minutes) chips.push(h("span", { class: "tag", title: "Tempo apontado" }, icon("clock"), duration(t.minutes)));
   if (t.notes_count) chips.push(h("span", { class: "tag", title: "Anotações" }, icon("note"), String(t.notes_count)));
