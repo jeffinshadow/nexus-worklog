@@ -86,8 +86,8 @@ export async function mount(root, ctx) {
     else if (active === "calendario") body.append(await calendarFeed(() => render()));
     else if (active === "ia") body.append(await tokens(() => render()), ...aiHelp(), await webhooksPanel(() => render()));
     // Conta: primeiro o que muda o dia (dias úteis, projeto padrão), depois quem vê e manda tarefas.
-    else if (isUser) body.append(workDays(ctx.me), defaultProjectPanel(ctx.me, (r) => meChanged(ctx.me, r)), privacyPanel(ctx.me), profilePanel(ctx.me, render), themePanel(ctx.me), assistantPanel(ctx.me), ticketsPanel(ctx.me), shortcutsPanel(), account(ctx.me), await passkeysPanel(render), deleteAccount(isUser));
-    else body.append(profilePanel(ctx.me, render), themePanel(ctx.me), account(ctx.me), await passkeysPanel(render), deleteAccount(isUser));
+    else if (isUser) body.append(workDays(ctx.me), defaultProjectPanel(ctx.me, (r) => meChanged(ctx.me, r)), privacyPanel(ctx.me), profilePanel(ctx.me, render), themePanel(ctx.me), assistantPanel(ctx.me), ticketsPanel(ctx.me), shortcutsPanel(), account(ctx.me), await otherDevicesPanel(), await passkeysPanel(render), deleteAccount(isUser));
+    else body.append(profilePanel(ctx.me, render), themePanel(ctx.me), account(ctx.me), await otherDevicesPanel(), await passkeysPanel(render), deleteAccount(isUser));
   }
   await render();
 }
@@ -848,6 +848,33 @@ function themePanel(me) {
     h("div", { class: "panel-head" }, h("h2", { text: "Aparência" })),
     h("p", { class: "help", text: "Automático acompanha o claro ou escuro do celular e do computador. Claro e Escuro forçam o tema em todos os seus aparelhos." }),
     seg);
+}
+
+// Sair dos outros aparelhos sem trocar a senha (celular perdido, computador
+// emprestado). Este aparelho continua entrando; chaves de API e calendário seguem.
+async function otherDevicesPanel() {
+  const { others } = await api.get("/auth/sessions").catch(() => ({ others: null }));
+  const line = h("p", { class: "dialog-note", role: "status" });
+  const paint = (n) => {
+    line.textContent = n === null ? "" : n === 0 ? "Sua conta está aberta só neste aparelho."
+      : n === 1 ? "Sua conta também está aberta em 1 outro aparelho ou navegador."
+      : `Sua conta também está aberta em ${n} outros aparelhos ou navegadores.`;
+    btn.disabled = n === 0;
+  };
+  const btn = h("button", { type: "button", class: "btn btn-ghost btn-sm" }, icon("logout"), "Sair dos outros aparelhos");
+  btn.addEventListener("click", busy(async () => {
+    if (!(await confirmDialog({ title: "Sair dos outros aparelhos?", text: "Os outros celulares e computadores voltam para a tela de entrar, e quem estiver neles precisa da senha (ou da digital) de novo. Este aparelho continua. Chaves de API e o link do calendário não mudam.", confirm: "Sair dos outros" }))) return;
+    try {
+      const r = await api.post("/auth/logout-others");
+      paint(0);
+      toast(r.ended ? `Pronto: ${r.ended === 1 ? "1 outro aparelho saiu" : `${r.ended} outros aparelhos saíram`} da sua conta.` : "Nenhum outro aparelho estava com a conta aberta.");
+    } catch (e) { errorToast(e, "Não foi possível sair dos outros aparelhos."); }
+  }));
+  paint(others);
+  return h("section", { class: "panel" },
+    h("div", { class: "panel-head" }, h("h2", { text: "Aparelhos conectados" })),
+    h("p", { class: "help", text: "Perdeu o celular ou entrou num computador emprestado? Saia de todos os outros aparelhos sem trocar a senha." }),
+    line, h("div", { class: "row-actions" }, btn));
 }
 
 // Passkeys: entrar com digital, rosto, Windows Hello ou chave física, sem a senha.

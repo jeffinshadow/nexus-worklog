@@ -180,3 +180,30 @@ def test_ordem_das_rotinas_com_desfazer(usuario, novo_usuario):
     usuario.post(f"/recurring/{a}/toggle", {"done": True, "day": str(app_today() - timedelta(days=1))})
     assert usuario.patch(f"/recurring/{a}", {"label": "Abrir a loja", "freq": "weekly", "weekdays": 62}).status_code == 200
     assert _ordem(usuario)[:2] == ["Ar-condicionado", "Abrir a loja"]
+
+
+# ------------------------------------------------- sair dos outros aparelhos --
+
+def test_sair_dos_outros_aparelhos_sem_trocar_a_senha(usuario, novo_usuario):
+    email = usuario.me["email"]
+    celular, notebook = Api(), Api()
+    celular.login(email, SENHA_PADRAO)
+    notebook.login(email, SENHA_PADRAO)
+    outra = novo_usuario("outra@example.com")
+    chave = usuario.post("/tokens", {"name": "IA"}).json()
+    assert usuario.get("/auth/sessions").json() == {"others": 2}
+    r = usuario.post("/auth/logout-others")
+    assert r.status_code == 200 and r.json() == {"ok": True, "ended": 2}
+    assert usuario.get("/auth/me").status_code == 200          # este continua
+    assert celular.get("/auth/me").status_code == 401           # os outros saíram
+    assert notebook.get("/auth/me").status_code == 401
+    assert outra.get("/auth/me").status_code == 200             # outra pessoa: nada muda
+    assert usuario.get("/auth/sessions").json() == {"others": 0}
+    # a senha e a chave de API continuam valendo
+    assert Api().login(email, SENHA_PADRAO).status_code == 200
+    from conftest import Bearer
+    assert Bearer(chave["token"]).get("/worklog").status_code == 200
+    assert usuario.get("/history?limit=5").json()[0]["summary"] == "saiu dos outros aparelhos"
+    # sem CSRF não sai; por chave de API, nem lista
+    assert usuario.c.post("/api/auth/logout-others").status_code == 403
+    assert Bearer(chave["token"]).get("/auth/sessions").status_code in (401, 403)

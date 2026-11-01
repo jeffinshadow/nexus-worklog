@@ -105,6 +105,7 @@ ACTION_LABELS = {
     "user.invite_resend": "reenviou o convite",
     "user.invite_accept": "aceitou o convite e criou a senha",
     "password.forgot": "pediu o link para redefinir a senha",
+    "sessions.logout_others": "saiu dos outros aparelhos",
     "password.reset_link": "redefiniu a senha pelo link do e-mail",
     "branding.update": "alterou os textos da identidade visual",
     "branding.logo": "enviou um novo logo",

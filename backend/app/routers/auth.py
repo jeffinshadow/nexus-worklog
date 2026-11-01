@@ -13,6 +13,7 @@ from ..deps import (
     client_ip,
     current_user,
     web_user_csrf,
+    web_active,
     set_session_cookie,
 )
 from ..schemas import ChangePasswordIn, ForgotIn, LinkPasswordIn, LoginIn, SettingsIn
@@ -232,6 +233,24 @@ def logout(request: Request, response: Response, session=Depends(web_user_csrf))
         db.execute("DELETE FROM sessions WHERE token_hash = %s", (token_hash(token),))
     clear_session_cookie(response)
     return {"ok": True}
+
+
+@router.get("/sessions")
+def sessions(session=Depends(web_active)):
+    """Quantos outros aparelhos (navegadores) estão com a conta aberta."""
+    row = db.query_one("SELECT count(*)::int AS n FROM sessions WHERE user_id = %s AND id <> %s AND expires_at > now()",
+                       (session["user_id"], session["sid"]))
+    return {"others": row["n"]}
+
+
+@router.post("/logout-others")
+def logout_others(session=Depends(web_user_csrf)):
+    """Sai dos outros aparelhos sem trocar a senha (celular perdido, computador
+    emprestado). Esta sessão continua; chaves de API e calendário não mudam."""
+    rows = db.query_all("DELETE FROM sessions WHERE user_id = %s AND id <> %s RETURNING id",
+                        (session["user_id"], session["sid"]))
+    audit.record(session, "sessions.logout_others", "user", session["user_id"], after={"ended": len(rows)})
+    return {"ok": True, "ended": len(rows)}
 
 
 @router.get("/me")
