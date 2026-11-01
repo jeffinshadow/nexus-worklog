@@ -82,7 +82,7 @@ exclui a conta de vez.
   Exportação em CSV (planilha) e JSON (backup).
 - **Histórico com desfazer**, **busca** sem acento (inclusive por `#chamado`),
   **feed de calendário (ICS)**, **avisos por e-mail** (opt-in), **lembrete** no
-  app depois de X minutos sem registro, **atalhos de teclado** (`n`, `/`, `s`,
+  app depois de X minutos sem registro, **atalhos de teclado** (`n`, `q`, `/`, `s`,
   `?`…), perfil com nome e foto e **identidade visual** configurável pelo admin.
 - **App instalável** (PWA, sem loja) — no celular e no computador, com convite
   para instalar (no iPhone, o passo a passo do Safari), **atalhos** no ícone
@@ -90,7 +90,7 @@ exclui a conta de vez.
   ou link de outro app vira uma nova tarefa preenchida) e o **número no ícone**
   (atrasadas + rotinas na hora). **Notificações do sistema** com o app fechado,
   por aparelho (Web Push padrão, criptografado, sem Firebase): rotina na hora
-  com Marcar feita e Adiar (repete até marcar), cobranças e prazos de manhã e
+  com Marcar feita e Adiar (repete até marcar), cobranças e prazos de manhã (no mesmo horário do e-mail "Seu dia") e
   tarefa atribuída; opção de esconder os nomes na tela bloqueada.
 - **Fotos** — na tarefa e como evidência da rotina: câmera no celular, print
   colado (Ctrl+V) ou arrastado no computador, ou compartilhada de outro app.
@@ -98,8 +98,11 @@ exclui a conta de vez.
   desfazer, cota por pessoa e exportação em .zip.
 - **Sem sinal** — o app abre com as telas da última visita (avisando de que
   hora são) e guarda no aparelho o que for feito: registrar, concluir, anotar,
-  marcar rotina e o cronômetro, com a hora em que aconteceu. Na volta da
-  conexão, vai sozinho e na ordem, sem duplicar. Sair limpa tudo do aparelho.
+  marcar rotina, fotos e o cronômetro, com a hora em que aconteceu. Uma tarefa
+  nunca aberta com sinal abre com o que havia nas listas e aceita anotação, foto
+  e conclusão. Na volta da conexão, vai sozinho e na ordem, sem duplicar (nem
+  as fotos); o que for recusado fica com o texto inteiro para copiar. Sair limpa
+  tudo do aparelho.
 - **Tema claro e escuro** (Material 3) — segue o aparelho ou fica fixo pela
   conta, com contraste AA medido em todo texto; no celular, controles com área
   de toque de pelo menos 44 px.

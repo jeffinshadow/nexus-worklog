@@ -6795,6 +6795,19 @@
               }
             ],
             "title": "At"
+          },
+          "external_ref": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Ref"
           }
         },
         "type": "object",

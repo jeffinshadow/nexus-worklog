@@ -29,7 +29,9 @@ def test_desfazer_exclusao_devolve_external_ref_de_anotacao_e_tempo(usuario):
     assert db.query_one("SELECT sum(minutes)::int AS m FROM time_entries WHERE task_id = %s", (t,))["m"] == 15
 
 
-def test_lapide_de_anotacao_e_tempo_leva_external_ref(usuario):
+def test_lapide_de_anotacao_e_tempo_leva_external_ref(usuario, monkeypatch):
+    from app.routers import history
+    monkeypatch.setattr(history, "FEED_LAG_SECONDS", 0)
     t = usuario.post("/worklog", {"title": "Chamado 78"}).json()["id"]
     n = usuario.post(f"/worklog/{t}/notes", {"body": "x", "external_ref": "crm-78-n1"}).json()["id"]
     e = usuario.post(f"/worklog/{t}/time", {"minutes": 5, "external_ref": "crm-78-t1"}).json()["id"]
