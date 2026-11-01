@@ -60,6 +60,7 @@ def test_mes_invalido(usuario):
 
 def test_visualizador_ve_o_mes(admin, usuario):
     uid = uid_de(usuario)
+    usuario.put("/me/viewers", {"accept": True})
     mes = _mes_anterior(dia_hoje(usuario))
     r = admin.get(f"/viewer/users/{uid}/dashboard?month={mes:%Y-%m}")
     assert r.status_code == 200 and r.json()["period"]["month"] == f"{mes:%Y-%m}"

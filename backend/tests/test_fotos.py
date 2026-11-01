@@ -35,6 +35,8 @@ def test_foto_na_tarefa_e_acesso(usuario, novo_usuario, admin):
     outro = novo_usuario("outro@example.com")
     assert outro.get(f"/photos/{pid}").status_code == 404          # de outra pessoa: não existe
     assert outro.post(f"/worklog/{tid}/photos", _foto()).status_code == 404
+    assert admin.get(f"/photos/{pid}").status_code == 404          # visualizador, mas sem o aceite
+    usuario.put("/me/viewers", {"accept": True})
     assert admin.get(f"/photos/{pid}").status_code == 200          # o admin semeado é visualizador
 
 

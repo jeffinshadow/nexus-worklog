@@ -17,6 +17,7 @@ def test_periodo_invertido_e_longo_demais(usuario):
 
 def test_admin_ve_dados_de_outro_em_leitura(admin, usuario):
     usuario.post("/worklog", {"title": "Do colega"})
+    usuario.put("/me/viewers", {"accept": True})
     uid = usuario.me["id"]
     b = admin.get(f"/viewer/users/{uid}/board").json()
     assert any(t["title"] == "Do colega" for t in b["in_progress"])

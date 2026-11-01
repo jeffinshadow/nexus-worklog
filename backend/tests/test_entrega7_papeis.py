@@ -55,6 +55,7 @@ def test_visualizador_saiu_do_admin(admin, usuario, novo_usuario):
     # Visualizador sem admin: vê registros e relatórios, não mexe em contas.
     vis = novo_usuario("vis@example.com")
     _papeis(admin, vis, ["viewer"])
+    usuario.put("/me/viewers", {"accept": True})  # conta nova começa sem o aceite
     assert vis.get(f"/viewer/users/{uid}/board").status_code == 200
     assert vis.get(f"/viewer/users/{uid}/dashboard").status_code == 200
     assert vis.get("/viewer/export/apontamentos.csv").status_code == 200
