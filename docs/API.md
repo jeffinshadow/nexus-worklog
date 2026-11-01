@@ -7,7 +7,7 @@ referência, e o contrato para máquina é o [`openapi.json`](openapi.json) vers
 `tools/openapi.py` e conferido pelos testes. Campos e limites exatos de cada corpo: os
 modelos Pydantic em `backend/app/schemas.py`. Corpos e respostas em JSON; datas
 `AAAA-MM-DD` no fuso `APP_TZ`; timestamps ISO 8601 com fuso. Receitas prontas no fim:
-[Integração passo a passo](#integração-passo-a-passo).
+[Integração passo a passo](#integração-passo-a-passo) e [avisos e planilha](#receitas-avisos-e-planilha).
 
 ## Autenticação
 
@@ -255,6 +255,7 @@ O Nexus avisa outro sistema a cada mudança: o mesmo evento do feed, empurrado p
 | `GET /` | | os webhooks, com `active`, `failures`, `last_error`, `last_delivered_at`, `disabled_at` |
 | `POST /` | S | `{url, events?}` (só pelo app: uma chave vazada não cadastra destino) — só `https://` com endereço público; `events` = `["*"]` (padrão), ações exatas (`worklog.finish`) ou grupos (`worklog.*`); até 5 por pessoa. Devolve `secret` (`whsec_…`) **uma vez** |
 | `POST /{id}/enable` | S | religa um desligado por falhas; continua do evento em que parou |
+| `POST /{id}/test` | S | envia **agora** um evento de teste (`ping`) e devolve `{ok, status, ms, error}` (`error` em linguagem comum: certificado inválido, sem resposta, HTTP 401…). Não conta como falha nem desliga; vale para um desligado. Até 5 testes por minuto (429) |
 | `DELETE /{id}` | W | |
 
 - Corpo: o item do feed + `data` (o estado do item logo depois da mudança, para tarefa, anotação, checklist,
@@ -262,6 +263,9 @@ O Nexus avisa outro sistema a cada mudança: o mesmo evento do feed, empurrado p
 - Headers: `X-Nexus-Event` (a `action`), `X-Nexus-Delivery` (= `id` do evento; use para ignorar repetição) e
   `X-Nexus-Signature: t=<unix>,v1=<hex>`, onde `v1 = HMAC-SHA256(segredo, "<t>.<corpo bruto>")`. Confira a
   assinatura e recuse `t` muito antigo (ex.: mais de 5 min).
+- Teste (`X-Nexus-Event: ping`): mesmo caminho, assinatura e prazo de um evento real; o corpo é
+  `{"id": 0, "action": "ping", "entity": "webhook", "entity_id": <webhook>, "test": true, "data": {"message": …}}`
+  e `X-Nexus-Delivery` = `test-<aleatório>`. Responda 2xx; quem só trata alguns eventos pode ignorar o `ping`.
 - Entrega: uma passada por minuto, um evento por vez e em ordem; só os eventos criados depois do cadastro.
   Resposta 2xx = entregue. Outra resposta (inclusive redirecionamento, que não é seguido), erro de conexão
   ou mais de 5 s = falha: tenta de novo em 1 min, 5 min, 30 min, 2 h e 12 h; **5 falhas seguidas desligam**
@@ -504,3 +508,191 @@ function nexusOk(secret, rawBody, header, tolerance = 300) {
   return got.length === expected.length && crypto.timingSafeEqual(got, expected);
 }
 ```
+
+## Receitas: avisos e planilha
+
+O Nexus só faz duas coisas: **avisa um endereço** (webhook assinado) e **responde à API**. Quem fala com
+o chat, o e-mail ou a planilha é uma automação (n8n, Make, Power Automate, Zapier…) ou um script curto
+seu; o Nexus não tem código para nenhum desses produtos. Em toda receita com webhook, depois de criar o
+webhook em Configurações > IA e API, aperte **Testar** na linha dele: o Nexus manda na hora um evento
+`ping` assinado e mostra o que o destino respondeu (código HTTP e tempo, ou o erro em linguagem comum).
+
+**Onde rodar um script.** O Nexus só entrega em `https://` com endereço público e **confere o
+certificado** (autoassinado não passa). Rode o script numa máquina sua ouvindo em `127.0.0.1` e
+publique-o atrás de um https: um proxy que tira o certificado sozinho (Caddy:
+`avisos.seu-dominio.com { reverse_proxy 127.0.0.1:8787 }`) ou um túnel. Para deixar rodando, um
+serviço do systemd ou um container. Os scripts usam só a biblioteca padrão do Python 3.
+
+**Pela automação.** O gatilho “Webhook” (recebe `POST`) da ferramenta gera um endereço https: cadastre-o
+no Nexus. Se a ferramenta tem um passo de código ou de HMAC, confira a assinatura com a função da
+receita 5 (corpo **bruto**). Se não tem, o endereço gerado (longo e aleatório) faz o papel de senha:
+não compartilhe e, se vazar, crie outro webhook e apague o antigo.
+
+**6. Avisar um grupo do Telegram quando uma tarefa for concluída ou ficar aguardando.**
+
+Precisa de: um bot (no Telegram, fale com o @BotFather, `/newbot`, e guarde o token), o bot adicionado
+ao grupo e o id do grupo (mande `/start` no grupo e abra
+`https://api.telegram.org/bot<TOKEN>/getUpdates`: o `chat.id` do grupo começa com `-`).
+
+1. Rode o script abaixo atrás de um https (ver “Onde rodar um script”), com `TG_TOKEN`, `TG_CHAT` e,
+   depois do passo 2, `NEXUS_WHSEC`.
+2. No Nexus, crie o webhook com o endereço do script e os eventos `worklog.finish, worklog.update`
+   (concluir pelo botão gera `worklog.finish`; mudar o status para Aguardando ou Concluída gera
+   `worklog.update`). Copie o segredo para `NEXUS_WHSEC` e reinicie o script.
+3. Aperte **Testar**: chega no grupo “Teste do Nexus Worklog…” e a linha mostra “HTTP 204”. HTTP 401 =
+   segredo errado no script.
+
+```python
+# nexus_telegram.py: recebe o webhook do Nexus e avisa num grupo do Telegram.
+import hashlib, hmac, json, os, time, urllib.parse, urllib.request
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+SEGREDO = os.environ["NEXUS_WHSEC"]                         # whsec_… mostrado ao criar o webhook
+BOT, GRUPO = os.environ["TG_TOKEN"], os.environ["TG_CHAT"]  # token do @BotFather e id do grupo
+QUANDO = {"done": ("Concluída", "completed_at"), "blocked": ("Aguardando", "blocked_at")}
+avisadas = set()  # (tarefa, quando): editar uma tarefa que já está aguardando não avisa de novo
+
+def assinatura_ok(corpo, cabecalho):
+    p = dict(x.split("=", 1) for x in cabecalho.split(",") if "=" in x)
+    t = p.get("t", "")
+    if not t.isdigit() or abs(time.time() - int(t)) > 300:
+        return False
+    esperado = hmac.new(SEGREDO.encode(), f"{t}.".encode() + corpo, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(esperado, p.get("v1", ""))
+
+def telegram(texto):
+    dados = urllib.parse.urlencode({"chat_id": GRUPO, "text": texto}).encode()
+    urllib.request.urlopen(f"https://api.telegram.org/bot{BOT}/sendMessage", dados, timeout=4)
+
+class Nexus(BaseHTTPRequestHandler):
+    def do_POST(self):
+        corpo = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        if not assinatura_ok(corpo, self.headers.get("X-Nexus-Signature", "")):
+            self.send_response(401); self.end_headers(); return
+        ev = json.loads(corpo); d = ev.get("data") or {}
+        if ev["action"] == "ping":
+            telegram("Teste do Nexus Worklog: os avisos chegam neste grupo.")
+        elif ev["entity"] == "worklog" and d.get("status") in QUANDO:
+            rotulo, campo = QUANDO[d["status"]]
+            if (d["id"], d.get(campo)) not in avisadas:
+                avisadas.add((d["id"], d.get(campo)))
+                motivo = f" ({d['blocked_reason']})" if d["status"] == "blocked" and d.get("blocked_reason") else ""
+                telegram(f"{rotulo}: {d['title']}{motivo}")
+        self.send_response(204); self.end_headers()
+
+HTTPServer(("127.0.0.1", 8787), Nexus).serve_forever()
+```
+
+Pela automação: gatilho Webhook → filtro (`data.status` é `done` ou `blocked`) → ação “Telegram: enviar
+mensagem” com `data.title`.
+
+**7. Mandar e-mail a alguém quando algo acontecer.**
+
+Pela automação (o mais simples): gatilho Webhook → filtro pela ação (`action` = `worklog.finish`, ou a que
+quiser: `recurring.toggle`, `renewal.update`…) → ação “Enviar e-mail” (Gmail, Outlook ou SMTP) com
+assunto `Concluída: {{data.title}}` e corpo `data.resolution`. No Nexus, crie o webhook com o endereço do
+gatilho e só os eventos que interessam (ex.: `worklog.finish`). Testar: na automação, deixe o gatilho
+“ouvindo” e aperte **Testar** no Nexus; o `ping` aparece como exemplo de dados para montar os campos.
+
+Por script (precisa de uma conta SMTP: servidor, usuário e senha de app), mesmo jeito de rodar da
+receita 6:
+
+```python
+# nexus_email.py: manda um e-mail quando uma tarefa é concluída.
+import hashlib, hmac, json, os, smtplib, time
+from email.message import EmailMessage
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+SEGREDO = os.environ["NEXUS_WHSEC"]  # whsec_… mostrado ao criar o webhook
+PARA = os.environ["AVISAR"]          # quem recebe
+SMTP, USUARIO, SENHA = os.environ["SMTP_HOST"], os.environ["SMTP_USER"], os.environ["SMTP_PASS"]
+
+def assinatura_ok(corpo, cabecalho):
+    p = dict(x.split("=", 1) for x in cabecalho.split(",") if "=" in x)
+    t = p.get("t", "")
+    if not t.isdigit() or abs(time.time() - int(t)) > 300:
+        return False
+    esperado = hmac.new(SEGREDO.encode(), f"{t}.".encode() + corpo, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(esperado, p.get("v1", ""))
+
+def email(assunto, texto):
+    m = EmailMessage()
+    m["From"], m["To"], m["Subject"] = USUARIO, PARA, assunto
+    m.set_content(texto)
+    with smtplib.SMTP(SMTP, 587, timeout=4) as s:
+        s.starttls(); s.login(USUARIO, SENHA); s.send_message(m)
+
+class Nexus(BaseHTTPRequestHandler):
+    def do_POST(self):
+        corpo = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        if not assinatura_ok(corpo, self.headers.get("X-Nexus-Signature", "")):
+            self.send_response(401); self.end_headers(); return
+        ev = json.loads(corpo); d = ev.get("data") or {}
+        if ev["action"] == "ping":
+            email("Teste do Nexus Worklog", "Se chegou, o aviso por e-mail está funcionando.")
+        elif ev["action"] == "worklog.finish":
+            email(f"Concluída: {d['title']}", d.get("resolution") or "Concluída, sem nota de como foi resolvida.")
+        self.send_response(204); self.end_headers()
+
+HTTPServer(("127.0.0.1", 8788), Nexus).serve_forever()
+```
+
+O Nexus já manda, sozinho, os avisos de prazo por e-mail à própria pessoa (Configurações > Avisos); esta
+receita é para avisar **outra** pessoa, ou outro evento.
+
+**8. Registrar cada tarefa concluída numa planilha (Google Sheets).**
+
+Aqui a planilha **puxa** o feed (não recebe webhook): o Apps Script responde a um `POST` com
+redirecionamento (302), que o Nexus conta como falha, e não deixa ler o cabeçalho da assinatura. Puxar
+o feed com uma chave **Só leitura** não precisa de endereço público do lado da planilha e não perde
+nada se ficar parado (até 180 dias). Precisa de: o Nexus acessível pela internet (o Google chama ele).
+
+1. Na planilha, Extensões > Apps Script; cole o código abaixo.
+2. Em Configurações do projeto > Propriedades do script, crie `NEXUS` e `CHAVE`.
+3. Rode `puxarConcluidas` uma vez (autorize): ela marca o ponto de partida. Em Acionadores, adicione
+   `puxarConcluidas`, “baseado no tempo”, a cada 5 minutos.
+4. Testar: conclua uma tarefa no Nexus e rode `puxarConcluidas` de novo: aparece uma linha (data,
+   título, projeto, como resolveu, referência externa).
+
+```js
+// Na planilha: Extensões > Apps Script. Em Configurações do projeto > Propriedades do script,
+// crie NEXUS (https://SEU-HOST) e CHAVE (uma chave "Só leitura"). Fora do código, a chave
+// não aparece para quem só abre o script.
+function puxarConcluidas() {
+  const props = PropertiesService.getScriptProperties();
+  const nexus = props.getProperty("NEXUS");
+  const opts = { headers: { Authorization: "Bearer " + props.getProperty("CHAVE") }, muteHttpExceptions: true };
+  const ler = (caminho) => {
+    const r = UrlFetchApp.fetch(nexus + caminho, opts);
+    return { code: r.getResponseCode(), json: () => JSON.parse(r.getContentText()) };
+  };
+  let cursor = props.getProperty("cursor");
+  if (cursor === null) {  // 1ª vez: começa do agora (o passado não vira linha)
+    const ultimo = ler("/api/history?limit=1").json()[0];
+    props.setProperty("cursor", String(ultimo ? ultimo.id : 0));
+    return;
+  }
+  const r = ler(`/api/history?after=${cursor}&limit=200`);
+  if (r.code === 410) { props.deleteProperty("cursor"); return; }  // parada há mais de 180 dias
+  if (r.code !== 200) throw new Error("Nexus respondeu HTTP " + r.code);
+  const aba = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+  for (const ev of r.json()) {
+    if (ev.action === "worklog.finish") {
+      const t = ler("/api/worklog/" + ev.entity_id);
+      if (t.code === 200) {
+        const d = t.json();
+        aba.appendRow([ev.at, d.title, d.project_name || "", d.resolution || "", d.external_ref || ""]);
+      }
+    }
+    props.setProperty("cursor", String(ev.id));  // linha a linha: um erro no meio não repete as anteriores
+  }
+}
+```
+
+Prefere na hora, por webhook? Use a automação: gatilho Webhook → filtro `action` = `worklog.finish` →
+“Google Sheets: adicionar linha” com `at`, `data.title`, `data.resolution`, `data.external_ref`. Aí o
+**Testar** vale: o `ping` chega com `"test": true` (filtre para não virar linha).
+
+**9. Alerta de monitoramento vira tarefa.** É a receita 1 (criar com `external_ref` = id do alerta, sem
+duplicar) e a 2 (concluir pela referência quando o alerta normalizar). Na ferramenta de monitoramento,
+configure o envio de alerta “por webhook/HTTP” para fazer essas chamadas com uma chave `write`.

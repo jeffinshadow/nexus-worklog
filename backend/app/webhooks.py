@@ -4,7 +4,8 @@ Cada webhook lê o histórico da pessoa (audit_log) a partir do último evento
 entregue e manda um POST por evento, em ordem, assinado com HMAC-SHA256
 (X-Nexus-Signature: t=<unix>,v1=<hex>). Roda no agendador (notify.scheduler),
 uma passada por minuto. Falha → tenta de novo em 1, 5, 30 min, 2 h e 12 h;
-5 falhas seguidas desligam o webhook (aparece na listagem).
+5 falhas seguidas desligam o webhook (aparece na listagem). O botão "Testar"
+(ping) manda um evento de teste na hora, sem mexer na fila nem nas falhas.
 
 O segredo não vai ao banco: é derivado do SECRET_KEY com um sal aleatório
 (o vazamento só do banco não permite forjar assinaturas).
@@ -22,6 +23,7 @@ import socket
 import ssl
 import threading
 import time
+from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
 from . import audit, db
@@ -217,3 +219,57 @@ def run_once(send=None) -> list[tuple[int, int, str | None]]:
         if sent or error:
             done.append((h["id"], sent, error))
     return done
+
+
+# -------------------------------------------------------------------- teste --
+
+def _explain(e: Exception) -> str:
+    """A falha de um envio em linguagem comum (o teste mostra isto na tela)."""
+    if isinstance(e, Refused):
+        return str(e)
+    if isinstance(e, ssl.SSLCertVerificationError):
+        return "o certificado https do destino não é válido (autoassinado, vencido ou de outro nome)"
+    if isinstance(e, ssl.SSLError):
+        return "a conexão segura (https) com o destino falhou"
+    if isinstance(e, (TimeoutError, socket.timeout)):
+        return f"o destino não respondeu a tempo (mais de {TIMEOUT} s)"
+    if isinstance(e, ConnectionRefusedError):
+        return "o destino recusou a conexão (nada atendendo nesse endereço e porta)"
+    if isinstance(e, (ConnectionResetError, BrokenPipeError, http.client.RemoteDisconnected)):
+        return "o destino fechou a conexão sem responder"
+    return f"falha de conexão ({e.__class__.__name__})"
+
+
+def _status_text(status: int) -> str | None:
+    if 200 <= status < 300:
+        return None
+    if 300 <= status < 400:
+        return f"o destino respondeu HTTP {status} (redirecionamento não é seguido; use o endereço final)"
+    if status in (401, 403):
+        return f"o destino respondeu HTTP {status} (recusou: confira o segredo ou a senha no caminho do endereço)"
+    if status == 404:
+        return "o destino respondeu HTTP 404 (o caminho do endereço não existe lá)"
+    return f"o destino respondeu HTTP {status}"
+
+
+def ping(hook: dict, send=None) -> dict:
+    """Envia AGORA um evento de teste (X-Nexus-Event: ping), assinado como os
+    outros, pelo mesmo caminho (SSRF, prazo). Não mexe na fila nem nas falhas:
+    um teste mal sucedido não desliga o webhook."""
+    body = json.dumps({
+        "id": 0, "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "action": "ping", "entity": "webhook", "entity_id": hook["id"], "actor": "web", "token_name": None,
+        "test": True, "data": {"message": "Teste do Nexus Worklog: se chegou, o webhook está ligado certo."},
+    }, ensure_ascii=False, separators=(",", ":")).encode()
+    t = int(time.time())
+    headers = {"Content-Type": "application/json", "User-Agent": "Nexus-Worklog-Webhook/1",
+               "X-Nexus-Event": "ping", "X-Nexus-Delivery": "test-" + secrets.token_hex(6),
+               "X-Nexus-Signature": signature(secret_for(hook["secret_salt"]), t, body)}
+    start = time.monotonic()
+    status, error = None, None
+    try:
+        status = (send or post)(hook["url"], headers, body)
+        error = _status_text(status)
+    except Exception as e:  # noqa: BLE001 — qualquer falha vira explicação, nunca 500
+        error = _explain(e)
+    return {"ok": error is None, "status": status, "ms": round((time.monotonic() - start) * 1000), "error": error}

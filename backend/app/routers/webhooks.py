@@ -2,7 +2,7 @@
 
 Cadastrar e religar só pelo app (sessão + CSRF): uma chave de API vazada não
 abre um canal permanente para fora (revogar a chave não desligaria o webhook).
-Listar e apagar também por chave. O segredo aparece uma vez, na criação.
+Testar (ping) também só pelo app. Listar e apagar também por chave. O segredo aparece uma vez, na criação.
 """
 from urllib.parse import urlsplit
 
@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from .. import audit, db, webhooks
 from ..deps import active_user, active_user_csrf, web_active_csrf
 from ..schemas import WebhookIn
+from ..security import webhook_test_limiter
 
 router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
 
@@ -61,6 +62,20 @@ def enable_webhook(hook_id: int, user=Depends(web_active_csrf)):
         raise HTTPException(status_code=404, detail="não encontrado")
     audit.record(user, "webhook.enable", "webhook", hook_id, after={"name": urlsplit(row["url"]).hostname})
     return row
+
+
+@router.post("/{hook_id}/test")
+def test_webhook(hook_id: int, user=Depends(web_active_csrf)):
+    """Envia agora um evento de teste assinado (X-Nexus-Event: ping) e devolve
+    {ok, status, ms, error}. Só pelo app; não conta como falha nem desliga.
+    Vale também para um desligado (testar antes de religar)."""
+    hook = db.query_one("SELECT id, url, secret_salt FROM webhooks WHERE id = %s AND user_id = %s",
+                        (hook_id, user["user_id"]))
+    if not hook:
+        raise HTTPException(status_code=404, detail="não encontrado")
+    if not webhook_test_limiter.allow(f"wt:{user['user_id']}"):
+        raise HTTPException(status_code=429, detail="muitos testes seguidos; aguarde um minuto")
+    return webhooks.ping(hook)
 
 
 @router.delete("/{hook_id}")
