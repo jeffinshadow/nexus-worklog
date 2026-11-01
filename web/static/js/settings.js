@@ -499,7 +499,7 @@ async function tokens(rerender) {
   const form = h("form", {},
     field("Nome (para reconhecer no histórico)", name),
     h("div", { class: "field-row" },
-      field("Permissão", scope),
+      field("O que a chave pode fazer", scope),
       field("Validade", expires)),
     err, create);
   form.addEventListener("submit", busy(async (ev) => {
@@ -683,7 +683,7 @@ function aiHelp() {
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Use o Nexus pela sua IA" })),
       h("p", { class: "help", text: "Conte para a IA o que você fez (“troquei o disjuntor do quadro 3 e fiz a ronda da manhã”) e ela registra no Nexus. O Nexus fala MCP, a forma padrão de uma IA usar outros programas." }),
-      h("p", { class: "help", text: "1. Crie uma chave em Nova chave, acima (permissão ler e registrar): a janela já mostra a configuração pronta de cada IA. 2. Precisa de novo depois? Cole a configuração abaixo, trocando nxs_SUA_CHAVE pela chave:" }),
+      h("p", { class: "help", text: "1. Crie uma chave em Nova chave, acima (opção “Ler e registrar”): a janela já mostra a configuração pronta de cada IA. 2. Precisa de novo depois? Cole a configuração abaixo, trocando nxs_SUA_CHAVE pela chave:" }),
       h("p", { class: "dialog-note", text: "Claude Code (terminal):" }),
       codeBox(cfg.code),
       h("p", { class: "dialog-note", text: "Cursor (arquivo mcp.json) e outros programas que aceitam endereço e cabeçalho:" }),

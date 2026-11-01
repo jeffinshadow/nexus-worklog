@@ -1154,8 +1154,8 @@ TOOLS["update_recurring"] = (
 PROMPTS = {
     "resumo_semanal": {
         "title": "Resumo da semana",
-        "description": "Resumo da semana de trabalho para mandar a alguém (gestor, time, cliente).",
-        "arguments": [{"name": "para", "description": "Para quem é o resumo (padrão: gestor)", "required": False}],
+        "description": "Resumo da semana de trabalho para mandar a alguém (o time, um cliente, quem acompanha seu trabalho).",
+        "arguments": [{"name": "para", "description": "Para quem é o resumo (padrão: quem acompanha meu trabalho)", "required": False}],
         "text": ("Use a ferramenta get_summary do Nexus e escreva um resumo da minha semana para {para}, em português, "
                  "curto e objetivo: o que foi entregue (agrupe por projeto/cliente), o tempo por projeto, o que ficou "
                  "em andamento e o que está aguardando algo de fora (status blocked, via get_today). Não invente nada que não "
@@ -1179,7 +1179,7 @@ def _prompt_list() -> list:
 
 def _prompt_get(name: str, args: dict) -> dict:
     p = PROMPTS[name]
-    text = p["text"].format(para=(args.get("para") or "o meu gestor").strip()[:80])
+    text = p["text"].format(para=(args.get("para") or "quem acompanha meu trabalho").strip()[:80])
     return {"description": p["description"], "messages": [{"role": "user", "content": {"type": "text", "text": text}}]}
 
 

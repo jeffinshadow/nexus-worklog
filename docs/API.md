@@ -345,7 +345,7 @@ Escrita (chave `write`): `create_task` (com `minutes` = tempo gasto, já apontad
 Projetos e objetivos: `create_project` / `create_objective` (nome ou título repetido, sem diferenciar maiúsculas e acentos, ou `external_ref` repetido devolvem o existente; `position` 1 = primeiro), `update_project` (`archived` em vez de excluir), `update_objective` (com `position`), `reorder_objectives` (a lista completa; a ordem anterior vai pro histórico, com desfazer). O status do objetivo é automático (pelas tarefas). Pelo MCP a IA não exclui nada (tarefas, rotinas, projetos, objetivos). A mesma chave `write`, porém, vale para a API REST, que exclui (com desfazer no Histórico): uma IA com terminal (Claude Code, Gemini CLI) consegue chamá-la. Para quem só quer consultas, use uma chave `read`.
 Só com o papel de atribuidor: `list_assignable`, `list_assigned` e `assign_task` (`to` = U<id>, e-mail ou nome).
 
-Prompts (`prompts/list`, `prompts/get`): `resumo_semanal` (argumento `para`: gestor, time, cliente) e `daily`.
+Prompts (`prompts/list`, `prompts/get`): `resumo_semanal` (argumento `para`: o time, um cliente, quem acompanha o trabalho) e `daily`.
 No Claude Code viram `/mcp__nexus__resumo_semanal` e `/mcp__nexus__daily`.
 
 Argumento fora do `inputSchema` (todos têm `additionalProperties: false`) é recusado com `isError` e a

@@ -77,7 +77,7 @@ exclui a conta de vez.
   projeto e o que está em aberto. **PDF**: o relatório por período, por projeto ou do projeto inteiro, em
   estilo editorial: o período em texto corrido, os números, o ritmo, a
   **matriz de rotinas** (um ponto por dia) e o diário. Pode ir toda segunda
-  anexado ao resumo semanal por e-mail, com cópia opcional (gestor, cliente).
+  anexado ao resumo semanal por e-mail, com cópia opcional para quem acompanha o trabalho.
   Exportação em CSV (planilha) e JSON (backup).
 - **Histórico com desfazer**, **busca** sem acento (inclusive por `#chamado`),
   **feed de calendário (ICS)**, **avisos por e-mail** (opt-in), **lembrete** no
