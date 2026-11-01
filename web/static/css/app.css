@@ -787,7 +787,7 @@ button.nav-link { border: 0; background: transparent; width: 100%; font-family: 
 .task-ctx .chip { padding: 0; border: 0; border-radius: 0; background: none; font-family: var(--font-sans); font-size: inherit; font-weight: 400; letter-spacing: 0; color: var(--on-surface-variant); }
 .task-ctx .chip.project { color: var(--on-surface-variant); }
 .task-ctx .chip .ico { width: 14px; height: 14px; vertical-align: -2px; margin-right: 3px; }
-.task-ctx a.chip.ticket { color: var(--primary-hi); text-decoration: underline; text-underline-offset: 2px; }
+.task-ctx a.chip.ticket { color: var(--primary-hi); background: none; text-decoration: underline; text-underline-offset: 2px; }
 .task-ctx a.chip.ticket:hover { background: none; }
 .chip.blocked-reason { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .check-row .label small.evidence { color: var(--success); display: inline-block; text-decoration: none; } /* inline-block: a rotina feita fica riscada, a evidência não */
@@ -937,7 +937,7 @@ dialog.sheet .menu-list > :last-child { border-bottom: 0; }
   .task-dialog.side.expanded .task-main-actions { grid-template-columns: repeat(2, minmax(0, 220px)); }
   .task-dialog.side.expanded .time-form { grid-template-columns: 104px 150px 1fr auto; }
   .task-dialog.side.expanded .time-form > :nth-child(n+3) { grid-column: auto; }
-  .card.selected, .list-row.selected { border-color: var(--primary); background-color: var(--secondary-container); }
+  .card.selected, .list-row.selected { border-color: var(--primary); background-color: var(--secondary-container); --dim: var(--on-surface-variant); }  /* o apagado sobe um tom no contêiner */
   .list-row.selected { border-radius: var(--radius-m); }
 
   /* Com mouse: na linha fica só o concluir; cronômetro e editar aparecem no hover ou no foco. */
