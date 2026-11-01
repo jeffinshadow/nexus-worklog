@@ -302,11 +302,11 @@ button.column-toggle { display: none; }
 /* Caixa de seleção comum (fora do seletor de dias): linha simples, sem pílula. */
 .check-line { display: flex; align-items: center; gap: 10px; margin: 0; padding: 6px 0; color: var(--on-surface); font-size: var(--type-body); cursor: pointer; }
 .check-line input { flex: none; }
-.token-row { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--outline-variant); }
+.token-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--outline-variant); }
 .token-row:last-child { border-bottom: 0; }
-.token-name { font-weight: var(--weight-title); font-size: var(--type-body); }
+.token-name { font-weight: var(--weight-title); font-size: var(--type-body); overflow-wrap: anywhere; }
 .token-meta { grid-column: 1; font-family: var(--font-label); font-size: var(--type-label); color: var(--dim); }
-.token-row .actions { grid-row: 1 / span 2; grid-column: 2; }
+.token-row .actions { grid-row: 1 / span 2; grid-column: 2; display: flex; gap: 8px; align-items: center; }
 .token-row .dismiss { grid-row: 1; grid-column: 2; }
 /* Falha da fila (fila.js): o texto inteiro, com Copiar, antes de dispensar. */
 .token-row .failed-box { grid-column: 1 / -1; display: flex; gap: 8px; align-items: flex-start; }
