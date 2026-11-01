@@ -25,7 +25,7 @@ from ..config import config
 from ..labels import PRIO_PT, STATUS_PT
 from ..labels import dur as _dur
 from ..schemas import (AssignIn, ChecklistIn, ChecklistUpdate, FinishIn, NoteIn, ObjectiveIn, ObjectiveUpdate, OrderIn,
-                       ProjectIn, ProjectUpdate, RecurringIn, TimeIn, TimerIn, TimerStopIn, ToggleIn, WorklogIn, WorklogUpdate)
+                       PauseIn, ProjectIn, ProjectUpdate, RecurringIn, TimeIn, TimerIn, TimerStopIn, ToggleIn, WorklogIn, WorklogUpdate)
 from . import assign as assign_routes
 from . import history as history_routes
 from . import objectives as objective_routes
@@ -524,7 +524,9 @@ def t_list_recurring(ctx, args):
 
 def _recurring_rows(rows: list) -> list[str]:
     return [f"  [{'x' if r['done_today'] else ' '}] R{r['id']} {r['label']}"
-            + (f" às {r['remind_at']:%H:%M}" if r.get("remind_at") else "") + ("" if r["due"] else " (fora da agenda)")
+            + (f" às {r['remind_at']:%H:%M}" if r.get("remind_at") else "")
+            + (f" (pausada até {r['paused_until']:%d/%m})" if r.get("paused_until") else "" if r["due"] else " (fora da agenda)")
+            + (f" ({_agenda_text(r)}; próxima em {r['next_due']:%d/%m})" if r.get("next_due") else "")
             + (" (exige evidência)" if r.get("require_note") else "")
             for r in rows]
 
@@ -549,6 +551,8 @@ def _agenda_text(r: dict) -> str:
         return "todo mês, " + ("no último dia" if r["month_day"] == 31 else f"dia {r['month_day']}")
     if r["freq"] == "interval":
         return f"a cada {r['interval_days']} dias"
+    if r["freq"] == "after":
+        return f"{r['interval_days']} dias depois da última vez"
     return "nos dias úteis"
 
 
@@ -563,7 +567,18 @@ def t_create_recurring(ctx, args):
                          (uid, data.label.strip()))
     if found:
         return "Já existia (mesmo nome), nada duplicado: " + _routine_line(found)
-    return "Criada: " + _routine_line(_call(recurring_routes.create, data, user=ctx))
+    row = _call(recurring_routes.create, data, user=ctx)
+    return "Criada: " + _routine_line(row) + (_pause(ctx, row["id"], args["paused_until"]) if args.get("paused_until") else "")
+
+
+def _pause(ctx, rid: int, until) -> str:
+    """paused_until: data = pausa de hoje até ela; null = retoma agora."""
+    if until is None:
+        _call(recurring_routes.resume, rid, user=ctx)
+        return f" Rotina R{rid} retomada: volta a valer hoje."
+    data = _call(PauseIn, until=until)
+    _call(recurring_routes.pause, rid, data, user=ctx)
+    return f" Rotina R{rid} pausada até {data.until:%d/%m/%Y} (inclusive): não conta como falta nem lembra; marcar conta como extra."
 
 
 def _routine_line(r: dict) -> str:
@@ -719,6 +734,20 @@ def t_set_recurring(ctx, args):
     rid = args.get("recurring_id")
     if rid is None:
         raise ToolError("informe recurring_id (veja list_recurring)")
+    if "paused_until" in args:  # só pausa/retoma, a não ser que venha também done/day/note
+        try:
+            msg = _pause(ctx, int(rid), args["paused_until"]).strip()
+        except ToolError as e:
+            if str(e) == "não encontrado":
+                raise ToolError(f"rotina R{rid} não encontrada (veja list_recurring)") from None
+            raise
+        if not ({"done", "day", "note"} & set(args)):
+            return msg
+        return msg + " " + _set_done(ctx, rid, data)
+    return _set_done(ctx, rid, data)
+
+
+def _set_done(ctx, rid, data) -> str:
     try:
         res = _call(recurring_routes.toggle, int(rid), data, user=ctx)
     except ToolError as e:
@@ -976,28 +1005,37 @@ TOOLS = {
                           "resolution": {"type": "string", "maxLength": 1000,
                                          "description": "Como foi resolvido (vira base de conhecimento: entra na busca)"}}}),
     "list_recurring": (t_list_recurring, False, "Rotinas de um dia (padrão: hoje; até 7 dias atrás) e se foram feitas. "
-                       "“(exige evidência)”: ao marcar, mande note.",
+                       "“(exige evidência)”: ao marcar, mande note. “(pausada até DD/MM)”: não é devida nesses dias. "
+                       "“próxima em DD/MM”: rotina que conta da última vez (freq after).",
                        {"type": "object", "properties": {"day": DATE}}),
-    "set_recurring": (t_set_recurring, True, "Marca (done=true) ou desmarca uma rotina num dia (padrão hoje; até 7 dias atrás).",
+    "set_recurring": (t_set_recurring, True, "Marca (done=true) ou desmarca uma rotina num dia (padrão hoje; até 7 dias atrás). "
+                      "Com paused_until: pausa de hoje até a data (férias, folga; não conta como falta nem lembra) "
+                      "ou, com null, retoma agora — sem done/day/note, só pausa ou retoma.",
                       {"type": "object", "required": ["recurring_id"], "properties": {
                           "recurring_id": {"type": "integer", "description": "id da rotina (R<n> em get_today/list_recurring), não de tarefa"},
                           "done": {"type": "boolean", "default": True},
                           "day": DATE,
-                          "note": {"type": "string", "maxLength": 200, "description": "Evidência curta da verificação (ex.: backup OK, 2,1 TB)"}}}),
+                          "note": {"type": "string", "maxLength": 200, "description": "Evidência curta da verificação (ex.: backup OK, 2,1 TB)"},
+                          "paused_until": {"type": ["string", "null"], "format": "date",
+                                           "description": "Pausa de hoje até esta data AAAA-MM-DD (inclusive; volta sozinha no dia seguinte). null = retomar agora"}}}),
     "create_recurring": (t_create_recurring, True,
                          "Cria uma rotina (verificação que se repete: backups, rondas, conferências). Nome repetido "
                          "devolve a que já existe. Confirme a agenda com a pessoa; a IA não remove rotinas.",
                          {"type": "object", "required": ["label"], "properties": {
                              "label": {"type": "string", "minLength": 1, "maxLength": 200},
-                             "freq": {"type": "string", "enum": ["daily", "weekly", "monthly", "interval"], "default": "daily",
+                             "freq": {"type": "string", "enum": ["daily", "weekly", "monthly", "interval", "after"], "default": "daily",
                                       "description": "daily = nos dias úteis da pessoa; weekly exige weekdays; monthly exige "
-                                                     "month_day; interval exige interval_days"},
+                                                     "month_day; interval exige interval_days (conta da criação); after exige "
+                                                     "interval_days (conta da última vez que foi marcada: trocar filtro 30 dias depois da última troca)"},
                              "weekdays": {"type": "array", "items": {"type": "string", "enum": WEEKDAYS}, "minItems": 1,
                                           "maxItems": 7, "description": "Com weekly: os dias (dom, seg, ter, qua, qui, sex, sab)"},
                              "month_day": {"type": "integer", "minimum": 1, "maximum": 31,
                                            "description": "Com monthly: o dia do mês (31 = último dia)"},
                              "interval_days": {"type": "integer", "minimum": 2, "maximum": 365,
-                                               "description": "Com interval: a cada quantos dias, contando de hoje"},
+                                               "description": "Com interval: a cada quantos dias, contando de hoje. "
+                                                              "Com after: quantos dias depois da última marcação"},
+                             "paused_until": {"type": "string", "format": "date",
+                                              "description": "Já cria pausada até esta data AAAA-MM-DD (opcional)"},
                              "remind_at": {"type": ["string", "null"], "description": "Horário HH:MM (o app lembra perto dele)"},
                              "require_note": {"type": "boolean", "default": False,
                                               "description": "Marcar exige evidência (note em set_recurring)"}}}),
