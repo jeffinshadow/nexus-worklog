@@ -1145,7 +1145,7 @@ TOOLS["update_recurring"] = (
     {"type": "object", "required": ["recurring_id"], "properties": {
         "recurring_id": {"type": "integer", "description": "id da rotina (R<n> em get_today/list_recurring), não de tarefa"},
         **{k: {kk: vv for kk, vv in v.items() if kk != "default"}
-           for k, v in TOOLS["create_recurring"][3]["properties"].items()},
+           for k, v in TOOLS["create_recurring"][3]["properties"].items() if k != "paused_until"},  # pausa: set_recurring
         "remind_at": {"type": ["string", "null"], "description": "Horário HH:MM (o app lembra perto dele); null tira o horário"}}})
 
 PROMPTS = {
