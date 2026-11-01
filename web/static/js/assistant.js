@@ -378,5 +378,5 @@ export function previewText(p, whole = false) {
   if (p.minutes) partes.push(`${duration(p.minutes)} apontadas`);
   if (p.recurring_total) partes.push(`${Math.round((100 * p.recurring_done) / p.recurring_total)}% das rotinas cumpridas`);
   const lista = partes.length > 1 ? `${partes.slice(0, -1).join(", ")} e ${partes[partes.length - 1]}` : partes[0];
-  return `${whole ? "Este projeto" : "Este período"} tem ${lista}, em ${plural(p.active_days, "dia", "dias")} com atividade.`;
+  return `${whole ? "Neste projeto" : "Neste período"}: ${lista}, em ${plural(p.active_days, "dia", "dias")} com atividade.`;
 }

@@ -26,7 +26,7 @@ function figures(s, prev) {
   const fig = (value, label, d) => h("div", { class: "fig" }, h("p", { class: "fig-n" }, value, d || null), h("p", { class: "fig-l", text: label }));
   return h("div", { class: "figs" },
     fig(s.recurring_total ? `${p}%` : "—", s.recurring_total ? `rotinas · ${s.recurring_done}/${s.recurring_total}` : "sem rotinas previstas",
-      prev && prev.recurring_total && s.recurring_total ? delta(p, pct(prev.recurring_done, prev.recurring_total), (x) => x + "pp") : null),
+      prev && prev.recurring_total && s.recurring_total ? delta(p, pct(prev.recurring_done, prev.recurring_total), (x) => x + (x === 1 ? " ponto" : " pontos")) : null),
     fig(String(s.pontual_done), s.pontual_done === 1 ? "tarefa concluída" : "tarefas concluídas", prev ? delta(s.pontual_done, prev.pontual_done) : null),
     fig(s.minutes ? duration(s.minutes) : "—", "tempo apontado", prev && (s.minutes || prev.minutes) ? delta(s.minutes, prev.minutes, duration) : null));
 }

@@ -273,7 +273,7 @@ O Nexus avisa outro sistema a cada mudança: o mesmo evento do feed, empurrado p
 | `POST /api/notifications/test` | S W | manda um teste para o e-mail da conta (503 sem SMTP) |
 | `GET /api/push?endpoint=` | S | chave pública VAPID, preferências e aparelhos (`current` = o do `endpoint`) |
 | `POST /api/push/devices` · `DELETE /api/push/devices/{id}` | S W | `{endpoint, keys: {p256dh, auth}, label?}` — só serviços de push dos navegadores (Google, Mozilla, Apple, Microsoft); o mesmo navegador com outra conta passa para quem entrou |
-| `PUT /api/push/prefs` | S W | `{routine, follow_up, deadline, assigned, morning_hour, hide_content}` |
+| `PUT /api/push/prefs` | S W | `{routine, follow_up, deadline, assigned, morning_hour, hide_content}` (o app grava o mesmo `morning_hour` do e-mail "Seu dia": uma hora da manhã só, um Salvar na aba Avisos) |
 | `POST /api/push/test?device_id=` | S W | notificação de teste (502 se o serviço do aparelho recusar) |
 | `GET /api/tokens` · `POST /api/tokens` · `DELETE /api/tokens/{id}` | S (W) | `{name, scope, expires_in_days}`; até 20 ativas |
 

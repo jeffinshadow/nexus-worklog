@@ -81,9 +81,7 @@ export async function mount(root, ctx) {
   async function fill(body) {
     if (active === "modelos") body.append(await templatesPanel(() => render()));
     else if (active === "avisos") {
-      const grid = await notices();
-      grid.prepend(await pushPanel(() => render())); // notificações dos aparelhos primeiro; e-mail depois
-      body.append(grid);
+      body.append(await notices(await pushPanel(() => render()))); // notificações dos aparelhos primeiro; e-mail depois
     }
     else if (active === "calendario") body.append(await calendarFeed(() => render()));
     else if (active === "ia") body.append(await tokens(() => render()), ...aiHelp(), await webhooksPanel(() => render()));
@@ -231,7 +229,7 @@ async function templatesPanel(rerender) {
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Modelos de tarefa" }),
         h("button", { type: "button", class: "btn btn-primary btn-sm", onClick: () => editTemplate(null, rerender) }, icon("add"), "Novo modelo")),
-      h("p", { class: "help", text: "Procedimentos que se repetem (onboarding de colaborador, troca de equipamento, servidor novo) viram um modelo com checklist pronto. Use em “+ Tarefa”, escolhendo o modelo, ou salve uma tarefa existente como modelo pelo detalhe dela." })),
+      h("p", { class: "help", text: "Procedimentos que se repetem (entrada de colaborador novo, troca de equipamento, servidor novo) viram um modelo com checklist pronto. Use em “+ Tarefa”, escolhendo o modelo, ou salve uma tarefa existente como modelo pelo detalhe dela." })),
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Meus modelos" }), h("span", { class: "count", text: String(list.length) })),
       ...rows));
@@ -349,7 +347,8 @@ const KINDS = [
 ];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
-async function notices() {
+// push: o painel das notificações (o mesmo Salvar e o mesmo horário da manhã valem para ele).
+async function notices(push) {
   const p = await api.get("/notifications");
   const rows = KINDS.map(([key, title, help]) => {
     const on = h("input", { type: "checkbox", "aria-label": title });
@@ -357,11 +356,13 @@ async function notices() {
     const hour = h("select", { class: "select-sm", "aria-label": `Horário de ${title}` },
       ...HOURS.map((x) => h("option", { value: String(x), text: `${String(x).padStart(2, "0")}:00` })));
     hour.value = String(p[`${key}_hour`]);
-    const sync = () => { hour.disabled = !on.checked; };
+    // O horário da manhã vale também para as notificações (cobranças e prazos): fica sempre editável.
+    const sync = () => { hour.disabled = !on.checked && key !== "morning"; };
     on.addEventListener("change", sync);
     sync();
     return { key, on, hour, el: h("div", { class: "notice-row" },
-      h("label", { class: "notice-main" }, on, h("span", {}, h("strong", { text: title }), h("small", { text: help }))), hour) };
+      h("label", { class: "notice-main" }, on, h("span", {}, h("strong", { text: title }), h("small", { text: help }))),
+      key === "morning" ? h("span", { class: "hour-shared" }, hour, h("small", { text: "horário da manhã: e-mail e notificações" })) : hour) };
   });
   // Semanal: o PDF anexado e uma cópia (quem acompanha o trabalho) — só valem com o resumo da semana ligado.
   const weekly = rows.find((r) => r.key === "weekly");
@@ -382,7 +383,11 @@ async function notices() {
   save.addEventListener("click", async () => {
     const body = { show_titles: titles.checked, weekly_pdf: pdf.checked, weekly_cc: cc.value.trim() || null };
     for (const r of rows) { body[r.key] = r.on.checked; body[`${r.key}_hour`] = Number(r.hour.value); }
-    try { await api.put("/notifications", body); toast("Avisos salvos."); setDirty(false); }
+    try {
+      await api.put("/notifications", body);
+      await api.put("/push/prefs", { ...push.collect(), morning_hour: body.morning_hour });
+      toast("Avisos salvos."); setDirty(false);
+    }
     catch (e) { if (e.status === 422) toast("O e-mail da cópia não parece válido.", { error: true }); else errorToast(e, "Não foi possível salvar."); }
   });
   const test = h("button", { type: "button", class: "btn btn-ghost" }, icon("mail"), "Mandar um teste");
@@ -423,7 +428,7 @@ async function notices() {
       h("div", { class: "row-actions" }, save, test, testWeek));
   for (const ev of ["input", "change"]) mailPanel.addEventListener(ev, (e) => { if (!e.target.closest(".row-actions")) setDirty(true); });
   return h("div", { class: "settings-grid" },
-    mailPanel,
+    push, mailPanel,
     recent.length ? h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Últimos envios" })),
       ...recent.map((r) => h("div", { class: "token-row" },
