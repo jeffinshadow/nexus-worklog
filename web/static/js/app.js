@@ -41,7 +41,7 @@ const VIEWS = {
   config: { title: "Configurações", mount: (el, ctx) => settings.mount(el, ctx) },
   atribuir: { title: "Atribuir tarefas", need: "assigner", eyebrow: "para a equipe", mount: (el, ctx) => atribuir.mount(el, ctx) },
   equipe: { title: "Equipe", need: "viewer", eyebrow: "cada pessoa", mount: (el) => equipe.mount(el) },
-  admin: { title: "Admin", need: "admin", eyebrow: "contas e permissões", mount: (el, ctx) => admin.mount(el, ctx) },
+  admin: { title: "Admin", need: "admin", eyebrow: "contas e papéis", mount: (el, ctx) => admin.mount(el, ctx) },
   mais: { title: "Mais", mount: (el) => mountMore(el) },
   busca: { title: "Busca", need: "user", eyebrow: "em tudo", mount: (el, ctx) => search.mount(el, ctx) },
 };
