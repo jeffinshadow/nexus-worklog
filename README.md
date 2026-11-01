@@ -115,6 +115,14 @@ exclui a conta de vez.
   **matriz de rotinas** (um ponto por dia) e o diário. Pode ir toda segunda
   anexado ao resumo semanal por e-mail, com cópia opcional para quem acompanha o trabalho.
   Exportação em CSV (planilha) e JSON (backup).
+- **Equipe** (papel Vê a equipe): um painel para coordenar, não para comparar.
+  Os números da equipe somados (rotinas em dia, tarefas concluídas, horas,
+  aguardando) com os últimos 6 meses da equipe, "Precisa de atenção" (o que
+  você atribuiu e parou, o que aguarda há mais tempo, os prazos próximos), o
+  tempo por projeto e as pessoas em ordem alfabética; tocar numa pessoa abre o
+  mês e o quadro dela, só leitura. Sem ranking, média ou tendência de outra
+  pessoa; só entra quem aceitou ser visto (`GET /api/viewer/team`). No topo:
+  Atribuir tarefa, Horas da equipe (CSV do período) e PDF de uma pessoa ou projeto.
 - **Histórico com desfazer**, **busca** sem acento (inclusive por `#chamado`),
   **feed de calendário (ICS)**, **avisos por e-mail** (opt-in), **lembrete** no
   app depois de X minutos sem registro, **atalhos de teclado** (`n`, `q`, `/`, `s`,

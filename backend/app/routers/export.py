@@ -9,6 +9,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from .. import db
+from ..visibility import visible_sql
 from ..deps import active_user
 from ..labels import PRIO_PT, STATUS_PT
 from ..services import TASK_COUNTS, app_today, app_tz, is_due, rotinas, work_mask
@@ -55,14 +56,14 @@ def time_csv(uid: int | None, filename: str, viewable_only: bool = False,
              start: date | None = None, end: date | None = None) -> Response:
     """Apontamentos em CSV. uid=None = de todos (visualizador: horas da equipe
     por cliente; o projeto vai por nome, pois cada pessoa tem os seus).
-    viewable_only = só de quem aceitou o visualizador. start/end: só esse período."""
+    viewable_only = só de quem o visualizador pode ver (visibility.visible_sql). start/end: só esse período."""
     rows = db.query_all(
-        """SELECT e.day, e.minutes, w.id AS task_id, w.title, p.name AS project, e.note, e.actor, e.token_name,
+        f"""SELECT e.day, e.minutes, w.id AS task_id, w.title, p.name AS project, e.note, e.actor, e.token_name,
                   w.ticket, w.after_hours, u.email
              FROM time_entries e JOIN worklog_tasks w ON w.id = e.task_id
              JOIN users u ON u.id = e.user_id
              LEFT JOIN projects p ON p.id = w.project_id
-            WHERE (%(uid)s::bigint IS NULL OR e.user_id = %(uid)s) AND (NOT %(vo)s OR u.viewers_allowed)
+            WHERE (%(uid)s::bigint IS NULL OR e.user_id = %(uid)s) AND (NOT %(vo)s OR {visible_sql('u')})
               AND (%(s)s::date IS NULL OR e.day >= %(s)s) AND (%(e)s::date IS NULL OR e.day <= %(e)s)
             ORDER BY e.day, u.email, e.id""", {"uid": uid, "vo": viewable_only, "s": start, "e": end})
     header = ["data", "minutos", "horas", "tarefa_id", "tarefa", "projeto", "observacao", "origem", "chamado", "plantao"]

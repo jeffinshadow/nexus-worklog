@@ -4550,6 +4550,57 @@
         }
       }
     },
+    "/api/viewer/team": {
+      "get": {
+        "tags": [
+          "viewer"
+        ],
+        "summary": "Team Panel",
+        "description": "Painel da Equipe de um mês (padrão: o corrente, até hoje). Tudo SOMADO de\nquem pode ser visto: rotinas em dia, concluídas e horas do mês (a mesma conta\ndo PDF e de Meu mês de cada pessoa) com os últimos 6 meses da equipe, as\ntarefas aguardando agora, \"Precisa de atenção\", o tempo por projeto (por\nnome, como no CSV) e os cartões das pessoas, em ordem alfabética.",
+        "operationId": "team_panel_api_viewer_team_get",
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "AAAA-MM; sem ele, os últimos 30 dias",
+              "title": "Month"
+            },
+            "description": "AAAA-MM; sem ele, os últimos 30 dias"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/assign/people": {
       "get": {
         "tags": [

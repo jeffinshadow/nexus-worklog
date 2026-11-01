@@ -15,6 +15,7 @@ from ..security import login_limiter, verify_password
 from ..deps import web_active, web_active_csrf
 from ..schemas import AssistantIn, ConsentIn, DefaultProjectIn, DeleteMeIn, ProfileIn, ThemeIn, TicketUrlIn, TourIn
 from ..services import running_timer
+from ..visibility import visible_sql
 
 router = APIRouter(prefix="/api/me", tags=["me"])
 
@@ -77,7 +78,7 @@ def _avatar_visible(user: dict, user_id: int) -> bool:
         return True
     conds = []
     if "viewer" in roles:
-        conds.append("u.viewers_allowed")
+        conds.append(visible_sql("u"))
     if "assigner" in roles:
         conds.append("(u.accepts_assignments_at IS NOT NULL AND u.blocked_at IS NULL)")
     if not conds:

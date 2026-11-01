@@ -21,6 +21,7 @@ from psycopg.errors import UniqueViolation
 from pydantic import BaseModel, Field
 
 from .. import audit, db
+from ..visibility import visible_sql
 from ..deps import web_active, web_active_csrf
 from .board import check_board_day
 from .me import _sniff
@@ -133,8 +134,7 @@ def list_routine(recurring_id: int, day: date, user=Depends(web_active)):
 def get_photo(photo_id: int, thumb: bool = False, user=Depends(web_active)):
     # Foto de outra pessoa: só o visualizador, e só se ela aceitou (como em routers/viewer.py).
     row = db.query_one(f"""SELECT f.user_id, f.mime, f.{'thumb' if thumb else 'image'} AS data,
-                                  (u.viewers_allowed AND EXISTS (SELECT 1 FROM user_roles r
-                                       WHERE r.user_id = u.id AND r.role = 'user')) AS viewable
+                                  {visible_sql('u')} AS viewable
                              FROM photos f JOIN users u ON u.id = f.user_id
                             WHERE f.id = %s AND f.deleted_at IS NULL""", (photo_id,))
     if not row or (row["user_id"] != user["user_id"]

@@ -661,3 +661,6 @@ function svgEl(tag, attrs) {
   for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
   return el;
 }
+
+// Peças que o painel da Equipe (equipe.js) usa: a mesma linguagem, sem a média da pessoa.
+export { thisMonth, nameOf, prevOf, nextOf, pct, plural, rangeOf, tile, ring, lineChart, barChart, projectsTile, monthsBack };
