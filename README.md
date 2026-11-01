@@ -33,8 +33,12 @@ para leitura, o quadro, a retrospectiva e os relatórios de cada pessoa).
   O projeto tem descrição opcional; nome de projeto e título de objetivo não
   se repetem (sem diferenciar maiúsculas e acentos).
 - **Rotinas** — verificações que se repetem (backups, alertas, fila…), com agenda:
-  dias úteis, dias da semana, mensal (inclui "último dia") ou a cada N dias.
-  Marcação até 7 dias para trás; feito fora da agenda conta como *extra*.
+  dias úteis, dias da semana, mensal (inclui "último dia"), a cada N dias ou
+  **N dias depois da última vez** (trocar o filtro 30 dias depois da última
+  troca: a data se move quando se marca). Marcação até 7 dias para trás; feito
+  fora da agenda conta como *extra*. **Pausar até uma data** (férias, folga,
+  prédio fechado): nesses dias a rotina não conta como falta nem lembra, e
+  volta sozinha; a pausa vale de hoje em diante, sem mexer no passado.
 - **Tarefas** — status, prioridade, prazo, projeto/cliente (uma tarefa pode
   atender **mais de um projeto**: aparece em cada um, com o tempo inteiro em
   cada um; e há um **projeto padrão** por pessoa para o que é criado sem projeto), checklist,

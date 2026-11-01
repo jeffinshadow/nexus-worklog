@@ -135,12 +135,32 @@ apaga as passkeys da conta; "Esqueci a senha" mantém e avisa por e-mail.
 | `PATCH /{id}` | W | `{label?, require_note?, freq?…}` — mudar a agenda exige `freq` + o parâmetro dela; se a rotina já tem passado, ela é encerrada hoje e uma nova (devolvida em `id`) começa hoje — uma ação só no histórico |
 | `DELETE /{id}` | W | remove daqui para a frente (o passado fica) |
 | `GET /reminders` | R | rotinas com horário devidas hoje: `{today, items: [{id, label, remind_at, require_note, done}]}` (o lembrete da tela) |
+| `POST /{id}/pause` | W | `{until}` (`AAAA-MM-DD`, de hoje até 1 ano) — pausa de hoje até `until`, inclusive (férias, folga, prédio fechado); já pausada = muda o fim. Volta sozinha no dia seguinte |
+| `DELETE /{id}/pause` | W | retomar agora: a pausa termina ontem e hoje a rotina já é devida (400 se não está pausada) |
 | `POST /{id}/snooze` | W | `{minutes}` (5–120, padrão 10) — adia o lembrete de hoje; as notificações dos aparelhos esperam |
 | `POST /{id}/toggle` | W | `{done, day?, note?}` — `day` até 7 dias atrás e só quando a rotina existia; `note` (até 200) = evidência do que foi conferido (vai pro PDF e pro JSON; remarcar sem `note` mantém a anterior; `note` vazio apaga). Rotina com `require_note` só é marcada com evidência (400) |
 
 Agenda: `daily` (dias úteis do dono) · `weekly` + `weekdays` (máscara) ·
 `monthly` + `month_day` (1–31; 31 = último dia) · `interval` + `interval_days`
-(2–365, contando da criação). Feito fora da agenda = **extra** (não entra no %).
+(2–365, contando da criação) · `after` + `interval_days` (2–365 dias **depois da
+última marcação**; sem marcação, da criação). Feito fora da agenda = **extra** (não entra no %).
+
+`after` (ex.: trocar o filtro 30 dias depois da última troca): o ciclo vence em
+última marcação + N e fica para fazer (no quadro, no lembrete) até ser marcado.
+Cada ciclo conta **uma vez** nos números (retrospectiva, PDF, resumos): como
+feito no dia em que foi marcado — mesmo atrasado — ou, se ninguém marcar, como
+uma falta no último dia do ciclo (vencimento + N − 1), quando abre o seguinte.
+Marcar antes de vencer é extra e adianta a próxima data. No quadro, `next_due`
+= a próxima data (ou o vencimento já passado do ciclo aberto).
+
+Pausa: nos dias pausados a rotina não é devida em nada (quadro, lembrete,
+notificação, avisos por e-mail, retrospectiva, PDF, resumos, calendário ICS);
+marcar conta como extra. Ela começa sempre no dia em que é pedida, então os
+números já fechados não mudam; cada pausa fica guardada como um período. No
+quadro, `paused_until` = último dia da pausa que cobre o dia mostrado (ou
+`null`). Pausar e retomar vão para o histórico (`recurring.pause`,
+`recurring.resume`) e se desfazem em até 7 dias. Trocar a agenda de uma rotina
+pausada leva a pausa para a nova.
 
 ## Tarefas — `/api/worklog`
 
@@ -315,7 +335,7 @@ Leitura: `get_today`, `get_summary`, `get_period` (`from`, `to`, `project`: conc
 `list_projects` (com objetivos e arquivados marcados), `list_objectives`, `list_recurring`, `list_templates`, `get_history`.
 Escrita (chave `write`): `create_task` (com `minutes` = tempo gasto, já apontado; `created_at`, `completed_at`, `external_ref`, `blocked_reason`, `follow_up_on`, `resolution`), `update_task` (com `completed_at`, `blocked_reason`, `follow_up_on`, `resolution`), `complete_task` (com `completed_at` e `resolution`),
 `add_note`, `add_checklist_item`, `set_checklist_item`, `log_time`, `start_timer`, `stop_timer` (`at` = hora em que parou, HH:MM ou data e hora),
-`create_from_template`, `set_recurring` (`recurring_id`, `note` = evidência), `create_recurring` (`label`, `freq`, `weekdays` em nomes seg/ter..., `month_day`, `interval_days`, `remind_at`, `require_note`; nome repetido devolve a existente), `undo` (só ações da própria chave).
+`create_from_template`, `set_recurring` (`recurring_id`, `note` = evidência; `paused_until` = pausa até a data, `null` = retoma — sem `done`/`day`/`note`, só pausa ou retoma), `create_recurring` (`label`, `freq` — inclui `after`, N dias depois da última vez —, `weekdays` em nomes seg/ter..., `month_day`, `interval_days`, `remind_at`, `require_note`, `paused_until`; nome repetido devolve a existente), `undo` (só ações da própria chave).
 Projetos e objetivos: `create_project` / `create_objective` (nome ou título repetido, sem diferenciar maiúsculas e acentos, ou `external_ref` repetido devolvem o existente; `position` 1 = primeiro), `update_project` (`archived` em vez de excluir), `update_objective` (com `position`), `reorder_objectives` (a lista completa; a ordem anterior vai pro histórico, com desfazer). O status do objetivo é automático (pelas tarefas). A IA não exclui o que o usuário fez, nem projetos e objetivos.
 Só com o papel de atribuidor: `list_assignable`, `list_assigned` e `assign_task` (`to` = U<id>, e-mail ou nome).
 
