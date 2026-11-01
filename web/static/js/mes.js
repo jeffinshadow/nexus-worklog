@@ -301,28 +301,26 @@ function heatmap(hm) {
     if (d.out) return;
     const x = padL + Math.floor(i / 7) * step, y = padT + (i % 7) * step;
     const r = svgEl("rect", { x, y, width: cell, height: cell, rx: 2 });
-    let strong = false; // fundo forte: o número do dia vai claro
+    let lvl = 0; // degrau sólido do azul (--heat-1..4); nos dois mais fortes o número do dia tem cor própria
     if (d.slots === 0) { r.style.fill = "none"; r.style.stroke = "var(--outline-variant)"; }
     else if (d.done === 0) r.style.fill = "var(--surface-container-high)";
     else {
       const f = Math.min(1, d.done / d.slots);
-      r.style.fill = "var(--primary)";
-      if (f < 1) r.style.opacity = f >= 0.67 ? 0.75 : f >= 0.34 ? 0.5 : 0.28;
-      strong = f >= 0.67;
+      lvl = f >= 1 ? 4 : f >= 0.67 ? 3 : f >= 0.34 ? 2 : 1;
+      r.style.fill = `var(--heat-${lvl})`;
     }
     const title = svgEl("title", {});
     title.textContent = d.slots === 0 ? `${shortDate(d.date)}: sem rotina prevista` : `${shortDate(d.date)}: ${d.done} de ${d.slots} feitas`;
     r.appendChild(title);
     s.appendChild(r);
-    const n = svgEl("text", { x: x + cell / 2, y: y + cell / 2, class: "heat-day" + (strong ? " on" : "") });
+    const n = svgEl("text", { x: x + cell / 2, y: y + cell / 2, class: "heat-day" + (lvl >= 3 ? " s" + lvl : "") });
     n.textContent = String(Number(d.date.slice(8)));
     s.appendChild(n);
   });
   const legend = h("div", { class: "heat-legend" }, h("span", { text: "menos" }));
-  for (const op of [null, 0.28, 0.5, 0.75, 1]) {
+  for (const lvl of [0, 1, 2, 3, 4]) {
     const sw = h("span", { class: "heat-cell" });
-    sw.style.background = op === null ? "var(--surface-container-high)" : "var(--primary)";
-    if (op !== null) sw.style.opacity = op;
+    sw.style.background = lvl ? `var(--heat-${lvl})` : "var(--surface-container-high)";
     legend.append(sw);
   }
   legend.append(h("span", { text: "mais" }));

@@ -6,7 +6,7 @@ services.get_report_range (+ a identidade visual) e devolve os bytes do PDF.
 Conceito editorial: página branca, sem caixas; a hierarquia vem da
 tipografia (Google Sans Flex, estáticas em assets/fonts) e de linhas finas.
 Um parágrafo de abertura conta o período em texto corrido; os números
-grandes vêm logo abaixo. A cor é só para dados: azul (#5294E2, o do app)
+grandes vêm logo abaixo. A cor é só para dados: azul (#1A6AB5, o do app claro)
 para o que foi feito, vermelho para o que ficou para trás, as cores dos
 projetos só nos pontos. A matriz de rotinas (um ponto por dia) mostra a
 aderência do período de relance.
@@ -29,20 +29,23 @@ ASSETS = Path(__file__).parent / "assets"
 FONTS = ASSETS / "fonts"
 
 
-# Paleta (impressão em fundo branco; o azul é o mesmo do app).
-INK = (20, 20, 23)
-INK2 = (74, 74, 82)
-DIM = (138, 138, 148)
-FAINT = (196, 196, 204)
-LINE = (226, 226, 231)
-HAIR = (238, 238, 242)
-ACCENT = (82, 148, 226)
-ACCENT_MID = (168, 201, 241)
-ACCENT_SOFT = (237, 244, 252)
-BAD = (204, 70, 60)
-WARN = (190, 134, 14)
+# Paleta (impressão em fundo branco): os hex do tema claro da paleta híbrida.
+# O azul é o primário do claro (#5294E2 escurecido até AA: dá texto legível no
+# papel); erro e aviso também são os do claro. Todo texto passa 4,5:1 no branco,
+# menos o FAINT, que é o esmaecido de propósito (vazio, fora da agenda).
+INK = (25, 28, 32)          # #191C20 texto
+INK2 = (67, 71, 78)         # #43474E texto secundário
+DIM = (95, 99, 107)         # #5F636B apagado (rótulos, datas)
+FAINT = (168, 171, 180)     # #A8ABB4 divisor forte / esmaecido
+LINE = (223, 226, 235)      # #DFE2EB divisor sutil
+HAIR = (233, 233, 238)      # #E9E9EE linhas finas e trilhos
+ACCENT = (26, 106, 181)     # #1A6AB5 primário
+ACCENT_MID = (166, 195, 237)  # #A6C3ED secundário (rotinas, extras)
+ACCENT_SOFT = (207, 225, 255)  # #CFE1FF contêiner primário
+BAD = (181, 31, 33)         # #B51F21 erro
+WARN = (119, 102, 0)        # #776600 aviso
 WHITE = (255, 255, 255)
-BAND = (18, 18, 19)  # o fundo do app: o ícone do logo
+BAND = (19, 19, 20)  # #131314, o fundo do app: o ícone do logo
 
 M = 18  # margem lateral (mm)
 
