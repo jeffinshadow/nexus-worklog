@@ -4,7 +4,7 @@
 // do convite) e #senha=… (senha nova). O token fica no # (não vai para logs).
 import { api } from "./api.js";
 import { loadBranding } from "./branding.js";
-import { matchPasswords } from "./dom.js";
+import { markInvalid, matchPasswords } from "./dom.js";
 import { cancelled, conditionalAvailable, login as passkeyLogin, supported as passkeySupported } from "./passkey.js";
 
 loadBranding();
@@ -21,10 +21,7 @@ function show(id) {
 // Erro de envio: marca os campos culpados (aria-invalid) e liga a mensagem a
 // eles; a mensagem em si tem role="alert" e é lida na hora.
 function invalid(ids, errId, on) {
-  for (const id of ids) {
-    if (on) { $(id).setAttribute("aria-invalid", "true"); $(id).setAttribute("aria-describedby", errId); }
-    else { $(id).removeAttribute("aria-invalid"); $(id).removeAttribute("aria-describedby"); }
-  }
+  markInvalid(ids.map($), $(errId), on);
 }
 
 // Volta à tela que pediu o login (link de e-mail ou calendário): só rotas do app (#/...).
@@ -60,7 +57,8 @@ async function withPasskey(opts) {
     await passkeyLogin(opts);
     location.href = destino;
   } catch (e) {
-    if (!cancelled(e)) err.textContent = e.message || "Não foi possível entrar com a digital ou o rosto.";
+    // A consulta silenciosa (sugestão no campo) nunca mostra erro: só o botão.
+    if (!cancelled(e) && !opts.conditional) err.textContent = e.message || "Não foi possível entrar com a digital ou o rosto.";
   }
 }
 if (passkeySupported()) {

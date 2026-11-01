@@ -56,18 +56,31 @@ export function popupMenu(x, y, items) {
     else if (ev.key === "ArrowDown") { ev.preventDefault(); btns[(i + 1) % btns.length].focus(); }
     else if (ev.key === "ArrowUp") { ev.preventDefault(); btns[(i - 1 + btns.length) % btns.length].focus(); }
   };
+  // Fechou sozinho (rolagem, outra janela) com o foco nele: volta para quem abriu.
+  const opened = Date.now();
+  const closeBack = (ev) => {
+    if (ev && ev.type === "scroll" && Date.now() - opened < 400) return; // a rolagem que trouxe o cartão para a vista
+    const had = menu.contains(document.activeElement); close(); if (had && back && back.isConnected && back.focus) back.focus({ preventScroll: true });
+  };
   function close() {
     menu.remove(); menuClose = null;
     document.removeEventListener("pointerdown", onDown, true);
     document.removeEventListener("keydown", onKey, true);
-    removeEventListener("scroll", close, true);
-    removeEventListener("resize", close);
+    removeEventListener("scroll", closeBack, true);
+    removeEventListener("resize", closeBack);
   }
   document.addEventListener("pointerdown", onDown, true);
   document.addEventListener("keydown", onKey, true);
-  addEventListener("scroll", close, true);
-  addEventListener("resize", close);
+  addEventListener("scroll", closeBack, true);
+  addEventListener("resize", closeBack);
   menuClose = close;
+}
+
+// Botão ⋮: no celular, a folha de baixo; no computador, o menu junto do botão.
+export function actionMenu(btn, title, items) {
+  if (matchMedia("(max-width: 860px)").matches) { sheet(title, items); return; }
+  const r = btn.getBoundingClientRect();
+  popupMenu(r.right - 220, r.bottom + 4, items);
 }
 
 // Quem pediu ao sistema menos movimento (as animações em JS também respeitam).
@@ -275,7 +288,23 @@ document.addEventListener("keydown", (ev) => {
   if (a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable)) return; // o Ctrl+Z do próprio campo
   if (document.querySelector("dialog[open]:not(.side)")) return;
   ev.preventDefault();
-  undoAction();
+  const back = keepFocus(); // a lista é redesenhada: o foco volta para onde estava
+  Promise.resolve(undoAction()).then(back);
+});
+
+// Abas (role="tab"): as setas, Home e End andam entre elas e já abrem a escolhida,
+// como o leitor de tela anuncia. Vale para todas as telas com abas.
+document.addEventListener("keydown", (ev) => {
+  if (!["ArrowRight", "ArrowLeft", "Home", "End"].includes(ev.key) || ev.altKey || ev.ctrlKey || ev.metaKey) return;
+  const tab = ev.target.closest ? ev.target.closest('[role="tab"]') : null;
+  const list = tab && tab.closest('[role="tablist"]');
+  if (!list) return;
+  const tabs = [...list.querySelectorAll('[role="tab"]')].filter((t) => !t.disabled && t.offsetParent);
+  const i = tabs.indexOf(tab), n = tabs.length;
+  const j = ev.key === "Home" ? 0 : ev.key === "End" ? n - 1 : (i + (ev.key === "ArrowRight" ? 1 : -1) + n) % n;
+  ev.preventDefault();
+  tabs[j].focus();
+  tabs[j].click();
 });
 
 // Atalhos de uma tecla (n, h, t, s...): ligados por padrão; dá para desligar
@@ -292,6 +321,29 @@ export function refocusBy(scope, label) {
   if (!scope || !label) return;
   const el = scope.querySelector(`[aria-label="${CSS.escape(label)}"]`);
   if (el) el.focus();
+}
+
+// Ação que redesenha a tarefa sem tirá-la da lista (Aguardando, cronômetro,
+// desfazer): guarda o controle focado e, depois do redesenho, volta para ele
+// (mesmo nome; o par Iniciar/Parar do cronômetro; ou o cartão da mesma tarefa).
+// Se a tarefa saiu, cai na que ficou no lugar (focusAfterRemoval).
+const TIMER_SWAP = [[/^Iniciar o cronômetro em /, "Parar o cronômetro de "], [/^Parar o cronômetro de /, "Iniciar o cronômetro em "]];
+export function keepFocus() {
+  const a = document.activeElement;
+  const item = a && a.closest ? a.closest("#main [data-task-id]") : null;
+  const id = item && item.dataset.taskId;
+  const label = a && a.getAttribute ? a.getAttribute("aria-label") : null;
+  const removed = focusAfterRemoval();
+  return () => {
+    const cur = document.activeElement;
+    if (cur && cur !== document.body && cur !== document.getElementById("main") && cur.isConnected) return; // já tem lugar (ex.: um diálogo)
+    const box = id && document.querySelector(`#main [data-task-id="${CSS.escape(id)}"]`);
+    if (!box) { removed(); return; }
+    const names = label ? [label, ...TIMER_SWAP.filter(([re]) => re.test(label)).map(([re, to]) => label.replace(re, to))] : [];
+    const el = names.map((n) => box.querySelector(`[aria-label="${CSS.escape(n)}"]`)).find(Boolean)
+      || box.querySelector(".card-open, button") || box;
+    el.focus();
+  };
 }
 
 // Tarefa que sai da lista (concluir, excluir) com o foco nela: guarda a posição
@@ -342,7 +394,7 @@ export async function undoLatest(entity, entityId, onDone) {
     if (!rows.length || !rows[0].can_undo) throw new Error("Nada para desfazer.");
     await api.post(`/history/${rows[0].id}/undo`);
     toast("Desfeito.");
-    onDone && onDone();
+    if (onDone) await onDone();
   } catch (e) {
     errorToast(e, "Não foi possível desfazer.");
   }

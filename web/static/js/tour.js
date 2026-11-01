@@ -167,6 +167,9 @@ function setup(me) {
           list = await listProjects(true);
           input.value = "";
           paintChips();
+          // Criou: o botão deixa de dizer "sem projetos" (soava como descartar o que acabou de criar).
+          const ok = input.closest("form")?.querySelector("[type=submit]");
+          if (ok) ok.textContent = "Seguir";
           input.focus();
         } catch (e) { err.textContent = e.message || "Não foi possível criar."; }
       }
@@ -236,14 +239,14 @@ function setup(me) {
 const QUICK = [[".quick-row input"], "Registro rápido",
   "Escreva o que fez e aperte Enter. Dois atalhos ajudam: @Projeto escolhe o projeto e “— 30min” já conclui com o tempo. Ex.: “Troca do disjuntor @Matriz — 45min”. Os outros (#chamado, !alta, ^amanhã) estão na Ajuda."];
 const ROUTINES = [[".t-rec"], "Rotinas do dia",
-  "Marque o que conferiu. O bloquinho anota a evidência e o alerta transforma um achado em tarefa. As setas voltam até 7 dias para marcar o que ficou para trás."];
+  "Marque o que conferiu. Depois de marcar, o bloquinho anota a evidência; no ⋮, um achado vira tarefa. As setas voltam até 7 dias para marcar o que ficou para trás."];
 const HANDOFF = [["#page-actions .btn-ghost"], "Passagem de turno",
   "No fim do turno, um texto pronto com o que fica aberto, o que está aguardando e por quê, e o que foi feito. É só colar no chat da equipe."];
 // Celular: só o essencial do dia, em quatro paradas (o resto se descobre usando).
 const PHONE_STOPS = [
   QUICK,
   ROUTINES,
-  [[".t-open .list-row[data-task-id]", ".t-open"], "Uma tarefa",
+  [[".t-open .list-row[data-task-id]"], "Uma tarefa", // sem tarefas ainda (primeiro dia), a parada é pulada
     "Toque no nome para abrir: anotações, checklist, fotos e tempo. O ✓ conclui. No ⋮ ficam o cronômetro, “Marcar como aguardando…” e “Duplicar tarefa”."],
   HANDOFF,
 ];

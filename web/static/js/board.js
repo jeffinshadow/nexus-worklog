@@ -1,8 +1,8 @@
 // Quadro de tarefas: rotinas (com seletor de dia), tarefas abertas e
 // concluídas. Também exporta o diálogo de nova tarefa, usado pela tela Hoje.
 import { api } from "./api.js";
-import { h, icon, clear, field, addDays, shortDate, localDay, localDateTime, daysBetween } from "./dom.js";
-import { confirmDialog, errorToast, toast, undoLatest, busy, modal, sheet, navBadge, popupMenu, focusAfterRemoval } from "./ui.js";
+import { h, icon, clear, field, addDays, shortDate, localDay, localDateTime, daysBetween, markInvalid } from "./dom.js";
+import { confirmDialog, errorToast, toast, undoLatest, busy, modal, sheet, navBadge, popupMenu, focusAfterRemoval, keepFocus } from "./ui.js";
 import { extraProjectsField, fillObjectiveSelect, fillProjectSelect, listProjects, projectChips } from "./projects.js";
 import { openTask, openTaskId, editingTaskId, duration, parseDuration } from "./task.js";
 import { boardLine } from "./assistant.js";
@@ -61,11 +61,14 @@ export function taskChips(t, today) {
     else if (t.due_date === today) chips.push(h("span", { class: "chip today", text: "vence hoje" }));
     else chips.push(h("span", { class: "chip", text: "prazo " + shortDate(t.due_date) }));
   }
-  chips.push(...projectChips(t));
-  if (t.objective_title) chips.push(h("span", { class: "chip objective", title: "Objetivo" }, icon("target"), t.objective_title));
-  if (t.ticket) chips.push(ticketChip(t.ticket));
-  if (t.assigned_by_name) chips.push(h("span", { class: "chip assigned", title: "Atribuída por " + t.assigned_by_name, text: "de " + t.assigned_by_name }));
-  if (t.after_hours) chips.push(h("span", { class: "chip after-hours", title: "Plantão / fora do horário", text: "plantão" }));
+  // Contexto (projeto, objetivo, chamado, quem mandou, plantão): uma linha de texto
+  // com o ponto de cor, sem borda; em pílula fica só o estado (atrasada, aguardando...).
+  const ctx = [...projectChips(t)];
+  if (t.objective_title) ctx.push(h("span", { class: "chip objective", title: "Objetivo" }, icon("target"), t.objective_title));
+  if (t.ticket) ctx.push(ticketChip(t.ticket));
+  if (t.assigned_by_name) ctx.push(h("span", { class: "chip assigned", title: "Atribuída por " + t.assigned_by_name, text: "de " + t.assigned_by_name }));
+  if (t.after_hours) ctx.push(h("span", { class: "chip after-hours", title: "Plantão / fora do horário", text: "plantão" }));
+  if (ctx.length) chips.push(h("span", { class: "task-ctx" }, ...ctx));
   if (t.check_total) chips.push(h("span", { class: "tag" + (t.check_done === t.check_total ? " ok" : ""), title: "Checklist" }, icon("list"), `${t.check_done}/${t.check_total}`));
   if (t.minutes) chips.push(h("span", { class: "tag", title: "Tempo apontado" }, icon("clock"), duration(t.minutes)));
   if (t.notes_count) chips.push(h("span", { class: "tag", title: "Anotações" }, icon("note"), String(t.notes_count)));
@@ -192,7 +195,7 @@ export function withMenu(el, t, onDone) {
     ];
     if (matchMedia("(max-width: 860px)").matches) { sheet(t.title, items); return; }
     let { clientX: x, clientY: y } = ev;
-    if (!x && !y) { const r = el.getBoundingClientRect(); x = r.left + 24; y = r.top + 24; } // pela tecla de menu
+    if (!x && !y) { el.scrollIntoView({ block: "nearest" }); const r = el.getBoundingClientRect(); x = r.left + 24; y = r.top + 24; } // pela tecla de menu
     popupMenu(x, y, items);
   });
   return el;
@@ -221,10 +224,11 @@ export function followUpDay(day) {
   return fd;
 }
 
-const canBlock = (t) => t.status !== "done" && t.status !== "blocked";
+export const canBlock = (t) => t.status !== "done" && t.status !== "blocked";
 
 // "Marcar como aguardando…" direto do menu: pergunta o que falta e, se quiser, quando cobrar.
 export function blockTask(t, onDone) {
+  const back = keepFocus(); // depois do redesenho, o foco volta ao cartão
   const reason = h("input", { type: "text", maxlength: "120", required: "required", placeholder: "Ex.: peça do fornecedor, acesso à sala, aprovação" });
   const follow = h("input", { type: "date", min: localDateTime(Date.now()).slice(0, 10) });
   const err = h("p", { class: "error-text", role: "alert" });
@@ -236,6 +240,7 @@ export function blockTask(t, onDone) {
       h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
       h("button", { type: "submit", class: "btn btn-primary", text: "Marcar como aguardando" })));
   const dlg = modal(form);
+  reason.addEventListener("input", () => markInvalid([reason], err, false));
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const body = { status: "blocked", blocked_reason: reason.value.trim().replace(/^aguardando\s+/i, "") };
@@ -244,20 +249,21 @@ export function blockTask(t, onDone) {
       await api.patch(`/worklog/${t.id}`, body);
       dlg.close();
       toast(`Aguardando: ${body.blocked_reason}.`);
-      if (onDone) onDone();
-    } catch (e) { err.textContent = e.message; }
+      Promise.resolve(onDone && onDone()).then(back);
+    } catch (e) { err.textContent = e.message; markInvalid([reason], err); }
   });
   setTimeout(() => reason.focus(), 0);
 }
 
 // Duplicar: tarefa nova "a fazer" com título, descrição, projetos, prioridade e
-// checklist (desmarcado); sem tempo, fotos, anotações nem datas. Abre a nova.
+// checklist (desmarcado); sem tempo, fotos, anotações nem datas. Abre a nova
+// com o título em edição, selecionado: dá para trocar o nome na hora.
 export async function duplicateTask(t, onDone) {
   try {
     const { id } = await api.post(`/worklog/${t.id}/duplicate`);
     toast("Tarefa duplicada.", { action: "Desfazer", onAction: () => undoLatest("worklog", id, onDone) });
     if (onDone) onDone();
-    openTask(id, onDone);
+    openTask(id, onDone, { editTitle: true });
   } catch (e) { errorToast(e, "Não foi possível duplicar."); }
 }
 
@@ -572,7 +578,7 @@ function scheduleForm(item) {
   };
 }
 
-function askResolution(t, onDone) {
+export function askResolution(t, onDone) {
   // Ao fechar, o "Desfazer" da conclusão volta (o aviso some quando se clica numa ação).
   const undoAgain = () => toast(`Concluída: ${t.title}`, { action: "Desfazer", onAction: () => undoLatest("worklog", t.id, onDone) });
   const area = h("textarea", { rows: "4", maxlength: "1000", placeholder: "ex.: disjuntor trocado e circuito testado", "aria-label": "Como resolveu" });

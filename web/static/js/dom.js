@@ -40,6 +40,17 @@ export function field(label, control, extraClass = "") {
   return h("div", { class: "field" + (extraClass ? " " + extraClass : "") }, h("label", { for: control.id, text: label }), control);
 }
 
+// Erro de envio: marca os campos culpados (aria-invalid) e liga a mensagem
+// (role="alert", com id) a eles; on=false desfaz.
+let errSeq = 0;
+export function markInvalid(controls, err, on = true) {
+  if (on && !err.id) err.id = "err" + ++errSeq;
+  for (const c of controls) {
+    if (on) { c.setAttribute("aria-invalid", "true"); c.setAttribute("aria-describedby", err.id); }
+    else { c.removeAttribute("aria-invalid"); c.removeAttribute("aria-describedby"); }
+  }
+}
+
 export function clear(el) {
   while (el.firstChild) el.removeChild(el.firstChild);
 }

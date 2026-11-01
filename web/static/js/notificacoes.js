@@ -169,7 +169,7 @@ export async function pushPanel(rerender) {
     h("div", { class: "push-here" }, h("p", { text: status }), action),
     ...checks.map((c) => c.el),
     h("div", { class: "notice-row" }, h("span", { class: "notice-main" }, h("span", {}, h("strong", { text: "Horário dos avisos da manhã" }), h("small", { text: "Cobranças e prazos, nos dias úteis." }))), hour),
-    h("label", { class: "weekday-option notice-titles" }, hide, h("span", { text: "Esconder nomes de tarefas e rotinas na tela bloqueada (só o tipo do aviso)" })),
+    h("label", { class: "check-line notice-titles" }, hide, h("span", { text: "Esconder nomes de tarefas e rotinas na tela bloqueada (só o tipo do aviso)" })),
     h("div", { class: "row-actions" }, saveBtn, test),
     p.devices.length ? h("div", { class: "push-devices" },
       h("h3", { text: "Aparelhos ligados" }),

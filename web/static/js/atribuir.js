@@ -44,7 +44,7 @@ function assignForm(people, onSent) {
     field("Descrição (uma linha, opcional)", desc),
     h("div", { class: "field-row" }, field("Prazo (opcional)", due), field("Prioridade", prio)),
     h("div", { class: "field-row" }, field("Chamado (opcional)", ticket),
-      h("div", { class: "field field-check" }, h("label", { class: "weekday-option" }, after, h("span", { text: "Plantão / fora do horário" })))),
+      h("div", { class: "field field-check" }, h("label", { class: "check-line" }, after, h("span", { text: "Plantão / fora do horário" })))),
     h("p", { class: "dialog-note", text: "A pessoa recebe um e-mail e a tarefa passa a ser dela. Enquanto estiver a fazer, você ainda corrige ou cancela; depois que ela começar, você só acompanha." }),
     err, h("div", { class: "dialog-actions" }, h("div", { class: "spacer" }), submit));
   form.addEventListener("submit", async (ev) => {
@@ -91,8 +91,7 @@ async function loadSent(sec, ready) {
       const quando = r.ended.at ? " em " + shortDate(localDay(r.ended.at)) : "";
       chips.push(h("span", { class: "chip late", text:
         r.ended.kind === "canceled" ? "cancelada por você" + quando
-        : r.ended.kind === "deleted" ? `excluída por ${r.to_name}${quando}`
-        : `removida por ${r.to_name}` }));
+        : `excluída por ${r.to_name}${quando}` }));  // um termo só (com ou sem data)
     } else {
       chips.push(h("span", { class: "chip " + r.status, text: r.status === "done" && r.completed_at
         ? "concluída em " + shortDate(localDay(r.completed_at)) : STATUS_LABELS[r.status] }));
@@ -104,7 +103,9 @@ async function loadSent(sec, ready) {
     // Enquanto está "a fazer" e sem nada registrado, quem atribuiu ainda corrige ou cancela.
     const acts = r.editable ? h("div", { class: "request-actions" },
       h("button", { type: "button", class: "btn btn-text btn-sm", text: "Alterar", onClick: () => editSent(r, reload) }),
-      h("button", { type: "button", class: "btn btn-text btn-sm", text: "Cancelar", onClick: () => cancelSent(r, reload) })) : null;
+      r.cancelable
+        ? h("button", { type: "button", class: "btn btn-text btn-sm", text: "Cancelar", onClick: () => cancelSent(r, reload) })
+        : h("small", { class: "muted", text: `${r.to_name} já mexeu nela: cancelar, só ela` })) : null;
     sec.append(h("div", { class: "list-row" + (r.status === "removed" ? " is-removed" : "") },
       h("div", { class: "t" }, h("span", { text: r.title }),
         h("small", { text: `para ${r.to_name} · ${r.assigned_at ? dateTime(r.assigned_at) : ""}` }),
@@ -154,12 +155,16 @@ function consentsPanel(people) {
     h("div", { class: "panel-head" }, h("h2", { text: "Quem aceita receber tarefas" })),
     h("p", { class: "help", text: "Cada pessoa decide em Configurações > Conta. Sem o aceite, não dá para atribuir." }));
   if (!people.length) sec.append(h("p", { class: "empty", text: "Nenhuma pessoa com registro." }));
-  for (const p of people) {
+  // Só quem aceita, com o número dos outros embaixo (a lista não vira um diretório de quem recusou).
+  const others = people.filter((p) => !p.accepts).length;
+  if (people.length && others === people.length) sec.append(h("p", { class: "empty", text: "Ninguém aceita receber tarefas ainda." }));
+  for (const p of people.filter((x) => x.accepts)) {
     sec.append(h("div", { class: "list-row" }, avatar(p, "sm"),
       h("div", { class: "t" }, h("span", { text: p.display_name || p.email }), p.display_name ? h("small", { text: p.email }) : null),
       p.accepts
         ? h("span", { class: "chip done", title: "Aceitou em " + dateTime(p.accepts_assignments_at), text: "aceita · desde " + shortDate(localDay(p.accepts_assignments_at)) })
         : h("span", { class: "chip", text: "não aceita" })));
   }
+  if (others && others < people.length) sec.append(h("p", { class: "dialog-note", text: others === 1 ? "A outra pessoa não aceita receber tarefas." : `As outras ${others} pessoas não aceitam receber tarefas.` }));
   return sec;
 }

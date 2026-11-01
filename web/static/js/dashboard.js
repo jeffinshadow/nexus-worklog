@@ -172,6 +172,10 @@ function heatColor(d) {
 function heatmap(hm) {
   if (!hm || !hm.days || !hm.days.length || hm.days.every((d) => d.slots === 0))
     return emptyBox(shown ? "nenhuma rotina na agenda neste mês" : "sem rotinas ainda");
+  // Começo de mês: um quadrado solto num mapa vazio parece defeito; uma frase diz o que é.
+  const inMonth = hm.days.filter((d) => !d.out).length;
+  if (inMonth < 7) return emptyBox(inMonth === 1 ? "o mês começou hoje: o mapa aparece a partir da primeira semana"
+    : `só ${inMonth} dias do mês até agora: o mapa aparece a partir da primeira semana`);
   const days = hm.days; // semanas inteiras, começando num domingo
   const lead = Math.max(0, days.findIndex((d) => !d.out)); // dias do mês anterior na 1ª coluna
   const cols = Math.ceil(days.length / 7);

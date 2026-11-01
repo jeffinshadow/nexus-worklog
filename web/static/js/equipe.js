@@ -2,8 +2,8 @@
 // (Configurações > Conta), somente leitura: quadro, retrospectiva, relatório
 // em PDF e as horas dessas pessoas em CSV.
 import { api } from "./api.js";
-import { h, icon, clear, field } from "./dom.js";
-import { errorToast } from "./ui.js";
+import { h, icon, clear, field, localDay, addDays } from "./dom.js";
+import { errorToast, actionMenu } from "./ui.js";
 import * as board from "./board.js";
 import * as dashboard from "./dashboard.js";
 import * as reports from "./reports.js";
@@ -43,11 +43,22 @@ export async function mount(root) {
   root.append(
     h("div", { class: "admin-bar" },
       field("Pessoa", select),
-      h("button", { type: "button", class: "btn btn-ghost", title: "Horas de quem liberou o registro, com pessoa e projeto (some por cliente na planilha)", onClick: async (ev) => {
-        const b = ev.currentTarget;
-        b.disabled = true;
-        try { await api.download("/viewer/export/apontamentos.csv"); } catch (e) { errorToast(e, "Não foi possível exportar."); } finally { b.disabled = false; }
-      } }, icon("download"), "Horas da equipe (CSV)")),
+      // Só o mês pedido (este ou o passado), não tudo desde sempre.
+      h("button", { type: "button", class: "btn btn-ghost", title: "Horas de quem liberou o registro, com pessoa e projeto (some por cliente na planilha)",
+        "aria-haspopup": "menu", onClick: (ev) => {
+          const b = ev.currentTarget;
+          const today = localDay(Date.now()), first = today.slice(0, 8) + "01";
+          const prevFirst = addDays(first, -1).slice(0, 8) + "01";
+          const get = (start, end) => async () => {
+            b.disabled = true;
+            try { await api.download(`/viewer/export/apontamentos.csv?start=${start}&end=${end}`); }
+            catch (e) { errorToast(e, "Não foi possível exportar."); } finally { b.disabled = false; }
+          };
+          actionMenu(b, "Horas da equipe (CSV)", [
+            ["Este mês", "calendar", get(first, today)],
+            ["Mês passado", "calendar", get(prevFirst, addDays(first, -1))],
+          ]);
+        } }, icon("download"), "Horas da equipe (CSV)")),
     h("p", { class: "dialog-note equipe-note", text: "Aparecem aqui só as pessoas que liberaram o registro para visualizadores (cada uma decide em Configurações > Conta)." }),
     subtabs,
     note,
@@ -66,7 +77,13 @@ export async function mount(root) {
       else await reports.mount(box, { exportBase: `/viewer/users/${uid}/reports/export`, projectsUrl: `/viewer/users/${uid}/projects` });
     } catch (e) {
       clear(box);
-      box.append(h("p", { class: "empty", text: e && e.status === 0 ? e.message : "Não foi possível carregar. Tente de novo." }));
+      if (e && e.status === 404 && my === seq) {
+        // A pessoa desligou o aceite com a tela aberta: tentar de novo não adianta.
+        const opt = select.selectedOptions[0];
+        const who = opt ? opt.textContent.split(" · ")[0] : "Essa pessoa";
+        if (opt) opt.remove();
+        box.append(h("p", { class: "empty", text: `${who} não libera mais o registro para visualizadores.` }));
+      } else box.append(h("p", { class: "empty", text: e && e.status === 0 ? e.message : "Não foi possível carregar. Tente de novo." }));
     }
     if (my !== seq) return;
     clear(content);

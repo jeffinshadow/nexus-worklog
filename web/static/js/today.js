@@ -2,14 +2,14 @@
 // tela. É o único lugar das rotinas (marcar até 7 dias atrás, editar, achado).
 import { api } from "./api.js";
 import { h, icon, clear, weekdayDate, localDay, addDays, shortDate } from "./dom.js";
-import { errorToast, modal, toast, busy, sheet, refocusBy } from "./ui.js";
+import { errorToast, modal, toast, busy, refocusBy, actionMenu, calmMotion } from "./ui.js";
 import { reminderState, refreshReminders } from "./lembretes.js";
 import { photoGrid } from "./fotos.js";
-import { openRecurring, pauseRecurring, openWorklog, finishTask, taskChips, isOverdue, scheduleLabel, dayLabel, moreButton, desk, lateBadge, withMenu } from "./board.js";
+import { openRecurring, pauseRecurring, openWorklog, finishTask, askResolution, taskChips, isOverdue, scheduleLabel, dayLabel, moreButton, desk, lateBadge, withMenu } from "./board.js";
 import { openTask } from "./task.js";
 import { fillProjectSelect } from "./projects.js";
 import { summaryPanel } from "./summary.js";
-import { quickRegister } from "./quick.js";
+import { quickRegister, lastDone } from "./quick.js";
 import { todayCard } from "./assistant.js";
 import { timerButton } from "./timer.js";
 import { todayRenewals } from "./renewals.js";
@@ -118,14 +118,11 @@ export async function mount(root, ctx, opts = {}) {
       // Marcada: anota o que foi conferido (vai para o relatório, para comprovar depois).
       r.done_today ? h("button", { type: "button", class: "icon", title: r.note ? "Editar a evidência" : "Anotar a evidência (o que foi conferido)",
         "aria-label": "Evidência de " + r.label, onClick: (ev) => { ev.preventDefault(); editEvidence(r, b.day, refresh); } }, icon("note")) : null,
-      // Achou algo na verificação? Vira tarefa (com anotações e tempo).
-      h("button", { type: "button", class: "icon only-desk", title: "Registrar um achado como tarefa", "aria-label": "Registrar achado de " + r.label,
-        onClick: (ev) => { ev.preventDefault(); openWorklog(refresh, { title: `Achado: ${r.label}` }); } }, icon("alert")),
-      h("button", { type: "button", class: "icon only-desk", title: "Editar rotina", "aria-label": "Editar " + r.label,
-        onClick: (ev) => { ev.preventDefault(); openRecurring(r, refresh); } }, icon("edit")),
-      // Celular: os dois acima num menu ⋮.
-      h("button", { type: "button", class: "icon only-mob", title: "Mais ações", "aria-label": "Mais ações de " + r.label,
-        onClick: (ev) => { ev.preventDefault(); sheet(r.label, [
+      // O resto num menu ⋮ (folha de baixo no celular, menu junto do botão no computador):
+      // achou algo na verificação? vira tarefa (com anotações e tempo).
+      h("button", { type: "button", class: "icon", title: "Mais ações", "aria-label": "Mais ações de " + r.label,
+        onClick: (ev) => { ev.preventDefault(); actionMenu(ev.currentTarget, r.label, [
+          r.done_today ? [r.note ? "Editar a evidência" : "Anotar a evidência", "note", () => editEvidence(r, b.day, refresh)] : null,
           ["Registrar um achado como tarefa", "alert", () => openWorklog(refresh, { title: `Achado: ${r.label}` })],
           ["Editar rotina", "edit", () => openRecurring(r, refresh)],
           [r.paused_until ? "Retomar ou mudar a pausa" : "Pausar até…", "bell-off", () => pauseRecurring(r, refresh)],
@@ -172,7 +169,11 @@ export async function mount(root, ctx, opts = {}) {
     try {
       // "Ver": a linha nova fica abaixo da dobra no celular (concluídas ou abertas).
       const msg = await quickRegister(quick.value, project_id);
-      toast(msg, { action: "Ver", onAction: () => document.querySelector(/conclu/i.test(msg) ? ".t-done" : ".t-open")?.scrollIntoView({ behavior: "smooth", block: "start" }) });
+      const done = lastDone; // registrada já concluída ("— 30min"): pergunta como resolveu, como o Concluir
+      toast(msg, { actions: [
+        ["Ver", () => document.querySelector(/conclu/i.test(msg) ? ".t-done" : ".t-open")?.scrollIntoView({ behavior: calmMotion() ? "auto" : "smooth", block: "start" })],
+        done ? ["Como resolveu?", () => askResolution(done, refresh)] : null,
+      ].filter(Boolean) });
     } catch (e) {
       quick.disabled = false;
       errorToast(e, "Não foi possível registrar.");

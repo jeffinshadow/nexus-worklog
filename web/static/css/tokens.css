@@ -41,6 +41,7 @@
   /* Tipografia (Material 3, poucos tamanhos nomeados). Tudo em rem: no
      computador a escala da interface (--ui-zoom) reduz junto. */
   --type-screen: clamp(1.6rem, 2.6vw, 2.1rem);  /* título da tela (h1) */
+  --type-display: 1.5rem;    /* números grandes (indicadores), avatar grande, título da tarefa expandida */
   --type-headline: 1.15rem;  /* título de diálogo e do detalhe da tarefa */
   --type-title: 1rem;        /* título de seção (cartões, painéis, seções) */
   --type-body: .94rem;       /* corpo: texto, botões, campos, linhas de lista */
@@ -49,6 +50,7 @@
   --type-label: .75rem;      /* rótulo: chips, contadores, abas da barra (mínimo 12 px no celular) */
 
   /* Raios (Material 3): pequeno, médio, grande, extragrande e pílula. */
+  --radius-xs: 4px;     /* miúdos: marcas de destaque, quadradinhos de legenda, foco do cartão */
   --radius-s: 8px;      /* detalhes: teclas, dicas, edição no lugar */
   --radius-m: 12px;     /* campos, itens de lista, menus, cartões de tarefa */
   --radius-l: 16px;     /* painéis, cartões de seção, FAB */

@@ -48,7 +48,7 @@ export const failures = () => tx(FAILED, "readonly", (s) => s.getAll()).catch(()
 export async function enqueue(method, path, body) {
   const now = new Date();
   body = { ...(body || {}) };
-  if (/^\/timer\//.test(path)) body.at = now.toISOString();
+  if (/^\/timer\//.test(path) || /\/(notes|photos)(\?.*)?$/.test(path)) body.at = now.toISOString();  // anotação e foto: a hora em que foram feitas
   if (/\/finish$/.test(path) && !body.completed_at) body.completed_at = localDateTime(now.getTime());
   if (/\/toggle$/.test(path) && !body.day) body.day = localDay(now.toISOString());
   if (path === "/worklog" && !body.created_at) {  // feita agora, mesmo que chegue amanhã
@@ -56,6 +56,7 @@ export async function enqueue(method, path, body) {
     if (body.status === "done" && !body.completed_at) body.completed_at = body.created_at;
   }
   const op = { method, path, body, at: now.toISOString(), then: [] };
+  op.what = describe(op, await names());  // "Concluir: Troca do disjuntor", com o nome que a tela mostrava
   const qid = await tx(STORE, "readwrite", (s) => s.add(op));
   changed();
   return qid;
@@ -69,6 +70,7 @@ const sentIds = new Map();
 export async function after(qid, method, path, body) {
   body = { ...(body || {}) };
   if (/\/time$/.test(path) && !body.day) body.day = localDay(new Date().toISOString());
+  if (/\/(notes|photos)$/.test(path) && !body.at) body.at = new Date().toISOString();  // a hora em que foram feitas
   if (/\/(time|notes)$/.test(path) && !body.external_ref) body.external_ref = "app-" + crypto.randomUUID();
   const found = await tx(STORE, "readwrite", (s) => {
     const g = s.get(qid);
@@ -85,16 +87,37 @@ export async function after(qid, method, path, body) {
   changed();
 }
 
-// O que descrever na lista ("Nova tarefa: X").
-function describe(op) {
+// Nomes das tarefas e rotinas na última leitura guardada (a que a tela mostrava).
+async function names() {
+  const out = { task: {}, rec: {} };
+  if (!("caches" in window)) return out;
+  try {
+    const cache = await caches.open("nexus-dados");  // o mesmo nome de sw.js
+    for (const req of await cache.keys()) {
+      const p = new URL(req.url).pathname;
+      if (!/^\/api\/(board|worklog\/\d+)$/.test(p)) continue;
+      const d = await (await cache.match(req)).json();
+      if (p !== "/api/board") { out.task[d.id] = d.title; continue; }
+      for (const t of [...(d.in_progress || []), ...(d.done || [])]) out.task[t.id] = t.title;
+      for (const r of d.recurring || []) out.rec[r.id] = r.label;
+    }
+  } catch { /* sem cache: a lista diz só o tipo */ }
+  return out;
+}
+
+// O que descrever na lista ("Nova tarefa: X", "Concluir: Y", "Rotina: Z").
+function describe(op, n = { task: {}, rec: {} }) {
+  if (op.what) return op.what;
   const b = op.body || {};
+  const task = (op.path.match(/^\/worklog\/(\d+)\//) || [])[1], rec = (op.path.match(/^\/recurring\/(\d+)\//) || [])[1];
+  const of = (txt, name) => (name ? `${txt}: ${name}` : txt);
   if (op.path === "/worklog") return `Nova tarefa: ${b.title}`;
-  if (/\/finish$/.test(op.path)) return "Concluir tarefa";
-  if (/\/notes$/.test(op.path)) return `Anotação: ${(b.body || "").slice(0, 60)}`;
-  if (/\/toggle$/.test(op.path)) return b.done ? "Marcar rotina" : "Desmarcar rotina";
-  if (/\/timer\/start$/.test(op.path)) return "Iniciar cronômetro";
+  if (/\/finish$/.test(op.path)) return of("Concluir", n.task[task]) + (n.task[task] ? "" : " tarefa");
+  if (/\/notes$/.test(op.path)) return `Anotação${n.task[task] ? ` em «${n.task[task]}»` : ""}: ${(b.body || "").slice(0, 60)}`;
+  if (/\/toggle$/.test(op.path)) return of(b.done ? "Marcar rotina" : "Desmarcar rotina", n.rec[rec]);
+  if (/\/timer\/start$/.test(op.path)) return of("Iniciar cronômetro", b.title);
   if (/\/timer\/stop$/.test(op.path)) return "Parar cronômetro";
-  if (/\/photos/.test(op.path)) return "Foto";
+  if (/\/photos/.test(op.path)) return rec ? of("Foto da rotina", n.rec[rec]) : of("Foto", n.task[task]);
   return `${op.method} ${op.path}`;
 }
 
@@ -182,6 +205,7 @@ async function flushHere() {
     toast(sent > 1 ? `${sent} alterações feitas sem conexão foram enviadas.` : "A alteração feita sem conexão foi enviada.");
   }
   if (sent && onSynced) onSynced();
+  return sent;
 }
 
 // --------------------------------------------- dados de antes, com a fila por cima --
@@ -199,7 +223,10 @@ export async function overlay(path, data) {
         else data.in_progress = [...(data.in_progress || []), t];
       }
       const m = op.path.match(/^\/recurring\/(\d+)\/toggle$/);
-      if (m) for (const r of data.recurring || []) if (r.id === Number(m[1]) && (!op.body.day || op.body.day === data.day)) r.done_today = !!op.body.done;
+      if (m) for (const r of data.recurring || []) if (r.id === Number(m[1]) && (!op.body.day || op.body.day === data.day)) {
+        r.done_today = !!op.body.done;
+        if (op.body.note) r.note = op.body.note;  // a evidência escrita sem sinal aparece na linha
+      }
       const f = op.path.match(/^\/worklog\/(\d+)\/finish$/);
       if (f) data.in_progress = (data.in_progress || []).filter((t) => t.id !== Number(f[1]));
     }
@@ -281,7 +308,9 @@ export function startQueue(refresh) {
   onSynced = refresh;
   if (started) return;
   started = true;
-  addEventListener("online", () => { changed(); flush(); });
+  // Rede de volta: envia a fila e relê a tela mesmo sem nada na fila (a leitura
+  // nova tira o "sem conexão desde…" e troca os dados guardados pelos de agora).
+  addEventListener("online", async () => { changed(); const sent = await flush(); if (!sent && onSynced) onSynced(); });
   addEventListener("offline", changed);
   setInterval(() => { if (pending) flush(); }, 30000);
   changed();
