@@ -8,14 +8,14 @@ import { pushPanel } from "./notificacoes.js";
 import { cancelled, register as registerPasskey, supported as passkeySupported } from "./passkey.js";
 
 const TABS = [
+  ["conta", "Conta"],
   ["modelos", "Modelos"],
   ["avisos", "Avisos"],
   ["calendario", "Calendário"],
   ["ia", "IA e API"],
-  ["conta", "Conta"],
 ];
 const OLD_TABS = { dias: "conta", chaves: "ia" }; // links antigos
-const ROLE_SHORT = { admin: "admin", assigner: "atribuidor", viewer: "visualizador" };
+const ROLE_SHORT = { admin: "admin", assigner: "atribui tarefas", viewer: "visualizador" };
 
 // Dias úteis como máscara de bits, domingo = bit 0 (igual ao backend).
 const DAYS = [
@@ -84,8 +84,9 @@ export async function mount(root, ctx) {
       body.append(grid);
     }
     else if (active === "calendario") body.append(await calendarFeed(() => render()));
-    else if (active === "ia") body.append(...aiHelp(), await tokens(() => render()), await webhooksPanel(() => render()));
-    else if (isUser) body.append(profilePanel(ctx.me, render), themePanel(ctx.me), assignmentsPanel(ctx.me), assistantPanel(ctx.me), defaultProjectPanel(ctx.me, (r) => meChanged(ctx.me, r)), ticketsPanel(ctx.me), workDays(ctx.me), shortcutsPanel(), account(ctx.me), await passkeysPanel(render), deleteAccount(isUser));
+    else if (active === "ia") body.append(await tokens(() => render()), ...aiHelp(), await webhooksPanel(() => render()));
+    // Conta: primeiro o que muda o dia (dias úteis, projeto padrão), depois quem vê e manda tarefas.
+    else if (isUser) body.append(workDays(ctx.me), defaultProjectPanel(ctx.me, (r) => meChanged(ctx.me, r)), privacyPanel(ctx.me), profilePanel(ctx.me, render), themePanel(ctx.me), assistantPanel(ctx.me), ticketsPanel(ctx.me), shortcutsPanel(), account(ctx.me), await passkeysPanel(render), deleteAccount(isUser));
     else body.append(profilePanel(ctx.me, render), themePanel(ctx.me), account(ctx.me), await passkeysPanel(render), deleteAccount(isUser));
   }
   await render();
@@ -249,7 +250,7 @@ function editTemplate(t, rerender) {
   const err = h("p", { class: "error-text" });
   const form = h("form", {}, h("h2", { text: t ? "Editar modelo" : "Novo modelo" }),
     field("Nome do modelo", name), field("Título da tarefa", title), field("Descrição (uma linha)", desc),
-    h("div", { class: "field-row" }, field("Prioridade", prio), field("Projeto / cliente", proj)),
+    h("div", { class: "field-row" }, field("Prioridade", prio), field("Projeto", proj)),
     h("label", { class: "weekday-option" }, after, h("span", { text: "Plantão / fora do horário" })),
     field("Checklist (um item por linha, até 30)", items), err,
     h("div", { class: "dialog-actions" },
@@ -293,7 +294,7 @@ function ticketsPanel(me) {
 
 function shortcutsPanel() {
   const keys = [["n", "nova tarefa"], ["/", "buscar"], ["h", "Hoje"], ["t", "Tarefas"], ["r", "Meu mês (números)"],
-    ["l", "Meu mês (PDF)"], ["s", "parar o cronômetro"], ["?", "ver todos os atalhos"]];
+    ["l", "Meu mês (Relatórios)"], ["s", "parar o cronômetro"], ["?", "ver todos os atalhos"]];
   // Desligar: para quem usa controle por voz ou esbarra numa tecla sem querer.
   const on = h("input", { type: "checkbox" });
   on.checked = singleKeysOn();
@@ -331,7 +332,7 @@ function workDays(me) {
   });
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Meus dias úteis" })),
-    h("p", { class: "help", text: "As rotinas que repetem “nos dias úteis” seguem estes dias. O que você marcar fora da agenda de uma rotina fica salvo como extra e não entra no percentual. Atenção: mudar os dias úteis recalcula também os indicadores dos dias anteriores." }),
+    h("p", { class: "help", text: "As rotinas que repetem “nos dias úteis” seguem estes dias. O que você marcar fora da agenda de uma rotina fica salvo como extra e não entra no percentual. Atenção: mudar os dias úteis recalcula também os números dos dias anteriores." }),
     h("fieldset", { class: "weekday-picker" },
       ...boxes.map(({ label, cb }) => h("label", { class: "weekday-option" }, cb, h("span", { text: label })))),
     err, save);
@@ -360,15 +361,15 @@ async function notices() {
     return { key, on, hour, el: h("div", { class: "notice-row" },
       h("label", { class: "notice-main" }, on, h("span", {}, h("strong", { text: title }), h("small", { text: help }))), hour) };
   });
-  // Semanal: o PDF anexado e uma cópia (gestor, cliente) — só valem com o resumo da semana ligado.
+  // Semanal: o PDF anexado e uma cópia (quem acompanha o trabalho) — só valem com o resumo da semana ligado.
   const weekly = rows.find((r) => r.key === "weekly");
   const pdf = h("input", { type: "checkbox" });
   pdf.checked = !!p.weekly_pdf;
-  const cc = h("input", { type: "email", maxlength: "254", value: p.weekly_cc || "", placeholder: "ex.: gestor@empresa.com.br (opcional)",
+  const cc = h("input", { type: "email", maxlength: "254", value: p.weekly_cc || "", placeholder: "ex.: colega@empresa.com.br",
     autocomplete: "off", "aria-label": "Mandar cópia do resumo semanal para" });
   const weeklyExtra = h("div", { class: "notice-sub" },
-    h("label", { class: "weekday-option" }, pdf, h("span", { text: "Anexar o relatório da semana em PDF (o mesmo de Meu mês > PDF, com os títulos das tarefas)" })),
-    field("Mandar cópia para (gestor, cliente)", cc),
+    h("label", { class: "weekday-option" }, pdf, h("span", { text: "Anexar o relatório da semana em PDF (o mesmo de Meu mês > Relatórios, com os títulos das tarefas)" })),
+    field("Mandar cópia para quem acompanha meu trabalho (opcional)", cc),
     h("p", { class: "dialog-note", text: "A cópia recebe o mesmo e-mail, com o PDF se estiver ligado. Use só com quem já acompanha o seu trabalho." }));
   const syncWeekly = () => { pdf.disabled = cc.disabled = !weekly.on.checked; weeklyExtra.classList.toggle("off", !weekly.on.checked); };
   weekly.on.addEventListener("change", syncWeekly);
@@ -498,7 +499,7 @@ async function tokens(rerender) {
   const form = h("form", {},
     field("Nome (para reconhecer no histórico)", name),
     h("div", { class: "field-row" },
-      field("Permissão", scope),
+      field("O que a chave pode fazer", scope),
       field("Validade", expires)),
     err, create);
   form.addEventListener("submit", busy(async (ev) => {
@@ -543,21 +544,51 @@ async function tokens(rerender) {
   return h("div", { class: "settings-grid" },
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Nova chave" })),
-      h("p", { class: "help", text: "Uma chave deixa uma IA ou automação usar o Nexus em seu nome, sem a sua senha. Tudo o que ela fizer aparece no Histórico com o nome que você der aqui." }),
+      h("p", { class: "help", text: "Em vez de registrar à mão, conte para a IA o que você fez e ela registra no Nexus. Uma chave deixa uma IA ou automação usar o Nexus em seu nome, sem a sua senha; tudo o que ela fizer aparece no Histórico com o nome que você der aqui. Ao criar, a janela já traz a configuração pronta para o Claude Code, o Claude Desktop, o Cursor e o Gemini CLI." }),
       form),
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Minhas chaves" }), h("span", { class: "count", text: String(list.filter((t) => t.active).length) + " ativas" })),
       ...rows));
 }
 
-function showNewToken(res) {
+// O bloco de configuração de cada IA, com a chave (ou nxs_SUA_CHAVE, na ajuda).
+function aiConfigs(key) {
   const url = `${location.origin}/mcp`;
+  const desktop = { command: "npx", args: ["-y", "mcp-remote", url, "--header", "Authorization:${NEXUS_AUTH}"], env: { NEXUS_AUTH: `Bearer ${key}` } };
+  return {
+    code: `claude mcp add --transport http nexus ${url} --header "Authorization: Bearer ${key}"`,
+    desktop: JSON.stringify({ mcpServers: { nexus: desktop } }, null, 2),
+    desktopMerge: JSON.stringify({ preferences: { "...": "o que já estava aqui" }, mcpServers: { "outro-servidor": { "...": "o que já estava aqui" }, nexus: desktop } }, null, 2),
+    cursor: JSON.stringify({ mcpServers: { nexus: { url, headers: { Authorization: `Bearer ${key}` } } } }, null, 2),
+    gemini: JSON.stringify({ mcpServers: { nexus: { httpUrl: url, headers: { Authorization: `Bearer ${key}` } } } }, null, 2),
+  };
+}
+
+// Chave criada: a chave e o bloco pronto da IA escolhida (já com a chave), cada um com Copiar.
+function showNewToken(res) {
+  const cfg = aiConfigs(res.token);
+  const AIS = [
+    ["Claude Code", "No terminal, rode:", cfg.code],
+    ["Claude Desktop", "Cole em claude_desktop_config.json (Configurações > Desenvolvedor > Editar configuração). Arquivo com outro conteúdo? Veja a nota na aba IA e API.", cfg.desktop],
+    ["Cursor", "Cole em mcp.json (vale para outros programas que aceitam endereço e cabeçalho):", cfg.cursor],
+    ["Gemini CLI", "Cole em settings.json, dentro da pasta .gemini da sua pasta de usuário:", cfg.gemini],
+  ];
+  const seg = h("div", { class: "seg seg-sm ai-tabs", role: "tablist", "aria-label": "Sua IA" });
+  const slot = h("div", { class: "ai-config" });
+  const show = (i) => {
+    for (const [n, b] of [...seg.children].entries()) b.setAttribute("aria-selected", String(n === i));
+    const [, note, code] = AIS[i];
+    clear(slot);
+    slot.append(h("p", { class: "dialog-note", text: note }), codeBox(code));
+  };
+  AIS.forEach(([name], i) => seg.append(h("button", { type: "button", class: "chip-btn", role: "tab", text: name, onClick: () => show(i) })));
+  show(0);
   const dlg = modal(
     h("h2", { text: "Chave criada" }),
     h("p", { text: `“${res.name}” — copie agora: ela não aparece de novo.` }),
     h("div", { class: "token-box", text: res.token }),
-    h("p", { class: "dialog-note", text: "Para conectar no Claude Code:" }),
-    codeBox(`claude mcp add --transport http nexus ${url} --header "Authorization: Bearer ${res.token}"`),
+    h("p", { class: "dialog-note ai-tabs-note", text: "Configuração pronta, já com a chave. Escolha a sua IA:" }),
+    seg, slot,
     warnBox("Trate como senha: não cole em repositório, print ou chat. Se vazar, revogue aqui."),
     h("div", { class: "dialog-actions" },
       h("button", {
@@ -620,7 +651,7 @@ async function webhooksPanel(rerender) {
 
   return h("div", { class: "settings-grid" },
     h("section", { class: "panel" },
-      h("div", { class: "panel-head" }, h("h2", { text: "Novo webhook" })),
+      h("div", { class: "panel-head" }, h("h2", { text: "Avisar outro sistema (webhook)" })),
       h("p", { class: "help", text: "Webhook: o Nexus avisa outro sistema na hora em que algo muda (tarefa criada, concluída, rotina marcada…), enviando os dados para o endereço que você informar. Serve para fechar o chamado, avisar no chat ou alimentar uma planilha. Até 5. Quem configura o outro sistema encontra os detalhes na documentação da API." }),
       form),
     h("section", { class: "panel" },
@@ -647,16 +678,16 @@ function showNewSecret(res) {
 // ------------------------------------------------------- integração com IA --
 
 function aiHelp() {
-  const url = `${location.origin}/mcp`;
+  const cfg = aiConfigs("nxs_SUA_CHAVE");
   return [
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Use o Nexus pela sua IA" })),
-      h("p", { class: "help", text: "Em vez de registrar à mão, conte para a IA o que você fez (“troquei o disjuntor do quadro 3 e fiz a ronda da manhã”) e ela registra no Nexus. O Nexus fala MCP, a forma padrão de uma IA usar outros programas." }),
-      h("p", { class: "help", text: "1. Crie uma chave logo abaixo (permissão ler e registrar). 2. Escolha a sua IA e cole a configuração, trocando nxs_SUA_CHAVE pela chave:" }),
+      h("p", { class: "help", text: "Conte para a IA o que você fez (“troquei o disjuntor do quadro 3 e fiz a ronda da manhã”) e ela registra no Nexus. O Nexus fala MCP, a forma padrão de uma IA usar outros programas." }),
+      h("p", { class: "help", text: "1. Crie uma chave em Nova chave, acima (opção “Ler e registrar”): a janela já mostra a configuração pronta de cada IA. 2. Precisa de novo depois? Cole a configuração abaixo, trocando nxs_SUA_CHAVE pela chave:" }),
       h("p", { class: "dialog-note", text: "Claude Code (terminal):" }),
-      codeBox(`claude mcp add --transport http nexus ${url} --header "Authorization: Bearer nxs_SUA_CHAVE"`),
+      codeBox(cfg.code),
       h("p", { class: "dialog-note", text: "Cursor (arquivo mcp.json) e outros programas que aceitam endereço e cabeçalho:" }),
-      codeBox(JSON.stringify({ mcpServers: { nexus: { url, headers: { Authorization: "Bearer nxs_SUA_CHAVE" } } } }, null, 2)),
+      codeBox(cfg.cursor),
       h("p", { class: "dialog-note", text: "Claude Desktop (o aplicativo do Claude no computador), passo a passo:" }),
       h("ol", { class: "help" },
         h("li", {}, "Instale o Node.js (versão LTS, a recomendada) pelo site ",
@@ -664,11 +695,11 @@ function aiHelp() {
         h("li", { text: "No Claude Desktop, abra Configurações > Desenvolvedor > Editar configuração. Abre a pasta do arquivo claude_desktop_config.json: abra esse arquivo no Bloco de Notas (no Mac, no TextEdit)." }),
         h("li", { text: "Se o arquivo estiver vazio ou só com {}, apague tudo e cole o bloco abaixo. Se já tiver outro conteúdo, veja a nota logo depois do bloco." }),
         h("li", { text: "Salve, feche o Claude Desktop por completo e abra de novo. Para conferir, pergunte “o que tenho hoje no Nexus?”: o nexus aparece no ícone de ferramentas, abaixo da caixa de mensagem." })),
-      codeBox(JSON.stringify({ mcpServers: { nexus: { command: "npx", args: ["-y", "mcp-remote", url, "--header", "Authorization:${NEXUS_AUTH}"], env: { NEXUS_AUTH: "Bearer nxs_SUA_CHAVE" } } } }, null, 2)),
+      codeBox(cfg.desktop),
       h("p", { class: "help", text: "Se o arquivo já tiver conteúdo, não cole por cima nem no fim: o arquivo deixa de valer e o aplicativo abre sem o Nexus. Já existe \"mcpServers\"? Copie só o trecho \"nexus\": { … } e cole dentro dele, depois do último servidor, com uma vírgula entre os dois. Não existe? Acrescente \"mcpServers\": { … } inteiro como mais um item, também separado por vírgula. Exemplo de um arquivo que já tinha outras coisas:" }),
-      codeBox(JSON.stringify({ preferences: { "...": "o que já estava aqui" }, mcpServers: { "outro-servidor": { "...": "o que já estava aqui" }, nexus: { command: "npx", args: ["-y", "mcp-remote", url, "--header", "Authorization:${NEXUS_AUTH}"], env: { NEXUS_AUTH: "Bearer nxs_SUA_CHAVE" } } } }, null, 2)),
+      codeBox(cfg.desktopMerge),
       h("p", { class: "dialog-note", text: "Gemini CLI (o Gemini que roda no terminal; arquivo settings.json dentro da pasta .gemini, na sua pasta de usuário):" }),
-      codeBox(JSON.stringify({ mcpServers: { nexus: { httpUrl: url, headers: { Authorization: "Bearer nxs_SUA_CHAVE" } } } }, null, 2)),
+      codeBox(cfg.gemini),
       h("p", { class: "help", text: "O aplicativo e o site do Gemini (gemini.google.com), o ChatGPT e o Claude no navegador (claude.ai) ainda não ligam no Nexus: os conectores deles pedem um tipo de login (OAuth) que o Nexus não tem. Do Gemini, só o Gemini CLI funciona; nos outros, use um dos programas acima ou a API." })),
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "O que a IA pode fazer" })),
@@ -677,17 +708,25 @@ function aiHelp() {
       codeBox(`curl -H "Authorization: Bearer nxs_SUA_CHAVE" ${location.origin}/api/board`)),
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Comandos prontos" })),
-      h("p", { class: "help", text: "O Nexus oferece dois comandos para a IA: o resumo da semana (para o gestor, o time ou um cliente) e o resumo para a equipe (ontem, hoje e o que está aguardando). No Claude Code eles aparecem como comandos de barra:" }),
+      h("p", { class: "help", text: "O Nexus oferece dois comandos para a IA: o resumo da semana (para o time, um cliente ou quem acompanha seu trabalho) e o resumo para a equipe (ontem, hoje e o que está aguardando). No Claude Code eles aparecem como comandos de barra (o /mcp__nexus__daily é o resumo para a equipe):" }),
       codeBox("/mcp__nexus__resumo_semanal o cliente\n/mcp__nexus__daily"),
       h("p", { class: "dialog-note", text: "Em outras IAs, cole o pedido:" }),
-      codeBox("Use o Nexus (get_summary e get_today) e escreva um resumo da minha semana para o meu gestor: o que foi entregue por projeto, o tempo por projeto, o que segue em andamento e o que está aguardando. Só com o que está registrado.")),
+      codeBox("Use o Nexus (get_summary e get_today) e escreva um resumo da minha semana para quem acompanha meu trabalho: o que foi entregue por projeto, o tempo por projeto, o que segue em andamento e o que está aguardando. Só com o que está registrado.")),
   ];
 }
 
 // ------------------------------------------------------- tarefas atribuídas --
 
+// Os dois aceites num painel só: sem eles, ninguém manda tarefas nem vê o registro.
+function privacyPanel(me) {
+  return h("section", { class: "panel" },
+    h("div", { class: "panel-head" }, h("h2", { text: "Quem vê e quem manda tarefas para você" })),
+    h("h3", { class: "sum-h", text: "Receber tarefas" }), ...assignments(me),
+    h("h3", { class: "sum-h", text: "Ver o seu registro" }), ...seenBy(me));
+}
+
 // Consentimento: sem ele, ninguém consegue mandar tarefas para esta pessoa.
-function assignmentsPanel(me) {
+function assignments(me) {
   const cb = h("input", { type: "checkbox" });
   cb.checked = !!me.accepts_assignments_at;
   const since = h("p", { class: "dialog-note" });
@@ -707,11 +746,10 @@ function assignmentsPanel(me) {
     } catch (e) { cb.checked = !cb.checked; errorToast(e); }
     finally { cb.disabled = false; }
   });
-  return h("section", { class: "panel" },
-    h("div", { class: "panel-head" }, h("h2", { text: "Receber tarefas" })),
-    h("p", { class: "help", text: "Quem tem a função de atribuidor de tarefas pode mandar tarefas para você, mas só se você permitir aqui. A tarefa recebida é sua: você edita, conclui ou exclui. Quem mandou só corrige ou cancela enquanto ela está a fazer e você não registrou nada nela." }),
+  return [
+    h("p", { class: "help", text: "Quem tem o papel de atribuir tarefas pode mandar tarefas para você, mas só se você permitir aqui. A tarefa recebida é sua: você edita, conclui ou exclui. Quem mandou só corrige ou cancela enquanto ela está a fazer e você não registrou nada nela." }),
     h("label", { class: "weekday-option" }, cb, h("span", { text: "Permitir que me atribuam tarefas" })),
-    since);
+    since];
 }
 
 // --------------------------------------------------------- excluir a conta --
@@ -722,7 +760,7 @@ function deleteAccount(isUser) {
   const err = h("p", { class: "error-text" });
   const form = h("form", {},
     h("p", { class: "help", text: "Apaga a sua conta e tudo o que está nela: tarefas, rotinas, tempo apontado, anotações, chaves de API e histórico. Não dá para desfazer." }),
-    isUser ? h("p", { class: "dialog-note" }, "Quer guardar uma cópia? Baixe antes em ", h("a", { href: "#/mes?aba=pdf", text: "Meu mês > PDF" }), " (JSON ou CSV).") : null,
+    isUser ? h("p", { class: "dialog-note" }, "Quer guardar uma cópia? Baixe antes em ", h("a", { href: "#/mes?aba=pdf", text: "Meu mês > Relatórios" }), " (JSON ou CSV).") : null,
     field("Sua senha, para confirmar", pw), err,
     h("button", { type: "submit", class: "btn btn-danger", text: "Excluir minha conta" }));
   form.addEventListener("submit", busy(async (ev) => {
@@ -765,22 +803,22 @@ async function passkeysPanel(rerender) {
   const ua = navigator.userAgent;
   const guess = /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) ? "iPad" : /Android/.test(ua) ? "Celular Android"
     : /Windows/.test(ua) ? "Windows" : /Mac OS X/.test(ua) ? "Mac" : "Este aparelho";
-  const add = h("button", { type: "button", class: "btn btn-primary btn-sm" }, icon("add"), "Adicionar passkey neste aparelho");
+  const add = h("button", { type: "button", class: "btn btn-primary btn-sm" }, icon("add"), "Usar a digital ou o rosto neste aparelho");
   add.addEventListener("click", busy(async () => {
-    try { await registerPasskey(guess); toast("Passkey criada. Na próxima vez, entre com ela."); rerender(); }
-    catch (e) { if (!cancelled(e)) errorToast(e, "Não foi possível criar a passkey."); }
+    try { await registerPasskey(guess); toast("Pronto. Na próxima vez, entre com a digital ou o rosto."); rerender(); }
+    catch (e) { if (!cancelled(e)) errorToast(e, "Não foi possível cadastrar a digital ou o rosto."); }
   }));
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Entrar com digital ou rosto" })),
-    h("p", { class: "help", text: "Entre sem digitar a senha: com a digital, o rosto, o PIN do Windows ou uma chave física. A passkey fica no aparelho (ou no gerenciador de senhas dele); o Nexus guarda só a parte pública. A senha continua valendo." }),
+    h("p", { class: "help", text: "Entre sem digitar a senha: com a digital, o rosto, o PIN do Windows ou uma chave física. O acesso (uma chave chamada passkey) fica no aparelho ou no gerenciador de senhas dele; o Nexus guarda só a parte pública. A senha continua valendo." }),
     ...list.map((p) => h("div", { class: "token-row" },
-      h("span", { class: "token-name", text: p.name || "Passkey" }),
+      h("span", { class: "token-name", text: p.name || "Aparelho" }),
       h("span", { class: "token-meta", text: (p.last_used_at ? "usada " + dateTime(p.last_used_at) : "criada " + dateTime(p.created_at)) + (p.backed_up ? " · sincronizada" : "") }),
-      h("button", { type: "button", class: "icon", title: "Remover esta passkey", "aria-label": "Remover " + (p.name || "passkey"), onClick: async () => {
-        if (!(await confirmDialog({ title: "Remover a passkey?", text: "Ela deixa de entrar no Nexus. Para tirar também do aparelho, apague nas configurações de senhas dele.", confirm: "Remover", danger: true }))) return;
+      h("button", { type: "button", class: "icon", title: "Remover este acesso", "aria-label": "Remover o acesso de " + (p.name || "este aparelho"), onClick: async () => {
+        if (!(await confirmDialog({ title: "Remover este acesso?", text: "Este aparelho deixa de entrar no Nexus com a digital ou o rosto. Para tirar também do aparelho, apague nas configurações de senhas dele.", confirm: "Remover", danger: true }))) return;
         try { await api.del(`/auth/passkeys/${p.id}`); rerender(); } catch (e) { errorToast(e); }
       } }, icon("trash")))),
-    passkeySupported() ? h("div", { class: "row-actions" }, add) : h("p", { class: "dialog-note", text: "Este navegador não cria passkeys." }));
+    passkeySupported() ? h("div", { class: "row-actions" }, add) : h("p", { class: "dialog-note", text: "Este navegador não permite entrar com a digital ou o rosto." }));
 }
 
 function account(me) {
@@ -799,7 +837,7 @@ function account(me) {
     try {
       await api.post("/auth/change-password", { current_password: cur.value, new_password: nova.value });
       cur.value = nova.value = nova2.value = "";
-      toast("Senha trocada. Outras sessões, chaves de API e o link do calendário foram encerrados; webhooks, desligados.");
+      toast("Senha trocada. Outras sessões, chaves de API e o link do calendário foram encerrados; integrações (webhooks), desligadas.");
     } catch (e) {
       err.textContent = e.message || "Não foi possível trocar.";
     }
@@ -807,7 +845,6 @@ function account(me) {
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Conta" })),
     h("p", { class: "help mono", text: [me.email, ...(me.roles || []).filter((r) => r !== "user").map((r) => ROLE_SHORT[r])].join(" · ") }),
-    ...((me.roles || []).includes("user") ? seenBy(me) : []),
     form);
 }
 

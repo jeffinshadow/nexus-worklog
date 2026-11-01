@@ -104,7 +104,7 @@ def stop_timer_of(user: dict, task_id: int, ended_at: datetime | None = None) ->
 def _own_task(uid: int, task_id: int) -> dict:
     row = audit.worklog_snapshot(task_id, uid)
     if not row:
-        raise HTTPException(status_code=404, detail="não encontrado")
+        raise HTTPException(status_code=404, detail="tarefa não encontrada (pode ter sido excluída); atualize a tela")
     return row
 
 
@@ -241,7 +241,7 @@ def detail(task_id: int, user=Depends(active_user)):
         (task_id, uid),
     )
     if not task:
-        raise HTTPException(status_code=404, detail="não encontrado")
+        raise HTTPException(status_code=404, detail="tarefa não encontrada (pode ter sido excluída); atualize a tela")
     task["checklist"] = db.query_all(
         "SELECT id, label, done, position FROM task_checklist WHERE task_id = %s ORDER BY position, id",
         (task_id,),
@@ -328,8 +328,8 @@ def update(task_id: int, data: WorklogUpdate, user=Depends(active_user_csrf)):
         # Motivo ou cobrança numa tarefa que não fica aguardando: antes era
         # descartado em silêncio. Mudar o status por tabela seria efeito escondido.
         raise HTTPException(status_code=400, detail=(
-            "motivo (blocked_reason) e dia de cobrar (follow_up_on) só valem em tarefa aguardando: "
-            "mande status \"blocked\" junto para ela passar a aguardar"))
+            "o motivo e o dia de cobrar só valem em tarefa aguardando: "
+            "marque a tarefa como aguardando (status \"blocked\") junto"))
     elif before["status"] == "blocked":
         fields.append("blocked_at = NULL")
         fields.append("blocked_reason = NULL")
@@ -466,7 +466,7 @@ def delete_note(note_id: int, user=Depends(active_user_csrf)):
         (note_id, user["user_id"]),
     )
     if not row:
-        raise HTTPException(status_code=404, detail="não encontrado")
+        raise HTTPException(status_code=404, detail="anotação não encontrada (pode ter sido excluída); atualize a tela")
     audit.record(user, "note.delete", "note", note_id, before=row)
     return {"ok": True}
 
@@ -496,7 +496,7 @@ def update_item(item_id: int, data: ChecklistUpdate, user=Depends(active_user_cs
         (item_id, user["user_id"]),
     )
     if not before:
-        raise HTTPException(status_code=404, detail="não encontrado")
+        raise HTTPException(status_code=404, detail="item do checklist não encontrado (pode ter sido excluído); atualize a tela")
     label = data.label.strip() if data.label is not None else before["label"]
     done = data.done if data.done is not None else before["done"]
     db.execute("UPDATE task_checklist SET label = %s, done = %s WHERE id = %s", (label, done, item_id))
@@ -514,7 +514,7 @@ def delete_item(item_id: int, user=Depends(active_user_csrf)):
         (item_id, user["user_id"]),
     )
     if not row:
-        raise HTTPException(status_code=404, detail="não encontrado")
+        raise HTTPException(status_code=404, detail="item do checklist não encontrado (pode ter sido excluído); atualize a tela")
     audit.record(user, "checklist.delete", "checklist", item_id, before=row)
     return {"ok": True}
 
@@ -561,6 +561,6 @@ def delete_time(entry_id: int, user=Depends(active_user_csrf)):
         (entry_id, user["user_id"]),
     )
     if not row:
-        raise HTTPException(status_code=404, detail="não encontrado")
+        raise HTTPException(status_code=404, detail="registro de tempo não encontrado (pode ter sido excluído); atualize a tela")
     audit.record(user, "time.delete", "time", entry_id, before=row)
     return {"ok": True}

@@ -8,12 +8,12 @@ Prioridades: **simples > seguro > funcional > elegante**.
 
 Cada pessoa vê **apenas** os próprios dados. As contas são criadas pelo
 **admin** (convite com senha temporária); não há cadastro público. Papéis
-acumuláveis, dados em **Admin > Permissões**: **Usuário** (o próprio registro),
-**Admin** (convites, contas, permissões, configurações), **Atribuidor de tarefas** (manda
+acumuláveis, dados em **Admin > Papéis**: **Usuário** (o próprio registro),
+**Admin** (convites, contas, papéis, configurações), **Atribuidor de tarefas** (manda
 tarefas a quem aceitou receber) e **Visualizador de tarefas** (consulta, só
 para leitura, o quadro, a retrospectiva, os relatórios, as horas e as fotos de
 quem **aceitou** em Configurações > Conta; contas novas começam sem o aceite, e
-Admin > Permissões mostra quem liberou). O admin também tem o próprio registro;
+Admin > Papéis mostra quem liberou). O admin também tem o próprio registro;
 em Admin > Usuários ele busca a conta, reenvia ou **cancela um convite** ainda
 não aceito, redefine a senha, **bloqueia o acesso** (a pessoa sai de todos os
 aparelhos, chaves e passkeys param, os dados ficam; Redefinir senha libera) ou
@@ -77,7 +77,7 @@ exclui a conta de vez.
   projeto e o que está em aberto. **PDF**: o relatório por período, por projeto ou do projeto inteiro, em
   estilo editorial: o período em texto corrido, os números, o ritmo, a
   **matriz de rotinas** (um ponto por dia) e o diário. Pode ir toda segunda
-  anexado ao resumo semanal por e-mail, com cópia opcional (gestor, cliente).
+  anexado ao resumo semanal por e-mail, com cópia opcional para quem acompanha o trabalho.
   Exportação em CSV (planilha) e JSON (backup).
 - **Histórico com desfazer**, **busca** sem acento (inclusive por `#chamado`),
   **feed de calendário (ICS)**, **avisos por e-mail** (opt-in), **lembrete** no
@@ -259,13 +259,13 @@ incidente e outra quando volta. Logs com rotação (10 MB × 5 por serviço).
 - **nginx**: CSP sem inline, HSTS, `nosniff`, `DENY` em frames; o link do
   calendário não vai para o log. Logo enviado validado pelo conteúdo e servido
   em sandbox.
-- **Seus dados (LGPD)**: cada pessoa exporta tudo em JSON ou CSV (Meu mês > PDF) e
+- **Seus dados (LGPD)**: cada pessoa exporta tudo em JSON ou CSV (Meu mês > Relatórios) e
   exclui a própria conta em Configurações > Conta (com a senha); o admin também
   exclui uma conta (Admin > Usuários, confirmando o e-mail). Tarefas, rotinas,
   tempo, anotações, chaves e histórico vão junto; ficam só o e-mail e as contagens
   no histórico de quem excluiu (180 dias). O último admin não sai. O JSON leva
   também perfil, preferências, modelos, projetos com objetivos e as chaves
-  externas; as fotos vão à parte, no `fotos.zip` (Meu mês > PDF).
+  externas; as fotos vão à parte, no `fotos.zip` (Meu mês > Relatórios).
   - **Histórico de 180 dias**: o que você exclui some da tela na hora, mas o
     "antes" fica no histórico (para o desfazer) e sai de vez em 180 dias. Para
     apagar já, exclua a conta.

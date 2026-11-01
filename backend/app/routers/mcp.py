@@ -581,7 +581,7 @@ def _pause(ctx, rid: int, until) -> str:
         return f" Rotina R{rid} retomada: volta a valer hoje."
     data = _call(PauseIn, until=until)
     _call(recurring_routes.pause, rid, data, user=ctx)
-    return f" Rotina R{rid} pausada até {data.until:%d/%m/%Y} (inclusive): não conta como falta nem lembra; marcar conta como extra."
+    return f" Rotina R{rid} pausada até {data.until:%d/%m/%Y} (inclusive): não conta como falta nem avisa; marcar conta como extra."
 
 
 def _routine_line(r: dict) -> str:
@@ -754,7 +754,7 @@ def t_set_recurring(ctx, args):
         try:
             msg = _pause(ctx, int(rid), args["paused_until"]).strip()
         except ToolError as e:
-            if str(e) == "não encontrado":
+            if str(e).startswith("rotina não encontrada"):
                 raise ToolError(f"rotina R{rid} não encontrada (veja list_recurring)") from None
             raise
         if not ({"done", "day", "note"} & set(args)):
@@ -768,7 +768,7 @@ def _set_done(ctx, rid, data) -> str:
         res = _call(recurring_routes.toggle, int(rid), data, user=ctx)
     except ToolError as e:
         # Mudar a agenda ou o nome cria uma rotina nova (id novo) a partir daquele dia.
-        if str(e) == "não encontrado":
+        if str(e).startswith("rotina não encontrada"):
             raise ToolError(f"rotina R{rid} não encontrada (veja list_recurring)") from None
         if "não existia nesse dia" in str(e):
             raise ToolError(f"a rotina R{rid} não valia nesse dia: quando a agenda ou o nome muda, a rotina ganha "
@@ -882,7 +882,7 @@ def t_update_recurring(ctx, args):
     try:
         res = _call(recurring_routes.update, int(rid), data, user=ctx)
     except ToolError as e:
-        if str(e) == "não encontrado":
+        if str(e).startswith("rotina não encontrada"):
             raise ToolError(f"rotina R{rid} não encontrada (veja list_recurring)") from None
         if str(e) == "nada mudou na rotina":
             raise ToolError("nada a mudar: envie label, freq (com o parâmetro dela), remind_at ou require_note") from None
@@ -1059,7 +1059,7 @@ TOOLS = {
                        "“próxima em DD/MM”: rotina que conta da última vez (freq after).",
                        {"type": "object", "properties": {"day": DATE}}),
     "set_recurring": (t_set_recurring, True, "Marca (done=true) ou desmarca uma rotina num dia (padrão hoje; até 7 dias atrás). "
-                      "Com paused_until: pausa de hoje até a data (férias, folga; não conta como falta nem lembra) "
+                      "Com paused_until: pausa de hoje até a data (férias, folga; não conta como falta nem avisa) "
                       "ou, com null, retoma agora — sem done/day/note, só pausa ou retoma.",
                       {"type": "object", "required": ["recurring_id"], "properties": {
                           "recurring_id": {"type": "integer", "description": "id da rotina (R<n> em get_today/list_recurring), não de tarefa"},
@@ -1154,8 +1154,8 @@ TOOLS["update_recurring"] = (
 PROMPTS = {
     "resumo_semanal": {
         "title": "Resumo da semana",
-        "description": "Resumo da semana de trabalho para mandar a alguém (gestor, time, cliente).",
-        "arguments": [{"name": "para", "description": "Para quem é o resumo (padrão: gestor)", "required": False}],
+        "description": "Resumo da semana de trabalho para mandar a alguém (o time, um cliente, quem acompanha seu trabalho).",
+        "arguments": [{"name": "para", "description": "Para quem é o resumo (padrão: quem acompanha meu trabalho)", "required": False}],
         "text": ("Use a ferramenta get_summary do Nexus e escreva um resumo da minha semana para {para}, em português, "
                  "curto e objetivo: o que foi entregue (agrupe por projeto/cliente), o tempo por projeto, o que ficou "
                  "em andamento e o que está aguardando algo de fora (status blocked, via get_today). Não invente nada que não "
@@ -1163,7 +1163,7 @@ PROMPTS = {
     },
     "daily": {
         "title": "Daily",
-        "description": "Texto da daily: ontem, hoje e o que está aguardando.",
+        "description": "Resumo para a equipe: ontem, hoje e o que está aguardando.",
         "arguments": [],
         "text": ("Use get_summary e get_today do Nexus e monte minha daily em três tópicos curtos: Ontem (o que concluí "
                  "desde o último dia útil), Hoje (o que está em andamento, atrasado ou vence hoje) e Aguardando "
@@ -1179,7 +1179,7 @@ def _prompt_list() -> list:
 
 def _prompt_get(name: str, args: dict) -> dict:
     p = PROMPTS[name]
-    text = p["text"].format(para=(args.get("para") or "o meu gestor").strip()[:80])
+    text = p["text"].format(para=(args.get("para") or "quem acompanha meu trabalho").strip()[:80])
     return {"description": p["description"], "messages": [{"role": "user", "content": {"type": "text", "text": text}}]}
 
 

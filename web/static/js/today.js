@@ -78,7 +78,8 @@ export async function mount(root, ctx, opts = {}) {
     recPanel.append(h("p", { class: "empty", text: "Nenhuma rotina ainda. Crie o que você confere sempre (rondas, equipamentos, fila de pedidos, e-mail…)." }));
   else if (!due.length)
     recPanel.append(h("p", { class: "empty", text: "Nada previsto para este dia. Marcar mesmo assim conta como extra." }));
-  else if (off.length) recPanel.append(h("p", { class: "day-note", text: `Esmaecidas: fora da agenda deste dia${off.some((r) => r.paused_until) ? " ou pausadas" : ""} (se marcar, conta como extra).` }));
+  // A dica do "extra" sai depois que a pessoa marca o primeiro (o título da linha continua explicando).
+  else if (off.length && !extraSeen()) recPanel.append(h("p", { class: "day-note", text: `Esmaecidas: fora da agenda deste dia${off.some((r) => r.paused_until) ? " ou pausadas" : ""} (se marcar, conta como extra).` }));
   for (const r of [...due, ...off]) {
     const cb = h("input", { type: "checkbox", "aria-label": r.label });
     cb.checked = r.done_today;
@@ -98,6 +99,7 @@ export async function mount(root, ctx, opts = {}) {
       }
       try {
         await api.post(`/recurring/${r.id}/toggle`, { done: cb.checked, day: b.day }); // o dia da tela, não o do relógio
+        if (cb.checked && r.due === false) markExtraSeen();
         refreshReminders();
         await refresh();
         refocusBy(root, r.label); // a lista foi redesenhada: o foco volta para a mesma rotina
@@ -112,7 +114,8 @@ export async function mount(root, ctx, opts = {}) {
     const at = r.remind_at ? r.remind_at.slice(0, 5) : null;
     const state = at && b.day === today && r.due !== false ? reminderState({ ...r, remind_at: at }) : null;
     const time = at ? h("span", { class: "chip rem-at" + (state ? " " + state : ""), text: state === "due" ? `${at} · na hora` : at }) : null;
-    recPanel.append(h("label", { class: "check-row" + (r.done_today ? " done" : "") + (r.due === false ? " off" : "") }, cb,
+    recPanel.append(h("label", { class: "check-row" + (r.done_today ? " done" : "") + (r.due === false ? " off" : ""),
+      title: r.due === false ? (r.paused_until ? "Pausada" : "Fora da agenda deste dia") + ": se marcar, conta como extra" : null }, cb,
       h("span", { class: "label" }, h("span", { class: "rec-title" }, r.label, time), hint ? h("small", { text: hint }) : null,
         r.note ? h("small", { class: "evidence", text: "evidência: " + r.note }) : null),
       // Marcada: anota o que foi conferido (vai para o relatório, para comprovar depois).
@@ -308,3 +311,9 @@ async function showHandoff() {
       } }, icon("copy"), "Copiar")));
   area.focus();
 }
+
+// Dica do "extra": só até a pessoa marcar o primeiro (por aparelho; sem o
+// armazenamento, a dica continua aparecendo).
+const EXTRA_KEY = "nexus:extra-visto";
+function extraSeen() { try { return localStorage.getItem(EXTRA_KEY) === "1"; } catch { return false; } }
+function markExtraSeen() { try { localStorage.setItem(EXTRA_KEY, "1"); } catch { /* sem armazenamento */ } }

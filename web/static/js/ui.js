@@ -210,15 +210,16 @@ function paintBadge(a, n, label) {
   b.setAttribute("aria-label", label || String(n));
 }
 
-// Confirmação com botões próprios. Resolve true/false.
-export function confirmDialog({ title, text, confirm = "Confirmar", danger = false }) {
+// Confirmação com botões próprios. Resolve true/false. `dismiss`: o botão de sair
+// (ex.: "Voltar" quando a ação já é "Cancelar tarefa", para não ter dois "Cancelar").
+export function confirmDialog({ title, text, confirm = "Confirmar", danger = false, dismiss = "Cancelar" }) {
   return new Promise((resolve) => {
     let ok = false;
     const dlg = modal(
       h("h2", { text: title }),
       text ? h("p", { text }) : null,
       h("div", { class: "dialog-actions" },
-        h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
+        h("button", { type: "button", class: "btn btn-text", text: dismiss, onClick: () => dlg.close() }),
         h("button", {
           type: "button", class: "btn " + (danger ? "btn-danger" : "btn-primary"), text: confirm,
           onClick: () => { ok = true; dlg.close(); },

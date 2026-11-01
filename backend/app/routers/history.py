@@ -155,7 +155,8 @@ def _label(row) -> str:
         text = ("marcou" if row["after"]["done"] else "desmarcou") + " a rotina"
         if row["after"]["done"] and row["before"] and row["before"].get("done") and row["after"].get("note") != row["before"].get("note"):
             text = "anotou a evidência da rotina" if row["after"].get("note") else "apagou a evidência da rotina"
-        name = f"{name} em {row['after']['day']}" if name else row["after"]["day"]
+        dia = str(row["after"]["day"])  # AAAA-MM-DD; fora das aspas, que são do nome
+        return f"{text} “{name}” em {dia[8:10]}/{dia[5:7]}" if name else f"{text} em {dia[8:10]}/{dia[5:7]}"
     return f"{text} “{name}”" if name else text
 
 

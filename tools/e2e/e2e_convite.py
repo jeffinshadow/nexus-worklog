@@ -1,5 +1,5 @@
 """E2E na homologação (túnel 8090 + Mailpit 8025): convite por link, esqueci a senha,
-confirmação de senha e semanas do resumo. Uso: e2e_convite.py SAIDA [desktop|mobile]"""
+confirmação de senha e o resumo do Hoje. Uso: e2e_convite.py SAIDA [desktop|mobile]"""
 import base64, json, re, subprocess, sys, tempfile, time, urllib.request
 import websocket
 import os
@@ -189,22 +189,16 @@ try:
     rec.shot("c08-conta-senha")
 
     # ---- e-mails bonitos? captura o HTML do convite
-    # ---- semanas do resumo (Marina)
+    # ---- resumo do Hoje (Marina)
     mar = Browser(9403 if modo == "desktop" else 9413)
     mar.login(*MARINA)
     mar.go(B + "/#/hoje", 3)
     mar.ev("document.querySelector('dialog.tour-dialog')?.close()")
-    mar.wait("!!document.querySelector('.sum-week')", 8)
-    mar.ev("document.querySelector('.sum-week').scrollIntoView({block: 'center'})"); time.sleep(.4)
-    check("card da semana com setas", mar.ev("document.querySelector('.sum-week .day-nav-label')?.textContent") == "Esta semana")
-    mar.click("document.querySelector('.sum-week [aria-label=\"Semana anterior\"]')")
-    check("semana passada", mar.wait("document.querySelector('.sum-week .day-nav-label')?.textContent === 'Semana passada'"))
-    mar.click("document.querySelector('.sum-week [aria-label=\"Semana anterior\"]')")
-    check("duas semanas atrás", mar.wait("/\\d\\d\\/\\d\\d a \\d\\d\\/\\d\\d/.test(document.querySelector('.sum-week .day-nav-label')?.textContent)"))
-    time.sleep(.3)
-    mar.shot("c09-semanas")
-    check("próxima volta", mar.click("document.querySelector('.sum-week [aria-label=\"Próxima semana\"]')") and
-          mar.wait("document.querySelector('.sum-week .day-nav-label')?.textContent === 'Semana passada'"))
+    mar.wait("!!document.querySelector('.t-sum')", 8)
+    mar.ev("document.querySelector('.t-sum').scrollIntoView({block: 'center'})"); time.sleep(.4)
+    check("Hoje: só o resumo do último dia útil (a semana fica em Meu mês)",
+          mar.ev("document.querySelectorAll('.t-sum .sum-card').length") == 1 and not mar.ev("!!document.querySelector('.t-sum .day-nav')"))
+    mar.shot("c09-resumo")
 
     # Limpeza.
     for u in adm.api("GET", "/admin/users")["j"]:
