@@ -1,6 +1,6 @@
 // Notificações do sistema neste aparelho (Web Push; ver app/push.py e sw.js):
 // ligar e desligar por aparelho, o convite depois de instalado e o painel de
-// Configurações › Avisos. No iPhone, só com o Nexus na tela de início (iOS 16.4+).
+// Configurações > Avisos. No iPhone, só com o Nexus na tela de início (iOS 16.4+).
 import { api } from "./api.js";
 import { h, icon, dateTime } from "./dom.js";
 import { errorToast, toast } from "./ui.js";
@@ -105,7 +105,7 @@ export function offerNotifications(me) {
   }, 2500);
 }
 
-// --------------------------------------------- Configurações › Avisos --
+// --------------------------------------------- Configurações > Avisos --
 const TYPES = [
   ["routine", "Rotina na hora", "No horário da rotina, com Marcar feita e Adiar 10 min; repete 10 e 30 min depois até ser marcada."],
   ["follow_up", "Cobrar hoje", "De manhã, as bloqueadas com o dia de cobrar chegando."],

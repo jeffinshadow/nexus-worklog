@@ -78,7 +78,7 @@ function showSteps() {
     h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Entendi", onClick: () => dlg.close() })));
 }
 
-// Ajuda › Começar: o botão só aparece fora do app instalado.
+// Ajuda > Começar: o botão só aparece fora do app instalado.
 export const canOfferInstall = () => !installed();
 
 // Convite no canto da tela, depois do tour e longe do primeiro segundo do app.

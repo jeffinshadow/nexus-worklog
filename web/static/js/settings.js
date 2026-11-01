@@ -464,8 +464,8 @@ function showFeed(res) {
     h("h2", { text: "Link do calendário" }),
     h("p", { text: "Copie agora: ele não aparece de novo. Quem tiver o link vê seus prazos e rotinas." }),
     codeBox(url),
-    h("p", { class: "dialog-note", text: "Google Agenda: Outras agendas › + › Do URL › cole o link." }),
-    h("p", { class: "dialog-note", text: "Outlook: Adicionar calendário › Assinar da Web." }),
+    h("p", { class: "dialog-note", text: "Google Agenda: Outras agendas > + > Do URL > cole o link." }),
+    h("p", { class: "dialog-note", text: "Outlook: Adicionar calendário > Assinar da Web." }),
     h("p", { class: "dialog-note" }, "iPhone/Mac: ", h("a", { href: webcal, text: "abrir no Calendário" }), "."),
     h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Pronto", onClick: () => dlg.close() })));
 }

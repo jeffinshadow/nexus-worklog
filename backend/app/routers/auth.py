@@ -140,7 +140,7 @@ def _passkeys_mail(n: int):
              "A senha desta conta acabou de ser trocada pelo link de \"Esqueci a senha\".")
     m.blocks = [("As suas passkeys continuam valendo", [
         f"{n} passkey{'s' if n > 1 else ''} ainda entra{'m' if n > 1 else ''} nesta conta sem senha.",
-        "Não foi você? Entre, troque a senha e remova as passkeys em Configurações › Conta."])]
+        "Não foi você? Entre, troque a senha e remova as passkeys em Configurações > Conta."])]
     m.reason, m.settings_tab = "Aviso de segurança da sua conta.", None
     return m
 
