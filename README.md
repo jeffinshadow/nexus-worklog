@@ -98,14 +98,16 @@ para leitura, o quadro, a retrospectiva e os relatórios de cada pessoa).
 - **IA** — chaves de API e servidor **MCP** (`/mcp`): a IA registra, anota,
   aponta e cronometra o que você contar, com tudo marcado no histórico pelo nome
   da chave. Comandos prontos para o resumo da semana e para a daily; `get_week`
-  traz semanas passadas. Para
+  traz semanas passadas e `get_period`, qualquer período (tempo por projeto). Para
   lançar o que já aconteceu: `created_at`/`completed_at`, `external_ref` (não
   duplica) e `list_tasks` por período. A IA também monta projetos:
   `create_project`, `update_project` (arquiva, não exclui), `create_objective`
   (com posição), `update_objective` e `reorder_objectives` (a lista inteira; a
   ordem anterior fica no histórico, com desfazer). Nome ou título repetido
-  devolve o que já existe; o status do objetivo continua automático. A IA não
-  exclui tarefa, projeto nem objetivo.
+  devolve o que já existe; o status do objetivo continua automático. Cria
+  rotinas (`create_recurring`). A IA não exclui tarefa, rotina, projeto nem
+  objetivo. Liga no Claude Code, Cursor, Claude Desktop e Gemini CLI
+  (docs/API.md); ChatGPT e claude.ai na web ainda não (exigem OAuth).
 
 ## Telas
 
