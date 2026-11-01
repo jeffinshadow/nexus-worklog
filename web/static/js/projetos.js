@@ -37,7 +37,7 @@ function progress(done, total, label = true) {
 
 async function mountList(root, ctx) {
   const list = await api.get("/projects?include_archived=true");
-  ctx.setEyebrow("objetivos · tarefas · ordem de execução");
+  ctx.setEyebrow("objetivos e tarefas");
   const novo = async () => {
     const name = await askName();
     if (!name) return;
@@ -87,7 +87,7 @@ async function mountProject(root, ctx, pid) {
   const today = localDay(new Date().toISOString());
   const p = o.project;
   // O título da página é o projeto aberto (como o detalhe de qualquer item); a lista volta pelo link.
-  ctx.setEyebrow("projeto" + (p.archived ? " · arquivado" : ""));
+  ctx.setEyebrow(p.archived ? "projeto arquivado" : "projeto");
   for (const id of ["page-title", "appbar-title"]) document.getElementById(id).textContent = p.name;
   document.title = `${p.name} · Nexus Worklog`;
   ctx.setActions(

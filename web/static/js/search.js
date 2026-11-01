@@ -47,7 +47,7 @@ export async function mount(root, ctx) {
     root.append(h("p", { class: "empty", text: "Digite pelo menos 2 letras. A busca ignora acentos e maiúsculas." }));
     return;
   }
-  ctx.setEyebrow(`resultados para “${q}”`);
+  ctx.setEyebrow(`“${q}”`);
 
   let r;
   try {

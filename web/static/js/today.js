@@ -1,7 +1,7 @@
 // Tela inicial "Hoje": o dia em um olhar e as ações mais comuns sem trocar de
 // tela. É o único lugar das rotinas (marcar até 7 dias atrás, editar, achado).
 import { api } from "./api.js";
-import { h, icon, clear, longDate, localDay, addDays } from "./dom.js";
+import { h, icon, clear, weekdayDate, localDay, addDays } from "./dom.js";
 import { errorToast, modal, toast, busy, sheet } from "./ui.js";
 import { reminderState, refreshReminders } from "./lembretes.js";
 import { photoGrid } from "./fotos.js";
@@ -38,7 +38,7 @@ export async function mount(root, ctx, opts = {}) {
     opts.summary ? Promise.resolve(opts.summary) : api.get("/summary").catch(() => null),
   ]);
   const today = b.today;
-  ctx.setEyebrow(longDate(today) + (b.work_day ? "" : " · dia não útil"));
+  ctx.setEyebrow(weekdayDate(today) + (b.work_day ? "" : " · não útil"));
   ctx.setActions(
     h("button", { type: "button", class: "btn btn-ghost", title: "Texto pronto com o que fica aberto, bloqueado e o que foi concluído nas últimas 12 h", onClick: showHandoff }, icon("copy"), "Passagem de turno"),
     h("button", { type: "button", class: "btn btn-primary", "data-fab": "", onClick: () => openWorklog(refresh) }, icon("add"), "Tarefa")

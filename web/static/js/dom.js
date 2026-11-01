@@ -60,6 +60,12 @@ export function longDate(iso) {
   return `${WD[wd]}, ${d} de ${MES[m - 1]}`;
 }
 
+// "sábado, 31/10": a linha abaixo do título de Hoje.
+export function weekdayDate(iso) {
+  const [y, m, d] = iso.split("-").map(Number);
+  return `${WD[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]}, ${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}`;
+}
+
 export function shortDate(iso) {
   if (!iso) return "";
   const [, m, d] = iso.slice(0, 10).split("-");
