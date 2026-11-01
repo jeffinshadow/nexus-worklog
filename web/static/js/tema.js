@@ -11,7 +11,7 @@
     else root.removeAttribute("data-theme");
     var isDark = pref === "dark" || (pref !== "light" && dark.matches);
     var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", isDark ? "#121213" : "#F6F7FA");  // a barra do sistema no celular
+    if (meta) meta.setAttribute("content", isDark ? "#131314" : "#FBFAFF");  // a barra do sistema no celular
   }
   var pref = "auto";
   try { pref = localStorage.getItem(KEY) || "auto"; } catch (e) { /* sem armazenamento */ }
