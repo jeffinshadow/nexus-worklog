@@ -38,10 +38,30 @@
   --font-sans: "Google Sans Flex", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-label: var(--font-sans);  /* rótulos e código: mesma família, diferenciada em app.css */
 
+  /* Tipografia (Material 3, poucos tamanhos nomeados). Tudo em rem: no
+     computador a escala da interface (--ui-zoom) reduz junto. */
+  --type-screen: clamp(1.6rem, 2.6vw, 2.1rem);  /* título da tela (h1) */
+  --type-headline: 1.15rem;  /* título de diálogo e do detalhe da tarefa */
+  --type-title: 1rem;        /* título de seção (cartões, painéis, seções) */
+  --type-body: .94rem;       /* corpo: texto, botões, campos, linhas de lista */
+  --type-body-s: .86rem;     /* corpo menor: textos de apoio, descrições */
+  --type-caption: .8rem;     /* legenda: rótulos de campo, datas, metadados */
+  --type-label: .75rem;      /* rótulo: chips, contadores, abas da barra (mínimo 12 px no celular) */
+
+  /* Raios (Material 3): pequeno, médio, grande, extragrande e pílula. */
+  --radius-s: 8px;      /* detalhes: teclas, dicas, edição no lugar */
+  --radius-m: 12px;     /* campos, itens de lista, menus, cartões de tarefa */
+  --radius-l: 16px;     /* painéis, cartões de seção, FAB */
+  --radius-xl: 28px;    /* diálogos, folhas e o cartão do login */
+  --radius-full: 999px; /* pílulas: botões, chips, abas */
+
+  /* Elevação (3 níveis): 1 = flutua sobre a tela (FAB, barras), 2 = menus,
+     avisos e dicas, 3 = diálogos e painéis por cima de tudo. */
+  --elev-1: 0 10px 24px -10px color-mix(in srgb, var(--shadow) 75%, transparent);
+  --elev-2: 0 16px 36px -12px color-mix(in srgb, var(--shadow) 80%, transparent);
+  --elev-3: 0 28px 64px -20px color-mix(in srgb, var(--shadow) 80%, transparent);
+
   /* Escala */
-  --radius-s: 10px;
-  --radius-m: 16px;
-  --radius-l: 999px;
   --gap: 16px;
   --gap-s: 8px;
   --sidebar-w: 283px;  /* 236 + 20% */
