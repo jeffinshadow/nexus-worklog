@@ -674,6 +674,10 @@ mark { background: color-mix(in srgb, var(--primary) 28%, transparent); color: v
 .offline-bar.bad { border-color: color-mix(in srgb, var(--error) 50%, transparent); }
 .offline-bar.bad > .ico { color: var(--error); }
 .offline-bar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Detalhe da tarefa aberto sem sinal (task.js): só o que houver nas listas guardadas. */
+.offline-note { display: flex; gap: 10px; align-items: flex-start; margin: 4px 0 14px; padding: 12px 14px; border-radius: var(--radius-m);
+  background: var(--surface-pop); color: var(--on-surface); border: 1px solid color-mix(in srgb, var(--warning) 45%, transparent); font-size: var(--type-body-s); }
+.offline-note > .ico { width: 18px; height: 18px; color: var(--warning); flex: none; margin-top: 1px; }
 @media (max-width: 860px) { .offline-bar { top: calc(var(--bar-h, 56px) + env(safe-area-inset-top)); font-size: var(--type-caption); } }
 
 /* Tarefa em edição no detalhe: o concluir dela (cartão, linha, detalhe) esmaece até o "Pronto". */
