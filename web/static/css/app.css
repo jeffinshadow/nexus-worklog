@@ -417,6 +417,12 @@ dialog p { color: var(--on-surface-variant); font-size: var(--type-body); }
 /* Marca enquanto o app abre: só aparece se demorar (abrir rápido não pisca). */
 .boot-splash { animation: splash-in .3s .35s both; }
 @keyframes splash-in { from { opacity: 0; } }
+/* Abrindo: a frase visível e um indicador linear indeterminado (Material 3). */
+.boot-msg { margin: 18px 0 10px; text-align: center; color: var(--on-surface-variant); font-size: var(--type-body-s); }
+.boot-progress { position: relative; height: 4px; border-radius: var(--radius-full); background: var(--surface-container-high); overflow: hidden; }
+.boot-progress > span { position: absolute; top: 0; bottom: 0; left: 0; width: 40%; border-radius: inherit; background: var(--primary); animation: boot-bar 1.4s var(--ease, ease-in-out) infinite; }
+@keyframes boot-bar { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+@media (prefers-reduced-motion: reduce) { .boot-progress > span { animation-duration: 3s; } }
 .view-error { margin: 32px auto; max-width: 420px; text-align: center; }
 .auth-wrap::before { content: ''; position: absolute; inset: 0; z-index: -1; background: radial-gradient(600px circle at 70% 35%, color-mix(in srgb, var(--primary) 14%, transparent), transparent 60%); }
 .auth-wrap::after { content: ''; position: absolute; left: 0; right: 0; top: 62%; height: 1px; z-index: -1; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--primary) 20%, transparent) 15%, var(--primary) 55%, color-mix(in srgb, var(--primary-hi) 80%, transparent) 70%, transparent); box-shadow: 0 0 14px 1px color-mix(in srgb, var(--primary) 45%, transparent); }

@@ -345,7 +345,8 @@ async function boot() {
   stashShare(); // compartilhado de outro app: guarda antes de um eventual login
   loadBranding();
   try {
-    me = await api.get("/auth/me");
+    // Servidor fora: o cartão de erro vem em segundos (o service worker, sem rede, responde antes com a cópia guardada).
+    me = await api.get("/auth/me", { timeout: 6500 });
   } catch (e) {
     // Só sessão inválida vai ao login; sem rede ou servidor fora, avisa e deixa tentar de novo.
     if (e.status === 401 || e.message === "nao autenticado") { toLogin(); return; }

@@ -78,12 +78,12 @@ configure(raw);
 // Sem sinal, as ações da fila (fila.js) ficam guardadas e a resposta é
 // { queued: true, qid }; leituras servidas do cache avisam a barra e recebem
 // por cima o que está na fila.
-async function request(method, path, body) {
+async function request(method, path, body, opts = {}) {
   if (method === "POST" && /^\/worklog(\/\d+\/(notes|time))?$/.test(path) && body && !body.external_ref)
     body = { ...body, external_ref: "app-" + crypto.randomUUID() };  // reenviar (fila, timeout) nunca duplica
   let res;
   try {
-    res = await send(method, path, body === undefined ? { timeout: waitFor(path) } : { body: JSON.stringify(body), type: "application/json", timeout: waitFor(path) });
+    res = await send(method, path, body === undefined ? { timeout: opts.timeout || waitFor(path) } : { body: JSON.stringify(body), type: "application/json", timeout: waitFor(path) });
   } catch (e) {
     if (e.status === 0 && queueable(method, path)) return { queued: true, qid: await enqueue(method, path, body), id: null };
     throw e;
@@ -117,7 +117,8 @@ async function upload(path, file) {
 }
 
 export const api = {
-  get: (p) => request("GET", p),
+  // opts.timeout: espera menor (a abertura do app não fica 20 s parada com o servidor fora).
+  get: (p, opts) => request("GET", p, undefined, opts),
   // Rotas públicas (ex.: identidade visual na tela de login): 401 não redireciona.
   getPublic: async (p) => (await send("GET", p, { publicCall: true })).json(),
   post: (p, b) => request("POST", p, b),
