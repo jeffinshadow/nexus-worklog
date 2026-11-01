@@ -502,7 +502,7 @@ function scheduleForm(item) {
 function askResolution(t, onDone) {
   // Ao fechar, o "Desfazer" da conclusão volta (o aviso some quando se clica numa ação).
   const undoAgain = () => toast(`Concluída: ${t.title}`, { action: "Desfazer", onAction: () => undoLatest("worklog", t.id, onDone) });
-  const area = h("textarea", { rows: "4", maxlength: "1000", placeholder: "ex.: perfil corrompido, recriado com o scanpst", "aria-label": "Como resolveu" });
+  const area = h("textarea", { rows: "4", maxlength: "1000", placeholder: "ex.: disjuntor trocado e circuito testado", "aria-label": "Como resolveu" });
   const err = h("p", { class: "error-text" });
   const form = h("form", {}, h("h2", { text: "Como resolveu?" }),
     h("p", { class: "dialog-note", text: `${t.title}: em poucas linhas. A busca encontra isso da próxima vez que o problema voltar.` }),

@@ -310,7 +310,7 @@ export async function openTask(taskId, onChange) {
         min: addDays(now.slice(0, 10), -((session.me && session.me.retro_days) || 60)) + "T00:00" });
       doneAt.value = t.completed_at ? localDateTime(t.completed_at) : "";
       doneAt.addEventListener("change", () => { if (doneAt.value) save({ completed_at: doneAt.value }); });
-      const resolution = h("textarea", { rows: "2", maxlength: "1000", placeholder: "ex.: perfil corrompido, recriado com o scanpst", "aria-label": "Como resolveu?" });
+      const resolution = h("textarea", { rows: "2", maxlength: "1000", placeholder: "ex.: disjuntor trocado e circuito testado", "aria-label": "Como resolveu?" });
       resolution.value = t.resolution || "";
       inline(resolution, () => cur.resolution || "", (v) => ({ resolution: v || null }));
       grid.append(field("Concluída em", doneAt), field("Como resolveu? (entra na busca)", resolution, "wide"));
