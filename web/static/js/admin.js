@@ -11,6 +11,11 @@ const ROLES = [
   ["viewer", "Vê a equipe", "libera a tela Equipe: vê, sem editar, o registro (quadro, números, PDF, horas e fotos) de quem permitir (cada pessoa libera em Configurações > Conta)"],
 ];
 
+// "Vê a equipe" com a instância em "Visível para quem gerencia": vê todos (sem aceite).
+const roleDesc = (k, d, me) => k === "viewer" && me && me.org && me.org.team_visibility === "managers"
+  ? "libera a tela Equipe: vê, sem editar, o registro (quadro, números, PDF, horas e fotos) de todos — nesta instância, visível para quem gerencia (Admin › Para empresas)"
+  : d;
+
 const phone = () => matchMedia("(max-width: 860px)").matches;
 
 // Menu "mais ações" de uma linha: no computador ao lado do botão; no celular, de baixo.
@@ -78,7 +83,7 @@ async function mountUsers(root, me) {
     h("div", { class: "panel-head" }, h("h2", { text: "Contas" }), h("div", { class: "spacer" }), inviteBtn),
     // Os papéis de cada conta mudam no ⋮ dela ("Papéis…"); aqui, o que cada um pode.
     h("details", { class: "roles-help" }, h("summary", { text: "O que cada papel pode" }),
-      h("dl", { class: "roles-legend" }, ...ROLES.flatMap(([, n, d]) => [h("dt", { text: n }), h("dd", { text: d })]))),
+      h("dl", { class: "roles-legend" }, ...ROLES.flatMap(([k, n, d]) => [h("dt", { text: n }), h("dd", { text: roleDesc(k, d, me) })]))),
     ...searchBox(rows), ...rows.map(([el]) => el));
 
   function userRow(u) {
@@ -229,7 +234,7 @@ async function mountUsers(root, me) {
       const cb = h("input", { type: "checkbox", value: k });
       cb.checked = k === "user";
       cb.addEventListener("change", () => markInvalid(boxes.map(([b]) => b), err, false));
-      return [cb, h("label", { class: "check-line role-line" }, cb, h("span", {}, h("strong", { text: n }), h("small", { text: d })))];
+      return [cb, h("label", { class: "check-line role-line" }, cb, h("span", {}, h("strong", { text: n }), h("small", { text: roleDesc(k, d, me) })))];
     });
     const locked = me.org && me.org.identity_managed;
     const submit = h("button", { type: "submit", class: "btn btn-primary", text: byLink ? "Enviar convite" : "Criar conta" });
@@ -324,7 +329,7 @@ function editRoles(u, me, onChanged) {
     cb.checked = u.roles.includes(k);
     if (k === "admin" && u.id === me.id) { cb.disabled = true; cb.title = "Você não pode tirar o seu próprio admin"; }
     cb.addEventListener("change", () => { if (saving) { cb.checked = !cb.checked; return; } save(cb); });
-    return [cb, h("label", { class: "check-line role-line" }, cb, h("span", {}, h("strong", { text: n }), h("small", { text: d })))];
+    return [cb, h("label", { class: "check-line role-line" }, cb, h("span", {}, h("strong", { text: n }), h("small", { text: roleDesc(k, d, me) })))];
   });
   async function save(cb) {
     const roles = boxes.filter(([b]) => b.checked).map(([b]) => b.value);
