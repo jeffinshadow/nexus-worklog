@@ -885,8 +885,10 @@ TOOLS = {
                         "after_hours": {"type": "boolean"},
                         "completed_at": {**WHEN, "description": "Corrige a data de conclusão (tarefa concluída). " + WHEN["description"]},
                         "blocked_reason": {"type": ["string", "null"], "maxLength": 120,
-                                           "description": "Com status blocked: o que se está aguardando (fornecedor, cliente, aprovação...)"},
-                        "follow_up_on": {**DATE, "type": ["string", "null"], "description": "Com status blocked: dia combinado para cobrar (AAAA-MM-DD)"},
+                                           "description": "O que se está aguardando (fornecedor, cliente, aprovação...). Tarefa que já aguarda: "
+                                                          "basta mandar o motivo novo. Tarefa que não aguarda: mande status blocked junto (sem ele, dá erro)"},
+                        "follow_up_on": {**DATE, "type": ["string", "null"], "description": "Dia combinado para cobrar (AAAA-MM-DD); "
+                                         "mesma regra do blocked_reason: só em tarefa aguardando ou com status blocked junto"},
                         "resolution": {"type": ["string", "null"], "maxLength": 1000,
                                        "description": "Como foi resolvido (tarefa concluída; null apaga)"}}}),
     "get_summary": (t_get_summary, False, "Resumo para a daily/retro: o último dia útil e a semana até hoje (rotinas, tarefas concluídas, tempo por projeto, o que ficou para trás).",

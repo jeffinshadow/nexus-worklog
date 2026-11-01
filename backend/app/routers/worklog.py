@@ -322,6 +322,12 @@ def update(task_id: int, data: WorklogUpdate, user=Depends(active_user_csrf)):
         if "follow_up_on" in sent or before["status"] != "blocked":
             fields.append("follow_up_on = %s")
             values.append(follow_up_day(user["user_id"], data.follow_up_on))
+    elif ("blocked_reason" in sent and _reason(data.blocked_reason)) or ("follow_up_on" in sent and data.follow_up_on):
+        # Motivo ou cobrança numa tarefa que não fica aguardando: antes era
+        # descartado em silêncio. Mudar o status por tabela seria efeito escondido.
+        raise HTTPException(status_code=400, detail=(
+            "motivo (blocked_reason) e dia de cobrar (follow_up_on) só valem em tarefa aguardando: "
+            "mande status \"blocked\" junto para ela passar a aguardar"))
     elif before["status"] == "blocked":
         fields.append("blocked_at = NULL")
         fields.append("blocked_reason = NULL")
