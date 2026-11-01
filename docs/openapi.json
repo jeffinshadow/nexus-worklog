@@ -1002,6 +1002,47 @@
         }
       }
     },
+    "/api/worklog/{task_id}/duplicate": {
+      "post": {
+        "tags": [
+          "worklog"
+        ],
+        "summary": "Duplicate",
+        "description": "Tarefa nova \"a fazer\" com o título, a descrição, os projetos, a prioridade\ne o checklist (desmarcado) desta. Sem tempo, fotos, anotações nem datas.",
+        "operationId": "duplicate_api_worklog__task_id__duplicate_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/worklog/{task_id}/notes": {
       "post": {
         "tags": [

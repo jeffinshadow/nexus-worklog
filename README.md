@@ -46,7 +46,7 @@ para leitura, o quadro, a retrospectiva e os relatórios de cada pessoa).
   dias).
 - **Passagem de turno e espera** — tarefa marcada como aguardando guarda o
   quê (peça, cliente, aprovação) e há quantos dias; um clique monta o texto da passagem de turno
-  (aberto, aguardando e o quê, concluído nas últimas 12 h, plantão). Rotina marcada aceita uma
+  (aberto, aguardando e por quê, concluído nas últimas 12 h, plantão). Rotina marcada aceita uma
   **evidência** curta ("backup OK, 2,1 TB"), que vai para o PDF — e pode ser
   exigida por rotina. Espera parada há dias vira lembrete com "Cobrei", ou
   com um dia combinado para cobrar (no Hoje, no calendário e no e-mail da manhã).
@@ -59,13 +59,14 @@ para leitura, o quadro, a retrospectiva e os relatórios de cada pessoa).
 - **Atribuição** — quem aceita (Configurações > Conta) recebe tarefas de um
   atribuidor pelo app ou pela IA, com aviso por e-mail; a tarefa passa a ser
   dela, e quem atribuiu acompanha o status e recebe um e-mail quando ela é concluída.
-- **Relatórios** — PDF por período, por projeto ou do projeto inteiro, em
+- **Meu mês** — uma tela com duas abas e o mês escolhido uma vez no topo (o
+  corrente por padrão). **Números**: aderência das rotinas, vazão, tempo por
+  projeto e o que está em aberto. **PDF**: o relatório por período, por projeto ou do projeto inteiro, em
   estilo editorial: o período em texto corrido, os números, o ritmo, a
   **matriz de rotinas** (um ponto por dia) e o diário. Pode ir toda segunda
   anexado ao resumo semanal por e-mail, com cópia opcional (gestor, cliente).
   Exportação em CSV (planilha) e JSON (backup).
-- **Retrospectiva** (aderência das rotinas, vazão, tempo por projeto, backlog),
-  **histórico com desfazer**, **busca** sem acento (inclusive por `#chamado`),
+- **Histórico com desfazer**, **busca** sem acento (inclusive por `#chamado`),
   **feed de calendário (ICS)**, **avisos por e-mail** (opt-in), **lembrete** no
   app depois de X minutos sem registro, **atalhos de teclado** (`n`, `/`, `s`,
   `?`…), perfil com nome e foto e **identidade visual** configurável pelo admin.
@@ -125,15 +126,15 @@ Capturas de uma conta de demonstração, com dados fictícios.
 *Tarefas — o número do chamado vira link, o plantão aparece em roxo, a que está aguardando mostra o quê e quando cobrar, e o cronômetro roda no menu.*
 
 ![Detalhe de uma tarefa com checklist, fotos, tempo e anotações](docs/screenshots/03-tarefa.webp)
-*Detalhe da tarefa — checklist, fotos (câmera, print colado ou arrastado), apontamentos de tempo e anotações num lugar só; o botão no topo expande para ler com calma.*
+*Detalhe da tarefa — checklist, fotos (câmera, print colado ou arrastado), apontamentos de tempo e anotações num lugar só; o botão no topo expande para ler com calma. No menu da tarefa, “Duplicar tarefa” cria outra igual (título, descrição, projetos, prioridade e checklist desmarcado), sem tempo, fotos, anotações nem datas.*
 
-![Retrospectiva com aderência, vazão, tempo por projeto e backlog](docs/screenshots/04-retrospectiva.webp)
-*Retrospectiva — aderência de cada rotina, vazão por semana, tempo por cliente e saúde do backlog, com uma leitura do assistente no topo.*
+![Meu mês, aba Números, com aderência, vazão, tempo por projeto e backlog](docs/screenshots/04-retrospectiva.webp)
+*Meu mês (aba Números) — aderência de cada rotina, vazão por semana, tempo por cliente e saúde do backlog, com uma leitura do assistente no topo.*
 
 ![Nova tarefa preenchida a partir de um modelo](docs/screenshots/05-modelo.webp)
 *Modelos — escolhe o modelo no “+ Tarefa” e o checklist vem junto.*
 
-![Passagem de turno com o que fica aberto, o que está aguardando e o quê, o concluído nas últimas 12 h e os vencimentos](docs/screenshots/09-passagem.webp)
+![Passagem de turno com o que fica aberto, o que está aguardando e por quê, o concluído nas últimas 12 h e os vencimentos](docs/screenshots/09-passagem.webp)
 *Passagem de turno — um clique monta o texto pra quem assume.*
 
 ![Vencimentos com certificado, licença e domínio](docs/screenshots/08-vencimentos.webp)
@@ -245,13 +246,13 @@ incidente e outra quando volta. Logs com rotação (10 MB × 5 por serviço).
 - **nginx**: CSP sem inline, HSTS, `nosniff`, `DENY` em frames; o link do
   calendário não vai para o log. Logo enviado validado pelo conteúdo e servido
   em sandbox.
-- **Seus dados (LGPD)**: cada pessoa exporta tudo em JSON ou CSV (Relatórios) e
+- **Seus dados (LGPD)**: cada pessoa exporta tudo em JSON ou CSV (Meu mês > PDF) e
   exclui a própria conta em Configurações > Conta (com a senha); o admin também
   exclui uma conta (Admin > Usuários, confirmando o e-mail). Tarefas, rotinas,
   tempo, anotações, chaves e histórico vão junto; ficam só o e-mail e as contagens
   no histórico de quem excluiu (180 dias). O último admin não sai. O JSON leva
   também perfil, preferências, modelos, projetos com objetivos e as chaves
-  externas; as fotos vão à parte, no `fotos.zip` (Relatórios).
+  externas; as fotos vão à parte, no `fotos.zip` (Meu mês > PDF).
   - **Histórico de 180 dias**: o que você exclui some da tela na hora, mas o
     "antes" fica no histórico (para o desfazer) e sai de vez em 180 dias. Para
     apagar já, exclua a conta.
