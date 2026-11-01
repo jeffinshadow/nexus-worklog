@@ -5,8 +5,8 @@
 // Abre por cima do quadro/Hoje; ao fechar, quem abriu recarrega (onChange).
 import { api } from "./api.js";
 import { h, icon, clear, addDays, shortDate, dateTime, field, localDateTime } from "./dom.js";
-import { errorToast, modal, toast, undoLatest, busy, sheet, syncRail, growFrom, refocusBy } from "./ui.js";
-import { finishTask, deleteTask, duplicateTask, followUpDay, isOverdue, ticketUrl, taskChips } from "./board.js";
+import { errorToast, modal, toast, undoLatest, busy, sheet, syncRail, growFrom, refocusBy, popupMenu } from "./ui.js";
+import { finishTask, deleteTask, duplicateTask, followUpDay, isOverdue, ticketUrl, taskChips, blockTask, canBlock } from "./board.js";
 import { extraProjectsField, fillObjectiveSelect, fillProjectSelect } from "./projects.js";
 import { session } from "./session.js";
 import { timerButton, timerState, startTimer, stopTimer } from "./timer.js";
@@ -55,7 +55,8 @@ export function closeSidePanel() {
   for (const d of document.querySelectorAll("dialog.task-dialog.side[open]")) d.close();
 }
 
-export async function openTask(taskId, onChange) {
+// opts.editTitle: abre já editando o título, selecionado (a cópia do Duplicar).
+export async function openTask(taskId, onChange, opts = {}) {
   // Computador: painel lateral (lista + detalhe, Material 3); o quadro segue
   // visível e clicável ao lado. Celular: tela inteira.
   const side = matchMedia("(min-width: 861px)").matches;
@@ -87,6 +88,12 @@ export async function openTask(taskId, onChange) {
       document.removeEventListener("keydown", onKey);
       // O "close" chega depois; se outro painel já abriu, ele é o dono agora.
       if (sideOwner === dlg) { sideOwner = null; sideTaskId = null; document.body.classList.remove("has-side"); syncRail(); markSelected(); }
+      // O foco estava no painel (Esc, Fechar): volta ao cartão desta tarefa, não ao topo da página.
+      const a = document.activeElement;
+      if (!sideOwner && (!a || a === document.body || !a.isConnected)) {
+        const card = document.querySelector(`#main [data-task-id="${taskId}"]`);
+        if (card) (card.querySelector(".card-open, button") || card).focus();
+      }
     }
     if (changed) onChange && onChange();
   });
@@ -166,12 +173,19 @@ export async function openTask(taskId, onChange) {
       side ? h("button", { type: "button", class: "icon", title: expanded ? "Voltar ao painel" : "Expandir para ler",
         "aria-label": expanded ? "Voltar ao painel" : "Expandir para ler", "aria-pressed": String(expanded),
         onClick: () => expand(!expanded) }, icon(expanded ? "shrink" : "expand")) : null,
-      h("button", { type: "button", class: "icon", title: "Mais ações", "aria-label": "Mais ações", onClick: () => sheet(t.title, [
-        ["Copiar resumo (para o chamado ou o cliente)", "copy", async () => { await pending; copySummary(cur); }],
-        ["Salvar como modelo", "list", async () => { await pending; saveAsTemplate(cur); }],
-        ["Duplicar tarefa", "add", dup],
-        ["Excluir tarefa", "trash", remove],
-      ]) }, icon("more-v")));
+      h("button", { type: "button", class: "icon", title: "Mais ações", "aria-label": "Mais ações", onClick: (ev) => {
+        const items = [
+          canBlock(t) ? ["Marcar como aguardando…", "clock", async () => { await pending; blockTask(cur, after); }] : null,
+          ["Copiar resumo (para o chamado ou o cliente)", "copy", async () => { await pending; copySummary(cur); }],
+          ["Salvar como modelo", "list", async () => { await pending; saveAsTemplate(cur); }],
+          ["Duplicar tarefa", "add", dup],
+          ["Excluir tarefa", "trash", remove],
+        ];
+        // Computador (painel ao lado): menu junto do botão, como o clique direito; celular: folha de baixo.
+        if (!side) { sheet(t.title, items); return; }
+        const r = ev.currentTarget.getBoundingClientRect();
+        popupMenu(r.right - 220, r.bottom + 4, items);
+      } }, icon("more-v")));
     const running = (timerState() || {}).task_id === t.id;
     const mainActs = t.status === "done" ? null : h("div", { class: "task-main-actions" },
       h("button", { type: "button", class: "btn btn-ghost" + (running ? " timer-on" : ""), onClick: () => (running ? stopTimer(after) : startTimer(t, after)) },
@@ -439,8 +453,10 @@ export async function openTask(taskId, onChange) {
     return sec;
   }
 
+  if (opts.editTitle) { editing = true; markEditing(taskId); }
   await render();
-  if (!side) { dlg.showModal(); growFrom(dlg); return; }
+  const pickTitle = () => { const el = body.querySelector(".inline-title"); if (el) { el.focus(); el.select(); } };
+  if (!side) { dlg.showModal(); growFrom(dlg); if (opts.editTitle) pickTitle(); return; }
   dlg.show();
   sideOwner = dlg;
   sideTaskId = taskId;
@@ -449,7 +465,8 @@ export async function openTask(taskId, onChange) {
   markSelected();
   document.addEventListener("keydown", onKey);
   const first = dlg.querySelector(".task-appbar button");
-  if (first) first.focus();
+  if (opts.editTitle) pickTitle();
+  else if (first) first.focus();
 }
 
 // Resumo para colar no chamado (GLPI, Jira...) ou no e-mail do cliente: o que

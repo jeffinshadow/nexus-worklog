@@ -1,8 +1,8 @@
 // Quadro de tarefas: rotinas (com seletor de dia), tarefas abertas e
 // concluídas. Também exporta o diálogo de nova tarefa, usado pela tela Hoje.
 import { api } from "./api.js";
-import { h, icon, clear, field, addDays, shortDate, localDay, localDateTime, daysBetween } from "./dom.js";
-import { confirmDialog, errorToast, toast, undoLatest, busy, modal, sheet, navBadge, popupMenu, focusAfterRemoval } from "./ui.js";
+import { h, icon, clear, field, addDays, shortDate, localDay, localDateTime, daysBetween, markInvalid } from "./dom.js";
+import { confirmDialog, errorToast, toast, undoLatest, busy, modal, sheet, navBadge, popupMenu, focusAfterRemoval, keepFocus } from "./ui.js";
 import { extraProjectsField, fillObjectiveSelect, fillProjectSelect, listProjects, projectChips } from "./projects.js";
 import { openTask, openTaskId, editingTaskId, duration, parseDuration } from "./task.js";
 import { boardLine } from "./assistant.js";
@@ -191,7 +191,7 @@ export function withMenu(el, t, onDone) {
     ];
     if (matchMedia("(max-width: 860px)").matches) { sheet(t.title, items); return; }
     let { clientX: x, clientY: y } = ev;
-    if (!x && !y) { const r = el.getBoundingClientRect(); x = r.left + 24; y = r.top + 24; } // pela tecla de menu
+    if (!x && !y) { el.scrollIntoView({ block: "nearest" }); const r = el.getBoundingClientRect(); x = r.left + 24; y = r.top + 24; } // pela tecla de menu
     popupMenu(x, y, items);
   });
   return el;
@@ -220,10 +220,11 @@ export function followUpDay(day) {
   return fd;
 }
 
-const canBlock = (t) => t.status !== "done" && t.status !== "blocked";
+export const canBlock = (t) => t.status !== "done" && t.status !== "blocked";
 
 // "Aguardando…" direto do menu: pergunta o que falta e, se quiser, quando cobrar.
 export function blockTask(t, onDone) {
+  const back = keepFocus(); // depois do redesenho, o foco volta ao cartão
   const reason = h("input", { type: "text", maxlength: "120", required: "required", placeholder: "Ex.: peça do fornecedor, acesso à sala, aprovação" });
   const follow = h("input", { type: "date", min: localDateTime(Date.now()).slice(0, 10) });
   const err = h("p", { class: "error-text", role: "alert" });
@@ -235,6 +236,7 @@ export function blockTask(t, onDone) {
       h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
       h("button", { type: "submit", class: "btn btn-primary", text: "Marcar como aguardando" })));
   const dlg = modal(form);
+  reason.addEventListener("input", () => markInvalid([reason], err, false));
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const body = { status: "blocked", blocked_reason: reason.value.trim().replace(/^aguardando\s+/i, "") };
@@ -243,20 +245,21 @@ export function blockTask(t, onDone) {
       await api.patch(`/worklog/${t.id}`, body);
       dlg.close();
       toast(`Aguardando: ${body.blocked_reason}.`);
-      if (onDone) onDone();
-    } catch (e) { err.textContent = e.message; }
+      Promise.resolve(onDone && onDone()).then(back);
+    } catch (e) { err.textContent = e.message; markInvalid([reason], err); }
   });
   setTimeout(() => reason.focus(), 0);
 }
 
 // Duplicar: tarefa nova "a fazer" com título, descrição, projetos, prioridade e
-// checklist (desmarcado); sem tempo, fotos, anotações nem datas. Abre a nova.
+// checklist (desmarcado); sem tempo, fotos, anotações nem datas. Abre a nova
+// com o título em edição, selecionado: dá para trocar o nome na hora.
 export async function duplicateTask(t, onDone) {
   try {
     const { id } = await api.post(`/worklog/${t.id}/duplicate`);
     toast("Tarefa duplicada.", { action: "Desfazer", onAction: () => undoLatest("worklog", id, onDone) });
     if (onDone) onDone();
-    openTask(id, onDone);
+    openTask(id, onDone, { editTitle: true });
   } catch (e) { errorToast(e, "Não foi possível duplicar."); }
 }
 

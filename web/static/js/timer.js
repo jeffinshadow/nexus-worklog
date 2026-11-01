@@ -4,7 +4,7 @@
 import { api } from "./api.js";
 import { h, icon, clear } from "./dom.js";
 import { duration, openTask } from "./task.js";
-import { errorToast, toast } from "./ui.js";
+import { errorToast, toast, keepFocus } from "./ui.js";
 
 let state = null;    // { task_id, title, started_at } ou null
 let tick = null;
@@ -60,32 +60,36 @@ function forgotten(st) {
 }
 
 export async function startTimer(task, after = onChange) {
+  const back = keepFocus(); // o cartão é redesenhado: o foco volta para ele
+  const redraw = () => Promise.resolve(after && after()).then(back);
   try {
     const r = await api.post("/timer/start", { task_id: task.id, title: task.title });
     if (r.queued) {  // sem sinal: conta a partir de agora; o servidor recebe a hora do aparelho
       setTimer({ task_id: task.id, title: task.title, started_at: new Date().toISOString() });
       toast(`Cronômetro em «${task.title}» (sem conexão: vai quando voltar).`);
-      if (after) after();
+      redraw();
       return;
     }
     setTimer(r.timer);
     if (r.stopped && r.stopped.needs_review) forgotten(r.stopped);
     else toast(r.stopped ? `Cronômetro em «${task.title}». O anterior apontou ${duration(r.stopped.minutes)}.`
       : `Cronômetro iniciado em «${task.title}».`);
-    if (after) after();
+    redraw();
   } catch (e) { errorToast(e, "Não foi possível iniciar o cronômetro."); }
 }
 
 export async function stopTimer(after = onChange) {
+  const back = keepFocus();
+  const redraw = () => Promise.resolve(after && after()).then(back);
   try {
     const r = await api.post("/timer/stop", state ? { task_id: state.task_id } : {});
     setTimer(null);
-    if (r.queued) { toast("Cronômetro parado. O tempo é apontado quando a conexão voltar."); if (after) after(); return; }
+    if (r.queued) { toast("Cronômetro parado. O tempo é apontado quando a conexão voltar."); redraw(); return; }
     if (r.stopped && r.stopped.needs_review) forgotten(r.stopped);
     else toast(r.stopped ? `Apontado: ${duration(r.stopped.minutes)}.` : "Cronômetro parado. O dia dele já tinha 24h apontadas, nada foi somado.");
-    if (after) after();
+    redraw();
   } catch (e) {
-    if (e.status === 409) { reload(); if (after) after(); }  // outro aparelho parou ou trocou
+    if (e.status === 409) { reload(); redraw(); }  // outro aparelho parou ou trocou
     errorToast(e, "Não foi possível parar o cronômetro.");
   }
 }
