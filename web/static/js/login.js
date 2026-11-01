@@ -60,7 +60,8 @@ async function withPasskey(opts) {
     await passkeyLogin(opts);
     location.href = destino;
   } catch (e) {
-    if (!cancelled(e)) err.textContent = e.message || "Não foi possível entrar com a passkey.";
+    // A consulta silenciosa (sugestão no campo) nunca mostra erro: só o botão.
+    if (!cancelled(e) && !opts.conditional) err.textContent = e.message || "Não foi possível entrar com a passkey.";
   }
 }
 if (passkeySupported()) {
