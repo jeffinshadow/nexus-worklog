@@ -23,7 +23,7 @@ from .labels import dur as _dur
 from .people import profile
 from .routers.branding import branding
 from .schemas import PrefsIn
-from .services import rotinas, week_start, get_board, get_report_range, is_due, is_work_day, work_mask
+from .services import rotinas, week_start, get_board, get_report_range, is_pending, is_work_day, work_mask
 
 log = logging.getLogger("uvicorn.error")
 
@@ -192,7 +192,7 @@ def attach_week_pdf(m: Mail, uid: int, email: str, today: date) -> None:
 
 
 def _rotina_devida(uid: int, day: date, mask: int) -> bool:
-    return any(r["start_d"] <= day <= r["end_d"] and is_due(r, day, mask) for r in rotinas(uid))
+    return any(r["start_d"] <= day <= r["end_d"] and is_pending(r, day, mask) for r in rotinas(uid))
 
 
 BUILDERS = {"morning": build_morning, "evening": build_evening, "weekly": build_weekly}

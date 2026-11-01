@@ -30,7 +30,7 @@ from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 
 from . import db
 from .config import config
-from .services import app_today, get_board, is_due, is_work_day, rotinas, work_mask
+from .services import app_today, get_board, is_pending, is_work_day, rotinas, work_mask
 
 log = logging.getLogger("uvicorn.error")
 
@@ -198,7 +198,7 @@ def _routines(uid: int, p: dict, now: datetime, mask: int) -> list[str]:
     snoozes = {r["recurring_id"]: r["until"] for r in db.query_all(
         "SELECT recurring_id, until FROM push_snooze WHERE user_id = %s AND day = %s", (uid, today))}
     for r in rotinas(uid):
-        if not r["remind_at"] or r["id"] in feitas or not (r["start_d"] <= today <= r["end_d"]) or not is_due(r, today, mask):
+        if not r["remind_at"] or r["id"] in feitas or not (r["start_d"] <= today <= r["end_d"]) or not is_pending(r, today, mask):
             continue
         at = datetime.combine(today, r["remind_at"], tzinfo=now.tzinfo)
         until = snoozes.get(r["id"])
