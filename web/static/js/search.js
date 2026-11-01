@@ -53,7 +53,7 @@ export async function mount(root, ctx) {
   try {
     r = await api.get("/search?q=" + encodeURIComponent(q));
   } catch (e) {
-    root.append(h("p", { class: "empty", text: e.message || "Erro na busca." }));
+    root.append(h("p", { class: "empty", text: e.message || "Não foi possível buscar." }));
     return;
   }
   const today = localDay(Date.now()); // só para os chips (prazo, atrasada)

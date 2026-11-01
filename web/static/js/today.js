@@ -103,7 +103,7 @@ export async function mount(root, ctx, opts = {}) {
         refocusBy(root, r.label); // a lista foi redesenhada: o foco volta para a mesma rotina
       } catch (e) {
         cb.checked = !cb.checked;
-        errorToast(e, "Erro ao salvar.");
+        errorToast(e, "Não foi possível salvar.");
       }
     });
     const hint = [scheduleLabel(r), r.require_note && !r.done_today ? "exige evidência" : "",
@@ -175,7 +175,7 @@ export async function mount(root, ctx, opts = {}) {
       toast(msg, { action: "Ver", onAction: () => document.querySelector(/conclu/i.test(msg) ? ".t-done" : ".t-open")?.scrollIntoView({ behavior: "smooth", block: "start" }) });
     } catch (e) {
       quick.disabled = false;
-      errorToast(e, "Erro ao registrar.");
+      errorToast(e, "Não foi possível registrar.");
       return;
     }
     mount(root, ctx, { day, focusQuick: true, summary: sum });

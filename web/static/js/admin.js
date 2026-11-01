@@ -129,7 +129,7 @@ async function mountUsers(root) {
       const res = await api.post(`/admin/users/${uid}/reset-password`);
       showPassword(res.email, res.temp_password);
     } catch (e) {
-      errorToast(e, "Falha ao redefinir a senha.");
+      errorToast(e, "Não foi possível redefinir a senha.");
     }
   }
 
@@ -176,7 +176,7 @@ async function mountUsers(root) {
         err.textContent =
           e.status === 409 ? "Esse e-mail já tem conta." :
           e.status === 422 ? "E-mail inválido." :
-          e.message || "Falha ao criar a conta.";
+          e.message || "Não foi possível criar a conta.";
         submit.disabled = false;
       }
     }));
@@ -263,7 +263,7 @@ async function mountGeneral(root, me) {
       me.retro_days = res.retro_days;
       me.support_contact = res.support_contact;
       toast("Configurações salvas.");
-    } catch (e) { err.textContent = e.message || "Falha ao salvar."; }
+    } catch (e) { err.textContent = e.message || "Não foi possível salvar."; }
   }));
   root.append(h("div", { class: "settings-grid" }, h("section", { class: "panel" },
     h("div", { class: "panel-head" }, icon("calendar"), h("h2", { text: "Geral" })), form)));
@@ -301,7 +301,7 @@ async function mountBranding(root) {
     try {
       apply(await api.put("/admin/branding", { line1: l1.value.trim(), line2: l2.value.trim() }));
       toast("Textos salvos.");
-    } catch (e) { err.textContent = e.message || "Falha ao salvar."; }
+    } catch (e) { err.textContent = e.message || "Não foi possível salvar."; }
   } });
 
   const upload = h("button", { type: "button", class: "btn btn-ghost", onClick: async () => {
@@ -313,7 +313,7 @@ async function mountBranding(root) {
       apply(await api.upload("/admin/branding/logo", f));
       file.value = "";
       toast("Logo atualizado.");
-    } catch (e) { err.textContent = e.message || "Falha ao enviar."; }
+    } catch (e) { err.textContent = e.message || "Não foi possível enviar."; }
   } }, icon("add"), "Enviar logo");
 
   const reset = h("button", { type: "button", class: "btn btn-text", text: "Restaurar dragão padrão", onClick: async () => {

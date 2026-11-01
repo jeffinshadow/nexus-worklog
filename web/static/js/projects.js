@@ -121,7 +121,7 @@ export async function fillProjectSelect(select, selectedId, onPick) {
       if (onPick) onPick(String(p.id));
       toast(`Projeto “${p.name}” criado.`);
     } catch (e) {
-      errorToast(e, "Erro ao criar projeto.");
+      errorToast(e, "Não foi possível criar o projeto.");
       select.value = previous;
     }
   };

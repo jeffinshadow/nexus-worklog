@@ -152,7 +152,7 @@ export async function pushPanel(rerender) {
   saveBtn.addEventListener("click", async () => {
     const body = { morning_hour: Number(hour.value), hide_content: hide.checked };
     for (const c of checks) body[c.key] = c.on.checked;
-    try { await api.put("/push/prefs", body); toast("Notificações salvas."); } catch (e) { errorToast(e, "Falha ao salvar."); }
+    try { await api.put("/push/prefs", body); toast("Notificações salvas."); } catch (e) { errorToast(e, "Não foi possível salvar."); }
   });
   const test = h("button", { type: "button", class: "btn btn-ghost" }, icon("bell"), "Testar");
   test.disabled = !p.devices.length;

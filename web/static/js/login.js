@@ -45,7 +45,7 @@ $("form-login").addEventListener("submit", async (ev) => {
     });
     location.href = destino;
   } catch (e) {
-    err.textContent = e.message || "Falha no login.";
+    err.textContent = e.message || "Não foi possível entrar.";
     invalid(["login-email", "login-password"], "login-error", true);
     if (btn) btn.disabled = false;
   }

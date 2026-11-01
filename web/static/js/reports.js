@@ -124,7 +124,7 @@ export async function mount(root, opts = {}) {
     const dl = (path, label, help) => {
       const b = h("button", { type: "button", class: "export-item", onClick: async () => {
         b.disabled = true;
-        try { await api.download(typeof path === "function" ? path() : path); } catch (e) { errorToast(e, "Falha ao exportar."); } finally { b.disabled = false; }
+        try { await api.download(typeof path === "function" ? path() : path); } catch (e) { errorToast(e, "Não foi possível exportar."); } finally { b.disabled = false; }
       } }, h("span", { class: "export-ico" }, icon(label.includes("JSON") ? "folder" : label.includes("ZIP") ? "image" : "list")),
         h("span", { class: "export-text" }, h("span", { class: "export-title", text: label }), h("span", { class: "export-help", text: help })),
         icon("download"));
@@ -155,7 +155,7 @@ export async function mount(root, opts = {}) {
       const q = [useDates ? `start=${start}&end=${end}` : "", proj].filter(Boolean).join("&");
       await api.download(`${base}?${q}`);
     } catch (e) {
-      err.textContent = e.message || "Falha ao exportar.";
+      err.textContent = e.message || "Não foi possível exportar.";
     } finally {
       btn.disabled = false;
     }

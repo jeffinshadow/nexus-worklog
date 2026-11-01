@@ -312,7 +312,7 @@ export function busy(fn) {
 
 // Só mensagens da API (que têm status) vão para a tela; erro de JavaScript
 // (em inglês, técnico) vira a mensagem genérica.
-export function errorToast(e, fallback = "Algo deu errado.") {
+export function errorToast(e, fallback = "Não foi possível concluir.") {
   toast((e && "status" in e && e.message) || fallback, { error: true });
 }
 

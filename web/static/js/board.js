@@ -209,7 +209,7 @@ export async function deleteTask(t, onDone) {
     toast("Tarefa excluída.", { action: "Desfazer", onAction: () => undoLatest("worklog", t.id, onDone) });
     return true;
   } catch (e) {
-    errorToast(e, "Erro ao excluir.");
+    errorToast(e, "Não foi possível excluir.");
     return false;
   }
 }
@@ -394,7 +394,7 @@ export function openWorklog(onDone, opts = {}) {
       dlg.close();
       onDone && onDone();
     } catch (e) {
-      errorToast(e, "Erro ao salvar.");
+      errorToast(e, "Não foi possível salvar.");
     } finally {
       if (btn) btn.disabled = false;
     }
@@ -425,7 +425,7 @@ export function openRecurring(item, onDone) {
           onDone && onDone();
           toast("Rotina excluída.", { action: "Desfazer", onAction: () => undoLatest("recurring", item.id, onDone) });
         } catch (e) {
-          errorToast(e, "Erro ao remover.");
+          errorToast(e, "Não foi possível remover.");
         }
       }
     : null;
@@ -445,7 +445,7 @@ export function openRecurring(item, onDone) {
       refreshReminders();
       onDone && onDone();
     } catch (e) {
-      errorToast(e, "Erro ao salvar.");
+      errorToast(e, "Não foi possível salvar.");
     }
   });
   dlg.showModal();
@@ -540,7 +540,7 @@ export async function finishTask(t, onDone, { fromEdit = false } = {}) {
       ["Desfazer", () => undoLatest("worklog", t.id, onDone)],
     ] });
   } catch (e) {
-    errorToast(e, "Erro ao concluir.");
+    errorToast(e, "Não foi possível concluir.");
   }
 }
 

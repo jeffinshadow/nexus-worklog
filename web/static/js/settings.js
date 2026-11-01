@@ -58,7 +58,7 @@ export async function mount(root, ctx) {
       await fill(out);
     } catch (e) {
       clear(out);
-      out.append(h("p", { class: "empty", text: e && e.status === 0 ? e.message : "Erro ao carregar. Tente de novo." }));
+      out.append(h("p", { class: "empty", text: e && e.status === 0 ? e.message : "Não foi possível carregar. Tente de novo." }));
     }
     if (my !== seq) return;
     clear(body);
@@ -125,7 +125,7 @@ function profilePanel(me, rerender) {
       toast(`Combinado: vou chamar você de ${me.name}.`);
       rerender();
     } catch (e) {
-      err.textContent = e.message || "Falha ao salvar.";
+      err.textContent = e.message || "Não foi possível salvar.";
     }
   }));
   return h("section", { class: "panel" },
@@ -174,7 +174,7 @@ function assistantPanel(me) {
     try {
       meChanged(me, { assistant: await api.put("/me/assistant", body) });
       toast("Assistente salvo.");
-    } catch (e) { errorToast(e, "Falha ao salvar."); }
+    } catch (e) { errorToast(e, "Não foi possível salvar."); }
   });
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, icon("spark"), h("h2", { text: "Assistente" })),
@@ -253,7 +253,7 @@ function editTemplate(t, rerender) {
     try {
       if (t) await api.put(`/templates/${t.id}`, body); else await api.post("/templates", body);
       dlg.close(); toast("Modelo salvo."); rerender();
-    } catch (e) { err.textContent = e.message || "Falha ao salvar."; }
+    } catch (e) { err.textContent = e.message || "Não foi possível salvar."; }
   }));
   setTimeout(() => (t ? title : name).focus(), 0);
 }
@@ -315,7 +315,7 @@ function workDays(me) {
       me.work_days = res.work_days;
       toast("Dias úteis salvos.");
     } catch (e) {
-      errorToast(e, "Falha ao salvar.");
+      errorToast(e, "Não foi possível salvar.");
     }
   });
   return h("section", { class: "panel" },
@@ -369,14 +369,14 @@ async function notices() {
     const body = { show_titles: titles.checked, weekly_pdf: pdf.checked, weekly_cc: cc.value.trim() || null };
     for (const r of rows) { body[r.key] = r.on.checked; body[`${r.key}_hour`] = Number(r.hour.value); }
     try { await api.put("/notifications", body); toast("Avisos salvos."); setDirty(false); }
-    catch (e) { errorToast(e, e.status === 422 ? "O e-mail da cópia não parece válido." : "Falha ao salvar."); }
+    catch (e) { if (e.status === 422) toast("O e-mail da cópia não parece válido.", { error: true }); else errorToast(e, "Não foi possível salvar."); }
   });
   const test = h("button", { type: "button", class: "btn btn-ghost" }, icon("mail"), "Mandar um teste");
   test.disabled = !p.mail_configured;
   test.addEventListener("click", async () => {
     test.disabled = true;
     try { const r = await api.post("/notifications/test"); toast(`Teste enviado para ${r.to}.`); }
-    catch (e) { errorToast(e, "Falha no envio."); }
+    catch (e) { errorToast(e, "Não foi possível enviar."); }
     finally { setTimeout(() => { test.disabled = false; }, 4000); }
   });
   // A semana passada como sairia na segunda (só para você; a cópia não recebe). Salve antes.
@@ -386,7 +386,7 @@ async function notices() {
   testWeek.addEventListener("click", async () => {
     testWeek.disabled = true;
     try { const r = await api.post("/notifications/test?kind=weekly"); toast(`Semana enviada para ${r.to}.`); }
-    catch (e) { errorToast(e, "Falha no envio."); }
+    catch (e) { errorToast(e, "Não foi possível enviar."); }
     finally { setTimeout(() => { testWeek.disabled = false; }, 4000); }
   });
   // Os testes saem com o que está salvo: com alteração pendente, esperam o "Salvar avisos".
@@ -502,7 +502,7 @@ async function tokens(rerender) {
       showNewToken(res);
       rerender();
     } catch (e) {
-      err.textContent = e.message || "Falha ao criar.";
+      err.textContent = e.message || "Não foi possível criar.";
       create.disabled = false;
     }
   }));
@@ -578,7 +578,7 @@ async function webhooksPanel(rerender) {
       showNewSecret(res);
       rerender();
     } catch (e) {
-      err.textContent = e.message || "Falha ao criar.";
+      err.textContent = e.message || "Não foi possível criar.";
       create.disabled = false;
     }
   }));
@@ -782,7 +782,7 @@ function account(me) {
       cur.value = nova.value = nova2.value = "";
       toast("Senha trocada. Outras sessões, chaves de API e o link do calendário foram encerrados; webhooks, desligados.");
     } catch (e) {
-      err.textContent = e.message || "Falha ao trocar.";
+      err.textContent = e.message || "Não foi possível trocar.";
     }
   }));
   return h("section", { class: "panel" },
