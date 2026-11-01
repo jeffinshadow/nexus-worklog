@@ -403,6 +403,7 @@ export async function openTask(taskId, onChange, opts = {}) {
       sec.append(h("div", { class: "progress thin" }, bar));
     }
     for (const c of t.checklist) {
+      if (rowEdit === "check:" + c.id) { sec.append(checkEditForm(c)); continue; }
       const cb = h("input", { type: "checkbox", "aria-label": c.label });
       cb.checked = c.done;
       cb.addEventListener("change", async () => {
@@ -410,6 +411,8 @@ export async function openTask(taskId, onChange, opts = {}) {
         catch (e) { cb.checked = !cb.checked; errorToast(e); }
       });
       sec.append(h("label", { class: "check-row" + (c.done ? " done" : "") }, cb, h("span", { class: "label", text: c.label }),
+        t.offline ? null : h("button", { type: "button", class: "icon", title: "Corrigir o texto do item", "aria-label": "Corrigir " + c.label,
+          onClick: (ev) => { ev.preventDefault(); editRow("check:" + c.id, "Texto do item"); } }, icon("edit")),
         h("button", { type: "button", class: "icon", title: "Excluir item", "aria-label": "Excluir " + c.label, onClick: async (ev) => {
           ev.preventDefault();
           try {
@@ -516,6 +519,29 @@ export async function openTask(taskId, onChange, opts = {}) {
       } catch (err) { errorToast(err, "Não foi possível corrigir."); }
     }));
     return form;
+  }
+  // Corrigir o texto de um item do checklist (fica no mesmo lugar da lista).
+  function checkEditForm(c) {
+    const input = h("input", { type: "text", maxlength: "200", value: c.label, "aria-label": "Texto do item" });
+    const save = busy(async () => {
+      const v = input.value.trim();
+      if (!v || v === c.label) { closeRow("Corrigir " + c.label); return; }
+      try {
+        await api.patch(`/checklist/${c.id}`, { label: v });
+        rowEdit = null;
+        await touch();
+        refocusBy(body, "Corrigir " + v);
+        toast("Item corrigido.", { action: "Desfazer", onAction: () => undoLatest("checklist", c.id, after) });
+      } catch (e) { errorToast(e, "Não foi possível corrigir."); }
+    });
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); closeRow("Corrigir " + c.label); }
+      else if (ev.key === "Enter") { ev.preventDefault(); save(); }
+    });
+    return h("div", { class: "check-row row-edit" }, input,
+      h("div", { class: "row-edit-actions" },
+        h("button", { type: "button", class: "btn btn-text btn-sm", text: "Cancelar", onClick: () => closeRow("Corrigir " + c.label) }),
+        h("button", { type: "button", class: "btn btn-primary btn-sm", text: "Salvar", onClick: save })));
   }
   function noteEditForm(n) {
     const text = h("textarea", { rows: "3", maxlength: "2000", "aria-label": "Texto da anotação" });

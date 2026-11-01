@@ -91,3 +91,18 @@ def test_nao_corrige_tempo_nem_anotacao_de_outra_pessoa(usuario, novo_usuario):
     assert outra.patch(f"/notes/{n['id']}", {"body": "dela"}).status_code == 404
     assert db.query_one("SELECT minutes FROM time_entries WHERE id = %s", (e["id"],))["minutes"] == 30
     assert db.query_one("SELECT body FROM task_notes WHERE id = %s", (n["id"],))["body"] == "minha"
+
+
+# --------------------------------------------------------- texto do checklist --
+
+def test_corrigir_texto_do_item_fica_no_lugar(usuario, novo_usuario):
+    tid = _tarefa(usuario)
+    a = usuario.post(f"/worklog/{tid}/checklist", {"label": "Deligar o disjuntor"}).json()
+    usuario.post(f"/worklog/{tid}/checklist", {"label": "Testar"})
+    r = usuario.patch(f"/checklist/{a['id']}", {"label": "Desligar o disjuntor"})
+    assert r.status_code == 200 and r.json()["label"] == "Desligar o disjuntor" and r.json()["done"] is False
+    assert [c["label"] for c in usuario.get(f"/worklog/{tid}").json()["checklist"]] == ["Desligar o disjuntor", "Testar"]
+    h = _ultimo(usuario, "checklist", a["id"])
+    assert h["summary"].startswith("editou o item") and h["can_undo"]
+    assert novo_usuario("outra@example.com").patch(f"/checklist/{a['id']}", {"label": "x"}).status_code == 404
+    assert usuario.patch(f"/checklist/{a['id']}", {"label": ""}).status_code == 422

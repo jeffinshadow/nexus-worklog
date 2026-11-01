@@ -502,6 +502,8 @@ dialog.task-dialog { max-width: 640px; padding: 0; max-height: min(88vh / var(--
 /* Corrigir apontamento/anotação no lugar da linha */
 .row-edit-actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
 .time-form.row-edit { padding: 8px; border-radius: var(--radius-m); background: var(--surface-container-high); border: 1px solid var(--card-border); }
+.check-row.row-edit { flex-wrap: wrap; }
+.check-row.row-edit input[type=text] { flex: 1 1 200px; min-width: 0; height: 40px; }
 .note.row-edit textarea { width: 100%; margin: 6px 0 8px; min-height: 72px; }
 .note-form { display: flex; gap: 8px; align-items: flex-end; margin-bottom: 12px; }
 .note-form textarea { flex: 1; min-height: 44px; }
