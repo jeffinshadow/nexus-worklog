@@ -36,8 +36,15 @@ exclui a conta de vez.
   principais) em ordem de execução, cada um com as suas tarefas, também em
   ordem; arrasta para reordenar (no celular, pelo ⋮). Progresso e status do
   objetivo saem das tarefas; o que não tem objetivo fica em "Sem objetivo".
-  O projeto tem descrição opcional; nome de projeto e título de objetivo não
-  se repetem (sem diferenciar maiúsculas e acentos).
+  O projeto tem descrição opcional e um **ícone** de uma biblioteca fixa
+  (prédio, loja, clínica, servidor, rede, elétrica… 24 no traço do app; sem
+  escolha, a pasta), que aparece no cartão, no título e nas etiquetas das
+  tarefas. O cartão mostra o progresso dos objetivos, em aberto · aguardando ·
+  horas no mês e a última atividade (para ver o que está parado); a lista tem
+  abas Ativos/Arquivados, ordem por atividade ou nome e busca. Ao **arquivar**,
+  a pessoa escolhe o que fazer com as tarefas em aberto: manter, concluir ou
+  mover para outro projeto. Nome de projeto e título de objetivo não se
+  repetem (sem diferenciar maiúsculas e acentos).
 - **Rotinas** — verificações que se repetem (backups, alertas, fila…), com agenda:
   dias úteis, dias da semana, mensal (inclui "último dia"), a cada N dias ou
   **N dias depois da última vez** (trocar o filtro 30 dias depois da última
@@ -161,6 +168,9 @@ Capturas de uma conta de demonstração, com dados fictícios.
 
 ![Detalhe de uma tarefa com checklist, fotos, tempo e anotações](docs/screenshots/03-tarefa.webp)
 *Detalhe da tarefa — checklist, fotos (câmera, print colado ou arrastado), apontamentos de tempo e anotações num lugar só; o botão no topo expande para ler com calma. No menu da tarefa, “Duplicar tarefa” cria outra igual (título, descrição, projetos, objetivo, prioridade e checklist desmarcado), sem tempo, fotos, anotações nem datas.*
+
+![Projetos: cartões com o ícone na cor do projeto, progresso dos objetivos, em aberto, aguardando, horas no mês e última atividade](docs/screenshots/11-projetos.webp)
+*Projetos — cada um com o ícone na sua cor, o progresso dos objetivos, o que está em aberto ou aguardando, as horas do mês e a última atividade; abas Ativos e Arquivados, ordem por atividade ou nome. Aberto, o projeto mostra os números, os próximos prazos e os objetivos em ordem de execução.*
 
 ![Meu mês: a frase do mês e o painel com indicadores, calendário, ritmo e tempo por projeto](docs/screenshots/04-retrospectiva.webp)
 *Meu mês — o mês numa frase e o PDF num botão; o painel com rotinas, tarefas e horas dos últimos 6 meses, o calendário do mês pintado pelas rotinas feitas, o ritmo por semana, o tempo por projeto e o que foi entregue.*
