@@ -156,3 +156,6 @@ def revoke_access(user_id: int) -> None:
     db.execute("UPDATE api_tokens SET revoked_at = now() WHERE user_id = %s AND revoked_at IS NULL", (user_id,))
     db.execute("DELETE FROM calendar_feeds WHERE user_id = %s", (user_id,))
     db.execute("DELETE FROM push_subscriptions WHERE user_id = %s", (user_id,))  # aparelho talvez perdido
+    # Webhook é um canal de saída dos dados: desliga (aparece na lista; religar é um clique).
+    db.execute("""UPDATE webhooks SET disabled_at = now(), last_error = 'desligado na troca de senha'
+                   WHERE user_id = %s AND disabled_at IS NULL""", (user_id,))

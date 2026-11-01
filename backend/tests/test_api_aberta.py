@@ -1,7 +1,12 @@
 """Lote G — API aberta: feed de mudanças, idempotência, webhooks, contrato e dados."""
+import hashlib
+import hmac
+import ipaddress
+import json
+
 import pytest
 
-from app import db
+from app import db, webhooks
 from app.routers import history
 from conftest import Bearer, criar_chave
 
@@ -88,3 +93,135 @@ def test_busca_por_external_ref(usuario):
     achou = usuario.get("/projects?external_ref=crm-7").json()
     assert [x["id"] for x in achou] == [p] and achou[0]["external_ref"] == "crm-7"
     assert usuario.get("/projects?external_ref=nada").json() == []
+
+
+# ------------------------------------------------------------ webhooks (W1) --
+
+DNS = {"hooks.example.com": {"93.184.216.34"}, "interno.example.com": {"10.0.0.5"},
+       "misto.example.com": {"93.184.216.34", "127.0.0.1"}}
+
+
+@pytest.fixture
+def dns(monkeypatch):
+    def _resolve(host, port):
+        try:
+            return {str(ipaddress.ip_address(host))}  # IP no endereço: o getaddrinfo devolve ele mesmo
+        except ValueError:
+            pass
+        if host not in DNS:
+            raise OSError("sem DNS")
+        return DNS[host]
+    monkeypatch.setattr(webhooks, "resolve", _resolve)
+    monkeypatch.setattr(webhooks, "LAG_SECONDS", 0)
+
+
+class Destino:
+    """Faz o papel do sistema que recebe: guarda o que chegou e responde `status`."""
+
+    def __init__(self, status=200):
+        self.status, self.recebidos = status, []
+
+    def __call__(self, url, headers, body):
+        self.recebidos.append((url, headers, body))
+        if isinstance(self.status, Exception):
+            raise self.status
+        return self.status
+
+
+def _novo(api, url="https://hooks.example.com/nexus?k=1", events=None):
+    return api.post("/webhooks", {"url": url, **({"events": events} if events else {})})
+
+
+def test_webhook_recusa_endereco_inseguro(usuario, dns):
+    for url in ("http://hooks.example.com/x", "https://127.0.0.1/x", "https://[::1]/x", "https://169.254.169.254/",
+                "https://interno.example.com/x", "https://misto.example.com/", "https://naoexiste.example.com/",
+                "https://u:p@hooks.example.com/", "https://[::ffff:10.0.0.1]/", "https://100.64.0.1/"):
+        assert _novo(usuario, url).status_code == 400, url
+    assert usuario.get("/webhooks").json() == []
+
+
+def test_webhook_cria_lista_limite_e_apaga(usuario, novo_usuario, dns):
+    r = _novo(usuario)
+    assert r.status_code == 201 and r.json()["secret"].startswith("whsec_")
+    lista = usuario.get("/webhooks").json()
+    assert len(lista) == 1 and "secret" not in lista[0] and lista[0]["active"] and lista[0]["events"] == ["*"]
+    assert not db.query_one("SELECT 1 FROM webhooks WHERE secret_salt = %s", (r.json()["secret"],))
+    for _ in range(4):
+        assert _novo(usuario, events=["worklog.*"]).status_code == 201
+    assert _novo(usuario).status_code == 409
+    assert _novo(usuario, events=["DROP TABLE"]).status_code == 422
+    outro = novo_usuario("outro@example.com")
+    assert outro.delete(f"/webhooks/{r.json()['id']}").status_code == 404
+    assert usuario.delete(f"/webhooks/{r.json()['id']}").status_code == 200
+    # Chave: write cadastra, read só lê.
+    assert Bearer(criar_chave(usuario, scope="read")["token"]).post("/webhooks", {"url": "https://hooks.example.com/"}).status_code == 403
+    assert Bearer(criar_chave(usuario, nome="w")["token"]).get("/webhooks").status_code == 200
+
+
+def test_webhook_entrega_assinada_em_ordem_e_filtrada(usuario, dns):
+    segredo = _novo(usuario, events=["worklog.*"]).json()["secret"]
+    t = usuario.post("/worklog", {"title": "Trocar disjuntor", "external_ref": "os-77"}).json()["id"]
+    usuario.post(f"/worklog/{t}/notes", {"body": "não entra (note.*)"})
+    usuario.post(f"/worklog/{t}/finish")
+    destino = Destino()
+    assert webhooks.run_once(send=destino)[0][1] == 2
+    eventos = [json.loads(b) for _, _, b in destino.recebidos]
+    assert [e["action"] for e in eventos] == ["worklog.create", "worklog.finish"]
+    assert eventos[0]["external_ref"] == "os-77" and eventos[1]["data"]["status"] == "done"
+    url, h, body = destino.recebidos[0]
+    assert url.endswith("/nexus?k=1") and h["X-Nexus-Event"] == "worklog.create"
+    assert h["X-Nexus-Delivery"] == str(eventos[0]["id"])
+    ts, v1 = (p.split("=", 1)[1] for p in h["X-Nexus-Signature"].split(","))
+    assert v1 == hmac.new(segredo.encode(), f"{ts}.".encode() + body, hashlib.sha256).hexdigest()
+    # Nada novo: nada sai de novo.
+    assert webhooks.run_once(send=destino) == [] and len(destino.recebidos) == 2
+    usuario.delete(f"/worklog/{t}")
+    webhooks.run_once(send=destino)
+    lapide = json.loads(destino.recebidos[-1][2])
+    assert lapide["action"] == "worklog.delete" and lapide["data"] is None
+
+
+def test_webhook_reentrega_com_espera_e_desliga_apos_5_falhas(usuario, dns):
+    hid = _novo(usuario).json()["id"]
+    usuario.post("/worklog", {"title": "A"})
+    fora = Destino(status=500)
+    for n in range(1, 6):
+        res = webhooks.run_once(send=fora)
+        assert res and res[0][2] == "o destino respondeu HTTP 500"
+        w = db.query_one("SELECT failures, next_attempt_at > now() AS espera, disabled_at FROM webhooks WHERE id = %s", (hid,))
+        assert w["failures"] == n and w["espera"]
+        assert webhooks.run_once(send=fora) == []  # ainda esperando: não tenta
+        db.execute("UPDATE webhooks SET next_attempt_at = now() WHERE id = %s", (hid,))
+    assert len(fora.recebidos) == 5
+    lista = usuario.get("/webhooks").json()[0]
+    assert not lista["active"] and lista["disabled_at"] and "500" in lista["last_error"]
+    # Religar: continua do mesmo evento (que não foi entregue).
+    assert usuario.post(f"/webhooks/{hid}/enable").status_code == 200
+    ok = Destino()
+    webhooks.run_once(send=ok)
+    assert [json.loads(b)["action"] for _, _, b in ok.recebidos] == ["worklog.create", "webhook.enable"]
+    assert usuario.get("/webhooks").json()[0]["failures"] == 0
+
+
+def test_webhook_falha_de_rede_e_troca_de_senha(usuario, dns):
+    from conftest import SENHA_PADRAO
+    hid = _novo(usuario).json()["id"]
+    usuario.post("/worklog", {"title": "A"})
+    res = webhooks.run_once(send=Destino(status=TimeoutError("lento")))
+    assert "falha de conexão" in res[0][2]
+    r = usuario.post("/auth/change-password", {"current_password": SENHA_PADRAO, "new_password": "Outra-Senha-Forte-2"})
+    assert r.status_code == 200
+    w = db.query_one("SELECT disabled_at, last_error FROM webhooks WHERE id = %s", (hid,))
+    assert w["disabled_at"] and "senha" in w["last_error"]
+
+
+def test_webhook_so_eventos_do_dono_e_sem_fotos(usuario, novo_usuario, dns):
+    _novo(usuario)
+    outro = novo_usuario("outro@example.com")
+    outro.post("/worklog", {"title": "Do outro"})
+    destino = Destino()
+    webhooks.run_once(send=destino)
+    assert destino.recebidos == []
+    assert webhooks.payload({"id": 1, "created_at": None, "actor": "web", "token_name": None, "action": "photo.create",
+                             "entity": "photo", "entity_id": 3, "before": None,
+                             "after": {"task_id": 1, "image": "base64..."}})["data"] is None
