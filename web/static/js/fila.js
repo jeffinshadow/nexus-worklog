@@ -227,7 +227,7 @@ async function showList() {
       h("button", { type: "button", class: "icon", title: "Dispensar", "aria-label": "Dispensar", onClick: async () => {
         await tx(FAILED, "readwrite", (s) => s.delete(op.qid)); dlg.close(); changed();
       } }, icon("close")))),
-    h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Fechar", onClick: () => dlg.close() })));
+    h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-text", text: "Fechar", onClick: () => dlg.close() })));
 }
 
 export const pendingCount = () => pending;

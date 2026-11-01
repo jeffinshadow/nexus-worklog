@@ -42,8 +42,9 @@ function blockedDays(t, today) {
 }
 
 export function taskChips(t, today) {
-  // Concluída: a coluna já diz; fica só a data de fim.
-  const chips = t.status === "done" ? [] : [h("span", { class: "chip " + t.status, text: STATUS_LABELS[t.status] + blockedDays(t, today) })];
+  // Só o estado que informa: "a fazer" é o normal de quem está em aberto (sem chip);
+  // concluída, a coluna já diz e fica só a data de fim.
+  const chips = t.status === "done" || t.status === "todo" ? [] : [h("span", { class: "chip " + t.status, text: STATUS_LABELS[t.status] + blockedDays(t, today) })];
   if (t.status === "blocked" && t.follow_up_on)
     chips.push(h("span", { class: "chip " + (t.follow_up_on <= today ? "late" : "blocked-reason"), title: "Dia combinado para cobrar",
       text: t.follow_up_on < today ? "cobrança atrasada · " + shortDate(t.follow_up_on)
@@ -692,16 +693,15 @@ export async function mount(root, opts = {}) {
     }
     const list = isDone ? items.slice(0, doneShown) : items;
     for (const it of list) {
-      const card = h("article", { class: "card" + (isOverdue(it, today) ? " overdue" : "") + (it.priority === 1 && !isDone ? " high" : "") + (isDone ? " is-done" : "") },
+      const canCheck = !readOnly && !isDone;  // concluir à esquerda, como no Hoje
+      const card = h("article", { class: "card" + (isOverdue(it, today) ? " overdue" : "") + (it.priority === 1 && !isDone ? " high" : "") + (isDone ? " is-done" : "") + (canCheck ? " has-check" : "") },
         h("h3", {}, readOnly ? it.title : h("button", { type: "button", class: "card-open", text: it.title, onClick: () => openTask(it.id, refresh) })));
       if (it.description) card.append(h("p", { text: it.description }));
       card.append(h("div", { class: "card-meta" }, ...taskChips(it, today)));
       if (!readOnly) {
         const actions = h("div", { class: "card-actions" });
-        if (!isDone)
-          actions.append(desk(timerButton(it, refresh)),
-            h("button", { type: "button", class: "icon", title: "Concluir", "aria-label": "Concluir " + it.title, onClick: () => finishTask(it, refresh) }, icon("check")));
-        if (!isDone) actions.append(moreButton(it, refresh));
+        if (canCheck) card.prepend(h("button", { type: "button", class: "icon card-check", title: "Concluir", "aria-label": "Concluir " + it.title, onClick: () => finishTask(it, refresh) }, icon("check")));
+        if (!isDone) actions.append(desk(timerButton(it, refresh)), moreButton(it, refresh));
         if (actions.firstChild) card.append(actions);
         withMenu(card, it, refresh);
       }

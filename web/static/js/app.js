@@ -470,7 +470,7 @@ async function boot() {
     const dlg = modal(h("h2", { text: "Atalhos de teclado" }),
       h("dl", { class: "shortcuts" }, ...Object.entries(SHORTCUTS).flatMap(([k, [label]]) => [h("dt", {}, h("kbd", { text: k })), h("dd", { text: label })])),
       h("p", { class: "dialog-note", text: "Funcionam fora dos campos de texto. Esc fecha qualquer janela. Dá para desligá-los em Configurações." }),
-      h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Fechar", onClick: () => dlg.close() })));
+      h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-text", text: "Fechar", onClick: () => dlg.close() })));
   }
   document.addEventListener("keydown", (ev) => {
     if (ev.ctrlKey || ev.metaKey || ev.altKey) return;

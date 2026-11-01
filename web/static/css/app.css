@@ -201,8 +201,14 @@ button.column-toggle { display: none; }
 .check-row.done .label { text-decoration: line-through; text-decoration-color: var(--dim); color: var(--dim); }
 .check-row button.icon { opacity: 0; width: 30px; height: 30px; }
 .check-row:hover button.icon, .check-row button.icon:focus-visible { opacity: 1; }
+/* Concluir à esquerda, no mesmo lugar do Hoje (caixa de seleção de lista, Material 3); cronômetro e ⋮ ficam à direita. */
+.card.has-check { padding-left: 48px; }
+.card-check { position: absolute; top: 8px; left: 8px; }
+.card .card-check { width: 32px; height: 32px; }
 @media (hover: none), (max-width: 860px) {  /* toque: botões sempre visíveis e com alvo de 48px (Material 3) */
-  .check-row button.icon, .mini-row button.icon, .note-meta button.icon, .card-actions button.icon, .list-row button.icon { opacity: .85; width: 48px; height: 48px; }
+  .check-row button.icon, .mini-row button.icon, .note-meta button.icon, .card-actions button.icon, .list-row button.icon, .card .card-check { opacity: .85; width: 48px; height: 48px; }
+  .card.has-check { padding-left: 54px; }
+  .card .card-check { top: 2px; left: 2px; }
 }
 
 .card {
@@ -210,7 +216,7 @@ button.column-toggle { display: none; }
   border-radius: var(--radius-m); padding: 12px 14px; margin-bottom: 8px; transition: border-color .2s;
 }
 .card:hover { border-color: var(--line-2); }
-.card h3 { font-size: var(--type-body); font-weight: 600; letter-spacing: -.01em; margin-bottom: 3px; padding-right: 112px; }  /* cronômetro, concluir, editar */
+.card h3 { font-size: var(--type-body); font-weight: 600; letter-spacing: -.01em; margin-bottom: 3px; padding-right: 76px; }  /* cronômetro e ⋮ */
 .card p { font-size: var(--type-body-s); color: var(--on-surface-variant); margin-bottom: 8px; }
 .card-meta { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .card-actions { position: absolute; top: 8px; right: 8px; display: flex; gap: 2px; }
@@ -849,9 +855,10 @@ dialog.sheet .menu-list > :last-child { border-bottom: 0; }
 
   /* Cartão: tocar em qualquer lugar abre a tarefa; na linha, concluir e ⋮. */
   .card .card-open::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
-  .card .card-actions { z-index: 1; top: 4px; right: 4px; }
+  .card .card-actions, .card .card-check { z-index: 1; }
+  .card .card-actions { top: 4px; right: 4px; }
   .card .card-meta a { position: relative; z-index: 1; }
-  .card h3 { padding-right: 100px; }
+  .card h3 { padding-right: 52px; }
   .column-done .card h3 { padding-right: 52px; }
   .list-row { gap: 4px; }
 
