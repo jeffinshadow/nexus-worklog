@@ -1560,3 +1560,8 @@ dialog .pack-intro { margin: -8px 0 14px; }
 .reorder-row button.icon { width: 44px; height: 44px; }
 .reorder-row button.icon.up .ico { transform: rotate(180deg); }
 .reorder-row button.icon:disabled { opacity: .38; }
+
+/* Chaves vencidas e revogadas, recolhidas */
+.old-keys { margin-top: 4px; border-top: 1px solid var(--outline-variant); }
+.old-keys > summary { cursor: pointer; min-height: 44px; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; color: var(--on-surface-variant); font-size: var(--type-body-s); font-weight: var(--weight-label); }
+.old-keys > summary small { font-weight: 400; color: var(--dim); }

@@ -97,6 +97,7 @@ ACTION_LABELS = {
     "project.delete": "excluiu o projeto",
     "token.create": "criou a chave de API",
     "token.revoke": "revogou a chave de API",
+    "token.renew": "renovou a validade da chave de API",
     "webhook.create": "criou o webhook para",
     "webhook.enable": "religou o webhook para",
     "webhook.delete": "excluiu o webhook para",

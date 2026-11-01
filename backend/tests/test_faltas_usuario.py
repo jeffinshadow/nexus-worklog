@@ -207,3 +207,25 @@ def test_sair_dos_outros_aparelhos_sem_trocar_a_senha(usuario, novo_usuario):
     # sem CSRF não sai; por chave de API, nem lista
     assert usuario.c.post("/api/auth/logout-others").status_code == 403
     assert Bearer(chave["token"]).get("/auth/sessions").status_code in (401, 403)
+
+
+# ------------------------------------------------------------ chaves antigas --
+
+def test_renovar_chave_vencida(usuario, novo_usuario):
+    from conftest import Bearer
+    k = usuario.post("/tokens", {"name": "IA", "expires_in_days": 30}).json()
+    db.execute("UPDATE api_tokens SET expires_at = now() - interval '1 day' WHERE id = %s", (k["id"],))
+    assert Bearer(k["token"]).get("/worklog").status_code == 401
+    r = usuario.post(f"/tokens/{k['id']}/renew", {"expires_in_days": 90})
+    assert r.status_code == 200 and r.json()["active"] is True
+    assert Bearer(k["token"]).get("/worklog").status_code == 200       # a mesma chave volta
+    lista = {t["id"]: t for t in usuario.get("/tokens").json()}
+    assert lista[k["id"]]["active"]
+    assert usuario.get("/history?limit=1&entity=token").json()[0]["summary"].startswith("renovou a validade")
+    # revogada não volta; de outra pessoa, nem se vê; uma chave não renova chave
+    assert usuario.delete(f"/tokens/{k['id']}").status_code == 200
+    assert usuario.post(f"/tokens/{k['id']}/renew", {"expires_in_days": 90}).status_code == 404
+    k2 = usuario.post("/tokens", {"name": "Outra"}).json()
+    assert novo_usuario("outra@example.com").post(f"/tokens/{k2['id']}/renew", {}).status_code == 404
+    assert Bearer(k2["token"]).post(f"/tokens/{k2['id']}/renew", {}).status_code in (401, 403)
+    assert usuario.post(f"/tokens/{k2['id']}/renew", {"expires_in_days": 0}).status_code == 422

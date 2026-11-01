@@ -532,7 +532,7 @@ async function tokens(rerender) {
     }
   }));
 
-  const rows = list.length ? list.map((t) => {
+  const row = (t) => {
     const meta = [
       `${t.prefix}…`, t.scope === "write" ? "ler e registrar" : "só leitura",
       t.expires_at ? `vence ${dateTime(t.expires_at).slice(0, 5)}` : "sem validade",
@@ -549,10 +549,23 @@ async function tokens(rerender) {
           catch (e) { errorToast(e); }
         },
       }));
+    } else if (!t.revoked_at) {
+      actions.append(h("button", { type: "button", class: "btn btn-ghost btn-sm", text: "Renovar", "aria-label": `Renovar a chave ${t.name}`,
+        onClick: () => renewToken(t, rerender) }));
     }
     return h("div", { class: "token-row" + (t.active ? "" : " inactive") },
       h("span", { class: "token-name", text: t.name }), actions, h("span", { class: "token-meta", text: meta.join(" · ") }));
-  }) : [h("p", { class: "empty", text: "Nenhuma chave ainda." })];
+  };
+  // Vencidas e revogadas não se acumulam: ficam recolhidas em "Antigas".
+  const ativas = list.filter((t) => t.active), antigas = list.filter((t) => !t.active);
+  const rows = [
+    ...ativas.map(row),
+    !list.length ? h("p", { class: "empty", text: "Nenhuma chave ainda." })
+      : !ativas.length ? h("p", { class: "empty", text: "Nenhuma chave ativa." }) : null,
+    antigas.length ? h("details", { class: "old-keys" },
+      h("summary", {}, `Antigas (${antigas.length})`, h("small", { text: "vencidas e revogadas; uma vencida pode ser renovada" })),
+      ...antigas.map(row)) : null,
+  ].filter(Boolean);
 
   return h("div", { class: "settings-grid" },
     h("section", { class: "panel" },
@@ -562,6 +575,30 @@ async function tokens(rerender) {
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Minhas chaves" }), h("span", { class: "count", text: (() => { const n = list.filter((t) => t.active).length; return n + (n === 1 ? " ativa" : " ativas"); })() })),
       ...rows));
+}
+
+// Chave vencida: nova validade a partir de hoje, a mesma chave (a IA não precisa ser reconfigurada).
+function renewToken(t, rerender) {
+  const expires = h("select", {}, ...VALIDADES.map(([v, l]) => h("option", { value: v, text: l })));
+  expires.value = "90";
+  const err = h("p", { class: "error-text", role: "alert" });
+  const form = h("form", {}, h("h2", { text: `Renovar “${t.name}”` }),
+    h("p", { class: "dialog-note", text: "A mesma chave volta a funcionar, com a validade nova contada a partir de hoje: quem usa essa chave (a IA, a automação) não precisa ser configurado de novo." }),
+    field("Nova validade", expires), err,
+    h("div", { class: "dialog-actions" },
+      h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
+      h("button", { type: "submit", class: "btn btn-primary", text: "Renovar" })));
+  const dlg = modal(form);
+  form.addEventListener("submit", busy(async (ev) => {
+    ev.preventDefault();
+    try {
+      await api.post(`/tokens/${t.id}/renew`, { expires_in_days: expires.value ? Number(expires.value) : null });
+      dlg.close();
+      toast(`Chave “${t.name}” renovada.`);
+      rerender();
+    } catch (e) { err.textContent = e.message || "Não foi possível renovar."; }
+  }));
+  setTimeout(() => expires.focus(), 0);
 }
 
 // O bloco de configuração de cada IA, com a chave (ou nxs_SUA_CHAVE, na ajuda).

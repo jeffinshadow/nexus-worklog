@@ -215,6 +215,11 @@ class TokenIn(BaseModel):
     expires_in_days: Optional[int] = Field(default=90, ge=1, le=365)
 
 
+class TokenRenewIn(BaseModel):
+    # Nova validade, contada de agora; None = sem validade.
+    expires_in_days: Optional[int] = Field(default=90, ge=1, le=365)
+
+
 class WebhookIn(BaseModel):
     url: str = Field(min_length=9, max_length=500)  # https://...
     # "*" (tudo), a ação exata ("worklog.finish") ou o grupo ("worklog.*").
