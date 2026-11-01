@@ -46,6 +46,13 @@ export function setTimer(t) {
   tick = setInterval(upd, 1000);
 }
 
+// Cronômetro esquecido (mais de 12 h): o servidor parou sem apontar; a pessoa informa o tempo.
+function forgotten(st) {
+  const when = new Date(st.started_at).toLocaleString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  toast(`O cronômetro de «${st.title}» rodava desde ${when}: parei sem apontar. Informe o tempo certo.`,
+    { action: "Apontar", onAction: () => openTask(st.task_id) });
+}
+
 export async function startTimer(task, after = onChange) {
   try {
     const r = await api.post("/timer/start", { task_id: task.id, title: task.title });
@@ -56,7 +63,8 @@ export async function startTimer(task, after = onChange) {
       return;
     }
     setTimer(r.timer);
-    toast(r.stopped ? `Cronômetro em «${task.title}». O anterior apontou ${duration(r.stopped.minutes)}.`
+    if (r.stopped && r.stopped.needs_review) forgotten(r.stopped);
+    else toast(r.stopped ? `Cronômetro em «${task.title}». O anterior apontou ${duration(r.stopped.minutes)}.`
       : `Cronômetro iniciado em «${task.title}».`);
     if (after) after();
   } catch (e) { errorToast(e, "Não foi possível iniciar o cronômetro."); }
@@ -64,10 +72,11 @@ export async function startTimer(task, after = onChange) {
 
 export async function stopTimer(after = onChange) {
   try {
-    const r = await api.post("/timer/stop");
+    const r = await api.post("/timer/stop", state ? { task_id: state.task_id } : {});
     setTimer(null);
     if (r.queued) { toast("Cronômetro parado. O tempo é apontado quando a conexão voltar."); if (after) after(); return; }
-    toast(r.stopped ? `Apontado: ${duration(r.stopped.minutes)}.` : "Cronômetro parado. O dia dele já tinha 24h apontadas, nada foi somado.");
+    if (r.stopped && r.stopped.needs_review) forgotten(r.stopped);
+    else toast(r.stopped ? `Apontado: ${duration(r.stopped.minutes)}.` : "Cronômetro parado. O dia dele já tinha 24h apontadas, nada foi somado.");
     if (after) after();
   } catch (e) { errorToast(e, "Não foi possível parar o cronômetro."); }
 }

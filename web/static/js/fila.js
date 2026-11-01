@@ -50,6 +50,10 @@ export async function enqueue(method, path, body) {
   if (/^\/timer\//.test(path)) body.at = now.toISOString();
   if (/\/finish$/.test(path) && !body.completed_at) body.completed_at = localDateTime(now.getTime());
   if (/\/toggle$/.test(path) && !body.day) body.day = localDay(now.toISOString());
+  if (path === "/worklog" && !body.created_at) {  // feita agora, mesmo que chegue amanhã
+    body.created_at = localDateTime(now.getTime());
+    if (body.status === "done" && !body.completed_at) body.completed_at = body.created_at;
+  }
   const op = { method, path, body, at: now.toISOString(), then: [] };
   const qid = await tx(STORE, "readwrite", (s) => s.add(op));
   changed();
@@ -58,6 +62,7 @@ export async function enqueue(method, path, body) {
 
 // Passo seguinte de uma criação que está na fila ({id} = a tarefa criada).
 export async function after(qid, method, path, body) {
+  if (/\/time$/.test(path) && body && !body.day) body = { ...body, day: localDay(new Date().toISOString()) };
   await tx(STORE, "readwrite", (s) => {
     const g = s.get(qid);
     g.onsuccess = () => { if (g.result) { g.result.then.push({ method, path, body }); s.put(g.result); } };
@@ -76,6 +81,19 @@ function describe(op) {
   return `${op.method} ${op.path}`;
 }
 
+// Passo seguinte de uma criação, para a lista de falhas.
+function describeStep(step) {
+  if (/\/time$/.test(step.path)) return "Tempo";
+  if (/\/checklist$/.test(step.path)) return "Item do checklist";
+  if (/\/notes$/.test(step.path)) return "Anotação";
+  if (/\/photos$/.test(step.path)) return "Foto";
+  return "Passo";
+}
+
+// Sem rede, sem sessão, servidor fora (deploy, reinício) ou limite: tenta depois.
+// Só a recusa por regra (4xx) vira falha.
+const later = (e) => !e.status || e.status === 401 || e.status === 429 || e.status >= 500;
+
 // ------------------------------------------------------------- envio --
 let sending = false, sendFn = null, onSynced = null;
 
@@ -87,17 +105,31 @@ export async function flush() {
   sending = true;
   let sent = 0;
   try {
-    for (const op of await all()) {
-      let res;
-      try { res = await sendFn(op.method, op.path, op.body); }
-      catch (e) {
-        if (!e.status || e.status === 401) break;  // sem rede ou sem sessão: tenta depois
-        await tx(FAILED, "readwrite", (s) => s.put({ ...op, error: e.message, what: describe(op) }));
-        await tx(STORE, "readwrite", (s) => s.delete(op.qid));
-        continue;
+    outer: for (const op of await all()) {
+      let res = op.created ? { id: op.created } : null;  // a criação já foi numa tentativa anterior
+      if (!res) {
+        try { res = await sendFn(op.method, op.path, op.body); }
+        catch (e) {
+          if (later(e)) break;
+          await tx(FAILED, "readwrite", (s) => s.put({ ...op, error: e.message, what: describe(op) }));
+          await tx(STORE, "readwrite", (s) => s.delete(op.qid));
+          continue;
+        }
       }
-      for (const step of op.then) {  // passos da criação, com o id que o servidor deu
-        try { await sendFn(step.method, step.path.replace("{id}", res && res.id), step.body); } catch { /* o principal já foi */ }
+      // Passos da criação, com o id que o servidor deu. Sem rede ou servidor fora:
+      // a operação fica na fila só com o que falta; recusado: vira falha visível.
+      while (op.then.length) {
+        const step = op.then[0];
+        try { await sendFn(step.method, step.path.replace("{id}", res && res.id), step.body); }
+        catch (e) {
+          if (later(e)) {
+            await tx(STORE, "readwrite", (s) => s.put({ ...op, created: res && res.id }));
+            break outer;
+          }
+          await tx(FAILED, "readwrite", (s) => s.put({ ...step, qid: `${op.qid}-${op.then.length}`, at: op.at,
+            error: e.message, what: `${describeStep(step)} (${describe(op)})` }));
+        }
+        op.then.shift();
       }
       await tx(STORE, "readwrite", (s) => s.delete(op.qid));
       sent++;
@@ -181,14 +213,24 @@ async function showList() {
 
 export const pendingCount = () => pending;
 
+// Sessão expirada: as leituras guardadas saem do aparelho (pode ser compartilhado).
+// A fila fica: é trabalho ainda não enviado, e vai quando a mesma pessoa entrar
+// (outra conta entrando apaga tudo, em app.js).
+export async function wipeReads() {
+  if ("caches" in window) await caches.delete("nexus-dados");  // o mesmo nome de sw.js
+}
+
 // Sair: a fila e as leituras guardadas não ficam no aparelho (pode ser compartilhado).
 export async function wipe() {
   try { await tx(STORE, "readwrite", (s) => s.clear()); await tx(FAILED, "readwrite", (s) => s.clear()); } catch { /* sem IndexedDB */ }
   if ("caches" in window) for (const k of await caches.keys()) if (k.startsWith("nexus-")) await caches.delete(k);
 }
 
+let started = false;
 export function startQueue(refresh) {
   onSynced = refresh;
+  if (started) return;
+  started = true;
   addEventListener("online", () => { changed(); flush(); });
   addEventListener("offline", changed);
   setInterval(() => { if (pending) flush(); }, 30000);

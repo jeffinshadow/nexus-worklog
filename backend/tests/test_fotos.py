@@ -30,7 +30,7 @@ def test_foto_na_tarefa_e_acesso(usuario, novo_usuario, admin):
     assert [p["id"] for p in usuario.get(f"/worklog/{tid}").json()["photos"]] == [pid]
     assert next(t for t in usuario.get("/board").json()["in_progress"] if t["id"] == tid)["photos_count"] == 1
     img = usuario.get(f"/photos/{pid}")
-    assert img.status_code == 200 and img.content[:4] == b"RIFF" and "immutable" in img.headers["cache-control"]
+    assert img.status_code == 200 and img.content[:4] == b"RIFF" and "max-age=86400" in img.headers["cache-control"]
     assert len(usuario.get(f"/photos/{pid}?thumb=true").content) < len(img.content)
     outro = novo_usuario("outro@example.com")
     assert outro.get(f"/photos/{pid}").status_code == 404          # de outra pessoa: não existe

@@ -1,7 +1,7 @@
 // Wrapper de fetch para /api. Envia o cookie de sessao (same-origin) e o
 // header X-CSRF-Token nas mutacoes. Redireciona para o login em 401 de sessao.
 
-import { after as queueAfter, configure, enqueue, markFresh, markStale, overlay, queueable } from "./fila.js";
+import { after as queueAfter, configure, enqueue, markFresh, markStale, overlay, queueable, wipeReads } from "./fila.js";
 
 let CSRF = null;
 
@@ -56,7 +56,7 @@ async function send(method, path, { body, type, timeout = 20000, publicCall = fa
 // Login guardando a tela atual (#/...), para voltar a ela depois.
 export function toLogin() {
   const next = location.hash.startsWith("#/") ? "?next=" + encodeURIComponent(location.hash) : "";
-  location.href = "/login" + next;
+  wipeReads().catch(() => {}).finally(() => { location.href = "/login" + next; });
 }
 
 async function raw(method, path, body) {

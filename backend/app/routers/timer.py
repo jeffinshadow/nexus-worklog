@@ -30,14 +30,26 @@ def client_time(at: Optional[datetime]) -> Optional[datetime]:
     return min(at, now)
 
 
+# Acima disso o cronômetro foi esquecido: parar não inventa horas, pede o tempo certo.
+FORGOTTEN = timedelta(hours=12)
+
+
 def stop_running(user: dict, only_task: int | None = None, ended_at: datetime | None = None):
     """Para o cronômetro e aponta o tempo. Devolve o apontamento ou None.
     only_task: só para se estiver rodando nessa tarefa. ended_at: parou antes
-    de agora (feito sem sinal)."""
+    de agora (feito sem sinal). Esquecido (mais de 12 h): para sem apontar e
+    devolve needs_review, com o início, para a pessoa informar o tempo."""
     t = db.query_one("SELECT task_id, started_at FROM task_timers WHERE user_id = %s", (user["user_id"],))
     if not t or (only_task is not None and t["task_id"] != only_task):
         return None
     end = max(ended_at or datetime.now(timezone.utc), t["started_at"])
+    if end - t["started_at"] > FORGOTTEN:
+        db.execute("DELETE FROM task_timers WHERE user_id = %s", (user["user_id"],))
+        title = db.query_one("SELECT title FROM worklog_tasks WHERE id = %s", (t["task_id"],))
+        audit.record(user, "timer.discard", "timer", t["task_id"],
+                     after={"task_id": t["task_id"], "title": title["title"] if title else ""})
+        return {"task_id": t["task_id"], "minutes": 0, "needs_review": True,
+                "started_at": t["started_at"].isoformat(), "title": title["title"] if title else ""}
     minutes = max(1, round((end - t["started_at"]).total_seconds() / 60))
     day = t["started_at"].astimezone(app_tz()).date()
     # Cronômetro esquecido por dias não pode travar concluir/parar/trocar: aponta só
@@ -83,10 +95,17 @@ def start(data: TimerIn, user=Depends(active_user_csrf)):
 
 @router.post("/stop")
 def stop(data: Optional[TimerStopIn] = None, user=Depends(active_user_csrf)):
-    if not running_timer(user["user_id"]):
+    current = running_timer(user["user_id"])
+    if not current:
         raise HTTPException(status_code=409, detail="nenhum cronômetro rodando")
+    # Parada feita sem sinal que chega depois: só vale para o mesmo cronômetro
+    # (outro aparelho pode ter trocado de tarefa nesse meio tempo).
+    at = client_time(data.at if data else None)
+    if data and ((data.task_id is not None and data.task_id != current["task_id"])
+                 or (at is not None and at < current["started_at"])):
+        raise HTTPException(status_code=409, detail="o cronômetro já mudou em outro aparelho; nada foi apontado")
     # stopped = None: o dia daquele cronômetro já tinha 24h apontadas (nada a somar).
-    return {"timer": None, "stopped": stop_running(user, ended_at=client_time(data.at if data else None))}
+    return {"timer": None, "stopped": stop_running(user, ended_at=at)}
 
 
 @router.delete("")

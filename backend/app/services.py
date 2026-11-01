@@ -409,6 +409,8 @@ def get_dashboard_analytics(user_id: int, tasks, completions, mask: int, today: 
             continue
         due_ids = {t["id"] for t in tasks if t["start_d"] <= d <= t["end_d"] and is_due(t, d, mask)}
         feitos = tasks_done_on.get(d, set())
+        if d == today:  # hoje ainda dá tempo: pendente não é falta (igual ao ranking e ao PDF)
+            due_ids &= feitos
         # Feito fora da agenda não entra (é extra). Dia sem nada devido = quadro vazio.
         heat_days.append({"date": d, "slots": len(due_ids), "done": len(feitos & due_ids)})
         d += timedelta(days=1)

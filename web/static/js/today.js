@@ -75,14 +75,21 @@ export async function mount(root, ctx, opts = {}) {
     recPanel.append(h("div", { class: "progress", role: "img", "aria-label": `${recDone} de ${due.length} feitas` }, bar));
   }
   if (!b.recurring.length)
-    recPanel.append(h("p", { class: "empty", text: "Nenhuma rotina ainda. Crie as verificações que você repete (backups, alertas, fila…)." }));
+    recPanel.append(h("p", { class: "empty", text: "Nenhuma rotina ainda. Crie o que você confere sempre (rondas, equipamentos, fila de pedidos, e-mail…)." }));
   else if (!due.length)
-    recPanel.append(h("p", { class: "empty", text: "Nenhuma rotina na agenda deste dia." }));
-  if (off.length) recPanel.append(h("p", { class: "day-note", text: "Esmaecidas: fora da agenda deste dia (se marcar, conta como extra)." }));
+    recPanel.append(h("p", { class: "empty", text: "Nada previsto para este dia. Marcar mesmo assim conta como extra." }));
+  else if (off.length) recPanel.append(h("p", { class: "day-note", text: "Esmaecidas: fora da agenda deste dia (se marcar, conta como extra)." }));
   for (const r of [...due, ...off]) {
     const cb = h("input", { type: "checkbox", "aria-label": r.label });
     cb.checked = r.done_today;
     cb.addEventListener("change", async () => {
+      // Tela aberta desde ontem (ou servida do cache): "Hoje" já é outro dia.
+      if (b.day === today && today !== localDay(Date.now())) {
+        cb.checked = !cb.checked;
+        toast("Virou o dia: a tela foi atualizada. Marque de novo, se for o caso.");
+        refresh();
+        return;
+      }
       // Rotina que exige evidência: marcar abre o campo antes de salvar.
       if (cb.checked && r.require_note && !r.note) {
         cb.checked = false;

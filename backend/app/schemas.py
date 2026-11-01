@@ -367,6 +367,7 @@ class TimerIn(BaseModel):
 
 class TimerStopIn(BaseModel):
     at: Optional[datetime] = None  # hora em que parou, no aparelho (sem sinal)
+    task_id: Optional[int] = None  # o cronômetro que a pessoa parou (a parada da fila não vale para outro)
 
 
 Color = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")

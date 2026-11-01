@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from .. import audit, db
 from . import photos
 from ..labels import dur
-from ..services import RETRO_DAYS, app_today, board_day_range, set_extra_projects
+from ..services import RETRO_DAYS, app_today, app_tz, board_day_range, set_extra_projects
 from .worklog import check_day_total
 from ..deps import active_user, active_user_csrf
 
@@ -393,13 +393,16 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
     elif a == "recurring.update":
         _restore_recurring(uid, before)
     elif a == "recurring.deactivate":
-        if (app_today() - row["created_at"].date()).days > RETRO_DAYS:  # dias parados viraram faltas
+        if (app_today() - row["created_at"].astimezone(app_tz()).date()).days > RETRO_DAYS:  # dias parados viraram faltas
             raise HTTPException(status_code=409, detail="essa remoção já saiu da janela de 7 dias; crie a rotina de novo")
         _restore_recurring(uid, before)
     elif a == "recurring.replace":
-        # Tira a nova (devolvendo a marcação de hoje) e reativa a antiga como era.
-        db.execute("UPDATE recurring_completions SET task_id = %s WHERE task_id = %s AND user_id = %s AND completed_date = %s",
-                   (after["replaced"], eid, uid, app_today()))
+        # Tira a nova (devolvendo TODAS as marcações dela, com a evidência) e reativa a
+        # antiga como era. Na mesma janela da remoção: depois, os dias viraram faltas.
+        if (app_today() - row["created_at"].astimezone(app_tz()).date()).days > RETRO_DAYS:
+            raise HTTPException(status_code=409, detail="essa troca já saiu da janela de 7 dias; ajuste a agenda de novo")
+        db.execute("UPDATE recurring_completions SET task_id = %s WHERE task_id = %s AND user_id = %s",
+                   (after["replaced"], eid, uid))
         db.execute("DELETE FROM recurring_tasks WHERE id = %s AND user_id = %s", (eid, uid))
         _restore_recurring(uid, before)
     elif a == "recurring.toggle":

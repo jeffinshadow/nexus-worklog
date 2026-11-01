@@ -114,9 +114,10 @@ def get_photo(photo_id: int, thumb: bool = False, user=Depends(web_active)):
     if not row or (row["user_id"] != user["user_id"] and "viewer" not in (user.get("roles") or [])):
         raise HTTPException(status_code=404, detail="foto não encontrada")
     data = bytes(row["data"])
-    # O conteúdo de um id nunca muda: o navegador guarda de vez (só para esta pessoa).
+    # O conteúdo de um id nunca muda, mas é evidência de cliente: o navegador guarda
+    # só por um dia (só para esta pessoa), e não fica no aparelho depois de sair.
     return Response(content=data, media_type=_sniff(data) or row["mime"],
-                    headers={"Cache-Control": "private, max-age=31536000, immutable"})
+                    headers={"Cache-Control": "private, max-age=86400"})
 
 
 @router.delete("/photos/{photo_id}")
