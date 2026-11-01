@@ -42,14 +42,21 @@ export async function mount(root, ctx) {
       onClick: () => {
         active = key;
         for (const b of seg.children) b.setAttribute("aria-selected", b.textContent === label ? "true" : "false");
-        seg.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+        showActive(true);
         window.history.replaceState(null, "", "#/config?aba=" + key); // recarregar volta à mesma aba
         render();
       },
     }));
   }
   root.append(seg, body);
-  seg.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "center" });  // celular: as abas rolam de lado
+  // Celular: as abas rolam de lado; a ativa fica à vista (depois do desenho da tela).
+  const showActive = (smooth) => requestAnimationFrame(() => {
+    const tab = seg.querySelector('[aria-selected="true"]');
+    if (!tab || seg.scrollWidth <= seg.clientWidth) return;
+    const a = tab.getBoundingClientRect(), r = seg.getBoundingClientRect();
+    seg.scrollTo({ left: seg.scrollLeft + (a.left - r.left) - (r.width - a.width) / 2, behavior: smooth ? "smooth" : "auto" });
+  });
+  showActive(false);
 
   // Troca rápida de aba: só a última resposta entra na tela.
   let seq = 0;
