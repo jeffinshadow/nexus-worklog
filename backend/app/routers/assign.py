@@ -26,13 +26,23 @@ log = logging.getLogger("uvicorn.error")
 
 @router.get("/people")
 def list_people(user=Depends(require_people_list)):
-    """Contas com registro próprio e se aceitam receber tarefas (desde quando)."""
+    """Contas com registro próprio e se aceitam receber tarefas (desde quando).
+    Conta com acesso bloqueado não aceita (`blocked`: a tela diz por quê). A
+    foto só de quem aceita (a mesma regra de GET /api/me/avatar/{id}); o admin vê todas."""
     rows = db.query_all(
-        """SELECT u.id, u.email, u.accepts_assignments_at
+        """SELECT u.id, u.email, u.accepts_assignments_at, u.blocked_at IS NOT NULL AS blocked
              FROM users u
             WHERE EXISTS (SELECT 1 FROM user_roles r WHERE r.user_id = u.id AND r.role = 'user')
-            ORDER BY u.accepts_assignments_at IS NULL, lower(u.email)""")
-    return [{**r, "accepts": r["accepts_assignments_at"] is not None, **people.profile(r["id"])} for r in rows]
+            ORDER BY u.accepts_assignments_at IS NULL OR u.blocked_at IS NOT NULL, lower(u.email)""")
+    is_admin = "admin" in (user.get("roles") or [])
+    out = []
+    for r in rows:
+        accepts = r["accepts_assignments_at"] is not None and not r["blocked"]
+        p = people.profile(r["id"])
+        if not accepts and not is_admin:
+            p["avatar"] = None
+        out.append({**r, "accepts": accepts, **p})
+    return out
 
 
 def _assignment_mail(task: dict, by_name: str):
@@ -73,7 +83,7 @@ def assign(data: AssignIn, user=Depends(require_assigner_csrf)):
         raise HTTPException(status_code=400, detail="para você mesmo, crie a tarefa normalmente")
     target = db.query_one(
         """SELECT u.id, u.email, u.accepts_assignments_at FROM users u
-            WHERE u.id = %s AND EXISTS (SELECT 1 FROM user_roles r WHERE r.user_id = u.id AND r.role = 'user')""",
+            WHERE u.id = %s AND u.blocked_at IS NULL AND EXISTS (SELECT 1 FROM user_roles r WHERE r.user_id = u.id AND r.role = 'user')""",
         (data.user_id,),
     )
     if not target:
@@ -194,7 +204,8 @@ def _own_sent(task_id: int, uid: int) -> dict:
     """A tarefa que esta pessoa atribuiu, se ainda dá para mexer: "a fazer" e
     sem nada registrado por quem recebeu. Depois disso é só de quem recebeu."""
     row = db.query_one(
-        """SELECT w.id, w.user_id, w.status, w.title, u.email FROM worklog_tasks w JOIN users u ON u.id = w.user_id
+        """SELECT w.id, w.user_id, w.status, w.title, u.email, u.blocked_at IS NOT NULL AS blocked
+             FROM worklog_tasks w JOIN users u ON u.id = w.user_id
             WHERE w.id = %s AND w.assigned_by = %s""", (task_id, uid))
     if not row:
         raise HTTPException(status_code=404, detail="tarefa não encontrada")
@@ -238,7 +249,7 @@ def update_sent(task_id: int, data: AssignEditIn, user=Depends(require_assigner_
                  before={k: before[k] for k in ("title", "due_date", "priority")},
                  after={"title": after["title"], "due_date": after["due_date"], "priority": after["priority"],
                         "to": people.profile(row["user_id"])["name"]})
-    if mailer.configured():
+    if mailer.configured() and not row["blocked"]:  # conta bloqueada: ninguém lê
         lines = [after["title"]]
         if after["due_date"]:
             lines.append(f"Prazo: {after['due_date'].strftime('%d/%m/%Y')}")
@@ -261,6 +272,6 @@ def cancel_sent(task_id: int, user=Depends(require_assigner_csrf)):
                  user_id=row["user_id"])
     audit.record(user, "assign.cancel", "assignment", task_id,
                  before={"title": row["title"], "to": people.profile(row["user_id"])["name"]})
-    if mailer.configured():
+    if mailer.configured() and not row["blocked"]:
         _spawn(row["email"], _change_mail(row["title"], by_name, "Cancelou", [row["title"], "Ela saiu das suas tarefas."], "/#/tarefas"))
     return {"ok": True}
