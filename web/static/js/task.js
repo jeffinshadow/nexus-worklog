@@ -232,13 +232,13 @@ export async function openTask(taskId, onChange) {
       h("div", { class: "task-sec-head" }, icon("edit"), h("h3", { text: "Detalhes" })));
     const grid = h("div", { class: "props" });
 
-    const status = h("select", { "aria-label": "Status" },
+    const status = h("select", { "aria-label": "Situação" },
       ...[["todo", "A fazer"], ["in_progress", "Em andamento"], ["blocked", "Aguardando"], ["done", "Concluída"]]
         .map(([v, l]) => h("option", { value: v, text: l })));
     status.value = t.status;
     status.addEventListener("change", () => {
       // Concluir pelo status = o mesmo concluir dos botões (com "Como resolveu?").
-      if (status.value === "done") { refocus = "Status"; finishTask(t, after, { fromEdit: true }); }
+      if (status.value === "done") { refocus = "Situação"; finishTask(t, after, { fromEdit: true }); }
       else save({ status: status.value }, true);
     });
 
@@ -286,7 +286,7 @@ export async function openTask(taskId, onChange) {
     afterHours.checked = !!t.after_hours;
     afterHours.addEventListener("change", () => save({ after_hours: afterHours.checked }));
 
-    grid.append(field("Status", status), field("Prazo", due), field("Projeto / cliente", proj), field("Prioridade", prio),
+    grid.append(field("Situação", status), field("Prazo", due), field("Projeto", proj), field("Prioridade", prio),
       objField,
       h("div", { class: "field wide" }, h("span", { class: "field-label", text: "Outros projetos" }), extras.el),
       h("div", { class: "field" }, h("label", { for: ticket.id, text: "Nº do chamado ou OS" }),

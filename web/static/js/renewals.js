@@ -67,7 +67,7 @@ export function openRenewal(r, onChange, renew = false) {
   const fields = renew
     ? [h("p", { class: "dialog-note", text: `${r.label}: qual a nova data de vencimento? A anterior era ${shortDate(r.expires_on)}.` }), field("Vence em", expires)]
     : [field("O que vence", label), h("div", { class: "field-row" }, field("Vence em", expires), field("Avisar com quantos dias", warn)),
-      h("div", { class: "field-row" }, field("Projeto / cliente", proj), field("Repete a cada (meses, opcional)", months)),
+      h("div", { class: "field-row" }, field("Projeto", proj), field("Repete a cada (meses, opcional)", months)),
       field("Observação", note)];
   const form = h("form", {}, h("h2", { text: renew ? "Renovado" : r ? "Editar vencimento" : "Novo vencimento" }), ...fields, err,
     h("div", { class: "dialog-actions" },

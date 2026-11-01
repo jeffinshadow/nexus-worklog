@@ -785,19 +785,13 @@ button.nav-link { border: 0; background: transparent; width: 100%; font-family: 
    rolar, janelas de tela inteira e menus que sobem de baixo (bottom sheet). */
 @media (max-width: 860px) { .only-desk { display: none !important; } }
 @media (min-width: 861px) {
-  .only-mob, .appbar, .fab, .more-toggle, .intro-more { display: none !important; }
+  .only-mob, .appbar, .fab, .intro-more { display: none !important; }
   .task-dialog:not(.side) .task-appbar, .task-dialog:not(.side) .task-main-actions { display: none; }
-  /* Nova tarefa no computador: a mesma ordem de sempre ("Mais opções" só existe no celular). */
-  #form-worklog { display: flex; flex-direction: column; }
-  #wl-more { display: contents; }
-  #wl-template-wrap { order: -1; }
-  #wl-ticket-row { order: 1; }
-  #wl-blocked-wrap { order: 2; }
-  #wl-resolution-wrap { order: 3; }
-  #wl-dates { order: 4; }
-  #wl-time-wrap { order: 5; }
-  #form-worklog > .dialog-actions { order: 6; }
 }
+
+/* Nova tarefa: campos menos usados em "Mais opções" (celular e computador). */
+.more-opts:not(.open) { display: none; }
+.more-toggle { margin: -6px 0 14px -12px; color: var(--primary-hi); }
 
 /* Assistente: avisos recolhidos atrás de "Ver N avisos" (celular e computador). */
 .assist:not(.open) .assist-items { display: none; }
@@ -882,8 +876,6 @@ dialog.sheet .menu-list > :last-child { border-bottom: 0; }
   .task-main-actions .btn.timer-on { color: var(--error); }
   dialog.form-dialog { padding: 0 16px 24px; overflow-y: auto; }
   .dlg-bar .btn { height: 40px; padding: 0 20px; margin-right: 4px; }
-  .more-opts:not(.open) { display: none; }
-  .more-toggle { margin: -6px 0 14px -12px; color: var(--primary-hi); }
   .task-sec .check-row button.icon { width: 48px; height: 48px; }
 }
 @media (max-width: 480px) { .field-row { row-gap: 0; } }  /* empilhados: o espaço vem do .field */
