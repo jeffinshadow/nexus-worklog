@@ -26,7 +26,7 @@ def test_motivo_de_espera_sem_status(usuario):
     assert not b.tool("update_task", task_id=tid, status="blocked", blocked_reason="peça da Deca")["isError"]
     # Já aguarda: o motivo sozinho atualiza.
     res = b.tool("update_task", task_id=tid, blocked_reason="técnico da Deca")
-    assert not res["isError"] and "aguardando técnico da Deca" in texto(res)
+    assert not res["isError"] and "aguardando: técnico da Deca" in texto(res)
     t = usuario.get(f"/worklog/{tid}").json()
     assert t["status"] == "blocked" and t["blocked_reason"] == "técnico da Deca"
     # Saindo da espera, o motivo enviado junto é erro (seria descartado).
