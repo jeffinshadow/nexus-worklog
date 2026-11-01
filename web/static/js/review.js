@@ -4,10 +4,11 @@
 // foi salvo (cada toque grava na hora, pelas rotas de sempre da tarefa).
 import { api } from "./api.js";
 import { h, icon, clear, shortDate, localDateTime } from "./dom.js";
-import { errorToast, modal, toast } from "./ui.js";
+import { errorToast, modal, pager, pageSlice, toast } from "./ui.js";
 import { blockTask, followUpTask } from "./board.js";
 
 const NEXT_MAX = 3;
+const PAGE = 10; // passos 1 e 2: uma ação por linha; 10 por vez dá para resolver sem rolar
 const today = () => localDateTime(Date.now()).slice(0, 10);
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
 const btn = (label, onClick, cls = "btn-ghost", extra = {}) =>
@@ -41,6 +42,7 @@ export async function openReview(onDone) {
   let r;
   try { r = await api.get("/review/week"); } catch (e) { errorToast(e, "Não foi possível abrir a revisão."); return; }
   let step = 0, changed = false;
+  const pages = [1, 1]; // página dos passos 1 e 2 (mantida ao voltar)
   const chosen = new Set();
   const decided = new Map(); // id -> texto do estado (passo 2), mantido ao voltar
   const notes = new Map();   // id -> como resolveu salvo agora (passo 1)
@@ -67,7 +69,7 @@ export async function openReview(onDone) {
     intro.textContent = r.done.length
       ? `${plural(r.done.length, "tarefa concluída", "tarefas concluídas")} nesta semana (${periodo}). Quer anotar como resolveu alguma? Ajuda a busca da próxima vez.`
       : `Nenhuma tarefa concluída nesta semana (${periodo}). Tudo bem: siga para o que ficou.`;
-    for (const t of r.done.slice(0, 40)) {
+    paged(0, r.done, "tarefas concluídas", (t) => {
       const res = notes.get(t.id) ?? t.resolution;
       const { el, acts } = row(t, [t.project_name ? h("span", { class: "chip", text: t.project_name }) : null]);
       if (res) el.querySelector(".review-t").append(h("small", { class: "review-res", text: res }));
@@ -92,9 +94,24 @@ export async function openReview(onDone) {
         }, "btn-text");
         acts.append(open);
       }
-      body.append(el);
-    }
-    if (r.done.length > 40) body.append(h("p", { class: "muted small", text: `+ ${r.done.length - 40} outras` }));
+      return el;
+    });
+  }
+
+  // Uma página da lista do passo, com as páginas embaixo (redesenha só a lista).
+  function paged(i, items, label, build) {
+    const box = h("div", { class: "review-list" });
+    const paint = () => {
+      clear(box);
+      const { rows, page } = pageSlice(items, pages[i], PAGE);
+      pages[i] = page;
+      box.append(...rows.map(build));
+      const nav = pager({ page, total: items.length, size: PAGE, label, compact: true,
+        onPage: (n) => { pages[i] = n; paint(); }, focus: title });
+      if (nav) box.append(nav);
+    };
+    paint();
+    body.append(box);
   }
 
   // ---- passo 2: o que ficou
@@ -104,7 +121,7 @@ export async function openReview(onDone) {
     intro.textContent = lista.length
       ? `${plural(lista.length, "tarefa segue aberta", "tarefas seguem abertas")}. Para cada uma, um toque: manter, mudar o prazo, marcar como aguardando ou concluir.`
       : "Nada ficou em aberto. Semana fechada.";
-    for (const t of lista.slice(0, 40)) {
+    paged(1, lista, "tarefas em aberto", (t) => {
       const { el, state, acts } = row(t, [prazo(t), esperando(t)]);
       acts.classList.add("review-choices");
       const done = (txt) => { decided.set(t.id, txt); touch(); paintState(); };
@@ -143,8 +160,8 @@ export async function openReview(onDone) {
           }));
       };
       paintState();
-      body.append(el);
-    }
+      return el;
+    });
   }
 
   // ---- passo 3: o que vem

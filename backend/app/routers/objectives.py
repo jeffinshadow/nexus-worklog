@@ -2,10 +2,13 @@
 tarefas vinculadas (também em ordem). A tarefa fica em um objetivo do seu
 projeto principal, ou em nenhum ("Sem objetivo"). Progresso e status do
 objetivo saem das tarefas: nada a marcar à mão."""
-from fastapi import APIRouter, Depends, HTTPException, Response
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from psycopg.errors import UniqueViolation
 
 from .. import audit, db
+from ..paging import put_total
 from ..deps import active_user, active_user_csrf
 from ..schemas import ObjectiveIn, ObjectiveUpdate, OrderIn, TaskOrderIn
 from ..services import ASSIGNER_NAME, PROJECT_ICON, TASK_COUNTS, project_rows
@@ -13,7 +16,7 @@ from ..services import ASSIGNER_NAME, PROJECT_ICON, TASK_COUNTS, project_rows
 router = APIRouter(prefix="/api", tags=["objectives"])
 
 COLS = "id, project_id, title, description, due_date, position, created_at, external_ref"
-DONE_SHOWN = 30  # concluídas por bloco (as mais recentes)
+DONE_SHOWN = 30  # concluídas por bloco na visão geral (as mais recentes); o resto em /projects/{id}/done
 UPCOMING = 5     # próximos prazos no cabeçalho do projeto
 
 
@@ -88,18 +91,30 @@ def overview(project_id: int, user=Depends(active_user)):
     objectives = db.query_all(
         f"SELECT {COLS} FROM project_objectives WHERE user_id = %s AND project_id = %s ORDER BY position, id",
         (uid, project_id))
-    open_tasks = db.query_all(_TASK_SELECT + " AND w.status <> 'done' ORDER BY w.exec_position NULLS LAST, w.created_at",
+    open_tasks = db.query_all(_TASK_SELECT + " AND w.status <> 'done' ORDER BY w.exec_position NULLS LAST, w.created_at, w.id",
                               (uid, project_id))
-    done_tasks = db.query_all(_TASK_SELECT + " AND w.status = 'done' ORDER BY w.completed_at DESC NULLS LAST",
-                              (uid, project_id))
+    # Concluídas: o número de cada bloco e só as DONE_SHOWN mais recentes de cada
+    # um (um projeto de anos não lê milhares de linhas para mostrar 10).
+    done_count = {r["objective_id"]: r["n"] for r in db.query_all(
+        """SELECT objective_id, count(*)::int AS n FROM worklog_tasks
+            WHERE user_id = %s AND project_id = %s AND status = 'done' GROUP BY objective_id""", (uid, project_id))}
+    done_tasks = db.query_all(
+        _TASK_SELECT + """ AND w.id IN (
+            SELECT id FROM (SELECT id, row_number() OVER (PARTITION BY objective_id
+                                       ORDER BY completed_at DESC NULLS LAST, id DESC) AS rn
+                              FROM worklog_tasks WHERE user_id = %s AND project_id = %s AND status = 'done') r
+             WHERE rn <= %s)
+         ORDER BY w.completed_at DESC NULLS LAST, w.id DESC""",
+        (uid, project_id, uid, project_id, DONE_SHOWN))
 
     def block(oid):
         abertas = [t for t in open_tasks if t["objective_id"] == oid]
         feitas = [t for t in done_tasks if t["objective_id"] == oid]
-        total = len(abertas) + len(feitas)
+        n_done = done_count.get(oid, 0)
+        total = len(abertas) + n_done
         started = any(t["status"] != "todo" for t in abertas)
-        return {"total": total, "done": len(feitas), "status": status_of(total, len(feitas), started),
-                "tasks": abertas, "done_tasks": feitas[:DONE_SHOWN]}
+        return {"total": total, "done": n_done, "status": status_of(total, n_done, started),
+                "tasks": abertas, "done_tasks": feitas}
 
     out = [{**o, **block(o["id"])} for o in objectives]
     # Próximos prazos: tarefas abertas e objetivos não concluídos com data (atrasados primeiro).
@@ -113,9 +128,33 @@ def overview(project_id: int, user=Depends(active_user)):
         "upcoming": prazos[:UPCOMING],
         "objectives": out,
         "unassigned": block(None),
-        "totals": {"total": len(open_tasks) + len(done_tasks), "done": len(done_tasks),
+        "totals": {"total": len(open_tasks) + sum(done_count.values()), "done": sum(done_count.values()),
                    "objectives_open": sum(1 for o in out if o["status"] != "done")},
     }
+
+
+@router.get("/projects/{project_id}/done")
+def done_of_block(
+    project_id: int,
+    objective: Annotated[int, Query(ge=0, description="Id do objetivo; 0 = “Sem objetivo”")],
+    offset: Annotated[int, Query(ge=0, le=1000000)] = 0,
+    limit: Annotated[int, Query(ge=1, le=100)] = 10,
+    response: Response = None,
+    user=Depends(active_user),
+):
+    """Concluídas de um bloco do projeto, das mais recentes às mais antigas, em
+    páginas (a visão geral traz só as primeiras). Total em X-Total-Count."""
+    uid = user["user_id"]
+    own_project(uid, project_id)
+    oid = objective or None
+    if oid is not None and objective_project(uid, oid) != project_id:
+        raise HTTPException(status_code=404, detail="objetivo não encontrado")
+    cond = " AND w.status = 'done' AND w.objective_id IS NOT DISTINCT FROM %s"
+    put_total(response, db.query_one(
+        "SELECT count(*)::int AS n FROM worklog_tasks w WHERE w.user_id = %s AND w.project_id = %s" + cond,
+        (uid, project_id, oid))["n"])
+    return db.query_all(_TASK_SELECT + cond + " ORDER BY w.completed_at DESC NULLS LAST, w.id DESC LIMIT %s OFFSET %s",
+                        (uid, project_id, oid, max(1, min(int(limit), 100)), max(0, int(offset))))
 
 
 @router.get("/projects/{project_id}/objectives")

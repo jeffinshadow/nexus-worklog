@@ -90,8 +90,11 @@ async function request(method, path, body, opts = {}) {
   }
   if (method === "GET") {
     const cached = res.headers.get("X-Nexus-Cache");
-    if (cached) { markStale(cached); return overlay(path.split("?")[0], await res.json().catch(() => null)); }
+    const total = Number(res.headers.get("X-Total-Count"));
+    const withTotal = (rows) => (opts.total ? { rows: rows || [], total: Number.isFinite(total) && res.headers.has("X-Total-Count") ? total : (rows || []).length } : rows);
+    if (cached) { markStale(cached); return withTotal(await overlay(path.split("?")[0], await res.json().catch(() => null))); }
     markFresh();
+    return withTotal(await res.json().catch(() => null));
   }
   return res.status === 204 ? null : res.json().catch(() => null);
 }
@@ -119,6 +122,8 @@ async function upload(path, file) {
 export const api = {
   // opts.timeout: espera menor (a abertura do app não fica 20 s parada com o servidor fora).
   get: (p, opts) => request("GET", p, undefined, opts),
+  // Lista paginada: { rows, total } (o total vem no cabeçalho X-Total-Count).
+  page: (p, opts) => request("GET", p, undefined, { ...opts, total: true }),
   // Rotas públicas (ex.: identidade visual na tela de login): 401 não redireciona.
   getPublic: async (p) => (await send("GET", p, { publicCall: true })).json(),
   post: (p, b) => request("POST", p, b),

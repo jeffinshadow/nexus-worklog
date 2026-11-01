@@ -8,9 +8,10 @@ posteriores apagaria trabalho sem aviso. O próprio desfazer fica registrado
 from datetime import date, timedelta
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from .. import audit, db
+from ..paging import clamp, put_total
 from . import photos
 from ..labels import dur
 from ..services import RETRO_DAYS, app_today, app_tz, board_day_range, set_extra_projects
@@ -245,10 +246,13 @@ def list_history(
     entity: Optional[str] = None,
     entity_id: Optional[int] = None,
     after: Annotated[Optional[int], Query(ge=0)] = None,  # Annotated: None também quando o MCP chama direto
+    offset: Annotated[int, Query(ge=0, le=100000, description="Pula as N ações mais recentes (páginas); o total vem em X-Total-Count")] = 0,
+    response: Response = None,
     user=Depends(active_user),
 ):
-    limit = max(1, min(int(limit), 200))  # também quando chamada pelo MCP (sem validação de Query)
-    if after is not None:  # feed de mudanças, para sincronizar (docs/API.md)
+    limit = clamp(limit, 1, 200, 50)  # também quando chamada pelo MCP (sem validação de Query)
+    offset = clamp(offset, 0, 100000, 0)
+    if after is not None:  # feed de mudanças, para sincronizar (docs/API.md); sem offset nem total
         return feed(user["user_id"], after, limit)
     cond, params = ["user_id = %s"], [user["user_id"]]
     if entity:
@@ -257,16 +261,18 @@ def list_history(
     if entity_id is not None:
         cond.append("entity_id = %s")
         params.append(entity_id)
+    where = " AND ".join(cond)
+    put_total(response, db.query_one(f"SELECT count(*)::int AS n FROM audit_log WHERE {where}", tuple(params))["n"])
     rows = db.query_all(
         f"""
         SELECT id, created_at, actor, token_name, action, entity, entity_id,
                before, after, undone_at
           FROM audit_log
-         WHERE {' AND '.join(cond)}
+         WHERE {where}
          ORDER BY id DESC
-         LIMIT %s
+         LIMIT %s OFFSET %s
         """,
-        (*params, limit),
+        (*params, limit, offset),
     )
     rows = _with_names(user["user_id"], rows)
     latest = _latest_ids(user["user_id"])

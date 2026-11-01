@@ -1,7 +1,7 @@
 // Configurações: projetos, modelos, avisos, calendário, IA e API (chaves e webhooks), conta (perfil, assistente, chamados, dias úteis e senha).
 import { api } from "./api.js";
 import { h, icon, clear, dateTime, field, matchPasswords } from "./dom.js";
-import { codeBox, confirmDialog, errorToast, modal, toast, warnBox, busy, singleKeysOn, setSingleKeys, calmMotion } from "./ui.js";
+import { codeBox, confirmDialog, errorToast, modal, toast, warnBox, busy, singleKeysOn, setSingleKeys, calmMotion, hashPage, pager, pageSlice, setHashPage } from "./ui.js";
 import { defaultProjectPanel, fillProjectSelect } from "./projects.js";
 import { avatar, squarePhoto } from "./profile.js";
 import { pushPanel } from "./notificacoes.js";
@@ -218,9 +218,12 @@ function assistantPanel(me) {
 
 const PRIO = [["1", "Alta"], ["2", "Normal"], ["3", "Baixa"]];
 
+const TEMPLATES_PAGE = 15; // linha curta
+const TOKENS_OFF_PAGE = 10; // chaves revogadas e vencidas, recolhidas
+
 async function templatesPanel(rerender) {
   const list = await api.get("/templates");
-  const rows = list.length ? list.map((t) => h("div", { class: "token-row" },
+  const rowOf = (t) => h("div", { class: "token-row" },
     h("span", { class: "token-name", text: t.name }),
     h("div", { class: "actions" },
       // Lápis e lixeira, como nas outras listas (Vencimentos, checklist).
@@ -229,8 +232,22 @@ async function templatesPanel(rerender) {
         if (!(await confirmDialog({ title: `Excluir o modelo “${t.name}”?`, text: "As tarefas já criadas com ele continuam.", confirm: "Excluir", danger: true }))) return;
         try { await api.del(`/templates/${t.id}`); toast("Modelo excluído."); rerender(); } catch (e) { errorToast(e); }
       } }, icon("trash"))),
-    h("span", { class: "token-meta", text: [t.title, t.checklist.length ? `${t.checklist.length} itens no checklist` : "sem checklist", t.after_hours ? "plantão" : ""].filter(Boolean).join(" · ") })))
-    : [h("p", { class: "empty", text: "Nenhum modelo ainda. Salve como modelo uma tarefa que se repete (com checklist) para criá-la em um toque." })];
+    h("span", { class: "token-meta", text: [t.title, t.checklist.length ? `${t.checklist.length} itens no checklist` : "sem checklist", t.after_hours ? "plantão" : ""].filter(Boolean).join(" · ") }));
+  const box = h("div");
+  let page = hashPage("p");
+  const paint = () => {
+    clear(box);
+    if (!list.length) { box.append(h("p", { class: "empty", text: "Nenhum modelo ainda. Salve como modelo uma tarefa que se repete (com checklist) para criá-la em um toque." })); return; }
+    const slice = pageSlice(list, page, TEMPLATES_PAGE);
+    page = slice.page;
+    setHashPage("p", page, "config");
+    box.append(...slice.rows.map(rowOf));
+    const nav = pager({ page, total: list.length, size: TEMPLATES_PAGE, label: "modelos",
+      onPage: (n) => { page = n; paint(); }, focus: () => box.closest(".panel")?.querySelector("h2") });
+    if (nav) box.append(nav);
+  };
+  paint();
+  const rows = [box];
   return h("div", { class: "settings-grid" },
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Modelos de tarefa" }),
@@ -532,7 +549,7 @@ async function tokens(rerender) {
     }
   }));
 
-  const row = (t) => {
+  const rowOf = (t) => {
     const meta = [
       `${t.prefix}…`, t.scope === "write" ? "ler e registrar" : "só leitura",
       t.expires_at ? `vence ${dateTime(t.expires_at).slice(0, 5)}` : "sem validade",
@@ -556,16 +573,27 @@ async function tokens(rerender) {
     return h("div", { class: "token-row" + (t.active ? "" : " inactive") },
       h("span", { class: "token-name", text: t.name }), actions, h("span", { class: "token-meta", text: meta.join(" · ") }));
   };
-  // Vencidas e revogadas não se acumulam: ficam recolhidas em "Antigas".
-  const ativas = list.filter((t) => t.active), antigas = list.filter((t) => !t.active);
-  const rows = [
-    ...ativas.map(row),
-    !list.length ? h("p", { class: "empty", text: "Nenhuma chave ainda." })
-      : !ativas.length ? h("p", { class: "empty", text: "Nenhuma chave ativa." }) : null,
-    antigas.length ? h("details", { class: "old-keys" },
-      h("summary", {}, `Antigas (${antigas.length})`, h("small", { text: "vencidas e revogadas; uma vencida pode ser renovada" })),
-      ...antigas.map(row)) : null,
-  ].filter(Boolean);
+  // As ativas, todas; as revogadas e vencidas se acumulam: recolhidas, de 10 em 10.
+  const ativas = list.filter((t) => t.active), inativas = list.filter((t) => !t.active);
+  const rows = list.length ? ativas.map(rowOf) : [h("p", { class: "empty", text: "Nenhuma chave ainda." })];
+  if (list.length && !ativas.length) rows.push(h("p", { class: "empty", text: "Nenhuma chave ativa." }));
+  if (inativas.length) {
+    const box = h("div");
+    const summary = h("summary", {}, `Antigas (${inativas.length})`, h("small", { text: "vencidas e revogadas; uma vencida pode ser renovada" }));
+    let page = hashPage("pi");
+    const paint = () => {
+      clear(box);
+      const slice = pageSlice(inativas, page, TOKENS_OFF_PAGE);
+      page = slice.page;
+      setHashPage("pi", page, "config");
+      box.append(...slice.rows.map(rowOf));
+      const nav = pager({ page, total: inativas.length, size: TOKENS_OFF_PAGE, label: "chaves revogadas e vencidas", compact: true,
+        onPage: (n) => { page = n; paint(); }, focus: summary });
+      if (nav) box.append(nav);
+    };
+    paint();
+    rows.push(h("details", { class: "requests-decided tokens-off", open: page > 1 ? "open" : null }, summary, box));
+  }
 
   return h("div", { class: "settings-grid" },
     h("section", { class: "panel" },

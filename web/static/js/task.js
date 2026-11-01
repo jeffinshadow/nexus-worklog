@@ -6,7 +6,9 @@
 import { api } from "./api.js";
 import { h, icon, clear, addDays, shortDate, dateTime, field, localDateTime, localDay } from "./dom.js";
 import { overlay } from "./fila.js";
-import { errorToast, modal, toast, undoLatest, busy, sheet, syncRail, growFrom, refocusBy, actionMenu } from "./ui.js";
+import { errorToast, modal, toast, undoLatest, busy, sheet, syncRail, growFrom, refocusBy, actionMenu, pager, pageSlice } from "./ui.js";
+
+const ENTRY_PAGE = 10; // anotações e apontamentos: os 10 mais recentes, depois páginas
 import { finishTask, reopenTask, deleteTask, duplicateTask, followUpDay, isOverdue, ticketUrl, taskChips, blockTask, canBlock } from "./board.js";
 import { extraProjectsField, fillObjectiveSelect, fillProjectSelect } from "./projects.js";
 import { session } from "./session.js";
@@ -86,6 +88,7 @@ export async function openTask(taskId, onChange, opts = {}) {
   const side = matchMedia("(min-width: 861px)").matches;
   closeSidePanel(); // um detalhe por vez: abrir outro cartão troca o painel
   let changed = false;
+  const entryPages = { notes: 1, time: 1 }; // continuam na mesma página quando a tarefa se redesenha
   const body = h("div", { class: "task-body" });
   const dlg = h("dialog", { class: "task-dialog" + (side ? " side" : ""), "aria-label": "Detalhe da tarefa" }, body);
   document.body.append(dlg);
@@ -461,14 +464,17 @@ export async function openTask(taskId, onChange, opts = {}) {
       try {
         await api.post(`/worklog/${t.id}/time`, { minutes, day: day.value || today, note: note.value.trim() || null });
         toast(`Apontado ${duration(minutes)}.`);
+        entryPages.time = 1; // o novo aparece em cima, na página 1
         touch();
       } catch (e) { errorToast(e); }
     }));
     sec.append(form);
-    for (const e of t.time) {
-      if (rowEdit === "time:" + e.id) { sec.append(timeEditForm(e, today)); continue; }
+    const box = h("div");
+    sec.append(box);
+    const row = (e) => {
+      if (rowEdit === "time:" + e.id) { box.append(timeEditForm(e, today)); return; }
       const what = `${duration(e.minutes)} em ${shortDate(e.day)}`;
-      sec.append(h("div", { class: "mini-row" },
+      box.append(h("div", { class: "mini-row" },
         h("span", { class: "mono when", text: shortDate(e.day) }),
         h("span", { class: "mono amount", text: duration(e.minutes) }),
         h("span", { class: "what" }, e.note || "", actorBadge(e)),
@@ -481,7 +487,8 @@ export async function openTask(taskId, onChange, opts = {}) {
             toast("Apontamento excluído.", { action: "Desfazer", onAction: () => undoLatest("time", e.id, after) });
           } catch (err) { errorToast(err); }
         } }, icon("trash"))));
-    }
+    };
+    pagedEntries(box, t.time, "time", row, "apontamentos de tempo", sec.querySelector("h3"));
     return sec;
   }
 
@@ -573,6 +580,19 @@ export async function openTask(taskId, onChange, opts = {}) {
         h("button", { type: "button", class: "btn btn-text btn-sm", text: "Cancelar", onClick: () => closeRow(back) }),
         h("button", { type: "button", class: "btn btn-primary btn-sm", text: "Salvar", onClick: save })));
   }
+  // Uma página de anotações ou apontamentos (os mais recentes primeiro).
+  function pagedEntries(box, items, key, row, label, heading) {
+    const paint = () => {
+      clear(box);
+      const { rows, page } = pageSlice(items, entryPages[key], ENTRY_PAGE);
+      entryPages[key] = page;
+      rows.forEach(row);
+      const nav = pager({ page, total: items.length, size: ENTRY_PAGE, label, compact: true,
+        onPage: (n) => { entryPages[key] = n; paint(); }, focus: heading });
+      if (nav) box.append(nav);
+    };
+    paint();
+  }
 
   // ---- anotações
   function notesPanel(t) {
@@ -583,16 +603,18 @@ export async function openTask(taskId, onChange, opts = {}) {
     const send = async () => {
       const v = text.value.trim();
       if (!v) return;
-      try { await api.post(`/worklog/${t.id}/notes`, { body: v }); touch(); }
+      try { await api.post(`/worklog/${t.id}/notes`, { body: v }); entryPages.notes = 1; touch(); }
       catch (e) { errorToast(e); }
     };
     text.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); send(); } });
     sec.append(h("div", { class: "note-form" }, text,
       h("button", { type: "button", class: "btn btn-ghost btn-sm", onClick: send }, "Anotar")));
-    for (const n of t.notes) {
-      if (rowEdit === "note:" + n.id) { sec.append(noteEditForm(n)); continue; }
+    const box = h("div");
+    sec.append(box);
+    const row = (n) => {
+      if (rowEdit === "note:" + n.id) { box.append(noteEditForm(n)); return; }
       const when = dateTime(n.created_at);
-      sec.append(h("div", { class: "note" },
+      box.append(h("div", { class: "note" },
         h("div", { class: "note-meta" }, h("span", { class: "mono", text: when }), actorBadge(n),
           n.pending || t.offline ? null : h("button", { type: "button", class: "icon", title: "Editar anotação", "aria-label": "Editar anotação de " + when,
             onClick: () => editRow("note:" + n.id, "Texto da anotação") }, icon("edit")),
@@ -604,7 +626,8 @@ export async function openTask(taskId, onChange, opts = {}) {
             } catch (e) { errorToast(e); }
           } }, icon("trash"))),
         h("p", { text: n.body })));
-    }
+    };
+    pagedEntries(box, t.notes, "notes", row, "anotações", sec.querySelector("h3"));
     if (!t.notes.length) sec.append(h("p", { class: "empty", text: "Nada anotado ainda." }));
     return sec;
   }

@@ -2,7 +2,7 @@
 // concluídas. Também exporta o diálogo de nova tarefa, usado pela tela Hoje.
 import { api } from "./api.js";
 import { h, icon, clear, field, addDays, addWorkDays, shortDate, localDay, localDateTime, daysBetween, markInvalid } from "./dom.js";
-import { confirmDialog, errorToast, toast, undoLatest, busy, modal, sheet, navBadge, popupMenu, focusAfterRemoval, keepFocus } from "./ui.js";
+import { confirmDialog, errorToast, toast, undoLatest, busy, modal, sheet, navBadge, popupMenu, focusAfterRemoval, keepFocus, pager, pageSlice, hashPage, setHashPage } from "./ui.js";
 import { extraProjectsField, fillObjectiveSelect, fillProjectSelect, listProjects, projectChips } from "./projects.js";
 import { openTask, openTaskId, editingTaskId, duration, parseDuration } from "./task.js";
 import { boardLine } from "./assistant.js";
@@ -14,8 +14,10 @@ import { prepare, upload } from "./fotos.js";
 import { openPacks } from "./pacotes.js";
 
 const WEEKDAYS_SHORT = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
-const DONE_PAGE = 10;
-const BOARD_DONE_LIMIT = 200; // o servidor manda só as 200 concluídas mais recentes
+// Páginas do quadro: a lista de trabalho cabe numa olhada até 25; as concluídas
+// vêm do servidor de 20 em 20 (com o total real).
+const OPEN_PAGE = 25;
+const DONE_PAGE = 20;
 
 export const STATUS_LABELS = {
   todo: "a fazer",
@@ -678,14 +680,21 @@ export async function reopenTask(t, onDone) {
 export async function mount(root, opts = {}) {
   const readOnly = !!opts.readOnly;
   const boardUrl = opts.boardUrl || "/board";
-  let doneShown = DONE_PAGE;
+  // As concluídas do próprio quadro paginam no servidor; a visão da Equipe
+  // (rota do viewer) recebe as 200 mais recentes e pagina aqui.
+  const serverDone = !readOnly && boardUrl === "/board";
+  // Páginas no endereço (#/tarefas?p=2&pc=3), só no quadro da própria pessoa.
+  let openPage = readOnly ? 1 : hashPage("p"), donePage = readOnly ? 1 : hashPage("pc");
   let project = readOnly ? "" : sessionStorage.getItem("nexus.board.project") || "";
 
   // Quadro e projetos (do filtro) vêm juntos: uma ida ao servidor a menos.
   // Busca antes de limpar: na volta à tela, a visita anterior fica até chegar.
   const fetchBoard = () => {
+    const qs = [];
+    if (project !== "") qs.push(`project=${project}`);
+    if (serverDone) qs.push(`done_limit=${DONE_PAGE}`, `done_offset=${(donePage - 1) * DONE_PAGE}`);
     const sep = boardUrl.includes("?") ? "&" : "?";
-    return api.get(project !== "" ? `${boardUrl}${sep}project=${project}` : boardUrl);
+    return api.get(qs.length ? `${boardUrl}${sep}${qs.join("&")}` : boardUrl);
   };
   let [list, data] = await Promise.all([readOnly ? null : listProjects(true).catch(() => null), fetchBoard()]);
 
@@ -708,6 +717,7 @@ export async function mount(root, opts = {}) {
     filter.addEventListener("change", () => {
       project = filter.value;
       sessionStorage.setItem("nexus.board.project", project);
+      openPage = donePage = 1; // outro filtro: as duas listas voltam à página 1
       refresh();
     });
   }
@@ -739,21 +749,36 @@ export async function mount(root, opts = {}) {
     // A linha do assistente, acima do título (só no quadro do próprio usuário).
     if (!readOnly && opts.setAssist) opts.setAssist(boardLine(data.in_progress, data.today, opts.me));
     renderCards(wip, data.in_progress, false, data.today);
-    renderCards(done, data.done, true, data.today);
+    renderCards(done, data.done, true, data.today, data);
   }
 
   async function refresh() {
-    render(await fetchBoard());
+    let d = await fetchBoard();
+    // A página guardada passou do fim (concluídas que voltaram, outro filtro): a última.
+    if (serverDone && d.done_total !== undefined && donePage > 1 && !d.done.length) {
+      donePage = Math.max(1, Math.ceil(d.done_total / DONE_PAGE));
+      d = await fetchBoard();
+    }
+    render(d);
   }
 
-  function renderCards(col, items, isDone, today) {
+  function renderCards(col, items, isDone, today, data = {}) {
     clear(col.body);
-    col.count.textContent = String(items.length);
-    if (!items.length) {
+    clear(col.foot);
+    // Concluídas: o total real (o servidor manda uma página; a Equipe, as 200 mais recentes).
+    const total = isDone ? (serverDone ? Math.max(data.done_total ?? 0, items.length) : items.length) : items.length;
+    col.count.textContent = String(isDone && data.done_total !== undefined ? Math.max(data.done_total, items.length) : total);
+    if (!items.length && !(isDone && serverDone && total)) {
       col.body.append(h("p", { class: "empty", text: isDone ? "Nada concluído ainda." : "Nada em aberto." }));
+      if (!readOnly) setHashPage(isDone ? "pc" : "p", 1, "tarefas");
       return;
     }
-    const list = isDone ? items.slice(0, doneShown) : items;
+    const size = isDone ? DONE_PAGE : OPEN_PAGE;
+    let list, page;
+    if (isDone && serverDone) { list = items; page = donePage; }
+    else ({ rows: list, page } = pageSlice(items, isDone ? donePage : openPage, size));
+    if (isDone) donePage = page; else openPage = page;
+    if (!readOnly) setHashPage(isDone ? "pc" : "p", page, "tarefas");
     for (const it of list) {
       const canCheck = !readOnly && !isDone;  // concluir à esquerda, como no Hoje
       const card = h("article", { class: "card" + (isOverdue(it, today) ? " overdue" : "") + (it.priority === 1 && !isDone ? " high" : "") + (isDone ? " is-done" : "") + (canCheck ? " has-check" : ""), "data-id": it.id },
@@ -769,24 +794,35 @@ export async function mount(root, opts = {}) {
       }
       col.body.append(card);
     }
-    if (isDone && items.length >= BOARD_DONE_LIMIT && doneShown >= items.length)
-      col.body.append(h("p", { class: "muted small", text: `Mostrando as ${BOARD_DONE_LIMIT} mais recentes; as anteriores estão nos relatórios e na busca.` }));
-    if (isDone && items.length > doneShown) {
-      col.body.append(h("button", {
-        type: "button", class: "btn btn-text show-more", text: `ver mais ${Math.min(DONE_PAGE, items.length - doneShown)} de ${items.length - doneShown}`,
-        onClick: () => { doneShown += DONE_PAGE; renderCards(col, items, true, today); },
-      }));
-    }
+    // Equipe: o servidor manda as 200 mais recentes; na última página, diz onde estão as outras.
+    if (isDone && !serverDone && data.done_total > items.length && page === Math.ceil(items.length / size))
+      col.body.append(h("p", { class: "muted small", text: `Mostrando as ${items.length} mais recentes de ${data.done_total}; as anteriores estão nos relatórios.` }));
+    col.foot.append(pager({
+      page, total, size, label: isDone ? "concluídas" : "tarefas em aberto",
+      onPage: async (n) => {
+        if (isDone) donePage = n; else openPage = n;
+        if (isDone && serverDone) await refresh();
+        else renderCards(col, items, isDone, today, data);
+        col.body.scrollTop = 0;
+      },
+      focus: () => col.title,
+    }) || "");
   }
 
+  if (serverDone && donePage > 1 && !data.done.length && data.done_total !== undefined) { // ?pc= além do fim
+    donePage = Math.max(1, Math.ceil(data.done_total / DONE_PAGE));
+    data = await fetchBoard();
+  }
   render(data);
 }
 
 function column(title, opts = {}) {
   const count = h("span", { class: "count-badge" });
-  const head = h("div", { class: "column-head" }, h("h2", { text: title }), count);
+  const titleEl = h("h2", { text: title });
+  const head = h("div", { class: "column-head" }, titleEl, count);
   const body = h("div", { class: "column-body" });
-  const section = h("section", { class: "column" + (opts.className ? " " + opts.className : "") }, head, body);
+  const foot = h("div", { class: "column-foot" }); // as páginas: fora da rolagem da coluna
+  const section = h("section", { class: "column" + (opts.className ? " " + opts.className : "") }, head, body, foot);
   if (opts.collapsible) {
     const toggle = h("button", {
       type: "button", class: "icon column-toggle", title: "Mostrar/ocultar", "aria-expanded": "false",
@@ -797,5 +833,5 @@ function column(title, opts = {}) {
     }, icon("chevron"));
     head.append(toggle);
   }
-  return { section, body, count };
+  return { section, body, foot, count, title: titleEl };
 }

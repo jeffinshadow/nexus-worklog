@@ -10,13 +10,14 @@
 // #/dashboard chega aqui pelo app.js.
 import { api } from "./api.js";
 import { h, icon, clear, addDays, localDay } from "./dom.js";
-import { errorToast } from "./ui.js";
+import { errorToast, pager } from "./ui.js";
 import { projectChip, corProjeto, iconeProjeto } from "./projects.js";
 import { duration, openTask } from "./task.js";
 import * as reports from "./reports.js";
 
 const MONTHS = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
-const TOP = 5; // entregas visíveis antes de "ver todas"
+const TOP = 5;   // entregas visíveis no cartão (as com mais tempo)
+const PAGE = 10; // depois de "ver todas", páginas de 10 dentro do próprio cartão
 
 // O mês da própria pessoa fica enquanto o app estiver aberto (voltar à tela mostra o mesmo).
 const own = { month: null, months: null };
@@ -633,22 +634,35 @@ function deliveriesCard(ov, mes, opts, reload) {
       meta,
       d.resolution ? h("p", { class: "mes-res", text: d.resolution }) : null);
   };
+  // As 5 com mais tempo; "ver todas" troca para páginas de 10 no mesmo cartão
+  // (a altura fica estável na grade). O servidor manda até 300 (as com mais
+  // tempo); passando disso, a última página diz que as outras estão no PDF.
   const list = h("ul", { class: "mes-dels" }, ...all.slice(0, TOP).map(row));
   const sub = total > TOP ? `as ${TOP} com mais tempo, de ${total}` : null;
-  let more = null;
+  const foot = h("div", { class: "mes-del-foot" });
+  const showPage = (n) => {
+    const pages = Math.max(1, Math.ceil(all.length / PAGE));
+    clear(list); clear(foot);
+    list.append(...all.slice((n - 1) * PAGE, n * PAGE).map(row));
+    if (n === pages && total > all.length)
+      list.append(h("li", { class: "mes-res", text: `e mais ${total - all.length} com menos tempo (todas estão no PDF do mês)` }));
+    const subEl = list.closest(".mes-card")?.querySelector(".chart-sub");
+    if (subEl) subEl.textContent = `todas as ${total}, da que levou mais tempo à que levou menos`;
+    const nav = pager({ page: n, total: all.length, size: PAGE, label: "entregas do mês", compact: true,
+      onPage: (k) => showPage(k), focus: () => list.closest(".mes-card")?.querySelector("h2, h3") || list });
+    if (nav) foot.append(nav);
+  };
   if (all.length > TOP) {
-    more = h("button", { type: "button", class: "btn btn-text mes-all", text: `ver todas as ${total}`, onClick: () => {
-      list.append(...all.slice(TOP).map(row));
-      if (total > all.length) list.append(h("li", { class: "mes-res", text: `e mais ${total - all.length} com menos tempo (todas estão no PDF)` }));
-      // O foco segue para o primeiro item novo (o botão some; sem isso, cairia no topo).
-      const first = list.children[TOP];
-      const target = first.querySelector("button") || first;
+    foot.append(h("button", { type: "button", class: "btn btn-text mes-all", text: `ver todas as ${total}`, onClick: () => {
+      showPage(1);
+      // O foco segue para a primeira da lista (o botão some; sem isso, cairia no topo).
+      const first = list.firstElementChild;
+      const target = first && (first.querySelector("button") || first);
       if (target === first) first.tabIndex = -1;
-      target.focus();
-      more.remove();
-    } });
+      target?.focus();
+    } }));
   }
-  return card("O que foi entregue", sub, list, more);
+  return card("O que foi entregue", sub, list, foot);
 }
 
 // ------------------------------------------------------------------ SVG --

@@ -963,6 +963,20 @@
               ],
               "title": "External Ref"
             }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000000,
+              "minimum": 0,
+              "description": "Pula as N primeiras (páginas); o total vem em X-Total-Count",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Pula as N primeiras (páginas); o total vem em X-Total-Count"
           }
         ],
         "responses": {
@@ -1408,6 +1422,34 @@
               "title": "Project"
             },
             "description": "0 = sem projeto"
+          },
+          {
+            "name": "done_offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000000,
+              "minimum": 0,
+              "description": "Concluídas: pula as N mais recentes (páginas)",
+              "default": 0,
+              "title": "Done Offset"
+            },
+            "description": "Concluídas: pula as N mais recentes (páginas)"
+          },
+          {
+            "name": "done_limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "description": "Concluídas por resposta; o total vem em done_total",
+              "default": 200,
+              "title": "Done Limit"
+            },
+            "description": "Concluídas por resposta; o total vem em done_total"
           }
         ],
         "responses": {
@@ -2092,6 +2134,20 @@
               ],
               "title": "After"
             }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100000,
+              "minimum": 0,
+              "description": "Pula as N ações mais recentes (páginas); o total vem em X-Total-Count",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Pula as N ações mais recentes (páginas); o total vem em X-Total-Count"
           }
         ],
         "responses": {
@@ -2835,6 +2891,7 @@
           "search"
         ],
         "summary": "Search",
+        "description": "Tarefas, rotinas e projetos com o termo. Cada seção pagina sozinha\n(offset/limit; rec_offset, proj_offset e side_limit) e traz o total real:\ntotal_tasks, total_recurring, total_projects (X-Total-Count = total_tasks).",
         "operationId": "search_api_search_get",
         "parameters": [
           {
@@ -2847,6 +2904,76 @@
               "maxLength": 100,
               "title": "Q"
             }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100000,
+              "minimum": 0,
+              "description": "Tarefas: pula as N primeiras (páginas)",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Tarefas: pula as N primeiras (páginas)"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Tarefas por resposta (padrão 40)",
+              "default": 40,
+              "title": "Limit"
+            },
+            "description": "Tarefas por resposta (padrão 40)"
+          },
+          {
+            "name": "rec_offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100000,
+              "minimum": 0,
+              "description": "Rotinas: pula as N primeiras",
+              "default": 0,
+              "title": "Rec Offset"
+            },
+            "description": "Rotinas: pula as N primeiras"
+          },
+          {
+            "name": "proj_offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100000,
+              "minimum": 0,
+              "description": "Projetos: pula os N primeiros",
+              "default": 0,
+              "title": "Proj Offset"
+            },
+            "description": "Projetos: pula os N primeiros"
+          },
+          {
+            "name": "side_limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "description": "Rotinas e projetos por resposta (padrão 20)",
+              "default": 20,
+              "title": "Side Limit"
+            },
+            "description": "Rotinas e projetos por resposta (padrão 20)"
           }
         ],
         "responses": {
@@ -5099,6 +5226,83 @@
             "schema": {
               "type": "integer",
               "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{project_id}/done": {
+      "get": {
+        "tags": [
+          "objectives"
+        ],
+        "summary": "Done Of Block",
+        "description": "Concluídas de um bloco do projeto, das mais recentes às mais antigas, em\npáginas (a visão geral traz só as primeiras). Total em X-Total-Count.",
+        "operationId": "done_of_block_api_projects__project_id__done_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "objective",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Id do objetivo; 0 = “Sem objetivo”",
+              "title": "Objective"
+            },
+            "description": "Id do objetivo; 0 = “Sem objetivo”"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000000,
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 10,
+              "title": "Limit"
             }
           }
         ],

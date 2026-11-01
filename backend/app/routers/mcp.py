@@ -312,22 +312,36 @@ def t_list_tasks(ctx, args):
     uid = ctx["user_id"]
     status = args.get("status", "open")
     limit = int(args.get("limit", 50))
+    offset = max(0, int(args.get("offset", 0) or 0))
     pid = _resolve_project(uid, args.get("project"))
     if args.get("from") or args.get("to") or args.get("by"):
+        lim = max(1, min(limit, 500))
         rows = _call(worklog_routes.list_tasks, start=_day(args.get("from")), end=_day(args.get("to")),
                      by=args.get("by") or "created", status=args.get("status", "all"),
-                     limit=500 if pid else max(1, min(limit, 500)), user=ctx)
+                     limit=500 if pid else lim, offset=0 if pid else offset, user=ctx)
         rows = _with_counts(uid, rows)
         if pid:
-            rows = [t for t in rows if _in_project(t, pid)][: max(1, min(limit, 500))]
+            rows = [t for t in rows if _in_project(t, pid)][offset:offset + lim]
         today = services.app_today()
-        return "\n".join(f"criada {_created(t)} · {_task_line(t, today)}" for t in rows) or "(nenhuma tarefa no período)"
-    b = services.get_board(uid, project=pid)
-    items = {"open": b["in_progress"], "done": b["done"], "all": b["in_progress"] + b["done"]}.get(status)
-    if items is None:
+        out = "\n".join(f"criada {_created(t)} · {_task_line(t, today)}" for t in rows)
+        if len(rows) == lim:
+            out += f"\n(pode haver mais: chame de novo com offset={offset + lim})"
+        return out or "(nenhuma tarefa no período)"
+    if status not in ("open", "done", "all"):
         raise ToolError("status deve ser open, done ou all")
-    items = items[: max(1, min(limit, 200))]
-    return "\n".join(_task_line(t, b["today"]) for t in items) or "(nenhuma tarefa)"
+    lim = max(1, min(limit, 200))
+    if status == "done":  # as concluídas paginam no banco (há muitas)
+        b = services.get_board(uid, project=pid, done_offset=offset, done_limit=lim)
+        items, total = b["done"], b["done_total"]
+    else:
+        b = services.get_board(uid, project=pid)
+        todas = b["in_progress"] + (b["done"] if status == "all" else [])
+        total = len(b["in_progress"]) + (b["done_total"] if status == "all" else 0)
+        items = todas[offset:offset + lim]
+    out = "\n".join(_task_line(t, b["today"]) for t in items)
+    if items and offset + len(items) < total:
+        out += f"\n(mostrando {offset + 1}–{offset + len(items)} de {total}: chame de novo com offset={offset + len(items)})"
+    return out or "(nenhuma tarefa)"
 
 
 def _day(value):
@@ -414,7 +428,9 @@ def t_get_task(ctx, args):
 
 
 def t_search(ctx, args):
-    r = _call(search_routes.search, str(args.get("query", "")), user=ctx)
+    offset = max(0, int(args.get("offset", 0) or 0))
+    r = _call(search_routes.search, str(args.get("query", "")), offset=offset, limit=search_routes.MAX_HITS,
+              rec_offset=0, proj_offset=0, side_limit=search_routes.SIDE_HITS, user=ctx)
     today = services.app_today()
     lines = []
     for t in r["tasks"]:
@@ -425,6 +441,9 @@ def t_search(ctx, args):
         lines += ["", "Rotinas:"] + [f"  R{x['id']} {x['label']}" + ("" if x["active"] else " (removida)") for x in r["recurring"]]
     if r["projects"]:
         lines += ["", "Projetos:"] + [f"  #{x['id']} {x['name']}" for x in r["projects"]]
+    if r["tasks"] and offset + len(r["tasks"]) < r["total_tasks"]:
+        lines += ["", f"(tarefas {offset + 1}–{offset + len(r['tasks'])} de {r['total_tasks']}: "
+                      f"chame de novo com offset={offset + len(r['tasks'])})"]
     return "\n".join(lines) or "Nada encontrado."
 
 
@@ -984,7 +1003,8 @@ def t_get_week_review(ctx, args):
 
 
 def t_get_history(ctx, args):
-    rows = history_routes.list_history(limit=int(args.get("limit", 20)), entity=None, entity_id=None, user=ctx)
+    rows = history_routes.list_history(limit=int(args.get("limit", 20)), entity=None, entity_id=None,
+                                       offset=int(args.get("offset", 0) or 0), user=ctx)
     # [pode desfazer] só no que ESTA chave fez: o undo do MCP recusa o resto.
     mine = {r["id"] for r in db.query_all(
         "SELECT id FROM audit_log WHERE user_id = %s AND token_id = %s AND id = ANY(%s)",
@@ -1084,6 +1104,8 @@ TOOLS = {
                        "status": {"type": "string", "enum": ["open", "done", "all"], "default": "open",
                                   "description": "Padrão open; com período, padrão all"},
                        "limit": {"type": "integer", "minimum": 1, "maximum": 500, "default": 50},
+                       "offset": {"type": "integer", "minimum": 0, "default": 0,
+                                  "description": "Pula as N primeiras (próxima página: offset + limit)"},
                        "from": {**DATE, "description": "Primeiro dia do período (inclusive)"},
                        "to": {**DATE, "description": "Último dia do período (inclusive)"},
                        "by": {"type": "string", "enum": ["created", "completed"], "default": "created",
@@ -1155,7 +1177,10 @@ TOOLS = {
     "get_task": (t_get_task, False, "Tarefa completa: checklist, anotações e tempo apontado.",
                  {"type": "object", "required": ["task_id"], "properties": {"task_id": {"type": "integer"}}}),
     "search": (t_search, False, "Busca em tarefas (título, descrição, anotações, checklist, apontamentos), rotinas e projetos. Ignora acentos.",
-               {"type": "object", "required": ["query"], "properties": {"query": {"type": "string", "minLength": 2, "maxLength": 100}}}),
+               {"type": "object", "required": ["query"], "properties": {
+                   "query": {"type": "string", "minLength": 2, "maxLength": 100},
+                   "offset": {"type": "integer", "minimum": 0, "default": 0,
+                              "description": "Tarefas: pula as N primeiras (vêm 40 por vez; a resposta diz o próximo offset)"}}}),
     "add_note": (t_add_note, True, "Anota um progresso na tarefa (o que foi feito, decisão, pendência).",
                  {"type": "object", "required": ["task_id", "text"], "properties": {
                      "task_id": {"type": "integer"}, "text": {"type": "string", "maxLength": 2000}}}),
@@ -1337,7 +1362,9 @@ TOOLS = {
                       {"type": "object", "properties": {}}),
     "get_history": (t_get_history, False, "Últimas ações na conta (app, API ou IA). [pode desfazer] marca o que esta chave "
                     "pode desfazer com undo (só o que ela mesma fez); o resto a pessoa desfaz no app, em Histórico.",
-                    {"type": "object", "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 20}}}),
+                    {"type": "object", "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 20},
+                                                      "offset": {"type": "integer", "minimum": 0, "default": 0,
+                                                                 "description": "Pula as N mais recentes (próxima página: offset + limit)"}}}),
     "undo": (t_undo, True, "Desfaz uma ação do histórico (só a mais recente de cada item).",
              {"type": "object", "required": ["history_id"], "properties": {"history_id": {"type": "integer"}}}),
 }

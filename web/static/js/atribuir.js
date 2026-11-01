@@ -3,12 +3,17 @@
 // de quem recebe (que vira o dono) e ele recebe um e-mail.
 import { api } from "./api.js";
 import { h, icon, clear, field, shortDate, localDay, dateTime } from "./dom.js";
-import { busy, confirmDialog, errorToast, modal, toast } from "./ui.js";
+import { busy, confirmDialog, errorToast, hashPage, modal, pager, pageSlice, setHashPage, toast } from "./ui.js";
 import { avatar } from "./profile.js";
 import { STATUS_LABELS } from "./board.js";
 import { session } from "./session.js";
 
+const SENT_PAGE = 15;   // linha média (título, para quem, etiquetas, ações)
+const PEOPLE_PAGE = 20; // linha curta com foto
+let sentPage = 1;
+
 export async function mount(root) {
+  sentPage = hashPage("p");
   // As duas listas vêm juntas (uma ida ao servidor a menos) e antes de limpar:
   // na volta à tela, a visita anterior fica até chegar.
   const [people, sent] = await Promise.all([api.get("/assign/people"), api.get("/assign/sent").catch((e) => e)]);
@@ -16,7 +21,7 @@ export async function mount(root) {
   const grid = h("div", { class: "settings-grid" });
   root.append(grid);
   const sentBox = h("section", { class: "panel" });
-  grid.append(assignForm(people, () => loadSent(sentBox)), sentBox, consentsPanel(people));
+  grid.append(assignForm(people, () => { sentPage = 1; loadSent(sentBox); }), sentBox, consentsPanel(people));
   await loadSent(sentBox, sent);
 }
 
@@ -77,14 +82,22 @@ async function loadSent(sec, ready) {
     if (rows instanceof Error) throw rows;
   } catch (e) { errorToast(e); rows = null; }
   clear(sec);
-  sec.append(h("div", { class: "panel-head" }, h("h2", { text: "Tarefas que atribuí" })));
+  const heading = h("h2", { text: "Tarefas que atribuí" });
+  sec.append(h("div", { class: "panel-head" }, heading, rows && rows.length ? h("span", { class: "count", text: String(rows.length) }) : null));
   if (!rows) return;
   if (!rows.length) {
     sec.append(h("p", { class: "empty", text: "Você ainda não atribuiu tarefas." }));
     return;
   }
   const reload = () => loadSent(sec);
-  for (const r of rows) {
+  // O que pede atenção primeiro: atrasadas, depois as abertas, as concluídas e as
+  // que saíram (cada grupo na ordem do servidor, a atribuição mais recente antes).
+  const rank = (r) => (r.status === "removed" ? 3 : r.status === "done" ? 2 : r.late ? 0 : 1);
+  const ordered = rows.map((r, i) => [r, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(([r]) => r);
+  const slice = pageSlice(ordered, sentPage, SENT_PAGE);
+  sentPage = slice.page;
+  setHashPage("p", sentPage, "atribuir");
+  for (const r of slice.rows) {
     const chips = [];
     if (r.status === "removed") {
       // Saiu da conta de quem recebeu: fica aqui com o que houve (60 dias).
@@ -113,6 +126,9 @@ async function loadSent(sec, ready) {
         h("div", { class: "card-meta" }, ...chips)),
       acts));
   }
+  const nav = pager({ page: sentPage, total: ordered.length, size: SENT_PAGE, label: "tarefas que atribuí",
+    onPage: async (n) => { sentPage = n; await loadSent(sec, rows); }, focus: () => sec.querySelector(".panel-head h2") });
+  if (nav) sec.append(nav);
 }
 
 function editSent(r, done) {
@@ -169,13 +185,28 @@ function consentsPanel(people) {
   // Só quem aceita, com o número dos outros embaixo (a lista não vira um diretório de quem recusou).
   const others = people.filter((p) => !p.accepts).length;
   if (people.length && others === people.length) sec.append(h("p", { class: "empty", text: "Ninguém aceita receber tarefas ainda." }));
-  for (const p of people.filter((x) => x.accepts)) {
-    sec.append(h("div", { class: "list-row" }, avatar(p, "sm"),
+  const aceitam = people.filter((x) => x.accepts);
+  const box = h("div");
+  sec.append(box);
+  let page = hashPage("pa");
+  const paint = () => {
+    clear(box);
+    const slice = pageSlice(aceitam, page, PEOPLE_PAGE);
+    page = slice.page;
+    setHashPage("pa", page, "atribuir");
+    for (const p of slice.rows) row(p);
+    const nav = pager({ page, total: aceitam.length, size: PEOPLE_PAGE, label: "quem aceita receber tarefas",
+      onPage: (n) => { page = n; paint(); }, focus: () => sec.querySelector(".panel-head h2") });
+    if (nav) box.append(nav);
+  };
+  const row = (p) => {
+    box.append(h("div", { class: "list-row" }, avatar(p, "sm"),
       h("div", { class: "t" }, h("span", { text: p.display_name || p.email }), p.display_name ? h("small", { text: p.email }) : null),
       p.accepts
         ? h("span", { class: "chip done", title: "Aceitou em " + dateTime(p.accepts_assignments_at), text: "aceita · desde " + shortDate(localDay(p.accepts_assignments_at)) })
         : h("span", { class: "chip", text: "não aceita" })));
-  }
+  };
+  paint();
   if (others && others < people.length) sec.append(h("p", { class: "dialog-note", text: others === 1 ? "A outra pessoa não aceita receber tarefas." : `As outras ${others} pessoas não aceitam receber tarefas.` }));
   return sec;
 }

@@ -141,17 +141,20 @@ try:
     today = board["today"]
     exp_prio = sum(1 for t in board["in_progress"] if t["priority"] == 1)
     exp_due = sum(1 for t in board["in_progress"] if t["due_date"] and t["due_date"] <= today)
-    check("filtro prioritárias", prio_rows == exp_prio, f"{prio_rows} vs {exp_prio}")
+    # O Hoje mostra até 10 em aberto; passando disso, o link "Ver ... em Tarefas" leva ao resto.
+    HOJE_MAX = 10
+    mais = lambda: bool(ev("!!document.querySelector('.t-open .open-list a.see-all[href=\"#/tarefas\"]')"))
+    check("filtro prioritárias", prio_rows == min(exp_prio, HOJE_MAX) and mais() == (exp_prio > HOJE_MAX), f"{prio_rows} vs {exp_prio}")
     shot("t30-filtro-prio")
     click("document.querySelector('.open-filter [data-filter=due]')"); time.sleep(.2)
     due_rows = ev("document.querySelectorAll('.t-open .open-list .list-row').length")
-    check("filtro vence hoje", due_rows == exp_due, f"{due_rows} vs {exp_due}")
+    check("filtro vence hoje", due_rows == min(exp_due, HOJE_MAX) and mais() == (exp_due > HOJE_MAX), f"{due_rows} vs {exp_due}")
     shot("t31-filtro-due")
     cmd("Page.reload"); wait("!!document.querySelector('.open-filter')", 8)
     check("filtro lembrado na aba", ev("document.querySelector('.open-filter [data-filter=due]').getAttribute('aria-pressed')") == "true")
     click("document.querySelector('.open-filter [data-filter=all]')"); time.sleep(.2)
-    check("filtro todas", ev("document.querySelectorAll('.t-open .open-list .list-row').length") == total_rows == len(board["in_progress"]),
-          f"{total_rows} vs {len(board['in_progress'])}")
+    check("filtro todas", ev("document.querySelectorAll('.t-open .open-list .list-row').length") == total_rows == min(len(board["in_progress"]), HOJE_MAX)
+          and mais() == (len(board["in_progress"]) > HOJE_MAX), f"{total_rows} vs {len(board['in_progress'])}")
     print(f"abertas={total_rows} prio={prio_rows} vence={due_rows}")
 
     # ---- registro rápido com dois @ e o padrão

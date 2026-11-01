@@ -25,7 +25,9 @@ try:
     ev(f"fetch('/api/auth/login',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{email:{json.dumps(EMAIL)},password:{json.dumps(PW)}}})}})")
     ev("localStorage.setItem('nexus.instalar.dispensado', String(Date.now()))")
     marca = str(int(time.time()) % 100000)
-    tid = api("POST", "/worklog", {"title": f"Edição {marca}"})["b"]["id"]
+    # Vence hoje e alta: fica no topo de "Em aberto" (o quadro tem páginas de 25; o cartão precisa estar na 1ª).
+    hoje = api("GET", "/board")["b"]["today"]
+    tid = api("POST", "/worklog", {"title": f"Edição {marca}", "priority": 1, "due_date": hoje})["b"]["id"]
     cmd("Page.navigate", url=B + f"/#/tarefas?id={tid}"); time.sleep(3.5)
     check("fora da edição: Concluir livre", ev("!document.querySelector('.task-main-actions .btn-primary').disabled"))
     ev("document.querySelector('.task-dialog .edit-toggle').click()"); time.sleep(1)

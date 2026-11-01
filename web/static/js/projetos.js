@@ -4,13 +4,17 @@
 // (subir, descer, mover para outro objetivo). Progresso e status vêm do servidor.
 import { api } from "./api.js";
 import { h, icon, clear, field, shortDate, localDay, daysBetween } from "./dom.js";
-import { busy, confirmDialog, errorToast, modal, popupMenu, sheet, toast, undoLatest } from "./ui.js";
+import { busy, confirmDialog, errorToast, hashPage, modal, pager, pageSlice, popupMenu, setHashPage, sheet, toast, undoLatest } from "./ui.js";
 import { finishTask, openWorklog, taskChips } from "./board.js";
 import { duration, editingTaskId, openTask } from "./task.js";
 import { PALETA, invalidateProjects, listProjects, projTile, projectDialog } from "./projects.js";
 import { packButton } from "./pacotes.js";
 
 const STATUS = { todo: "não iniciado", in_progress: "em andamento", done: "concluído" };
+// Páginas: a grade em 3×4 / 2×6; dentro do projeto, por bloco (pager compacto).
+const GRID_PAGE = 12;
+const OPEN_PAGE = 15;
+const DONE_PAGE = 10;
 const phone = () => matchMedia("(max-width: 860px)").matches;
 
 export async function mount(root, ctx) {
@@ -108,22 +112,33 @@ async function mountList(root, ctx) {
   };
   const busca = h("input", { type: "search", class: "proj-search", placeholder: "Buscar projeto", "aria-label": "Buscar projeto", value: lista.q });
   const fold = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const pages = h("div", { class: "proj-pages" });
+  let page = hashPage();
   const paint = () => {
     const base = lista.tab === "arquivados" ? arquivados : ativos;
     const q = fold(lista.q.trim());
     const rows = base.filter((p) => !q || fold(p.name).includes(q));
-    rows.sort(lista.sort === "nome" ? (a, b) => a.name.localeCompare(b.name, "pt-BR")
-      : (a, b) => (b.last_activity || "").localeCompare(a.last_activity || "") || a.name.localeCompare(b.name, "pt-BR"));
+    rows.sort(lista.sort === "nome" ? (a, b) => a.name.localeCompare(b.name, "pt-BR") || a.id - b.id
+      : (a, b) => (b.last_activity || "").localeCompare(a.last_activity || "") || a.name.localeCompare(b.name, "pt-BR") || a.id - b.id);
+    const slice = pageSlice(rows, page, GRID_PAGE);
+    page = slice.page;
+    setHashPage("p", page, "projetos");
     clear(grid);
-    grid.append(...rows.map(card));
+    clear(pages);
+    grid.append(...slice.rows.map(card));
     if (!rows.length) grid.append(h("p", { class: "empty", text: q ? "Nenhum projeto com esse nome." : "Nenhum projeto ativo: reative um dos arquivados ou crie um novo." }));
+    const nav = pager({ page, total: rows.length, size: GRID_PAGE, label: "projetos",
+      onPage: (n) => { page = n; paint(); }, focus: () => document.getElementById("page-title") });
+    if (nav) pages.append(nav);
   };
-  busca.addEventListener("input", () => { lista.q = busca.value; paint(); });
+  const first = (fn) => (...a) => { page = 1; fn(...a); }; // busca, aba e ordem voltam à página 1
+  busca.addEventListener("input", first(() => { lista.q = busca.value; paint(); }));
   const tabs = h("div", { class: "seg seg-sm proj-tabs", role: "tablist", "aria-label": "Projetos" },
     ...[["ativos", `Ativos (${ativos.length})`], ["arquivados", `Arquivados (${arquivados.length})`]].map(([k, t]) =>
       h("button", { type: "button", class: "chip-btn", role: "tab", "aria-selected": String(lista.tab === k), text: t,
         disabled: k === "arquivados" && !arquivados.length ? "disabled" : null,
         onClick: (ev) => {
+          page = 1;
           lista.tab = k;
           for (const b of tabs.children) b.setAttribute("aria-selected", String(b === ev.currentTarget));
           paint();
@@ -132,11 +147,12 @@ async function mountList(root, ctx) {
     h("option", { value: "atividade", text: "Atividade recente" }), h("option", { value: "nome", text: "Nome" }));
   ordem.value = lista.sort;
   ordem.addEventListener("change", () => {
+    page = 1;
     lista.sort = ordem.value;
     try { localStorage.setItem("nexus.projetos.ordem", ordem.value); } catch { /* sem armazenamento: vale só agora */ }
     paint();
   });
-  root.append(h("div", { class: "proj-toolbar" }, tabs, list.length > 8 ? busca : null, ordem), grid);
+  root.append(h("div", { class: "proj-toolbar" }, tabs, list.length > 8 ? busca : null, ordem), grid, pages);
   paint();
 }
 
@@ -205,12 +221,33 @@ async function mountProject(root, ctx, pid) {
   if (!phone()) dragObjectives(blocks, pid, refresh);
 }
 
+// Página de cada bloco (abertas e concluídas) enquanto o app está aberto: o
+// projeto se redesenha a cada ação e o bloco continua na mesma página.
+const blockPages = new Map();
+
 function objectiveBlock(ob, index, o, pid, today, refresh) {
   const data = ob || o.unassigned;
   const oid = ob ? ob.id : null;
+  const key = `${pid}:${oid ?? ""}`;
+  const st = blockPages.get(key) || { open: 1, done: 1 };
+  blockPages.set(key, st);
+  const heading = h("h3", { text: ob ? ob.title : "Sem objetivo" });
   const list = h("div", { class: "obj-tasks", "data-objective": oid === null ? "" : String(oid) });
-  data.tasks.forEach((t, i) => list.append(taskRow(t, i, data.tasks, oid, o, pid, today, refresh)));
-  if (!data.tasks.length) list.append(h("p", { class: "empty obj-empty", text: ob ? "Nenhuma tarefa aberta neste objetivo." : "Nada solto: todas as tarefas abertas têm objetivo." }));
+  const openPages = h("div", { class: "obj-pages" });
+  // A ordem de execução vale para o bloco inteiro: a página mostra uma fatia e,
+  // ao arrastar dentro dela, a ordem nova encaixa a fatia no resto (list._ids).
+  const paintOpen = () => {
+    clear(list); clear(openPages);
+    const { rows, page, start } = pageSlice(data.tasks, st.open, OPEN_PAGE);
+    st.open = page;
+    Object.assign(list, { _ids: data.tasks.map((t) => t.id), _start: start, _count: rows.length });
+    rows.forEach((t, j) => list.append(taskRow(t, start + j, data.tasks, oid, o, pid, today, refresh)));
+    if (!data.tasks.length) list.append(h("p", { class: "empty obj-empty", text: ob ? "Nenhuma tarefa aberta neste objetivo." : "Nada solto: todas as tarefas abertas têm objetivo." }));
+    const nav = pager({ page, total: data.tasks.length, size: OPEN_PAGE, label: `tarefas abertas de ${ob ? ob.title : "Sem objetivo"}`, compact: true,
+      onPage: (n) => { st.open = n; paintOpen(); if (!phone()) bindGrips(list); }, focus: heading });
+    if (nav) openPages.append(nav);
+  };
+  paintOpen();
   if (!phone()) dragTasks(list, pid, refresh);
 
   // + Tarefa: título e Enter, já neste objetivo (no fim da fila).
@@ -227,11 +264,33 @@ function objectiveBlock(ob, index, o, pid, today, refresh) {
     } catch (e) { add.disabled = false; errorToast(e, "Não foi possível criar a tarefa."); }
   });
 
-  const doneList = h("div", { class: "obj-done hidden" }, ...data.done_tasks.map((t) => doneRow(t, oid, o, pid, refresh)));
-  if (!phone()) dragSource(doneList, refresh);
-  const doneToggle = data.done ? h("button", { type: "button", class: "btn btn-text btn-sm obj-done-toggle", "aria-expanded": "false",
+  // Concluídas: recolhidas, de 10 em 10. As primeiras vêm na visão geral; as
+  // páginas além delas, de /projects/{id}/done.
+  const doneList = h("div", { class: "obj-done hidden" });
+  const doneRows = h("div", { class: "obj-done-rows" });
+  doneList.append(doneRows);
+  const paintDone = async (n) => {
+    const off = (n - 1) * DONE_PAGE;
+    const rows = off + DONE_PAGE <= data.done_tasks.length || data.done_tasks.length >= data.done
+      ? data.done_tasks.slice(off, off + DONE_PAGE)
+      : await api.get(`/projects/${pid}/done?objective=${oid ?? 0}&limit=${DONE_PAGE}&offset=${off}`);
+    st.done = n;
+    clear(doneRows);
+    doneRows.append(...rows.map((t) => doneRow(t, oid, o, pid, refresh)));
+    doneList.querySelector(".pager")?.remove();
+    const nav = pager({ page: n, total: data.done, size: DONE_PAGE, label: `concluídas de ${ob ? ob.title : "Sem objetivo"}`, compact: true,
+      onPage: async (k) => { await paintDone(k); if (!phone()) bindGrips(doneRows); }, focus: () => doneToggle });
+    if (nav) doneList.append(nav);
+  };
+  if (data.done) {
+    const last = Math.max(1, Math.ceil(data.done / DONE_PAGE));
+    st.done = Math.min(st.done, last);
+    paintDone(st.done).then(() => { if (!phone()) dragSource(doneRows, refresh); }).catch((e) => errorToast(e));
+    if (st.doneOpen) doneList.classList.remove("hidden");
+  }
+  const doneToggle = data.done ? h("button", { type: "button", class: "btn btn-text btn-sm obj-done-toggle", "aria-expanded": String(!!st.doneOpen),
     text: `${data.done} concluída${data.done > 1 ? "s" : ""}`,
-    onClick: () => { const hide = doneList.classList.toggle("hidden"); doneToggle.setAttribute("aria-expanded", String(!hide)); } }) : null;
+    onClick: () => { const hide = doneList.classList.toggle("hidden"); st.doneOpen = !hide; doneToggle.setAttribute("aria-expanded", String(!hide)); } }) : null;
 
   const head = [];
   if (ob) {
@@ -248,18 +307,18 @@ function objectiveBlock(ob, index, o, pid, today, refresh) {
     const late = ob.due_date && ob.status !== "done" && ob.due_date < today;
     head.push(h("div", { class: "obj-head" }, grip,
       h("span", { class: "obj-n mono", text: String(index + 1) }),
-      h("h3", { text: ob.title }),
+      heading,
       h("span", { class: "chip obj-status " + ob.status, text: STATUS[ob.status] }),
       ob.due_date ? h("span", { class: "chip " + (late ? "late" : ""), text: (late ? "atrasado · " : "prazo ") + shortDate(ob.due_date) }) : null,
       menuBtn));
     if (ob.description) head.push(h("p", { class: "obj-desc", text: ob.description }));
     head.push(progress(ob.done, ob.total));
   } else {
-    head.push(h("div", { class: "obj-head" }, h("h3", { text: "Sem objetivo" }),
+    head.push(h("div", { class: "obj-head" }, heading,
       h("span", { class: "obj-sub", text: "tarefas do projeto que ainda não entraram num objetivo" })));
   }
   const sec = h("section", { class: "panel obj-block" + (ob ? "" : " unassigned"), "data-objective-block": oid === null ? "" : String(oid) },
-    ...head, list, add, doneToggle, doneList);
+    ...head, list, openPages, add, doneToggle, doneList);
   if (ob) sec.dataset.id = String(ob.id);
   return sec;
 }
@@ -357,6 +416,11 @@ function dragSource(container, refresh) {
     ev.dataTransfer.effectAllowed = "move";
     ev.dataTransfer.setData("text/plain", row.dataset.task);
   });
+  bindGrips(container);
+}
+
+// A alça de cada linha (de novo a cada página desenhada).
+function bindGrips(container) {
   for (const row of container.querySelectorAll(".obj-task[data-task]")) {
     const grip = row.querySelector(".grip");
     grip.addEventListener("pointerdown", () => { row.draggable = true; });
@@ -384,8 +448,11 @@ function dragTasks(list, pid, refresh) {
       refresh();
       return;
     }
-    const ids = [...list.querySelectorAll(".obj-task[data-task]:not([data-done])")].map((r) => Number(r.dataset.task));
-    orderTasks(pid, oid, ids, refresh);
+    const page = [...list.querySelectorAll(".obj-task[data-task]:not([data-done])")].map((r) => Number(r.dataset.task));
+    // Bloco com páginas: a fatia nova entra no lugar da antiga, o resto fica como estava.
+    const all = list._ids || [], start = list._start || 0, n = list._count ?? all.length;
+    const rest = (ids) => ids.filter((x) => !page.includes(x));
+    orderTasks(pid, oid, [...rest(all.slice(0, start)), ...page, ...rest(all.slice(start + n))], refresh);
   });
 }
 
