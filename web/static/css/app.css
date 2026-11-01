@@ -1124,6 +1124,9 @@ dialog.help-dialog > .dialog-actions { position: sticky; bottom: -24px; margin: 
 /* Retrospectiva: navegação entre "últimos 30 dias" e os meses anteriores */
 .dash-period { max-width: 360px; margin: 0 0 18px; }
 .dash-past-note { margin-top: 8px; }
+/* Meu mês: as abas (Números, PDF) e o mês escolhido uma vez, na mesma linha */
+.mes-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin: 0 0 18px; }
+.mes-bar .dash-period { flex: 0 1 360px; margin: 0; }
 
 /* -------------------------------------------- Projetos: objetivos em ordem -- */
 .proj-grid { display: grid; gap: var(--gap); grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }

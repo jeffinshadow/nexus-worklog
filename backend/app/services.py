@@ -188,7 +188,7 @@ def extra_project_ids(task_id: int) -> list[int]:
 ASSIGNER_NAME = """(SELECT COALESCE(a.display_name, a.email) FROM users a WHERE a.id = w.assigned_by) AS assigned_by_name"""
 
 # Último movimento de uma tarefa aberta (edição, anotação, item, tempo): o
-# assistente usa para "bloqueada/parada há N dias".
+# assistente usa para "aguardando/parada há N dias".
 TOUCHED = """,
     GREATEST(w.created_at,
       (SELECT max(a.created_at) FROM audit_log a
@@ -254,7 +254,7 @@ def get_board(user_id: int, day: date | None = None, project: int | None = None)
     """Quadro do usuário. `day` escolhe o dia das rotinas (padrão: hoje; a rota
     garante a janela de RETRO_DAYS): as vigentes naquele dia, com `due` (agenda)
     e `done_today` (feita no dia escolhido; nome mantido por compatibilidade).
-    `in_progress` = tarefas abertas (a fazer, em andamento, bloqueadas), na
+    `in_progress` = tarefas abertas (a fazer, em andamento, aguardando), na
     ordem: atrasadas, vencem hoje, prioridade, prazo. `project` filtra as
     tarefas (0 = sem projeto)."""
     today = app_today()

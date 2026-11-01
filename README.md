@@ -20,7 +20,7 @@ quem **aceitou** em Configurações > Conta; contas novas começam sem o aceite)
 
 - **Hoje** — o dia em um olhar, com um **assistente**: saudação, o que está
   pra hoje, o que saiu ontem, o resumo do dia e por onde começar. Avisa tarefa
-  bloqueada há dias, prazo de amanhã e tempo esquecido, e copia o texto da
+  aguardando há dias, prazo de amanhã e tempo esquecido, e copia o texto da
   daily. Cada aviso tem o próprio X; tudo é calculado a partir dos registros da
   pessoa, sem IA chamada a cada tela. As abertas filtram por "vence hoje"
   (com as atrasadas) ou "prioritárias", e o resumo da semana volta semana a
@@ -49,14 +49,14 @@ quem **aceitou** em Configurações > Conta; contas novas começam sem o aceite)
   **modelos** de tarefa com checklist pronto. Lançamento **retroativo** (criada e
   concluída em datas passadas, até um limite configurável pelo admin; padrão 60
   dias).
-- **Passagem de turno e impedimentos** — tarefa bloqueada guarda o que se
-  aguarda e há quantos dias; um clique monta o texto da passagem de turno
-  (aberto, bloqueado e por quê, concluído nas últimas 12 h, plantão). Rotina marcada aceita uma
+- **Passagem de turno e espera** — tarefa marcada como aguardando guarda o
+  quê (peça, cliente, aprovação) e há quantos dias; um clique monta o texto da passagem de turno
+  (aberto, aguardando e por quê, concluído nas últimas 12 h, plantão). Rotina marcada aceita uma
   **evidência** curta ("backup OK, 2,1 TB"), que vai para o PDF — e pode ser
-  exigida por rotina. Impedimento parado há dias vira lembrete com "Cobrei", ou
+  exigida por rotina. Espera parada há dias vira lembrete com "Cobrei", ou
   com um dia combinado para cobrar (no Hoje, no calendário e no e-mail da manhã).
   CSV de plantão (horas do mês) e CSV de rotinas e evidências (auditoria). Registro rápido
-  entende `@projeto #chamado !plantão !alta ^amanhã !bloq motivo — 45min` (dois `@`, dois projetos); o detalhe da tarefa copia um resumo pronto para o chamado ou o cliente.
+  entende `@projeto #chamado !plantão !alta ^amanhã !aguarda motivo — 45min` (dois `@`, dois projetos); o detalhe da tarefa copia um resumo pronto para o chamado ou o cliente.
 - **Vencimentos e base de conhecimento** — certificados, licenças, domínios e
   garantias avisam com antecedência (Hoje, e-mail da manhã, calendário); ao
   concluir, "como resolveu?" vira texto que a busca encontra — e a tarefa nova
@@ -64,13 +64,14 @@ quem **aceitou** em Configurações > Conta; contas novas começam sem o aceite)
 - **Atribuição** — quem aceita (Configurações > Conta) recebe tarefas de um
   atribuidor pelo app ou pela IA, com aviso por e-mail; a tarefa passa a ser
   dela, e quem atribuiu acompanha o status e recebe um e-mail quando ela é concluída.
-- **Relatórios** — PDF por período, por projeto ou do projeto inteiro, em
+- **Meu mês** — uma tela com duas abas e o mês escolhido uma vez no topo (o
+  corrente por padrão). **Números**: aderência das rotinas, vazão, tempo por
+  projeto e o que está em aberto. **PDF**: o relatório por período, por projeto ou do projeto inteiro, em
   estilo editorial: o período em texto corrido, os números, o ritmo, a
   **matriz de rotinas** (um ponto por dia) e o diário. Pode ir toda segunda
   anexado ao resumo semanal por e-mail, com cópia opcional (gestor, cliente).
   Exportação em CSV (planilha) e JSON (backup).
-- **Retrospectiva** (aderência das rotinas, vazão, tempo por projeto, backlog),
-  **histórico com desfazer**, **busca** sem acento (inclusive por `#chamado`),
+- **Histórico com desfazer**, **busca** sem acento (inclusive por `#chamado`),
   **feed de calendário (ICS)**, **avisos por e-mail** (opt-in), **lembrete** no
   app depois de X minutos sem registro, **atalhos de teclado** (`n`, `/`, `s`,
   `?`…), perfil com nome e foto e **identidade visual** configurável pelo admin.
@@ -124,21 +125,21 @@ quem **aceitou** em Configurações > Conta; contas novas começam sem o aceite)
 Capturas de uma conta de demonstração, com dados fictícios.
 
 ![Tela Hoje com o assistente, as rotinas e as tarefas em aberto](docs/screenshots/01-hoje.webp)
-*Hoje — o assistente resume o dia e o anterior e sugere por onde começar, com avisos de prazo, tarefa bloqueada e tempo esquecido. Abaixo, os vencimentos no aviso, as rotinas e o registro rápido; no topo, a passagem de turno.*
+*Hoje — o assistente resume o dia e o anterior e sugere por onde começar, com avisos de prazo, tarefa aguardando e tempo esquecido. Abaixo, os vencimentos no aviso, as rotinas e o registro rápido; no topo, a passagem de turno.*
 
 ![Quadro de tarefas com chamados, plantão e o cronômetro no menu](docs/screenshots/02-tarefas.webp)
-*Tarefas — o número do chamado vira link, o plantão aparece em roxo, a bloqueada mostra o que aguarda e quando cobrar, e o cronômetro roda no menu.*
+*Tarefas — o número do chamado vira link, o plantão aparece em roxo, a que está aguardando mostra o quê e quando cobrar, e o cronômetro roda no menu.*
 
 ![Detalhe de uma tarefa com checklist, fotos, tempo e anotações](docs/screenshots/03-tarefa.webp)
-*Detalhe da tarefa — checklist, fotos (câmera, print colado ou arrastado), apontamentos de tempo e anotações num lugar só; o botão no topo expande para ler com calma.*
+*Detalhe da tarefa — checklist, fotos (câmera, print colado ou arrastado), apontamentos de tempo e anotações num lugar só; o botão no topo expande para ler com calma. No menu da tarefa, “Duplicar tarefa” cria outra igual (título, descrição, projetos, prioridade e checklist desmarcado), sem tempo, fotos, anotações nem datas.*
 
-![Retrospectiva com aderência, vazão, tempo por projeto e backlog](docs/screenshots/04-retrospectiva.webp)
-*Retrospectiva — aderência de cada rotina, vazão por semana, tempo por cliente e saúde do backlog, com uma leitura do assistente no topo.*
+![Meu mês, aba Números, com aderência, vazão, tempo por projeto e backlog](docs/screenshots/04-retrospectiva.webp)
+*Meu mês (aba Números) — aderência de cada rotina, vazão por semana, tempo por cliente e saúde do backlog, com uma leitura do assistente no topo.*
 
 ![Nova tarefa preenchida a partir de um modelo](docs/screenshots/05-modelo.webp)
 *Modelos — escolhe o modelo no “+ Tarefa” e o checklist vem junto.*
 
-![Passagem de turno com o que fica aberto, o bloqueado e por quê, o concluído nas últimas 12 h e os vencimentos](docs/screenshots/09-passagem.webp)
+![Passagem de turno com o que fica aberto, o que está aguardando e por quê, o concluído nas últimas 12 h e os vencimentos](docs/screenshots/09-passagem.webp)
 *Passagem de turno — um clique monta o texto pra quem assume.*
 
 ![Vencimentos com certificado, licença e domínio](docs/screenshots/08-vencimentos.webp)
@@ -250,13 +251,13 @@ incidente e outra quando volta. Logs com rotação (10 MB × 5 por serviço).
 - **nginx**: CSP sem inline, HSTS, `nosniff`, `DENY` em frames; o link do
   calendário não vai para o log. Logo enviado validado pelo conteúdo e servido
   em sandbox.
-- **Seus dados (LGPD)**: cada pessoa exporta tudo em JSON ou CSV (Relatórios) e
+- **Seus dados (LGPD)**: cada pessoa exporta tudo em JSON ou CSV (Meu mês > PDF) e
   exclui a própria conta em Configurações > Conta (com a senha); o admin também
   exclui uma conta (Admin > Usuários, confirmando o e-mail). Tarefas, rotinas,
   tempo, anotações, chaves e histórico vão junto; ficam só o e-mail e as contagens
   no histórico de quem excluiu (180 dias). O último admin não sai. O JSON leva
   também perfil, preferências, modelos, projetos com objetivos e as chaves
-  externas; as fotos vão à parte, no `fotos.zip` (Relatórios).
+  externas; as fotos vão à parte, no `fotos.zip` (Meu mês > PDF).
   - **Histórico de 180 dias**: o que você exclui some da tela na hora, mas o
     "antes" fica no histórico (para o desfazer) e sai de vez em 180 dias. Para
     apagar já, exclua a conta.

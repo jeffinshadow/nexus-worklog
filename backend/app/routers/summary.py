@@ -24,7 +24,7 @@ TURNO = timedelta(hours=12)
 
 
 def _dias(ts) -> int:
-    """Dias de calendário no fuso da app (bloqueada ontem às 18h = 1 dia hoje)."""
+    """Dias de calendário no fuso da app (aguardando desde ontem às 18h = 1 dia hoje)."""
     return max(0, (app_today() - ts.astimezone(app_tz()).date()).days) if ts else 0
 
 
@@ -37,7 +37,7 @@ def _titulo(t: dict) -> str:
 
 
 def handoff_text(user_id: int) -> str:
-    """Passagem de turno/plantão: o que fica aberto, o que está travado e por quê,
+    """Passagem de turno/plantão: o que fica aberto, o que está aguardando e o quê,
     o que vence até amanhã e o que saiu hoje. Texto puro, pronto pra colar no
     chat da equipe. Calculado do quadro, sem IA."""
     b = get_board(user_id)
@@ -63,16 +63,16 @@ def handoff_text(user_id: int) -> str:
     linhas += [item(t) for t in abertas[:15]] or ["- nada"]
     if len(abertas) > 15:
         linhas.append(f"- e mais {len(abertas) - 15}")
-    linhas += ["", f"Bloqueadas ({len(travadas)}):"]
+    linhas += ["", f"Aguardando ({len(travadas)}):"]
     for t in travadas:
-        motivo = f" — aguardando {t['blocked_reason']}" if t.get("blocked_reason") else ""
+        motivo = f" — {t['blocked_reason']}" if t.get("blocked_reason") else ""
         dias = _dias(t.get("blocked_at"))
         info = [f"há {dias} d"] if dias else []
         if t.get("follow_up_on"):
             info.append(f"cobrar dia {t['follow_up_on'].strftime('%d/%m')}")
         linhas.append(item(t) + motivo + (f" ({', '.join(info)})" if info else ""))
     if not travadas:
-        linhas.append("- nenhuma")
+        linhas.append("- nada")
     # Turno, não dia civil: o plantão das 22h às 6h passa tudo o que fez.
     desde = datetime.now(timezone.utc) - TURNO
     feitas = [t for t in b["done"] if t["completed_at"] and t["completed_at"] >= desde]

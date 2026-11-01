@@ -8,7 +8,7 @@ banco (app_secrets), então o backup leva junto.
 
 Disparos agendados (uma passada por minuto, junto do agendador de e-mails):
   rotina    no horário da rotina, +10 e +30 min, até ser marcada ("Adiar" empurra)
-  cobrar    de manhã: bloqueadas com o dia de cobrar até hoje
+  cobrar    de manhã: tarefas aguardando com o dia de cobrar até hoje
   prazos    de manhã: atrasadas e o que vence hoje
 E por evento: tarefa atribuída (routers/assign.py). Cada disparo agendado é
 gravado em push_log ANTES de sair: nunca repete, mesmo reiniciando.

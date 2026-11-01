@@ -76,7 +76,7 @@ def test_passagem_de_turno_app_e_mcp(usuario):
     usuario.patch(f"/worklog/{fim}", {"after_hours": True})
     usuario.post(f"/worklog/{fim}/finish")
     txt = usuario.get("/summary/handoff").json()["text"]
-    assert "Passagem de turno" in txt and "aguardando aprovação da diretoria" in txt
+    assert "Passagem de turno" in txt and "Aguardando (1):\n- Firewall da filial — aprovação da diretoria" in txt
     assert "Impressora do RH (chamado 4821)" in txt and "Reset de senha (plantão)" in txt
     # Turno de 12 h, não dia civil: concluída às 23h de ontem entra; há 13 h, não.
     from app import db
@@ -89,8 +89,8 @@ def test_passagem_de_turno_app_e_mcp(usuario):
     txt = usuario.get("/summary/handoff").json()["text"]
     assert "Feita de madrugada" in txt and "Feita antes do turno" not in txt
     ia = Bearer(criar_chave(usuario)["token"])
-    assert "aguardando aprovação da diretoria" in texto(ia.tool("get_handoff"))
-    assert "(aguardando aprovação da diretoria)" in texto(ia.tool("list_tasks"))
+    assert "Firewall da filial — aprovação da diretoria" in texto(ia.tool("get_handoff"))
+    assert "[aguardando: aprovação da diretoria]" in texto(ia.tool("list_tasks"))
 
 
 def test_mcp_evidencia(usuario):

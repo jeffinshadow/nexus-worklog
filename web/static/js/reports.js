@@ -1,5 +1,7 @@
-// Extração de relatório em PDF por período. O admin passa opts.exportBase
-// apontando para o usuário alvo.
+// Extração de relatório em PDF por período. A Equipe passa opts.exportBase
+// apontando para a pessoa. Em Meu mês, opts.range traz o mês escolhido lá no
+// topo (as datas começam nele; ficam só os atalhos de semana) e mount devolve
+// setRange para a troca de mês não recarregar a aba.
 import { api } from "./api.js";
 import { h, icon, clear, field, addDays, localDay } from "./dom.js";
 import { errorToast } from "./ui.js";
@@ -29,13 +31,14 @@ function intro(text) {
 
 export async function mount(root, opts = {}) {
   const base = opts.exportBase || "/reports/export";
+  const range = opts.range || null;
   // Projetos antes de limpar: na volta à tela, a visita anterior fica até chegar.
   const projects = await api.get(opts.projectsUrl || "/projects?include_archived=true").catch(() => []);
   clear(root);
 
   const today = localDay(Date.now());
-  const startInput = h("input", { type: "date", value: addDays(today, -6), max: today });
-  const endInput = h("input", { type: "date", value: today, max: today });
+  const startInput = h("input", { type: "date", value: range ? range.start : addDays(today, -6), max: today });
+  const endInput = h("input", { type: "date", value: range ? range.end : today, max: today });
   const err = h("p", { class: "error-text" });
   // Projeto: os do próprio usuário, ou (admin) os do usuário escolhido.
   const projSel = h("select", {}, h("option", { value: "", text: "Todos (relatório completo)" }));
@@ -46,8 +49,9 @@ export async function mount(root, opts = {}) {
   // Períodos prontos como botão segmentado: o que bate com as datas fica marcado.
   // Só um: no domingo dia 1º, "Esta semana" e "Este mês" são o mesmo dia, e vale
   // o tocado (datas digitadas marcam o primeiro que bater).
-  const periods = ranges(today);
+  const periods = range ? ranges(today).slice(0, 2) : ranges(today);
   let picked = -1;
+  if (opts.week) { [, startInput.value, endInput.value] = periods[0]; picked = 0; }
   const quick = h("div", { class: "seg seg-sm quick", role: "group", "aria-label": "Período" }, ...periods.map(([label, a, b], i) =>
     h("button", { type: "button", class: "chip-btn", text: label, "aria-pressed": "false",
       onClick: () => { startInput.value = a; endInput.value = b; picked = i; markPeriod(); refreshPreview(); } })));
@@ -116,6 +120,9 @@ export async function mount(root, opts = {}) {
   sync();
   markPeriod();
   refreshPreview();
+  const control = {
+    setRange(start, end) { startInput.value = start; endInput.value = end; picked = -1; markPeriod(); refreshPreview(); },
+  };
 
   // Exportação dos dados (só no próprio usuário; o admin exporta PDF).
   if (!opts.exportBase) {
@@ -160,4 +167,5 @@ export async function mount(root, opts = {}) {
       btn.disabled = false;
     }
   }
+  return control;
 }

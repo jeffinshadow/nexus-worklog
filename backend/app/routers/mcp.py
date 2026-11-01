@@ -67,6 +67,8 @@ INSTRUCTIONS = (
 DESTRUCTIVE = {"update_task", "undo"}  # sobrescrevem ou apagam o que existia
 
 STATUS = list(STATUS_PT)
+# Na tela, "blocked" se chama "aguardando" (esperando algo de fora: peça, cliente, aprovação).
+STATUS_HELP = "todo = a fazer, in_progress = em andamento, blocked = aguardando (algo de fora: peça, cliente, aprovação), done = concluída"
 PRIO = {nome: n for n, nome in PRIO_PT.items()}  # "alta" -> 1
 DATE = {"type": "string", "format": "date", "description": "Data AAAA-MM-DD"}
 EXTRA_PROJECTS = {"type": "array", "items": {"type": "string"}, "maxItems": 10,
@@ -100,13 +102,14 @@ def _quoted(t: dict, text: str) -> str:
 
 
 def _task_line(t: dict, today: date) -> str:
-    parts = [f"#{t['id']} {_quoted(t, t['title'])}", f"[{STATUS_PT.get(t['status'], t['status'])}]"]
+    st = STATUS_PT.get(t["status"], t["status"])
+    if t.get("status") == "blocked" and t.get("blocked_reason"):
+        st += f": {t['blocked_reason']}"  # [aguardando: peça do fornecedor]
+    parts = [f"#{t['id']} {_quoted(t, t['title'])}", f"[{st}]"]
     if t.get("assigned_by_name"):
         parts.append(f"(atribuída por {t['assigned_by_name']})")
     if t.get("external_ref"):
         parts.append(f"(ref {t['external_ref']})")
-    if t.get("status") == "blocked" and t.get("blocked_reason"):
-        parts.append(f"(aguardando {t['blocked_reason']})")
     if t.get("status") == "blocked" and t.get("follow_up_on"):
         parts.append(f"(cobrar em {t['follow_up_on'].isoformat()})")
     if t.get("ticket"):
@@ -924,7 +927,7 @@ TOOLS = {
                     {"type": "object", "required": ["title"], "properties": {
                         "title": {"type": "string", "maxLength": 200},
                         "description": {"type": ["string", "null"], "maxLength": 300},
-                        "status": {"type": "string", "enum": STATUS, "default": "todo"},
+                        "status": {"type": "string", "enum": STATUS, "default": "todo", "description": STATUS_HELP},
                         "due_date": {**DATE, "type": ["string", "null"], "description": "Previsão de conclusão (AAAA-MM-DD)"},
                         "project": {"type": ["string", "null"],
                                     "description": "Nome do projeto/cliente (veja list_projects). Omitido: o projeto padrão da pessoa, se houver"},
@@ -949,7 +952,7 @@ TOOLS = {
                         "task_id": {"type": "integer"},
                         "title": {"type": "string", "maxLength": 200},
                         "description": {"type": ["string", "null"], "maxLength": 300},
-                        "status": {"type": "string", "enum": STATUS},
+                        "status": {"type": "string", "enum": STATUS, "description": STATUS_HELP},
                         "due_date": {**DATE, "type": ["string", "null"]},
                         "project": {"type": ["string", "null"]},
                         "extra_projects": EXTRA_PROJECTS,
@@ -1111,7 +1114,7 @@ TOOLS = {
                      "Use antes de abrir uma tarefa de problema repetido (impressora, VPN, AD...).",
                      {"type": "object", "required": ["title"], "properties": {"title": {"type": "string", "minLength": 3, "maxLength": 200}}}),
     "get_handoff": (t_get_handoff, False,
-                    "Passagem de turno/plantão: em aberto, bloqueadas com o motivo e há quantos dias, concluídas nas "
+                    "Passagem de turno/plantão: em aberto, aguardando (o quê e há quantos dias), concluídas nas "
                     "últimas 12 h, rotinas pendentes e vencimentos no aviso, em texto pronto pra colar no chat da equipe.",
                     {"type": "object", "properties": {}}),
     "list_assignable": (t_list_assignable, False, "Atribuidor: pessoas que aceitam receber tarefas atribuídas.",
@@ -1155,16 +1158,16 @@ PROMPTS = {
         "arguments": [{"name": "para", "description": "Para quem é o resumo (padrão: gestor)", "required": False}],
         "text": ("Use a ferramenta get_summary do Nexus e escreva um resumo da minha semana para {para}, em português, "
                  "curto e objetivo: o que foi entregue (agrupe por projeto/cliente), o tempo por projeto, o que ficou "
-                 "em andamento e qualquer impedimento (tarefas bloqueadas, via get_today). Não invente nada que não "
+                 "em andamento e o que está aguardando algo de fora (status blocked, via get_today). Não invente nada que não "
                  "esteja nos dados; se algo estiver vazio, diga que não houve registro."),
     },
     "daily": {
         "title": "Daily",
-        "description": "Texto da daily: ontem, hoje e impedimentos.",
+        "description": "Texto da daily: ontem, hoje e o que está aguardando.",
         "arguments": [],
         "text": ("Use get_summary e get_today do Nexus e monte minha daily em três tópicos curtos: Ontem (o que concluí "
-                 "desde o último dia útil), Hoje (o que está em andamento, atrasado ou vence hoje) e Impedimentos "
-                 "(tarefas bloqueadas; se não houver, \"nenhum\"). Só com o que está registrado."),
+                 "desde o último dia útil), Hoje (o que está em andamento, atrasado ou vence hoje) e Aguardando "
+                 "(tarefas com status blocked e o que esperam; se não houver, \"nada\"). Só com o que está registrado."),
     },
 }
 

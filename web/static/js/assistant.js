@@ -155,7 +155,7 @@ function notes(open, today) {
         : `Hoje é dia de cobrar ${t.blocked_reason ? t.blocked_reason + " sobre " : ""}${q(t.title)}.`);
     else if (t.status === "blocked" && !t.follow_up_on && d >= 3) nota(t.blocked_reason
       ? `${q(t.title)} aguarda ${t.blocked_reason} há ${d} dias sem movimento. Vale cobrar.`
-      : `${q(t.title)} está bloqueada e sem movimento há ${d} dias. Vale confirmar se ainda depende de alguém.`);
+      : `${q(t.title)} está aguardando sem movimento há ${d} dias. Vale confirmar se ainda depende de alguém.`);
     else if (t.status === "in_progress" && d >= 7) nota(`${q(t.title)} está em andamento sem movimento há ${d} dias.`);
     else if (t.due_date && daysBetween(today, t.due_date) === 1) nota(`${q(t.title)} vence amanhã.`);
   }
@@ -173,7 +173,7 @@ function closing(sum, pendentes) {
   return `Resumo do dia: ${plural(s.pontual_done, "tarefa concluída", "tarefas concluídas", "nenhuma tarefa concluída")}${tempo} hoje${falta}.`;
 }
 
-// Resumo para a equipe: Ontem (desde o último dia útil), Hoje e Bloqueadas.
+// Resumo para a equipe: Ontem (desde o último dia útil), Hoje e Aguardando.
 export function dailyText(b, sum) {
   const today = b.today;
   const lines = [];
@@ -185,9 +185,9 @@ export function dailyText(b, sum) {
   lines.push("", "Hoje:");
   const hoje = b.in_progress.filter((t) => t.status !== "blocked").slice(0, 6);
   lines.push(...(hoje.length ? hoje.map((t) => `- ${t.title}${t.ticket ? ` (#${t.ticket})` : ""}${t.due_date && t.due_date < today ? " — atrasada" : t.due_date === today ? " — vence hoje" : ""}`) : ["- sem tarefas em aberto"]));
-  lines.push("", "Bloqueadas:");
+  lines.push("", "Aguardando:");
   const bloq = b.in_progress.filter((t) => t.status === "blocked");
-  lines.push(...(bloq.length ? bloq.map((t) => `- ${t.title}${t.ticket ? ` (#${t.ticket})` : ""}${t.blocked_reason ? ` — aguardando ${t.blocked_reason}` : ""}`) : ["- nenhuma"]));
+  lines.push(...(bloq.length ? bloq.map((t) => `- ${t.title}${t.ticket ? ` (#${t.ticket})` : ""}${t.blocked_reason ? ` — ${t.blocked_reason}` : ""}`) : ["- nada"]));
   return lines.join("\n");
 }
 
@@ -222,7 +222,7 @@ function recap(sum, t, go) {
     const w = sum.week;
     return {
       line: `Nesta semana: ${plural(w.pontual_done, "tarefa concluída", "tarefas concluídas", "nenhuma tarefa concluída")}${w.minutes ? ` e ${duration(w.minutes)} apontadas` : ""}. O relatório da semana já pode ser gerado.`,
-      act: action("Gerar relatório", () => go("relatorios")),
+      act: action("Gerar relatório", () => go("mes?aba=pdf&periodo=semana")),
     };
   }
   return { line: null, act: null };
@@ -276,7 +276,7 @@ export function todayCard(b, sum, ctx) {
       ? "As rotinas de hoje estão concluídas e não há tarefas em aberto. Tudo em dia."
       : "Nada pendente por aqui. O que surgir, registre no campo de registro rápido.";
   }
-  // Impedimento parado: "Cobrei" anota a cobrança na tarefa (conta como movimento; o aviso some por 3 dias).
+  // Espera parada: "Cobrei" anota a cobrança na tarefa (conta como movimento; o aviso some por 3 dias).
   if (b.work_day) for (const n of notes(open, today)) items.push({ key: n.key, lines: n.task.status === "blocked" && ctx.onChanged
     ? [{ line: n.text, actions: [action("Cobrei", async (ev) => {
         const btn = ev.currentTarget;
@@ -309,7 +309,7 @@ export function todayCard(b, sum, ctx) {
   // da sexta (com o botão do relatório) é um aviso.
   const r = recap(sum, t, ctx.go);
   if (r.line && r.act) items.push({ key: "hoje:recap", lines: [{ line: r.line, actions: [r.act] }] });
-  if (b.work_day) items.push({ key: "hoje:daily", lines: [{ line: "Posso montar o resumo para a equipe: ontem, hoje e o que está bloqueado, pronto para colar no chat.",
+  if (b.work_day) items.push({ key: "hoje:daily", lines: [{ line: "Posso montar o resumo para a equipe: ontem, hoje e o que está aguardando, pronto para colar no chat.",
     actions: [action("Copiar resumo para a equipe", () => copyDaily(b, sum))] }] });
   const ask = invite(me, ctx.onProfile);
   if (ask) items.push({ key: "hoje:nome", lines: [], extra: ask });

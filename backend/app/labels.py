@@ -8,7 +8,7 @@ MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "
 MESES_LONGOS = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto",
                 "setembro", "outubro", "novembro", "dezembro"]
 
-STATUS_PT = {"todo": "a fazer", "in_progress": "em andamento", "blocked": "bloqueada", "done": "concluída"}
+STATUS_PT = {"todo": "a fazer", "in_progress": "em andamento", "blocked": "aguardando", "done": "concluída"}
 PRIO_PT = {1: "alta", 2: "normal", 3: "baixa"}
 
 # Sem acento e minúsculo; a mesma tabela da função nx_fold() do banco (sql/007).

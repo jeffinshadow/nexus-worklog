@@ -40,7 +40,7 @@ export async function mount(root, ctx, opts = {}) {
   const today = b.today;
   ctx.setEyebrow(weekdayDate(today) + (b.work_day ? "" : " · não útil"));
   ctx.setActions(
-    h("button", { type: "button", class: "btn btn-ghost", title: "Texto pronto com o que fica aberto, bloqueado e o que foi concluído nas últimas 12 h", onClick: showHandoff }, icon("copy"), "Passagem de turno"),
+    h("button", { type: "button", class: "btn btn-ghost", title: "Texto pronto com o que fica aberto, o que está aguardando e o que foi concluído nas últimas 12 h", onClick: showHandoff }, icon("copy"), "Passagem de turno"),
     h("button", { type: "button", class: "btn btn-primary", "data-fab": "", onClick: () => openWorklog(refresh) }, icon("add"), "Tarefa")
   );
 
@@ -185,9 +185,9 @@ export async function mount(root, ctx, opts = {}) {
     h("div", { class: "panel-head" }, h("h2", { text: "Em aberto" }),
       h("span", { class: "count" + (late.length || blocked.length ? " warn" : ""), text: [String(open.length),
         late.length ? `${late.length} atrasada${late.length > 1 ? "s" : ""}` : "",
-        blocked.length ? `${blocked.length} bloqueada${blocked.length > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ") })),
+        blocked.length ? `${blocked.length} aguardando` : ""].filter(Boolean).join(" · ") })),
     h("div", { class: "quick-row" }, quick, proj),
-    h("p", { class: "quick-hint", text: "No fim, se quiser: @projeto #chamado !alta ^amanhã !bloq motivo — 15min" }), hint);
+    h("p", { class: "quick-hint", text: "No fim, se quiser: @projeto #chamado !alta ^amanhã !aguarda motivo — 15min" }), hint);
   // Filtro (fica na aba): o número de cada opção ajuda a decidir antes de clicar.
   let filter = sessionStorage.getItem(OPEN_FILTER) || "all";
   if (!FILTERS.some(([k]) => k === filter)) filter = "all";
@@ -298,7 +298,7 @@ async function showHandoff() {
   const area = h("textarea", { rows: "14", readonly: "readonly", class: "handoff-text", "aria-label": "Texto da passagem de turno" });
   area.value = text;
   const dlg = modal(h("h2", { text: "Passagem de turno" }),
-    h("p", { class: "dialog-note", text: "O que fica aberto, o que está bloqueado e por quê, o que foi concluído nas últimas 12 h. Cole no chat da equipe." }),
+    h("p", { class: "dialog-note", text: "O que fica aberto, o que está aguardando e por quê, o que foi concluído nas últimas 12 h. Cole no chat da equipe." }),
     area,
     h("div", { class: "dialog-actions" },
       h("button", { type: "button", class: "btn btn-text", text: "Fechar", onClick: () => dlg.close() }),
