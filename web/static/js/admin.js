@@ -102,7 +102,7 @@ async function mountUsers(root, me) {
     const more = h("button", { type: "button", class: "icon", title: "Mais ações", "aria-label": "Mais ações para " + u.email, "aria-haspopup": "menu",
       onClick: (ev) => rowMenu(ev.currentTarget, u.display_name || u.email, phone() && main ? [[mainText, "key", mainFn], ...items] : items) }, icon("more-v"));
     return h("div", { class: "list-row" }, avatar(u, "sm"),
-      h("div", { class: "t" }, h("span", { text: u.display_name ? `${u.display_name} · ${u.email}` : u.email }),
+      h("div", { class: "t" }, u.display_name ? h("span", { class: "dot-list" }, h("span", { text: u.display_name }), h("span", { text: u.email })) : h("span", { text: u.email }),
         h("small", {}, roleNames(u.roles), ...chips)),
       main, more);
   }

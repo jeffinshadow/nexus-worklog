@@ -293,6 +293,9 @@ function showHelp(focus) {
         : h("p", { class: "help", text: "Dúvidas ou problemas: fale com quem administra o Nexus na sua equipe." })),
     h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-text", text: "Fechar", onClick: () => dlg.close() })));
   dlg.classList.add("help-dialog");
+  // Só o meio rola (título e Fechar ficam fixos): a barra de rolagem não passa por cima dos cantos arredondados.
+  const helpBody = h("div", { class: "help-body" }, ...[...dlg.children].filter((el) => el.tagName !== "H2" && !el.classList.contains("dialog-actions")));
+  dlg.querySelector(".dialog-actions").before(helpBody);
   // Pedido de uma seção (ex.: "ver marcadores" no Hoje): rola até ela.
   if (focus === "marcadores") [...dlg.querySelectorAll(".help-sec")].find((s) => /Registro rápido/.test(s.textContent))?.scrollIntoView({ block: "start" });
 }
