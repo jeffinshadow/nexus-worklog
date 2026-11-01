@@ -1,6 +1,6 @@
 import { api } from "./api.js";
-import { h, icon, clear, field } from "./dom.js";
-import { codeBox, confirmDialog, errorToast, modal, navBadge, toast, busy, warnBox, popupMenu, sheet } from "./ui.js";
+import { h, icon, clear, field, markInvalid } from "./dom.js";
+import { codeBox, confirmDialog, errorToast, modal, navBadge, toast, busy, warnBox, popupMenu, sheet, refocusBy } from "./ui.js";
 import { applyBranding } from "./branding.js";
 import { avatar } from "./profile.js";
 
@@ -161,7 +161,8 @@ async function mountUsers(root, me) {
   // ---- Excluir conta (LGPD): apaga a conta e todos os dados dela; confirma com o e-mail ----
   function onDelete(u) {
     const input = h("input", { type: "email", autocomplete: "off", required: "required" });
-    const err = h("p", { class: "error-text" });
+    const err = h("p", { class: "error-text", role: "alert" });
+    input.addEventListener("input", () => markInvalid([input], err, false));
     const form = h("form", {},
       h("p", { class: "help", text: `Exclui a conta ${u.email} e tudo o que está nela: tarefas, rotinas, tempo, anotações, chaves de API e histórico. Não dá para desfazer. Tarefas que essa pessoa atribuiu a outras continuam com quem recebeu. O e-mail e as contagens ficam registrados no seu histórico (180 dias).` }),
       h("p", { class: "help", text: "Só quer cortar o acesso agora (férias, celular perdido)? Use “Bloquear acesso” no menu da conta: a pessoa sai de todos os aparelhos e os dados ficam." }),
@@ -177,7 +178,7 @@ async function mountUsers(root, me) {
         dlg.close();
         toast(`Conta ${res.email} excluída (${res.tasks} tarefas, ${res.routines} rotinas).`);
         mountUsers(root, me);
-      } catch (e) { err.textContent = e.message || "Não foi possível excluir."; }
+      } catch (e) { err.textContent = e.message || "Não foi possível excluir."; markInvalid([input], err); input.focus(); }
     }));
     const dlg = modal(h("h2", { text: "Excluir conta?" }), form);
     input.focus();
@@ -216,7 +217,8 @@ async function mountUsers(root, me) {
   async function onInvite() {
     const byLink = await api.get("/auth/options").then((o) => o.email).catch(() => false);
     const input = h("input", { type: "email", required: "required", autocomplete: "off" });
-    const err = h("p", { class: "error-text" });
+    const err = h("p", { class: "error-text", role: "alert" });
+    input.addEventListener("input", () => markInvalid([input], err, false));
     const submit = h("button", { type: "submit", class: "btn btn-primary", text: byLink ? "Enviar convite" : "Criar conta" });
     const form = h(
       "form",
@@ -250,7 +252,9 @@ async function mountUsers(root, me) {
           e.status === 409 ? "Esse e-mail já tem conta." :
           e.status === 422 ? "E-mail inválido." :
           e.message || "Não foi possível criar a conta.";
+        if (e.status === 409 || e.status === 422) markInvalid([input], err);
         submit.disabled = false;
+        input.focus();
       }
     }));
     const dlg = modal(h("h2", { text: "Convidar pessoa" }), form);
@@ -283,12 +287,12 @@ async function mountUsers(root, me) {
 // Marcou ou desmarcou, já vale; dar Admin e tirar Usuário pedem confirmação.
 function editRoles(u, me, onChanged) {
   const who = u.display_name || u.email;
-  let changed = false;
+  let changed = false, saving = false;
   const boxes = ROLES.map(([k, n, d]) => {
     const cb = h("input", { type: "checkbox", value: k });
     cb.checked = u.roles.includes(k);
     if (k === "admin" && u.id === me.id) { cb.disabled = true; cb.title = "Você não pode tirar o seu próprio admin"; }
-    cb.addEventListener("change", () => save(cb));
+    cb.addEventListener("change", () => { if (saving) { cb.checked = !cb.checked; return; } save(cb); });
     return [cb, h("label", { class: "check-line role-line" }, cb, h("span", {}, h("strong", { text: n }), h("small", { text: d })))];
   });
   async function save(cb) {
@@ -302,7 +306,9 @@ function editRoles(u, me, onChanged) {
       title: `Dar Admin a ${who}?`,
       text: `${who} passa a convidar, bloquear e excluir contas, mudar papéis e as configurações gerais.`,
       confirm: "Dar Admin" }))) { cb.checked = false; return; }
-    for (const [b] of boxes) b.disabled = true;
+    // Enquanto salva, as caixas não mudam, mas a marcada segue focada (desabilitar jogaria o foco no <body>).
+    saving = true;
+    for (const [b] of boxes) b.setAttribute("aria-disabled", "true");
     try {
       await api.put(`/admin/users/${u.id}/roles`, { roles });
       u.roles = roles;
@@ -310,7 +316,11 @@ function editRoles(u, me, onChanged) {
       paintConsent();
       toast(`Papéis de ${who} salvos.`);
     } catch (e) { cb.checked = !cb.checked; errorToast(e); }
-    finally { for (const [b] of boxes) b.disabled = b.value === "admin" && u.id === me.id; }
+    finally {
+      saving = false;
+      for (const [b] of boxes) b.removeAttribute("aria-disabled");
+      if (!dlg.contains(document.activeElement)) cb.focus();  // voltou de uma confirmação
+    }
   }
   // Visualizador só vê quem liberou: mostra aqui, para o admin não procurar a pessoa na Equipe.
   const consent = h("p", { class: "dialog-note" });
@@ -324,7 +334,12 @@ function editRoles(u, me, onChanged) {
     h("p", { class: "dialog-note", text: "Qualquer combinação. Marcou ou desmarcou, já vale." }),
     h("div", { class: "role-lines" }, ...boxes.map(([, l]) => l)), consent,
     h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-text", text: "Fechar", onClick: () => dlg.close() })));
-  dlg.addEventListener("close", () => { if (changed) onChanged(); }); // a linha da conta mostra os papéis novos
+  // A linha da conta mostra os papéis novos; o foco volta ao ⋮ dela (a lista foi redesenhada).
+  dlg.addEventListener("close", async () => {
+    if (!changed) return;
+    await onChanged();
+    refocusBy(document.getElementById("main"), "Mais ações para " + u.email);
+  });
 }
 
 // ---- Geral: limite de datas retroativas em tarefas ----
@@ -334,7 +349,8 @@ async function mountGeneral(root, me) {
   const days = h("input", { type: "number", min: "1", max: "366", value: String(cfg.retro_days), required: "required" });
   const contact = h("input", { type: "text", maxlength: "200", value: cfg.support_contact || "", placeholder: "ex.: suporte@empresa.com · ramal 2040" });
   const quota = h("input", { type: "number", min: "0", max: "100000", value: String(cfg.photo_quota_mb), required: "required" });
-  const err = h("p", { class: "error-text" });
+  const err = h("p", { class: "error-text", role: "alert" });
+  for (const el of [days, contact, quota]) el.addEventListener("input", () => markInvalid([days, contact, quota], err, false));
   const form = h("form", {},
     field("Datas passadas em tarefas (dias)", days),
     h("p", { class: "dialog-note field-note", text: "Vale para criar ou concluir tarefas com data passada, pelo app, pela API e pela IA. As rotinas seguem com 7 dias." }),
@@ -350,7 +366,14 @@ async function mountGeneral(root, me) {
       me.retro_days = res.retro_days;
       me.support_contact = res.support_contact;
       toast("Configurações salvas.");
-    } catch (e) { err.textContent = e.message || "Não foi possível salvar."; }
+    } catch (e) {
+      err.textContent = e.message || "Não foi possível salvar.";
+      // O campo do erro, pelo que o servidor disse (senão, os dois números).
+      const m = err.textContent.toLowerCase();
+      const bad = /contato|suporte/.test(m) ? [contact] : /foto|mb|espaço/.test(m) ? [quota] : /dia|retro/.test(m) ? [days] : [days, quota];
+      markInvalid(bad, err);
+      bad[0].focus();
+    }
   }));
   root.append(h("div", { class: "settings-grid" }, h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Geral" })), form)));
