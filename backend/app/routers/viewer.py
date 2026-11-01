@@ -52,7 +52,11 @@ def user_board(user_id: int, day: Optional[date] = Query(default=None), viewer=D
 @router.get("/users/{user_id}/dashboard")
 def user_dashboard(user_id: int, month: Optional[str] = MONTH, viewer=Depends(require_viewer)):
     _ensure_user(user_id)
-    return get_dashboard(user_id, parse_month(month))
+    out = get_dashboard(user_id, parse_month(month))
+    if out.get("overview"):
+        # Quem acompanha vê o resumo das rotinas, não o ranking por rotina (não é placar).
+        out["overview"]["behind"] = []
+    return out
 
 
 @router.get("/users/{user_id}/projects")

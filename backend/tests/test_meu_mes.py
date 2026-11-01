@@ -90,3 +90,40 @@ def test_visualizador_ve_o_resumo(admin, usuario):
     usuario.put("/me/viewers", {"accept": True})
     r = admin.get(f"/viewer/users/{uid_de(usuario)}/dashboard?month={mes:%Y-%m}").json()
     assert r["overview"]["month"]["pontual_done"] == 3
+    # Na Equipe, só o resumo das rotinas: sem o ranking por rotina (não é placar).
+    assert r["overview"]["behind"] == []
+    assert (r["overview"]["routines"], r["overview"]["routines_full"]) == (2, 1)
+    own = usuario.get(f"/dashboard?month={mes:%Y-%m}").json()["overview"]
+    assert own["routines_full"] == 1 and len(own["behind"]) == 1  # a própria pessoa vê as dela
+
+
+def test_pdf_sem_vermelho_nas_rotinas(usuario, monkeypatch):
+    """O PDF não pinta de vermelho rotina abaixo de um limite (nem a perdida): fato, não nota.
+    O vermelho fica para tarefa atrasada ou bloqueada, que não há aqui."""
+    from app import report_pdf
+    hoje, mes, _ = _preparar(usuario)  # "Ronda": 3 dias de ~30
+    usadas = []
+
+    def spy(nome):
+        orig = getattr(report_pdf._Report, nome)
+
+        def f(self, *c):
+            usadas.append(tuple(c))
+            return orig(self, *c)
+        monkeypatch.setattr(report_pdf._Report, nome, f)
+    for nome in ("set_text_color", "set_fill_color", "set_draw_color"):
+        spy(nome)
+    # O mês (matriz por dia) e um período longo (lista com barras).
+    for start in (mes, mes - timedelta(days=70)):
+        usadas.clear()
+        r = usuario.get(f"/reports/export?start={start}&end={_fim(mes)}")
+        assert r.status_code == 200 and r.content[:4] == b"%PDF"
+        assert usadas and report_pdf.BAD not in usadas, start
+
+
+def test_pdf_de_um_dia_sem_todos_teve():
+    from app.report_pdf import _lede
+    s = {"active_days": 1, "period_days": 1, "pontual_done": 0, "minutes": 0, "recurring_total": 0,
+         "recurring_done": 0, "recurring_extra": 0, "open": 0, "overdue": 0}
+    frase = _lede({"summary": s})
+    assert "todos teve" not in frase and frase.startswith("O dia teve atividade registrada.")
