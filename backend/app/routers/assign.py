@@ -144,7 +144,7 @@ def sent(user=Depends(require_assigner)):
     `cancelable`: ainda dá para cancelar. As que saíram da conta de
     quem recebeu continuam aqui (status "removed", com `ended`)."""
     rows = db.query_all(
-        f"""SELECT w.id, w.title, w.status, w.due_date, w.assigned_at, w.completed_at, w.priority, w.blocked_reason,
+        f"""SELECT w.id, w.title, w.description, w.status, w.due_date, w.assigned_at, w.completed_at, w.priority, w.blocked_reason,
                    w.user_id AS to_id, u.email AS to_email,
                    (w.status = 'todo' AND NOT EXISTS ({_STARTED.format(t="w.id")})) AS editable
               FROM worklog_tasks w JOIN users u ON u.id = w.user_id
@@ -205,7 +205,7 @@ def _removed(uid: int) -> list[dict]:
         (uid,),
     )
     kinds = {"worklog.delete": "deleted", "assign.cancel": "canceled"}
-    return [{**r, "status": "removed", "due_date": None, "completed_at": None, "priority": 2,
+    return [{**r, "status": "removed", "description": None, "due_date": None, "completed_at": None, "priority": 2,
              "blocked_reason": None, "late": False, "editable": False, "cancelable": False,
              "ended": {"kind": kinds.get(r.pop("end_action"), "removed"), "at": r.pop("ended_at")}}
             for r in rows]
@@ -230,7 +230,7 @@ STARTED_MSG = "a pessoa já começou esta tarefa e agora só ela pode alterá-la
 # O que quem recebeu pode mudar na tarefa (comparado com o que chegou a ela).
 _OWN_FIELDS = ("title", "description", "due_date", "priority", "project_id", "extra_project_ids", "objective_id",
                "ticket", "after_hours")
-_FIELD_PT = {"title": "o título", "due_date": "o prazo", "priority": "a prioridade"}
+_FIELD_PT = {"title": "o título", "description": "a descrição", "due_date": "o prazo", "priority": "a prioridade"}
 
 
 def _touched(task_id: int, to_id: int) -> list[str]:
@@ -257,12 +257,12 @@ def _change_mail(title: str, by_name: str, verb: str, lines: list[str], link: st
 
 @router.patch("/{task_id}")
 def update_sent(task_id: int, data: AssignEditIn, user=Depends(require_assigner_csrf)):
-    """Corrige título, prazo ou prioridade de uma tarefa atribuída que ainda não
+    """Corrige título, descrição, prazo ou prioridade de uma tarefa atribuída que ainda não
     começou. Só o que de fato muda; campo que quem recebeu já mudou não é
     regravado por cima (409, nada muda)."""
     row = _own_sent(task_id, user["user_id"])
     before = audit.worklog_snapshot(task_id, row["user_id"])
-    changes = {k: v for k, v in data.model_dump(exclude_unset=True).items() if v is not None or k == "due_date"}
+    changes = {k: v for k, v in data.model_dump(exclude_unset=True).items() if v is not None or k in ("due_date", "description")}
     changes = {k: v for k, v in changes.items() if audit._jsonable(v) != audit._jsonable(before[k])}
     if not changes:
         raise HTTPException(status_code=400, detail="nada para mudar")
@@ -285,16 +285,19 @@ def update_sent(task_id: int, data: AssignEditIn, user=Depends(require_assigner_
     audit.record(user, "worklog.assign_update", "worklog", task_id, before=before, after={**after, "by": by_name},
                  user_id=row["user_id"])
     audit.record(user, "assign.update", "assignment", task_id,
-                 before={k: before[k] for k in ("title", "due_date", "priority")},
-                 after={"title": after["title"], "due_date": after["due_date"], "priority": after["priority"],
-                        "to": people.profile(row["user_id"])["name"]})
+                 before={k: before[k] for k in ("title", "description", "due_date", "priority")},
+                 after={"title": after["title"], "description": after["description"], "due_date": after["due_date"],
+                        "priority": after["priority"], "to": people.profile(row["user_id"])["name"]})
     if mailer.configured() and not row["blocked"]:  # conta bloqueada: ninguém lê
         lines = [after["title"]]
+        if "description" in changes:
+            lines.append(after["description"] or "(sem descrição)")
         if after["due_date"]:
             lines.append(f"Prazo: {after['due_date'].strftime('%d/%m/%Y')}")
         lines.append(f"Prioridade {PRIO_PT[after['priority']]}")
         _spawn(row["email"], _change_mail(after["title"], by_name, "Alterou", lines, f"/#/tarefas?id={task_id}"))
-    return {"id": task_id, "title": after["title"], "due_date": after["due_date"], "priority": after["priority"]}
+    return {"id": task_id, "title": after["title"], "description": after["description"], "due_date": after["due_date"],
+            "priority": after["priority"]}
 
 
 @router.post("/{task_id}/cancel")

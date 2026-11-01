@@ -470,7 +470,8 @@ dialog.task-dialog { max-width: 640px; padding: 0; max-height: min(88vh / var(--
 .title-row { display: flex; align-items: flex-start; gap: 8px; }
 .title-main { flex: 1; min-width: 0; }
 .title-main > h2 { margin: 0 0 4px; overflow-wrap: anywhere; }
-.title-main > .task-desc { margin-bottom: 10px; }
+.title-main > .task-desc { margin-bottom: 10px; white-space: pre-line; }
+textarea.inline-desc { resize: none; overflow: hidden; line-height: 1.45; }
 .title-main .resolution { margin: 0 0 10px; color: var(--on-surface-variant); font-size: var(--type-body); white-space: pre-wrap; }
 .edit-toggle { flex: none; }
 .task-title .assigned-note { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; font-size: var(--type-body-s); color: var(--on-surface-variant); }

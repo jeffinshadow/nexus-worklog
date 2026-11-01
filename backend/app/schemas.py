@@ -57,8 +57,9 @@ class AssignIn(BaseModel):
 
 class AssignEditIn(BaseModel):
     """Quem atribuiu ajusta enquanto a tarefa está "a fazer". Só o que vier muda
-    (due_date: null tira o prazo)."""
+    (due_date ou description: null tira)."""
     title: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    description: Optional[str] = Field(default=None, max_length=300)  # null ou vazio tira
     due_date: Optional[date] = None
     priority: Optional[int] = Field(default=None, ge=1, le=3)
 
@@ -68,6 +69,8 @@ class AssignEditIn(BaseModel):
             self.title = self.title.strip()
             if not self.title:
                 raise ValueError("título em branco")
+        if self.description is not None:
+            self.description = self.description.strip() or None
         return self
 
 

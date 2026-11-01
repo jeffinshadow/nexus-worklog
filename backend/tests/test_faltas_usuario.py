@@ -7,6 +7,7 @@ from app import db
 from app.services import app_today
 from conftest import SENHA_PADRAO, Api
 from test_api_aberta import _novo, dns  # noqa: F401 — dns é fixture
+from test_admin_gauntlet import _linha, _mandar, caixa, par  # noqa: F401 — caixa e par são fixtures
 
 
 def _tarefa(u, **extra):
@@ -256,3 +257,27 @@ def test_editar_webhook_mantem_o_segredo(usuario, dns, novo_usuario):
     from conftest import Bearer
     k = usuario.post("/tokens", {"name": "IA"}).json()
     assert Bearer(k["token"]).patch(f"/webhooks/{w['id']}", {"events": ["*"]}).status_code in (401, 403)
+
+
+# ------------------------------------------------ atribuir: descrição longa --
+
+def test_atribuir_descricao_em_linhas_e_alterar_a_descricao(par, caixa):
+    chefe, marina = par
+    desc = "Sala 2, rack da esquerda.\nDesligar antes o servidor de arquivos.\nLevar a escada."
+    tid = _mandar(chefe, marina, description=desc)
+    assert marina.get(f"/worklog/{tid}").json()["description"] == desc
+    assert _linha(chefe, tid)["description"] == desc
+    caixa.clear()
+    r = chefe.patch(f"/assign/{tid}", {"description": "  Sala 3, não a 2.  "})
+    assert r.status_code == 200 and r.json()["description"] == "Sala 3, não a 2."
+    assert marina.get(f"/worklog/{tid}").json()["description"] == "Sala 3, não a 2."
+    assert caixa and caixa[-1][0] == "marina@example.com"
+    # null tira; mais de 300 não
+    assert chefe.patch(f"/assign/{tid}", {"description": None}).status_code == 200
+    assert marina.get(f"/worklog/{tid}").json()["description"] is None
+    assert chefe.patch(f"/assign/{tid}", {"description": "x" * 301}).status_code == 422
+    # quem recebeu mudou a descrição: quem atribuiu não grava por cima
+    marina.patch(f"/worklog/{tid}", {"description": "do jeito dela"})
+    r = chefe.patch(f"/assign/{tid}", {"description": "outra"})
+    assert r.status_code == 409 and "a descrição" in r.json()["detail"]
+    assert marina.get(f"/worklog/{tid}").json()["description"] == "do jeito dela"

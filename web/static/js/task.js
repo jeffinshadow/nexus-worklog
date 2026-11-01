@@ -171,11 +171,13 @@ export async function openTask(taskId, onChange, opts = {}) {
     if (editing) {
       title = h("textarea", { class: "inline-edit inline-title", rows: "1", maxlength: "200", "aria-label": "Título" });
       title.value = t.title;
-      const desc = h("input", { type: "text", class: "inline-edit inline-desc", maxlength: "300", placeholder: "Adicionar descrição", "aria-label": "Descrição" });
+      // Textarea: a descrição pode ter linhas (atribuída, colada); um <input> as juntaria ao salvar.
+      const desc = h("textarea", { class: "inline-edit inline-desc", rows: "1", maxlength: "300", placeholder: "Adicionar descrição", "aria-label": "Descrição" });
       desc.value = t.description || "";
       inline(title, () => cur.title, (v) => (v ? { title: v } : null));
       inline(desc, () => cur.description || "", (v) => ({ description: v || null }));
       title.addEventListener("input", () => grow(title));
+      desc.addEventListener("input", () => grow(desc));
       titleBlock = [title, desc];
     } else {
       titleBlock = [h("h2", { text: t.title }),
@@ -245,7 +247,7 @@ export async function openTask(taskId, onChange, opts = {}) {
       h("span", { text: "Sem conexão: os detalhes desta tarefa aparecem quando a conexão voltar. Anotação, foto, concluir e cronômetro ficam guardados e vão sozinhos." })) : null;
     body.append(...(off ? [appbar, head, offNote, mainActs, photosSection(t, touch), notesPanel(t)]
       : [appbar, head, mainActs, editing ? details(t, today) : null, checklist(t), photosSection(t, touch), timePanel(t, today), notesPanel(t)]).filter(Boolean));
-    if (title) requestAnimationFrame(() => grow(title)); // a altura só existe com o campo na tela (e o painel aberto)
+    if (title) requestAnimationFrame(() => { grow(title); grow(body.querySelector(".inline-desc")); }); // a altura só existe com o campo na tela (e o painel aberto)
     // Redesenhou com o foco num campo (ex.: trocou o status): volta para ele.
     if (refocus) { const el = body.querySelector(`[aria-label="${refocus}"]`); if (el) el.focus(); refocus = null; }
   }
@@ -289,7 +291,7 @@ export async function openTask(taskId, onChange, opts = {}) {
     el.addEventListener("blur", commit);
   }
   function grow(el) {
-    if (!el.classList.contains("inline-title")) return;
+    if (!el || !el.classList.contains("inline-title") && !el.classList.contains("inline-desc")) return;
     el.style.height = "auto";
     el.style.height = el.scrollHeight + "px";
   }

@@ -31,7 +31,7 @@ function assignForm(people, onSent) {
   const who = h("select", { required: "required" },
     ...accepting.map((p) => h("option", { value: p.id, text: p.display_name ? `${p.display_name} · ${p.email}` : p.email })));
   const title = h("input", { type: "text", maxlength: "200", required: "required" });
-  const desc = h("input", { type: "text", maxlength: "300" });
+  const desc = h("textarea", { rows: "3", maxlength: "300", placeholder: "O que fazer, onde, o que levar…" });
   const due = h("input", { type: "date" });
   const prio = h("select", {}, h("option", { value: "1", text: "Alta" }), h("option", { value: "2", text: "Normal", selected: "selected" }), h("option", { value: "3", text: "Baixa" }));
   const ticket = h("input", { type: "text", maxlength: "41", placeholder: "ex.: 4821", autocomplete: "off" });
@@ -41,7 +41,7 @@ function assignForm(people, onSent) {
   const form = h("form", {},
     field("Para", who),
     field("Título", title),
-    field("Descrição (uma linha, opcional)", desc),
+    field("Descrição (opcional, até 300 caracteres)", desc),
     h("div", { class: "field-row" }, field("Prazo (opcional)", due), field("Prioridade", prio)),
     h("div", { class: "field-row" }, field("Chamado (opcional)", ticket),
       h("div", { class: "field field-check" }, h("label", { class: "check-line" }, after, h("span", { text: "Plantão / fora do horário" })))),
@@ -117,12 +117,15 @@ async function loadSent(sec, ready) {
 
 function editSent(r, done) {
   const title = h("input", { type: "text", maxlength: "200", required: "required", value: r.title });
+  const desc = h("textarea", { rows: "3", maxlength: "300", placeholder: "O que fazer, onde, o que levar…" });
+  desc.value = r.description || "";
   const due = h("input", { type: "date", value: r.due_date || "" });
   const prio = h("select", {}, h("option", { value: "1", text: "Alta" }), h("option", { value: "2", text: "Normal" }), h("option", { value: "3", text: "Baixa" }));
   prio.value = String(r.priority);
   const err = h("p", { class: "error-text" });
   const form = h("form", {},
     field("Título", title),
+    field("Descrição (opcional)", desc),
     h("div", { class: "field-row" }, field("Prazo (opcional)", due), field("Prioridade", prio)),
     h("p", { class: "dialog-note", text: `${r.to_name} recebe um e-mail com a mudança. Depois que a tarefa for começada, só quem recebeu pode mudá-la.` }),
     err,
@@ -133,7 +136,14 @@ function editSent(r, done) {
     ev.preventDefault();
     err.textContent = "";
     try {
-      await api.patch(`/assign/${r.id}`, { title: title.value.trim(), due_date: due.value || null, priority: Number(prio.value) });
+      // Só o que mudou: um campo que a pessoa já mexeu não é regravado por cima.
+      const body = {};
+      if (title.value.trim() !== r.title) body.title = title.value.trim();
+      if (desc.value.trim() !== (r.description || "")) body.description = desc.value.trim() || null;
+      if ((due.value || null) !== (r.due_date || null)) body.due_date = due.value || null;
+      if (Number(prio.value) !== r.priority) body.priority = Number(prio.value);
+      if (!Object.keys(body).length) { dlg.close(); return; }
+      await api.patch(`/assign/${r.id}`, body);
       dlg.close();
       toast("Tarefa alterada.");
       done();
