@@ -212,7 +212,7 @@ async function templatesPanel(rerender) {
         try { await api.del(`/templates/${t.id}`); toast("Modelo excluído."); rerender(); } catch (e) { errorToast(e); }
       } }, icon("trash"))),
     h("span", { class: "token-meta", text: [t.title, t.checklist.length ? `${t.checklist.length} itens no checklist` : "sem checklist", t.after_hours ? "plantão" : ""].filter(Boolean).join(" · ") })))
-    : [h("p", { class: "empty", text: "Nenhum modelo ainda." })];
+    : [h("p", { class: "empty", text: "Nenhum modelo ainda. Salve como modelo uma tarefa que se repete (com checklist) para criá-la em um toque." })];
   return h("div", { class: "settings-grid" },
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, icon("list"), h("h2", { text: "Modelos de tarefa" }),

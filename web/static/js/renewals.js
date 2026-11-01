@@ -103,7 +103,7 @@ export async function renewalsPanel(rerender) {
   const sec = h("section", { class: "panel" },
     h("div", { class: "panel-head" }, icon("calendar"), h("h2", { text: "Vencimentos" })),
     h("p", { class: "help", text: "Certificados, licenças, domínios, garantias e contratos. Avisam no Hoje, no e-mail da manhã e no calendário a partir dos dias de antecedência de cada um. O Nexus não consulta nada de fora: vale a data informada aqui." }));
-  if (!list.length) sec.append(h("p", { class: "empty", text: "Nenhum vencimento cadastrado ainda." }));
+  if (!list.length) sec.append(h("p", { class: "empty", text: "Nenhum vencimento ainda. Cadastre certificados, licenças, contratos ou garantias e o Nexus avisa antes de vencer." }));
   for (const r of list) sec.append(row(r, rerender));
   return sec;
 }

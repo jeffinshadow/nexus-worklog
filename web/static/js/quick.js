@@ -90,6 +90,6 @@ export async function quickRegister(text, project_id = null) {
     await api.post(`/worklog/${created.id}/time`, { minutes });
     return `${marks.blocked !== null ? "Registrada" : "Registrada e concluída"} com ${m[1].trim()}${com}.`;
   } catch {
-    return "Tarefa registrada, mas o tempo não foi apontado.";
+    return "Tarefa registrada, mas o tempo não entrou. Abra a tarefa e use Apontar.";
   }
 }
