@@ -246,7 +246,19 @@ incidente e outra quando volta. Logs com rotação (10 MB × 5 por serviço).
   exclui a própria conta em Configurações › Conta (com a senha); o admin também
   exclui uma conta (Admin › Usuários, confirmando o e-mail). Tarefas, rotinas,
   tempo, anotações, chaves e histórico vão junto; ficam só o e-mail e as contagens
-  no histórico de quem excluiu (180 dias). O último admin não sai.
+  no histórico de quem excluiu (180 dias). O último admin não sai. O JSON leva
+  também perfil, preferências, modelos, projetos com objetivos e as chaves
+  externas; as fotos vão à parte, no `fotos.zip` (Relatórios).
+  - **Histórico de 180 dias**: o que você exclui some da tela na hora, mas o
+    "antes" fica no histórico (para o desfazer) e sai de vez em 180 dias. Para
+    apagar já, exclua a conta.
+  - **Backups**: cada deploy grava um dump do banco e guarda os **14 mais
+    recentes** (`deploy.sh`); uma conta excluída sai dos backups quando o último
+    dump que a continha é descartado (até 14 deploys depois).
+  - **Pedidos de convite** (nome, e-mail e motivo de quem ainda não tem conta):
+    apagados 30 dias depois de decididos, ou em 180 dias sem resposta.
+  - **Quem vê o seu registro**: o visualizador (registros, relatórios e fotos de
+    todos) e o admin (que concede papéis); os nomes aparecem em Configurações › Conta.
 - **Sem rastreamento**: só o cookie de sessão; e-mails sem pixel nem links
   redirecionados; CSV exportado neutraliza fórmulas.
 

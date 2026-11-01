@@ -768,7 +768,7 @@ function account(me) {
     try {
       await api.post("/auth/change-password", { current_password: cur.value, new_password: nova.value });
       cur.value = nova.value = nova2.value = "";
-      toast("Senha trocada. Outras sessões, chaves de API e o link do calendário foram encerrados.");
+      toast("Senha trocada. Outras sessões, chaves de API e o link do calendário foram encerrados; webhooks, desligados.");
     } catch (e) {
       err.textContent = e.message || "Falha ao trocar.";
     }
@@ -776,5 +776,16 @@ function account(me) {
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Conta" })),
     h("p", { class: "help mono", text: [me.email, ...(me.roles || []).filter((r) => r !== "user").map((r) => ROLE_SHORT[r])].join(" · ") }),
+    (me.roles || []).includes("user") ? seenBy() : null,
     form);
+}
+
+// Transparência: quem tem papel que alcança o seu registro (visualizador e admin).
+function seenBy() {
+  const line = h("p", { class: "dialog-note" });
+  api.get("/me/visibility").then((list) => {
+    const names = list.map((p) => `${p.name} (${p.roles.map((r) => ROLE_SHORT[r]).join(", ")})`);
+    line.textContent = `Quem pode ver seu registro: ${names.length ? names.join(", ") : "só você"}.`;
+  }).catch(() => line.remove());
+  return line;
 }

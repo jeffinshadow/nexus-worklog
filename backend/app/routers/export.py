@@ -45,6 +45,7 @@ def _tasks(uid: int) -> list[dict]:
     return db.query_all(
         """SELECT w.id, w.title, w.description, w.status, w.priority, w.due_date, w.created_at, w.completed_at,
                   w.ticket, w.after_hours, w.blocked_reason, w.blocked_at, w.follow_up_on, w.resolution, p.name AS project,
+                  w.project_id, w.external_ref, w.objective_id,
                   """ + TASK_COUNTS + """
              FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
             WHERE w.user_id = %s ORDER BY w.created_at""", (uid,))
@@ -162,10 +163,41 @@ def export(kind: str, user=Depends(active_user)):
         for r in recurring:
             r["completed_dates"] = done.get(r["id"], [])
             r["evidence"] = evid.get(r["id"], [])  # o que foi anotado ao marcar
+        for x in db.query_all("SELECT task_id, project_id FROM worklog_task_projects WHERE task_id = ANY(%s) ORDER BY project_id",
+                              (list(by_id),)):
+            by_id[x["task_id"]].setdefault("extra_project_ids", []).append(x["project_id"])
+        projects = db.query_all(
+            "SELECT id, name, color, description, external_ref, archived, created_at FROM projects WHERE user_id = %s ORDER BY id",
+            (uid,))
+        objs = {}
+        for o in db.query_all(
+                """SELECT project_id, id, title, description, due_date, position, external_ref, created_at
+                     FROM project_objectives WHERE user_id = %s ORDER BY position, id""", (uid,)):
+            objs.setdefault(o.pop("project_id"), []).append(o)
+        for p in projects:
+            p["objectives"] = objs.get(p["id"], [])
+
+        def prefs(table: str):
+            row = db.query_one(f"SELECT * FROM {table} WHERE user_id = %s", (uid,))  # sem linha = os padrões
+            return row and {k: v for k, v in row.items() if k not in ("user_id", "updated_at")}
+
         payload = {
             "exported_at": datetime.now(app_tz()),
             "user": db.query_one("SELECT email, work_days, created_at FROM users WHERE id = %s", (uid,)),
-            "projects": db.query_all("SELECT id, name, color, archived, created_at FROM projects WHERE user_id = %s ORDER BY id", (uid,)),
+            "profile": db.query_one(
+                """SELECT display_name, theme, ticket_url, default_project_id, accepts_assignments_at,
+                          EXISTS (SELECT 1 FROM user_avatars a WHERE a.user_id = users.id) AS has_avatar
+                     FROM users WHERE id = %s""", (uid,)),
+            "prefs": {"email": prefs("notification_prefs"), "push": prefs("push_prefs"),
+                      "assistant": prefs("assistant_prefs")},
+            "projects": projects,
+            "templates": db.query_all(
+                """SELECT name, title, description, priority, project_id, after_hours, checklist, created_at
+                     FROM task_templates WHERE user_id = %s ORDER BY name""", (uid,)),
+            # As imagens não cabem aqui: vão no fotos.zip (Relatórios, pelo app).
+            "photos": {"count": db.query_one("SELECT count(*) AS n FROM photos WHERE user_id = %s AND deleted_at IS NULL",
+                                             (uid,))["n"],
+                       "download": "/api/export/fotos.zip"},
             "tasks": tasks,
             "recurring": recurring,
             "renewals": db.query_all(

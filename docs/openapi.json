@@ -3328,6 +3328,26 @@
         }
       }
     },
+    "/api/me/visibility": {
+      "get": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Visibility",
+        "description": "Quem, além da pessoa, alcança o registro dela (Configurações > Conta):\nvisualizador (registros, relatórios e fotos de todos) e admin (que concede\npapéis). Só nome e papel; sem e-mail.",
+        "operationId": "visibility_api_me_visibility_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/me/activity": {
       "get": {
         "tags": [

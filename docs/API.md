@@ -101,6 +101,7 @@ apaga as passkeys da conta; "Esqueci a senha" mantém e avisa por e-mail.
 | `POST /avatar` · `DELETE /avatar` | S W | corpo bruto PNG, JPEG ou WebP até 256 KB (tipo pelo conteúdo; SVG não). O app recorta e reduz antes |
 | `GET /avatar/{user_id}?v=` | S | a própria foto; o admin vê a de todos |
 | `PUT /assistant` | S W | `{enabled, idle_on, idle_minutes (5–480), idle_start, idle_end}` — janela em minutos do dia |
+| `GET /visibility` | S | `[{name, roles}]`: quem, além de você, tem papel `viewer` ou `admin` (a linha "Quem pode ver seu registro" em Conta) |
 | `GET /activity` | S | `{last_activity, timer}`: último registro de qualquer origem (tarefa, rotina, anotação, checklist, tempo, cronômetro) e o cronômetro rodando |
 | `PUT /tickets` | S W | `{ticket_url}` — endereço do sistema de chamados; `{id}` vira o número (sem `{id}`, vai no fim) |
 | `PUT /assignments` | S W | `{accept}` — aceitar receber tarefas de um atribuidor (desligar não mexe nas recebidas) |
@@ -193,7 +194,7 @@ quantas fotos a tarefa tem.
 | `GET /api/export/tarefas.csv` | | idem, com as colunas `aguardando` (motivo do bloqueio) e `como_resolveu` |
 | `GET /api/export/plantao.csv?start=&end=` | | atendimentos de plantão do período (padrão: o mês), com horas por dia e total |
 | `GET /api/export/rotinas.csv?start=&end=` | | trilha de auditoria: cada rotina em cada dia do período (até hoje), prevista/extra, feita (sim/não/pendente) e a evidência — dia sem nada feito também aparece |
-| `GET /api/export/tudo.json` | | tarefas com anotações/checklist/tempo, rotinas com dias feitos, `require_note` e `evidence` (dia + evidência), `renewals` (vencimentos), projetos |
+| `GET /api/export/tudo.json` | | `user`, `profile` (nome, tema, chamados, projeto padrão, aceite), `prefs` (e-mail, notificações, assistente), `projects` (com `description`, `external_ref` e `objectives`), `templates`, `tasks` (com `external_ref`, objetivo, projetos extras, anotações/checklist/tempo), `recurring` (dias feitos, `require_note`, `evidence`), `renewals` e `photos` (quantas; as imagens vão no `fotos.zip`) |
 
 ## Histórico — `/api/history`
 

@@ -91,6 +91,11 @@ def login(data: LoginIn, request: Request, response: Response):
     # Links de convite/senha já usados ou vencidos não servem para nada depois de um mês.
     db.execute("""DELETE FROM auth_links WHERE created_at < now() - interval '30 days'
                    AND (used_at IS NOT NULL OR expires_at <= now())""")
+    # Pedidos de convite são dados de quem nem tem conta: decididos saem em 30
+    # dias (a lista já os escondia), os nunca respondidos em 180.
+    db.execute("""DELETE FROM invite_requests
+                   WHERE (status <> 'pending' AND decided_at < now() - interval '30 days')
+                      OR (status = 'pending' AND created_at < now() - interval '180 days')""")
 
     return _start_session(user, response)
 

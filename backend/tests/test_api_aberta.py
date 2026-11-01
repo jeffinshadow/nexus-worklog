@@ -10,7 +10,7 @@ import pytest
 
 from app import db, webhooks
 from app.routers import history
-from conftest import Bearer, criar_chave
+from conftest import Bearer, criar_chave, uid_de
 
 
 @pytest.fixture(autouse=True)
@@ -227,6 +227,52 @@ def test_webhook_so_eventos_do_dono_e_sem_fotos(usuario, novo_usuario, dns):
     assert webhooks.payload({"id": 1, "created_at": None, "actor": "web", "token_name": None, "action": "photo.create",
                              "entity": "photo", "entity_id": 3, "before": None,
                              "after": {"task_id": 1, "image": "base64..."}})["data"] is None
+
+
+# ------------------------------------------------------------------- dados --
+
+def test_exportacao_json_completa(usuario):
+    p = usuario.post("/projects", {"name": "Cliente X", "description": "contrato 2026", "external_ref": "crm-1"}).json()["id"]
+    usuario.post(f"/projects/{p}/objectives", {"title": "Migrar e-mail"})
+    usuario.post("/worklog", {"title": "Alerta", "external_ref": "zbx-1", "project_id": p})
+    usuario.post("/templates", {"name": "Troca de toner", "title": "Trocar toner", "checklist": ["retirar", "instalar"]})
+    usuario.put("/me/profile", {"display_name": "Marina"})
+    dados = usuario.get("/export/tudo.json").json()
+    assert {"profile", "prefs", "templates", "photos", "projects", "tasks"} <= set(dados)
+    proj = dados["projects"][0]
+    assert proj["description"] == "contrato 2026" and proj["external_ref"] == "crm-1"
+    assert [o["title"] for o in proj["objectives"]] == ["Migrar e-mail"]
+    assert dados["tasks"][0]["external_ref"] == "zbx-1"
+    assert dados["templates"][0]["checklist"] == ["retirar", "instalar"]
+    assert dados["profile"]["display_name"] == "Marina" and dados["profile"]["has_avatar"] is False
+    assert dados["photos"] == {"count": 0, "download": "/api/export/fotos.zip"}
+    assert set(dados["prefs"]) == {"email", "push", "assistant"}
+
+
+def test_faxina_dos_pedidos_de_convite(usuario):
+    from conftest import SENHA_PADRAO
+    ins = """INSERT INTO invite_requests (name, email, source, reason, status, created_at, decided_at)
+             VALUES ('X', %s, 'site', 'motivo', %s, now() - make_interval(days => %s), %s)"""
+    db.execute(ins, ("velho-decidido@ex.com", "declined", 40, db.query_one("SELECT now() - interval '31 days' AS t")["t"]))
+    db.execute(ins, ("novo-decidido@ex.com", "invited", 40, db.query_one("SELECT now() - interval '5 days' AS t")["t"]))
+    db.execute(ins, ("pendente-velho@ex.com", "pending", 181, None))
+    db.execute(ins, ("pendente-novo@ex.com", "pending", 100, None))
+    try:
+        usuario.login(usuario.me["email"], SENHA_PADRAO)  # a faxina roda no login
+        restam = {r["email"] for r in db.query_all("SELECT email FROM invite_requests WHERE email LIKE '%%@ex.com'")}
+        assert restam == {"novo-decidido@ex.com", "pendente-novo@ex.com"}
+    finally:
+        db.execute("DELETE FROM invite_requests WHERE email LIKE '%%@ex.com'")
+
+
+def test_quem_pode_ver_meu_registro(admin, usuario, novo_usuario):
+    from app import roles
+    vis = novo_usuario("visual@example.com")
+    roles.grant(uid_de(vis), ["viewer"])
+    lista = usuario.get("/me/visibility").json()
+    assert {(p["name"], tuple(p["roles"])) for p in lista} == {("Admin", ("admin", "viewer")), ("Visual", ("viewer",))}
+    assert all("email" not in p for p in lista)
+    assert Bearer(criar_chave(usuario)["token"]).get("/me/visibility").status_code == 403  # só pelo app
 
 
 # ------------------------------------------------------------ contrato (D1) --
