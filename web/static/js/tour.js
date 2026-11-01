@@ -233,25 +233,36 @@ function setup(me) {
 // ------------------------------------------------- parte 2: o passeio --
 // Cada parada: seletores candidatos (o primeiro visível vale: computador ou
 // celular), título e texto. Parada sem alvo visível é pulada.
+const QUICK = [[".quick-row input"], "Registro rápido",
+  "Escreva o que fez e aperte Enter. Dois atalhos ajudam: @Projeto escolhe o projeto e “— 30min” já conclui com o tempo. Ex.: “Troca do disjuntor @Matriz — 45min”. Os outros (#chamado, !alta, ^amanhã) estão na Ajuda."];
+const ROUTINES = [[".t-rec"], "Rotinas do dia",
+  "Marque o que conferiu. O bloquinho anota a evidência e o alerta transforma um achado em tarefa. As setas voltam até 7 dias para marcar o que ficou para trás."];
+const HANDOFF = [["#page-actions .btn-ghost"], "Passagem de turno",
+  "No fim do turno, um texto pronto com o que fica aberto, o que está aguardando e por quê, e o que foi feito. É só colar no chat da equipe."];
+// Celular: só o essencial do dia, em quatro paradas (o resto se descobre usando).
+const PHONE_STOPS = [
+  QUICK,
+  ROUTINES,
+  [[".t-open .list-row[data-task-id]", ".t-open"], "Uma tarefa",
+    "Toque no nome para abrir: anotações, checklist, fotos e tempo. O ✓ conclui. No ⋮ ficam o cronômetro, “Aguardando…” e “Duplicar tarefa”."],
+  HANDOFF,
+];
 const STOPS = [
-  [[".quick-row input"], "Registro rápido",
-    "Escreva o que fez e aperte Enter. Dois atalhos ajudam: @Projeto escolhe o projeto e “— 30min” já conclui com o tempo. Ex.: “Troca do disjuntor @Matriz — 45min”. Os outros (#chamado, !alta, ^amanhã) estão na Ajuda."],
+  QUICK,
   [[".open-filter"], "Filtro das abertas",
     "Para focar: só o que vence hoje (as atrasadas entram junto) ou só as de prioridade alta. A escolha fica até você fechar a aba."],
-  [[".t-rec"], "Rotinas do dia",
-    "Marque o que conferiu. O bloquinho anota a evidência e o alerta transforma um achado em tarefa. As setas voltam até 7 dias para marcar o que ficou para trás."],
+  ROUTINES,
   [["#assist-slot > *"], "O assistente",
     "A saudação, o que pede atenção (atrasadas, aguardando há dias) e, à tarde, o resumo do dia. Ele cabe numa linha e se desliga em Configurações > Conta."],
   [["[data-fab]", "#fab"], "Tarefa completa",
     "Quando precisa de mais: prazo, prioridade, projetos, chamado, checklist e tempo. Depois, tudo se edita no próprio detalhe da tarefa (o lápis ao lado do título)."],
-  [["#page-actions .btn-ghost"], "Passagem de turno",
-    "No fim do turno, um texto pronto com o que fica aberto, o que está aguardando e por quê, e o que foi feito. É só colar no chat da equipe."],
+  HANDOFF,
   [['#nav [data-view="tarefas"]', '#tabbar [data-view="tarefas"]'], "Tarefas",
     "O quadro com tudo o que está aberto, filtro por projeto e o detalhe de cada tarefa: anotações, checklist, cronômetro e o “como resolveu”, que entra na busca."],
   [['#nav [data-view="projetos"]'], "Projetos",
     "Cada projeto com os objetivos (as demandas principais) na ordem de execução e as tarefas de cada um. Arraste para mudar a ordem; o progresso de cada objetivo se calcula sozinho."],
-  [['#nav [data-view="relatorios"]', '#tabbar [data-view="relatorios"]', '#tabbar [data-view="mais"]'], "Relatórios e retrospectiva",
-    "O PDF do período ou de um projeto inteiro, para prestar contas. A Retrospectiva mostra a semana em números, e o Histórico guarda cada mudança, com desfazer."],
+  [['#nav [data-view="mes"]', '#tabbar [data-view="mes"]'], "Meu mês",
+    "O mês em números (rotinas, tarefas, tempo por projeto) e o PDF do período ou de um projeto inteiro, para prestar contas. O Histórico guarda cada mudança, com desfazer."],
   [["#btn-help", '#tabbar [data-view="mais"]'], "Ajuda",
     "Atalhos, o manual tela por tela e este tour de novo, quando quiser."],
 ];
@@ -362,7 +373,8 @@ function walk() {
     (function wait() {
       streak = ready() ? streak + 1 : 0;
       if (streak < 2 && tries++ < 80) { setTimeout(wait, 150); return; }
-      stops = STOPS.filter(([sels]) => find(sels));
+      // "Celular" como no resto do app (a mesma largura do menu de baixo).
+      stops = (matchMedia("(max-width: 860px)").matches ? PHONE_STOPS : STOPS).filter(([sels]) => find(sels));
       if (!stops.length) { resolve(); return; }
       document.body.append(layer);
       addEventListener("resize", place);
