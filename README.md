@@ -61,7 +61,8 @@ exclui a conta de vez.
   o projeto da área com ícone e as rotinas com agenda e horário (ronda às 8h,
   extintores todo dia 1, atualizações às sextas…); a pessoa marca os itens antes
   e edita tudo depois. Estão no tour, no + das rotinas e nas telas vazias; não
-  duplicam o que já existe.
+  duplicam o que já existe. A **ordem** das rotinas no Hoje é a da pessoa
+  (setas ou arrastar, com desfazer).
 - **Tarefas** — status, prioridade, prazo, projeto/cliente (uma tarefa pode
   atender **mais de um projeto**: aparece em cada um, com o tempo inteiro em
   cada um; e há um **projeto padrão** por pessoa para o que é criado sem projeto), checklist,
@@ -70,7 +71,9 @@ exclui a conta de vez.
   link; **plantão** fora do horário, com o tempo separado no relatório; e
   **modelos** de tarefa com checklist pronto. Lançamento **retroativo** (criada e
   concluída em datas passadas, até um limite configurável pelo admin; padrão 60
-  dias).
+  dias). Apontamento, anotação e item do checklist se **corrigem** no lugar
+  (com desfazer; a anotação mantém a hora); concluída por engano, **Reabrir**;
+  com o quadro filtrado por um projeto, a tarefa nova já vem nele.
 - **Passagem de turno e espera** — tarefa marcada como aguardando guarda o
   quê (peça, cliente, aprovação) e há quantos dias; um clique monta o texto da passagem de turno
   (aberto, aguardando e por quê, concluído nas últimas 12 h, plantão). Rotina marcada aceita uma
@@ -87,8 +90,8 @@ exclui a conta de vez.
 - **Atribuição** — quem aceita (Configurações > Conta) recebe tarefas de um
   atribuidor pelo app ou pela IA, com aviso por e-mail; a tarefa passa a ser
   dela, e quem atribuiu acompanha o status e recebe um e-mail quando ela é concluída.
-  Enquanto está "a fazer" e sem nada registrado, quem atribuiu ainda corrige
-  título, prazo e prioridade (só o que a pessoa não mudou) ou cancela (engano;
+  A descrição aceita várias linhas. Enquanto está "a fazer" e sem nada registrado,
+  quem atribuiu ainda corrige título, descrição, prazo e prioridade (só o que a pessoa não mudou) ou cancela (engano;
   só se ela não mexeu em nada); excluída ou cancelada, a linha continua em
   Atribuir com quem tirou e quando. Conta com acesso bloqueado não recebe.
 - **Meu mês** — o mês num olhar, com um seletor só (‹ mês ›, o corrente por
@@ -114,7 +117,7 @@ exclui a conta de vez.
   exportações. O PDF é editorial: o período em texto corrido, os números, o ritmo, a
   **matriz de rotinas** (um ponto por dia) e o diário. Pode ir toda segunda
   anexado ao resumo semanal por e-mail, com cópia opcional para quem acompanha o trabalho.
-  Exportação em CSV (planilha) e JSON (backup).
+  Exportação em CSV (planilha, pelo período escolhido) e JSON (backup).
 - **Equipe** (papel Vê a equipe): um painel para coordenar, não para comparar.
   Os números da equipe somados (rotinas em dia, tarefas concluídas, horas,
   aguardando) com os últimos 6 meses da equipe, "Precisa de atenção" (o que
@@ -152,7 +155,8 @@ exclui a conta de vez.
 - **Pedido de convite** — com e-mail configurado, quem não tem conta pede pela
   tela de entrar; o admin recebe e-mail e notificação e convida ou recusa em Admin.
 - **Passkeys** — entrar sem senha, com a digital, o rosto, o Windows Hello ou
-  uma chave física (WebAuthn); a senha continua valendo.
+  uma chave física (WebAuthn); a senha continua valendo. **Sair dos outros
+  aparelhos** sem trocar a senha (celular perdido, computador emprestado).
 - **Contas** — com e-mail configurado, o admin convida por **link** (7 dias,
   uso único; a pessoa cria a senha e já entra) e o login tem **esqueci a
   senha** (link de 1 hora). Sem e-mail, senha temporária trocada no 1º acesso.
@@ -173,7 +177,9 @@ exclui a conta de vez.
 - **Integração** — API REST aberta, sem conector para produto específico:
   `external_ref` em tarefas, projetos, anotações e tempo (repetir não duplica),
   feed de mudanças (`/api/history?after=`) e webhooks de saída assinados
-  (HMAC-SHA256), com botão Testar. Contrato em [`docs/openapi.json`](docs/openapi.json);
+  (HMAC-SHA256), com os eventos numa lista para marcar, edição sem trocar o
+  segredo e botão Testar. Chave de API vencida se renova sem trocar de valor;
+  as vencidas e revogadas ficam recolhidas. Contrato em [`docs/openapi.json`](docs/openapi.json);
   receitas `curl` em [`docs/API.md`](docs/API.md#integração-passo-a-passo) e, prontas,
   aviso no Telegram, e-mail e planilha em [`docs/API.md`](docs/API.md#receitas-avisos-e-planilha).
 

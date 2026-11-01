@@ -457,8 +457,7 @@ async function boot() {
       for (const p of projs)
         sugg.append(h("button", { type: "button", class: "sugg-item", onClick: () => {
           hideSugg(); sideQ.value = "";
-          sessionStorage.setItem("nexus.board.project", String(p.id));
-          if (location.hash.startsWith("#/tarefas")) route(); else location.hash = "#/tarefas";
+          location.hash = "#/projetos?id=" + p.id;  // a tela do projeto, como na Busca
         } }, icon("folder"), h("span", { class: "sugg-t" }, ...highlight(p.name, q)), h("small", { text: "projeto" })));
       if (!tasks.length && !projs.length) sugg.append(h("p", { class: "sugg-empty", text: "Nada encontrado." }));
       sugg.append(h("button", { type: "submit", class: "sugg-all", text: "Ver todos os resultados" }));

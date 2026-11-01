@@ -86,8 +86,8 @@ export async function mount(root, ctx) {
     else if (active === "calendario") body.append(await calendarFeed(() => render()));
     else if (active === "ia") body.append(await tokens(() => render()), ...aiHelp(), await webhooksPanel(() => render()));
     // Conta: primeiro o que muda o dia (dias úteis, projeto padrão), depois quem vê e manda tarefas.
-    else if (isUser) body.append(workDays(ctx.me), defaultProjectPanel(ctx.me, (r) => meChanged(ctx.me, r)), privacyPanel(ctx.me), profilePanel(ctx.me, render), themePanel(ctx.me), assistantPanel(ctx.me), ticketsPanel(ctx.me), shortcutsPanel(), account(ctx.me), await passkeysPanel(render), deleteAccount(isUser));
-    else body.append(profilePanel(ctx.me, render), themePanel(ctx.me), account(ctx.me), await passkeysPanel(render), deleteAccount(isUser));
+    else if (isUser) body.append(workDays(ctx.me), defaultProjectPanel(ctx.me, (r) => meChanged(ctx.me, r)), privacyPanel(ctx.me), profilePanel(ctx.me, render), themePanel(ctx.me), assistantPanel(ctx.me), ticketsPanel(ctx.me), shortcutsPanel(), account(ctx.me), await otherDevicesPanel(), await passkeysPanel(render), deleteAccount(isUser));
+    else body.append(profilePanel(ctx.me, render), themePanel(ctx.me), account(ctx.me), await otherDevicesPanel(), await passkeysPanel(render), deleteAccount(isUser));
   }
   await render();
 }
@@ -532,7 +532,7 @@ async function tokens(rerender) {
     }
   }));
 
-  const rows = list.length ? list.map((t) => {
+  const row = (t) => {
     const meta = [
       `${t.prefix}…`, t.scope === "write" ? "ler e registrar" : "só leitura",
       t.expires_at ? `vence ${dateTime(t.expires_at).slice(0, 5)}` : "sem validade",
@@ -549,10 +549,23 @@ async function tokens(rerender) {
           catch (e) { errorToast(e); }
         },
       }));
+    } else if (!t.revoked_at) {
+      actions.append(h("button", { type: "button", class: "btn btn-ghost btn-sm", text: "Renovar", "aria-label": `Renovar a chave ${t.name}`,
+        onClick: () => renewToken(t, rerender) }));
     }
     return h("div", { class: "token-row" + (t.active ? "" : " inactive") },
       h("span", { class: "token-name", text: t.name }), actions, h("span", { class: "token-meta", text: meta.join(" · ") }));
-  }) : [h("p", { class: "empty", text: "Nenhuma chave ainda." })];
+  };
+  // Vencidas e revogadas não se acumulam: ficam recolhidas em "Antigas".
+  const ativas = list.filter((t) => t.active), antigas = list.filter((t) => !t.active);
+  const rows = [
+    ...ativas.map(row),
+    !list.length ? h("p", { class: "empty", text: "Nenhuma chave ainda." })
+      : !ativas.length ? h("p", { class: "empty", text: "Nenhuma chave ativa." }) : null,
+    antigas.length ? h("details", { class: "old-keys" },
+      h("summary", {}, `Antigas (${antigas.length})`, h("small", { text: "vencidas e revogadas; uma vencida pode ser renovada" })),
+      ...antigas.map(row)) : null,
+  ].filter(Boolean);
 
   return h("div", { class: "settings-grid" },
     h("section", { class: "panel" },
@@ -562,6 +575,30 @@ async function tokens(rerender) {
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Minhas chaves" }), h("span", { class: "count", text: (() => { const n = list.filter((t) => t.active).length; return n + (n === 1 ? " ativa" : " ativas"); })() })),
       ...rows));
+}
+
+// Chave vencida: nova validade a partir de hoje, a mesma chave (a IA não precisa ser reconfigurada).
+function renewToken(t, rerender) {
+  const expires = h("select", {}, ...VALIDADES.map(([v, l]) => h("option", { value: v, text: l })));
+  expires.value = "90";
+  const err = h("p", { class: "error-text", role: "alert" });
+  const form = h("form", {}, h("h2", { text: `Renovar “${t.name}”` }),
+    h("p", { class: "dialog-note", text: "A mesma chave volta a funcionar, com a validade nova contada a partir de hoje: quem usa essa chave (a IA, a automação) não precisa ser configurado de novo." }),
+    field("Nova validade", expires), err,
+    h("div", { class: "dialog-actions" },
+      h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
+      h("button", { type: "submit", class: "btn btn-primary", text: "Renovar" })));
+  const dlg = modal(form);
+  form.addEventListener("submit", busy(async (ev) => {
+    ev.preventDefault();
+    try {
+      await api.post(`/tokens/${t.id}/renew`, { expires_in_days: expires.value ? Number(expires.value) : null });
+      dlg.close();
+      toast(`Chave “${t.name}” renovada.`);
+      rerender();
+    } catch (e) { err.textContent = e.message || "Não foi possível renovar."; }
+  }));
+  setTimeout(() => expires.focus(), 0);
 }
 
 // O bloco de configuração de cada IA, com a chave (ou nxs_SUA_CHAVE, na ajuda).
@@ -624,17 +661,18 @@ function showNewToken(res) {
 async function webhooksPanel(rerender) {
   const list = await api.get("/webhooks");
   const url = h("input", { type: "url", maxlength: "500", placeholder: "https://exemplo.com/nexus", required: "required" });
-  const events = h("input", { type: "text", maxlength: "300", placeholder: "* (tudo) ou worklog.finish, worklog.*" });
+  const events = eventsPicker(["*"]);
   const err = h("p", { class: "error-text" });
   const create = h("button", { type: "submit", class: "btn btn-primary" }, icon("send"), "Criar webhook");
-  const form = h("form", {}, field("Endereço (https)", url), field("Eventos", events), err, create);
+  const form = h("form", {}, field("Endereço (https)", url), events.el, err, create);
   form.addEventListener("submit", busy(async (ev) => {
     ev.preventDefault();
     err.textContent = "";
+    const evs = events.value();
+    if (!evs) { err.textContent = "Escolha pelo menos um evento."; return; }
     create.disabled = true;
     try {
-      const evs = events.value.split(/[\s,]+/).filter(Boolean);
-      const res = await api.post("/webhooks", { url: url.value.trim(), events: evs.length ? evs : ["*"] });
+      const res = await api.post("/webhooks", { url: url.value.trim(), events: evs });
       showNewSecret(res);
       rerender();
     } catch (e) {
@@ -644,7 +682,7 @@ async function webhooksPanel(rerender) {
   }));
 
   const rows = list.length ? list.map((w) => {
-    const meta = [w.events.join(", "), w.last_delivered_at ? `entregue ${dateTime(w.last_delivered_at)}` : "nada entregue ainda"];
+    const meta = [eventsLabel(w.events), w.last_delivered_at ? `entregue ${dateTime(w.last_delivered_at)}` : "nada entregue ainda"];
     if (w.disabled_at) meta.push(`desligado: ${w.last_error || "falhas seguidas"}`);
     else if (w.failures) meta.push(`${w.failures} falha(s): ${w.last_error}`);
     const actions = h("div", { class: "actions" });
@@ -667,7 +705,8 @@ async function webhooksPanel(rerender) {
         } finally { test.disabled = false; }
       },
     });
-    actions.append(test);
+    actions.append(test, h("button", { type: "button", class: "btn btn-ghost btn-sm", text: "Editar", "aria-label": "Editar o webhook " + w.url,
+      onClick: () => editWebhook(w, rerender) }));
     if (w.disabled_at) {
       actions.append(h("button", {
         type: "button", class: "btn btn-ghost btn-sm", text: "Religar", onClick: async () => {
@@ -696,6 +735,96 @@ async function webhooksPanel(rerender) {
       h("div", { class: "panel-head" }, h("h2", { text: "Meus webhooks" }), h("span", { class: "count", text: String(list.filter((w) => w.active).length) + " ativos" })),
       ...rows),
     recipesPanel());
+}
+
+// Os eventos que dá para marcar (os nomes do histórico). "Tudo" e "… : tudo" cobrem os de dentro.
+const WH_EVENTS = [
+  ["*", "Tudo", "qualquer mudança, inclusive as que o Nexus ganhar depois"],
+  ["worklog.*", "Tarefas: tudo", "criar, editar, concluir, excluir, receber"],
+  ["worklog.create", "Tarefa criada"],
+  ["worklog.finish", "Tarefa concluída"],
+  ["worklog.update", "Tarefa editada", "inclui reabrir e marcar como aguardando"],
+  ["worklog.delete", "Tarefa excluída"],
+  ["worklog.assign", "Tarefa recebida", "atribuída a você por alguém"],
+  ["note.*", "Anotações"],
+  ["checklist.*", "Checklist"],
+  ["time.*", "Tempo apontado"],
+  ["timer.*", "Cronômetro"],
+  ["photo.*", "Fotos"],
+  ["recurring.*", "Rotinas", "marcar, criar, editar, pausar"],
+  ["project.*", "Projetos"],
+  ["objective.*", "Objetivos"],
+  ["renewal.*", "Vencimentos"],
+];
+const WH_NAME = Object.fromEntries(WH_EVENTS.map(([k, l]) => [k, l]));
+const eventsLabel = (evs) => evs.map((e) => WH_NAME[e] || e).join(", ");
+
+// Lista para marcar os eventos (sem digitar nomes). Um evento que veio pela API e
+// não está na lista aparece também, marcado, com o nome técnico.
+function eventsPicker(selected) {
+  const sel = new Set(selected);
+  const items = [...WH_EVENTS, ...selected.filter((e) => !WH_NAME[e]).map((e) => [e, e, "definido pela API"])];
+  const boxes = items.map(([key, label, help]) => {
+    const cb = h("input", { type: "checkbox", value: key });
+    cb.checked = sel.has(key);
+    const line = h("label", { class: "check-line wh-ev" + (key.endsWith(".*") || key === "*" ? " group" : " sub") }, cb,
+      h("span", {}, label, help ? h("small", { text: help }) : null));
+    return { key, cb, line };
+  });
+  // Marcado o grupo, os de dentro já estão incluídos: ficam marcados e travados.
+  const covered = (key) => {
+    const all = boxes.find((b) => b.key === "*").cb.checked;
+    if (key !== "*" && all) return true;
+    const grp = key.includes(".") && !key.endsWith(".*") ? boxes.find((b) => b.key === key.split(".")[0] + ".*") : null;
+    return !!(grp && grp.cb.checked);
+  };
+  const sync = () => {
+    for (const b of boxes) {
+      const c = covered(b.key);
+      b.cb.disabled = c;
+      b.line.classList.toggle("covered", c);
+      if (c) b.cb.setAttribute("aria-description", "já incluído pelo grupo marcado"); else b.cb.removeAttribute("aria-description");
+    }
+  };
+  for (const b of boxes) b.cb.addEventListener("change", sync);
+  sync();
+  const el = h("fieldset", { class: "wh-events" }, h("legend", { class: "field-label", text: "Avisar quando" }),
+    h("div", { class: "wh-events-grid" }, ...boxes.map((b) => b.line)));
+  return {
+    el,
+    value() {
+      const picked = boxes.filter((b) => b.cb.checked && !covered(b.key)).map((b) => b.key);
+      return picked.length ? picked : null;
+    },
+  };
+}
+
+// Editar um webhook (endereço e eventos) sem recriar: o segredo continua o mesmo.
+function editWebhook(w, rerender) {
+  const url = h("input", { type: "url", maxlength: "500", required: "required", value: w.url });
+  const events = eventsPicker(w.events);
+  const err = h("p", { class: "error-text", role: "alert" });
+  const form = h("form", {}, h("h2", { text: "Editar webhook" }),
+    h("p", { class: "dialog-note", text: "O segredo continua o mesmo: o outro sistema não precisa ser configurado de novo." }),
+    field("Endereço (https)", url), events.el, err,
+    h("div", { class: "dialog-actions" },
+      h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
+      h("button", { type: "submit", class: "btn btn-primary", text: "Salvar" })));
+  const dlg = modal(form);
+  dlg.classList.add("wh-dialog");
+  form.addEventListener("submit", busy(async (ev) => {
+    ev.preventDefault();
+    err.textContent = "";
+    const evs = events.value();
+    if (!evs) { err.textContent = "Escolha pelo menos um evento."; return; }
+    try {
+      await api.patch(`/webhooks/${w.id}`, { url: url.value.trim(), events: evs });
+      dlg.close();
+      toast("Webhook salvo. O segredo continua o mesmo.");
+      rerender();
+    } catch (e) { err.textContent = e.message || "Não foi possível salvar."; }
+  }));
+  setTimeout(() => url.focus(), 0);
 }
 
 // Receitas prontas (no site): avisos e planilha usando o webhook e a API, sem conector para produto.
@@ -848,6 +977,33 @@ function themePanel(me) {
     h("div", { class: "panel-head" }, h("h2", { text: "Aparência" })),
     h("p", { class: "help", text: "Automático acompanha o claro ou escuro do celular e do computador. Claro e Escuro forçam o tema em todos os seus aparelhos." }),
     seg);
+}
+
+// Sair dos outros aparelhos sem trocar a senha (celular perdido, computador
+// emprestado). Este aparelho continua entrando; chaves de API e calendário seguem.
+async function otherDevicesPanel() {
+  const { others } = await api.get("/auth/sessions").catch(() => ({ others: null }));
+  const line = h("p", { class: "dialog-note", role: "status" });
+  const paint = (n) => {
+    line.textContent = n === null ? "" : n === 0 ? "Sua conta está aberta só neste aparelho."
+      : n === 1 ? "Sua conta também está aberta em 1 outro aparelho ou navegador."
+      : `Sua conta também está aberta em ${n} outros aparelhos ou navegadores.`;
+    btn.disabled = n === 0;
+  };
+  const btn = h("button", { type: "button", class: "btn btn-ghost btn-sm" }, icon("logout"), "Sair dos outros aparelhos");
+  btn.addEventListener("click", busy(async () => {
+    if (!(await confirmDialog({ title: "Sair dos outros aparelhos?", text: "Os outros celulares e computadores voltam para a tela de entrar, e quem estiver neles precisa da senha (ou da digital) de novo. Este aparelho continua. Chaves de API e o link do calendário não mudam.", confirm: "Sair dos outros" }))) return;
+    try {
+      const r = await api.post("/auth/logout-others");
+      paint(0);
+      toast(r.ended ? `Pronto: ${r.ended === 1 ? "1 outro aparelho saiu" : `${r.ended} outros aparelhos saíram`} da sua conta.` : "Nenhum outro aparelho estava com a conta aberta.");
+    } catch (e) { errorToast(e, "Não foi possível sair dos outros aparelhos."); }
+  }));
+  paint(others);
+  return h("section", { class: "panel" },
+    h("div", { class: "panel-head" }, h("h2", { text: "Aparelhos conectados" })),
+    h("p", { class: "help", text: "Perdeu o celular ou entrou num computador emprestado? Saia de todos os outros aparelhos sem trocar a senha." }),
+    line, h("div", { class: "row-actions" }, btn));
 }
 
 // Passkeys: entrar com digital, rosto, Windows Hello ou chave física, sem a senha.

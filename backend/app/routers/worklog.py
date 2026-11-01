@@ -8,7 +8,7 @@ from psycopg.errors import UniqueViolation
 
 from .. import audit, db
 from ..deps import active_user, active_user_csrf
-from ..schemas import ChecklistIn, ChecklistUpdate, FinishIn, NoteIn, TimeIn, WorklogIn, WorklogUpdate
+from ..schemas import ChecklistIn, ChecklistUpdate, FinishIn, NoteIn, NoteUpdate, TimeIn, TimeUpdate, WorklogIn, WorklogUpdate
 from .assign import notify_assigner
 from .objectives import check_objective, next_position, objective_project
 from ..services import is_work_day, work_mask
@@ -483,6 +483,22 @@ def add_note(task_id: int, data: NoteIn, response: Response = None, user=Depends
     return row
 
 
+@items.patch("/notes/{note_id}")
+def update_note(note_id: int, data: NoteUpdate, user=Depends(active_user_csrf)):
+    """Corrige o texto; a hora da anotação continua a original."""
+    before = db.query_one(
+        """SELECT n.id, n.task_id, n.body, w.title FROM task_notes n JOIN worklog_tasks w ON w.id = n.task_id
+            WHERE n.id = %s AND n.user_id = %s""",
+        (note_id, user["user_id"]),
+    )
+    if not before:
+        raise HTTPException(status_code=404, detail="anotação não encontrada (pode ter sido excluída); atualize a tela")
+    row = db.query_one(f"UPDATE task_notes SET body = %s WHERE id = %s RETURNING {NOTE_COLS}", (data.body, note_id))
+    if data.body != before["body"]:
+        audit.record(user, "note.update", "note", note_id, before=before, after={**before, "body": data.body})
+    return row
+
+
 @items.delete("/notes/{note_id}")
 def delete_note(note_id: int, user=Depends(active_user_csrf)):
     row = db.query_one(
@@ -555,12 +571,8 @@ def log_time(task_id: int, data: TimeIn, response: Response = None, user=Depends
     if found := _child_by_ref("time_entries", TIME_COLS, user["user_id"], data.external_ref):
         response.status_code = 200
         return {**found, "existing": True}
-    today = app_today()
-    day = data.day or today
-    if day > today:
-        raise HTTPException(status_code=400, detail="não dá para apontar tempo no futuro")
-    if (today - day).days > TIME_MAX_PAST_DAYS:
-        raise HTTPException(status_code=400, detail=f"apontamento até {TIME_MAX_PAST_DAYS} dias atrás")
+    day = data.day or app_today()
+    check_time_day(day)
     check_day_total(user["user_id"], day, data.minutes)
     try:
         row = db.query_one(
@@ -575,6 +587,47 @@ def log_time(task_id: int, data: TimeIn, response: Response = None, user=Depends
     audit.record(user, "time.create", "time", row["id"],
                  after={"task_id": task_id, "title": task["title"], "minutes": data.minutes, "day": day,
                         "external_ref": data.external_ref})
+    return row
+
+
+def check_time_day(day) -> None:
+    """Dia de um apontamento: nada no futuro, até TIME_MAX_PAST_DAYS atrás."""
+    today = app_today()
+    if day > today:
+        raise HTTPException(status_code=400, detail="não dá para apontar tempo no futuro")
+    if (today - day).days > TIME_MAX_PAST_DAYS:
+        raise HTTPException(status_code=400, detail=f"apontamento até {TIME_MAX_PAST_DAYS} dias atrás")
+
+
+@items.patch("/time/{entry_id}")
+def update_time(entry_id: int, data: TimeUpdate, user=Depends(active_user_csrf)):
+    """Corrige duração, dia ou observação (as mesmas regras do lançamento)."""
+    uid = user["user_id"]
+    before = db.query_one(
+        """SELECT t.id, t.task_id, t.minutes, t.day, t.note, w.title FROM time_entries t
+             JOIN worklog_tasks w ON w.id = t.task_id
+            WHERE t.id = %s AND t.user_id = %s""",
+        (entry_id, uid),
+    )
+    if not before:
+        raise HTTPException(status_code=404, detail="registro de tempo não encontrado (pode ter sido excluído); atualize a tela")
+    sent = data.model_fields_set
+    minutes = data.minutes if data.minutes is not None else before["minutes"]
+    day = data.day if data.day is not None else before["day"]
+    note = ((data.note or "").strip() or None) if "note" in sent else before["note"]
+    if day != before["day"]:
+        check_time_day(day)
+    # O limite de 24 h por dia, sem contar este apontamento duas vezes.
+    extra = minutes - (before["minutes"] if day == before["day"] else 0)
+    if extra > 0:
+        check_day_total(uid, day, extra)
+    row = db.query_one(
+        f"UPDATE time_entries SET minutes = %s, day = %s, note = %s WHERE id = %s RETURNING {TIME_COLS}",
+        (minutes, day, note, entry_id),
+    )
+    after = {**before, "minutes": minutes, "day": day, "note": note}
+    if after != before:
+        audit.record(user, "time.update", "time", entry_id, before=before, after=after)
     return row
 
 

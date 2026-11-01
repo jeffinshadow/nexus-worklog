@@ -2,7 +2,7 @@
 // tela. É o único lugar das rotinas (marcar até 7 dias atrás, editar, achado).
 import { api } from "./api.js";
 import { h, icon, clear, weekdayDate, localDay, addDays, shortDate } from "./dom.js";
-import { errorToast, modal, toast, busy, refocusBy, actionMenu, calmMotion } from "./ui.js";
+import { errorToast, modal, toast, busy, refocusBy, actionMenu, calmMotion, undoLatest } from "./ui.js";
 import { reminderState, refreshReminders } from "./lembretes.js";
 import { photoGrid } from "./fotos.js";
 import { openRecurring, pauseRecurring, openWorklog, finishTask, askResolution, taskChips, isOverdue, scheduleLabel, dayLabel, moreButton, desk, lateBadge, withMenu } from "./board.js";
@@ -68,6 +68,8 @@ export async function mount(root, ctx, opts = {}) {
   next.disabled = b.day >= today;
   const recPanel = h("section", { class: "panel t-rec" },
     h("div", { class: "panel-head" }, h("h2", { text: "Rotinas" }), h("span", { class: "count", text: `${recDone}/${due.length}${extraTxt}` }),
+      b.recurring.length > 1 ? h("button", { type: "button", class: "icon", title: "Mudar a ordem das rotinas", "aria-label": "Mudar a ordem das rotinas",
+        onClick: () => reorderRoutines(ctx.me.id, refresh) }, icon("grip")) : null,
       h("button", { type: "button", class: "icon accent", title: "Nova rotina", "aria-label": "Nova rotina", onClick: () => openRecurring(null, refresh) }, icon("add"))),
     h("div", { class: "day-nav" }, prev, h("span", { class: "day-nav-label", text: dayLabel(b.day, today) }), next));
   if (due.length) {
@@ -315,4 +317,87 @@ async function showHandoff() {
         catch { area.select(); toast("Selecione e copie (Ctrl+C).", { error: true }); }
       } }, icon("copy"), "Copiar")));
   area.focus();
+}
+
+// Ordem das rotinas (a sequência do dia: abrir a loja → ar → câmeras). Arrastar
+// pela alça no computador; setas Subir/Descer em qualquer aparelho e no teclado.
+// Salva de uma vez, com Desfazer.
+async function reorderRoutines(uid, onDone) {
+  let list;
+  try { list = (await api.get("/board")).recurring.slice().sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || a.id - b.id); }
+  catch (e) { errorToast(e, "Não foi possível abrir as rotinas."); return; }
+  const ol = h("ol", { class: "reorder-list" });
+  const live = h("p", { class: "sr-only", "aria-live": "polite" });
+  const paint = (focus) => {
+    clear(ol);
+    list.forEach((r, i) => {
+      const up = h("button", { type: "button", class: "icon", title: "Subir", "aria-label": "Subir " + r.label, onClick: () => move(i, -1, "up") }, icon("chevron"));
+      const down = h("button", { type: "button", class: "icon", title: "Descer", "aria-label": "Descer " + r.label, onClick: () => move(i, 1, "down") }, icon("chevron"));
+      up.classList.add("up");
+      up.disabled = i === 0;
+      down.disabled = i === list.length - 1;
+      const grip = h("span", { class: "grip only-desk", title: "Arrastar para mudar a ordem", "aria-hidden": "true" }, icon("grip"));
+      const li = h("li", { class: "reorder-row", "data-id": String(r.id) }, grip,
+        h("span", { class: "reorder-n mono", text: String(i + 1) }), h("span", { class: "reorder-label", text: r.label }), up, down);
+      grip.addEventListener("pointerdown", () => { li.draggable = true; });
+      li.addEventListener("dragend", () => { li.draggable = false; });
+      ol.append(li);
+      if (focus && focus.id === r.id) (focus.dir === "up" && !up.disabled ? up : !down.disabled ? down : up).focus();
+    });
+  };
+  const move = (i, d, dir) => {
+    const j = i + d;
+    if (j < 0 || j >= list.length) return;
+    [list[i], list[j]] = [list[j], list[i]];
+    paint({ id: list[j].id, dir });
+    live.textContent = `${list[j].label}: posição ${j + 1} de ${list.length}`;
+  };
+  // Arrastar (computador): a linha vai para onde o ponteiro está; ao soltar, a lista segue o que se vê.
+  let dragging = null;
+  ol.addEventListener("dragstart", (ev) => {
+    dragging = ev.target.closest && ev.target.closest(".reorder-row");
+    if (!dragging) return;
+    dragging.classList.add("dragging");
+    ev.dataTransfer.effectAllowed = "move";
+    ev.dataTransfer.setData("text/plain", dragging.dataset.id);
+  });
+  ol.addEventListener("dragover", (ev) => {
+    if (!dragging) return;
+    ev.preventDefault();
+    const rows = [...ol.querySelectorAll(".reorder-row")].filter((el) => el !== dragging);
+    const after = rows.find((el) => { const r = el.getBoundingClientRect(); return ev.clientY < r.top + r.height / 2; });
+    if (after) ol.insertBefore(dragging, after); else ol.append(dragging);
+  });
+  const endDrag = (ev) => {
+    if (!dragging) return;
+    if (ev) ev.preventDefault();
+    const order = [...ol.querySelectorAll(".reorder-row")].map((el) => Number(el.dataset.id));
+    list = order.map((id) => list.find((r) => r.id === id));
+    dragging = null;
+    paint();
+  };
+  ol.addEventListener("drop", endDrag);
+  ol.addEventListener("dragend", () => endDrag());
+  const form = h("form", {},
+    h("h2", { text: "Ordem das rotinas" }),
+    h("p", { class: "dialog-note", text: "A ordem em que elas aparecem no Hoje. Use as setas, ou arraste pela alça no computador." }),
+    ol, live,
+    h("div", { class: "dialog-actions" },
+      h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
+      h("button", { type: "submit", class: "btn btn-primary", text: "Salvar a ordem" })));
+  form.addEventListener("submit", busy(async (ev) => {
+    ev.preventDefault();
+    try {
+      await api.post("/recurring/order", { ids: list.map((r) => r.id) });
+      dlg.close();
+      refreshReminders();
+      await onDone();
+      toast("Ordem das rotinas salva.", { action: "Desfazer", onAction: () => undoLatest("recurring_order", uid, onDone) });
+    } catch (e) { errorToast(e, "Não foi possível salvar a ordem."); }
+  }));
+  const dlg = modal(form);
+  dlg.classList.add("reorder-dialog");
+  paint();
+  const first = ol.querySelector("button:not([disabled])");
+  if (first) first.focus();
 }

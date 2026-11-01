@@ -189,7 +189,7 @@ export function withMenu(el, t, onDone) {
       t.status === "done" ? null : running
         ? ["Parar o cronômetro e apontar", "stop", () => stopTimer(onDone)]
         : ["Iniciar o cronômetro", "play", () => startTimer(t, onDone)],
-      t.status === "done" ? null : ["Concluir", "check", () => finishTask(t, onDone)],
+      t.status === "done" ? ["Reabrir", "undo", () => reopenTask(t, onDone)] : ["Concluir", "check", () => finishTask(t, onDone)],
       canBlock(t) ? ["Marcar como aguardando…", "clock", () => blockTask(t, onDone)] : null,
       ["Duplicar tarefa", "add", () => duplicateTask(t, onDone)],
       ["Excluir", "trash", () => deleteTask(t, onDone)],
@@ -340,7 +340,9 @@ export function openWorklog(onDone, opts = {}) {
       .catch(() => {});
   };
   // Já vem com o projeto padrão (Configurações > Conta), ou o da tela de onde veio; "Sem projeto" tira.
-  const projReady = fillProjectSelect(projSel, opts.project_id || (session.me && session.me.default_project_id) || null,
+  // project_id null (quadro filtrado em "Sem projeto"): sem projeto, mesmo com um padrão.
+  const startProject = opts.project_id !== undefined ? opts.project_id : (session.me && session.me.default_project_id) || null;
+  const projReady = fillProjectSelect(projSel, startProject,
     () => { extras.sync(); syncObjectives(); })
     .then(() => { extras.sync(); return syncObjectives(opts.objective_id || null); }).catch(() => {});
   const ticket = document.getElementById("wl-ticket");
@@ -658,6 +660,18 @@ export async function finishTask(t, onDone, { fromEdit = false } = {}) {
   }
 }
 
+// "Reabrir" uma concluída (concluiu por engano, ou o problema voltou): volta para
+// "a fazer". Como uma edição da situação: o Desfazer devolve a conclusão como era.
+export async function reopenTask(t, onDone) {
+  try {
+    await api.patch(`/worklog/${t.id}`, { status: "todo" });
+    Promise.resolve(onDone && onDone());
+    toast(`Reaberta: ${t.title}`, { action: "Desfazer", onAction: () => undoLatest("worklog", t.id, onDone) });
+  } catch (e) {
+    errorToast(e, "Não foi possível reabrir.");
+  }
+}
+
 // ---------------------------------------------------------------- quadro --
 
 // root: onde montar. opts.readOnly (visão do admin), opts.boardUrl.
@@ -710,8 +724,14 @@ export async function mount(root, opts = {}) {
   if (opts.setActions && !readOnly) {
     opts.setActions(
       filter.options.length > 2 ? h("div", { class: "filter-wrap" }, filter, clearFilter) : null,
-      h("button", { type: "button", class: "btn btn-primary", "data-fab": "", onClick: () => openWorklog(refresh) }, icon("add"), "Tarefa")
+      h("button", { type: "button", class: "btn btn-primary", "data-fab": "", onClick: () => openWorklog(refresh, newTaskOpts()) }, icon("add"), "Tarefa")
     );
+  }
+
+  // Quadro filtrado: a tarefa nova já vem com o projeto do filtro (como na tela do projeto).
+  function newTaskOpts() {
+    if (project === "") return {};
+    return { project_id: project === "0" ? null : Number(project) };
   }
 
   function render(data) {

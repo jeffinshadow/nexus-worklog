@@ -14,7 +14,7 @@ from .. import audit, db
 from . import photos
 from ..labels import dur
 from ..services import RETRO_DAYS, app_today, app_tz, board_day_range, set_extra_projects
-from .recurring import refresh_after_from
+from .recurring import active_order, refresh_after_from, renumber
 from .worklog import check_day_total
 from ..deps import active_user, active_user_csrf
 
@@ -24,8 +24,8 @@ UNDOABLE = {
     "worklog.create", "worklog.assign", "worklog.update", "worklog.finish", "worklog.delete",
     "worklog.assign_update",
     "recurring.create", "recurring.update", "recurring.deactivate", "recurring.toggle", "recurring.replace",
-    "recurring.pause", "recurring.resume",
-    "note.create", "note.delete", "checklist.create", "checklist.update", "checklist.delete",
+    "recurring.pause", "recurring.resume", "recurring.order",
+    "note.create", "note.update", "note.delete", "time.update", "checklist.create", "checklist.update", "checklist.delete",
     "time.create", "time.delete", "project.create", "project.update", "project.delete",
     "renewal.create", "renewal.update", "renewal.renew", "renewal.delete",
     "objective.create", "objective.update", "objective.delete", "objective.order",
@@ -63,6 +63,7 @@ ACTION_LABELS = {
     "recurring.replace": "trocou a agenda da rotina",
     "recurring.pause": "pausou a rotina",
     "recurring.resume": "retomou a rotina",
+    "recurring.order": "mudou a ordem das rotinas",
     "settings.update": "alterou os dias úteis",
     "notifications.update": "alterou os avisos por e-mail",
     "profile.update": "alterou o nome de exibição",
@@ -83,25 +84,30 @@ ACTION_LABELS = {
     "calendar.create": "criou o link do calendário",
     "calendar.revoke": "revogou o link do calendário",
     "note.create": "anotou na tarefa",
+    "note.update": "editou uma anotação da tarefa",
     "note.delete": "excluiu uma anotação da tarefa",
     "checklist.create": "adicionou o item",
     "checklist.update": "editou o item",
     "checklist.delete": "removeu o item",
     "time.create": "apontou tempo em",
+    "time.update": "corrigiu um apontamento de",
     "time.delete": "excluiu um apontamento de",
     "project.create": "criou o projeto",
     "project.update": "editou o projeto",
     "project.delete": "excluiu o projeto",
     "token.create": "criou a chave de API",
     "token.revoke": "revogou a chave de API",
+    "token.renew": "renovou a validade da chave de API",
     "webhook.create": "criou o webhook para",
     "webhook.enable": "religou o webhook para",
+    "webhook.update": "editou o webhook para",
     "webhook.delete": "excluiu o webhook para",
     "user.invite": "criou a conta (convite)",
     "user.reset_password": "redefiniu a senha",
     "user.invite_resend": "reenviou o convite",
     "user.invite_accept": "aceitou o convite e criou a senha",
     "password.forgot": "pediu o link para redefinir a senha",
+    "sessions.logout_others": "saiu dos outros aparelhos",
     "password.reset_link": "redefiniu a senha pelo link do e-mail",
     "branding.update": "alterou os textos da identidade visual",
     "branding.logo": "enviou um novo logo",
@@ -124,6 +130,10 @@ def _label(row) -> str:
         return f"{ACTION_LABELS[row['action']]} “{item}” em “{snap.get('title', '')}”"
     if row["action"] in ("time.create", "time.delete"):
         return f"{ACTION_LABELS[row['action']]} “{snap.get('title', '')}” ({dur(snap.get('minutes'))})"
+    if row["action"] == "time.update" and row["before"] and row["after"]:
+        de, para = row["before"].get("minutes"), row["after"].get("minutes")
+        quanto = f"{dur(de)} → {dur(para)}" if de != para else dur(para)
+        return f"{ACTION_LABELS['time.update']} “{snap.get('title', '')}” ({quanto})"
     if row["action"] == "worklog.delete" and snap.get("canceled_by"):
         return f"{snap['canceled_by']} cancelou a tarefa “{name}”, que tinha atribuído a você"
     if row["action"] == "worklog.assign" and snap.get("by"):
@@ -151,6 +161,9 @@ def _label(row) -> str:
         papeis = ", ".join(LABELS.get(r, r) for r in row["after"].get("roles", [])) or "nenhum"
         return f"alterou as permissões ({papeis})"
     text = ACTION_LABELS.get(row["action"], row["action"])
+    if (row["action"] == "worklog.update" and (row["before"] or {}).get("status") == "done"
+            and (row["after"] or {}).get("status") not in (None, "done")):
+        text = "reabriu a tarefa"
     if row["action"] == "recurring.pause" and (row["after"] or {}).get("pause"):
         fim = str(row["after"]["pause"]["end_d"])  # AAAA-MM-DD
         text = f"pausou até {fim[8:10]}/{fim[5:7]} a rotina"
@@ -566,6 +579,18 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
     elif a == "note.create":
         if not db.execute("DELETE FROM task_notes WHERE id = %s AND user_id = %s", (eid, uid)):
             raise _gone()
+    elif a == "note.update":
+        if not db.execute("UPDATE task_notes SET body = %s WHERE id = %s AND user_id = %s", (before["body"], eid, uid)):
+            raise _gone()
+    elif a == "time.update":
+        if not db.query_one("SELECT 1 FROM time_entries WHERE id = %s AND user_id = %s", (eid, uid)):
+            raise _gone()
+        mesmo_dia = str(before["day"]) == str(after["day"])
+        volta = before["minutes"] - (after["minutes"] if mesmo_dia else 0)
+        if volta > 0:
+            check_day_total(uid, before["day"], volta, status=409)
+        db.execute("UPDATE time_entries SET minutes = %s, day = %s, note = %s WHERE id = %s AND user_id = %s",
+                   (before["minutes"], before["day"], before.get("note"), eid, uid))
     elif a == "note.delete":
         _need_task(uid, before["task_id"])
         _put_note(uid, before["task_id"], {**before, "id": eid})
@@ -611,6 +636,11 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
                               WHERE id = %s AND user_id = %s""",
                           (before["title"], before["description"], before["due_date"], eid, uid)):
             raise HTTPException(status_code=409, detail="o objetivo não existe mais")
+    elif a == "recurring.order":
+        # A ordem anterior volta; rotina criada (ou trocada de agenda) depois fica no fim, na ordem atual.
+        atual = active_order(uid)
+        antes = [i for i in before["ids"] if i in atual]
+        renumber(uid, antes + [i for i in atual if i not in antes])
     elif a == "objective.order":
         # A ordem anterior volta; objetivo criado depois fica no fim, na ordem atual.
         atual = [r["id"] for r in db.query_all(

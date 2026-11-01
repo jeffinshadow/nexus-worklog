@@ -42,14 +42,35 @@ def _download(content: bytes, media: str, name: str) -> Response:
                     headers={"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-store"})
 
 
-def _tasks(uid: int) -> list[dict]:
+def _tasks(uid: int, start: date | None = None, end: date | None = None) -> list[dict]:
+    """Todas as tarefas; com período, as que estiveram em aberto em algum momento
+    dele (criadas até o fim e não concluídas antes do início) ou com tempo apontado
+    nele, e period_minutes = o tempo apontado no período."""
+    period = start is not None and end is not None
     return db.query_all(
         """SELECT w.id, w.title, w.description, w.status, w.priority, w.due_date, w.created_at, w.completed_at,
                   w.ticket, w.after_hours, w.blocked_reason, w.blocked_at, w.follow_up_on, w.resolution, p.name AS project,
                   w.project_id, w.external_ref, w.objective_id,
-                  """ + TASK_COUNTS + """
+                  """ + TASK_COUNTS + """,
+                  (SELECT COALESCE(sum(t.minutes), 0) FROM time_entries t
+                    WHERE t.task_id = w.id AND t.day BETWEEN %(s)s AND %(e)s)::int AS period_minutes
              FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
-            WHERE w.user_id = %s ORDER BY w.created_at""", (uid,))
+            WHERE w.user_id = %(uid)s
+              AND (NOT %(p)s
+                   OR ((w.created_at AT TIME ZONE %(tz)s)::date <= %(e)s
+                       AND (w.completed_at IS NULL OR (w.completed_at AT TIME ZONE %(tz)s)::date >= %(s)s))
+                   OR EXISTS (SELECT 1 FROM time_entries t WHERE t.task_id = w.id AND t.day BETWEEN %(s)s AND %(e)s))
+            ORDER BY w.created_at""",
+        {"uid": uid, "p": period, "s": start, "e": end, "tz": app_tz().key})
+
+
+def _period(start: date | None, end: date | None) -> tuple[date | None, date | None]:
+    """Período opcional das exportações: os dois ou nenhum, até 1 ano."""
+    if start is None and end is None:
+        return None, None
+    if start is None or end is None or end < start or (end - start).days > 366:
+        raise HTTPException(status_code=400, detail="período inválido: informe start e end (até 1 ano)")
+    return start, end
 
 
 def time_csv(uid: int | None, filename: str, viewable_only: bool = False,
@@ -131,21 +152,29 @@ def rotinas_csv(start: Optional[date] = Query(None), end: Optional[date] = Query
 
 
 @router.get("/export/{kind}")
-def export(kind: str, user=Depends(active_user)):
+def export(kind: str, start: Optional[date] = Query(None), end: Optional[date] = Query(None), user=Depends(active_user)):
+    """tarefas.csv e apontamentos.csv aceitam start/end (os dois): só o período."""
     uid = user["user_id"]
     stamp = app_today().isoformat()
+    if kind in ("tarefas.csv", "apontamentos.csv"):
+        start, end = _period(start, end)
+        if start:
+            stamp = f"{start.isoformat()}-a-{end.isoformat()}"
     if kind == "tarefas.csv":
+        horas = lambda m: str(round(m / 60, 2)).replace(".", ",")  # noqa: E731
         rows = [[t["id"], t["title"], t["description"] or "", STATUS_PT.get(t["status"], t["status"]), PRIO_PT.get(t["priority"], ""),
                  t["project"] or "", _local(t["created_at"]), t["due_date"] or "", _local(t["completed_at"]),
                  f"{t['check_done']}/{t['check_total']}" if t["check_total"] else "", t["minutes"],
-                 str(round(t["minutes"] / 60, 2)).replace(".", ","), t["notes_count"],
-                 t["ticket"] or "", "sim" if t["after_hours"] else "", t["blocked_reason"] or "", t["resolution"] or ""] for t in _tasks(uid)]
+                 horas(t["minutes"]), t["notes_count"],
+                 t["ticket"] or "", "sim" if t["after_hours"] else "", t["blocked_reason"] or "", t["resolution"] or ""]
+                + ([t["period_minutes"], horas(t["period_minutes"])] if start else [])
+                for t in _tasks(uid, start, end)]
         return _download(_csv(rows, ["id", "titulo", "descricao", "status", "prioridade", "projeto", "criada_em", "prazo",
                                      "concluida_em", "checklist", "minutos", "horas", "anotacoes", "chamado", "plantao",
-                                     "aguardando", "como_resolveu"]),
+                                     "aguardando", "como_resolveu"] + (["minutos_no_periodo", "horas_no_periodo"] if start else [])),
                          "text/csv; charset=utf-8", f"nexus-tarefas-{stamp}.csv")
     if kind == "apontamentos.csv":
-        return time_csv(uid, f"nexus-apontamentos-{stamp}.csv")
+        return time_csv(uid, f"nexus-apontamentos-{stamp}.csv", start=start, end=end)
     if kind == "tudo.json":
         tasks = _tasks(uid)
         by_id = {t["id"]: t for t in tasks}

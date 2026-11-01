@@ -2,7 +2,7 @@
 
 Cadastrar e religar só pelo app (sessão + CSRF): uma chave de API vazada não
 abre um canal permanente para fora (revogar a chave não desligaria o webhook).
-Testar (ping) também só pelo app. Listar e apagar também por chave. O segredo aparece uma vez, na criação.
+Testar (ping) e editar também só pelo app. Listar e apagar também por chave. O segredo aparece uma vez, na criação.
 """
 from urllib.parse import urlsplit
 
@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from .. import audit, db, webhooks
 from ..deps import active_user, active_user_csrf, web_active_csrf
-from ..schemas import WebhookIn
+from ..schemas import WebhookIn, WebhookUpdate
 from ..security import webhook_test_limiter
 
 router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
@@ -48,6 +48,30 @@ def create_webhook(data: WebhookIn, user=Depends(web_active_csrf)):
     db.execute("UPDATE webhooks SET last_event_id = (SELECT max(id) FROM audit_log) WHERE id = %s",
                (row["id"],))  # nem o próprio cadastro é enviado
     return {**row, "secret": webhooks.secret_for(salt)}  # única vez em que o segredo sai
+
+
+@router.patch("/{hook_id}")
+def update_webhook(hook_id: int, data: WebhookUpdate, user=Depends(web_active_csrf)):
+    """Troca o endereço e/ou os eventos sem recriar: o segredo e a fila seguem.
+    O endereço novo passa pela mesma checagem do cadastro (https público)."""
+    uid = user["user_id"]
+    before = db.query_one("SELECT id, url, events FROM webhooks WHERE id = %s AND user_id = %s", (hook_id, uid))
+    if not before:
+        raise HTTPException(status_code=404, detail="não encontrado")
+    url = data.url if data.url is not None else before["url"]
+    events = data.events if data.events is not None else before["events"]
+    if url != before["url"]:
+        try:
+            webhooks.check_url(url)
+        except webhooks.Refused as e:
+            raise HTTPException(status_code=400, detail=str(e)) from None
+    row = db.query_one(f"UPDATE webhooks SET url = %s, events = %s WHERE id = %s AND user_id = %s RETURNING {COLS}",
+                       (url, events, hook_id, uid))
+    if (url, events) != (before["url"], before["events"]):
+        audit.record(user, "webhook.update", "webhook", hook_id,
+                     before={"name": urlsplit(before["url"]).hostname, "events": before["events"]},
+                     after={"name": urlsplit(url).hostname, "events": events})
+    return row
 
 
 @router.post("/{hook_id}/enable")

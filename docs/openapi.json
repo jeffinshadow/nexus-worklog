@@ -307,6 +307,46 @@
         }
       }
     },
+    "/api/auth/sessions": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Sessions",
+        "description": "Quantos outros aparelhos (navegadores) estão com a conta aberta.",
+        "operationId": "sessions_api_auth_sessions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/logout-others": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Logout Others",
+        "description": "Sai dos outros aparelhos sem trocar a senha (celular perdido, computador\nemprestado). Esta sessão continua; chaves de API e calendário não mudam.",
+        "operationId": "logout_others_api_auth_logout_others_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/auth/me": {
       "get": {
         "tags": [
@@ -444,6 +484,46 @@
         },
         "responses": {
           "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recurring/order": {
+      "post": {
+        "tags": [
+          "recurring"
+        ],
+        "summary": "Order",
+        "description": "Ordem das rotinas no Hoje: as ativas, na ordem nova. Uma que não veio na\nlista (criada em outro aparelho) fica depois, na ordem que tinha. A anterior\nfica no histórico, com desfazer. Rotina nova entra no fim.",
+        "operationId": "order_api_recurring_order_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
@@ -2172,6 +2252,57 @@
         }
       }
     },
+    "/api/tokens/{token_id}/renew": {
+      "post": {
+        "tags": [
+          "tokens"
+        ],
+        "summary": "Renew Token",
+        "description": "Nova validade (a partir de agora) para uma chave vencida ou perto de\nvencer: a IA segue com a mesma chave, sem reconfigurar. Revogada não volta.",
+        "operationId": "renew_token_api_tokens__token_id__renew_post",
+        "parameters": [
+          {
+            "name": "token_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Token Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenRenewIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/mcp": {
       "get": {
         "tags": [
@@ -3151,6 +3282,7 @@
           "export"
         ],
         "summary": "Export",
+        "description": "tarefas.csv e apontamentos.csv aceitam start/end (os dois): só o período.",
         "operationId": "export_api_export__kind__get",
         "parameters": [
           {
@@ -3160,6 +3292,40 @@
             "schema": {
               "type": "string",
               "title": "Kind"
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
             }
           }
         ],
@@ -4686,7 +4852,7 @@
           "assign"
         ],
         "summary": "Update Sent",
-        "description": "Corrige título, prazo ou prioridade de uma tarefa atribuída que ainda não\ncomeçou. Só o que de fato muda; campo que quem recebeu já mudou não é\nregravado por cima (409, nada muda).",
+        "description": "Corrige título, descrição, prazo ou prioridade de uma tarefa atribuída que ainda não\ncomeçou. Só o que de fato muda; campo que quem recebeu já mudou não é\nregravado por cima (409, nada muda).",
         "operationId": "update_sent_api_assign__task_id__patch",
         "parameters": [
           {
@@ -5821,6 +5987,95 @@
         }
       }
     },
+    "/api/webhooks/{hook_id}": {
+      "patch": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Update Webhook",
+        "description": "Troca o endereço e/ou os eventos sem recriar: o segredo e a fila seguem.\nO endereço novo passa pela mesma checagem do cadastro (https público).",
+        "operationId": "update_webhook_api_webhooks__hook_id__patch",
+        "parameters": [
+          {
+            "name": "hook_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Hook Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Delete Webhook",
+        "operationId": "delete_webhook_api_webhooks__hook_id__delete",
+        "parameters": [
+          {
+            "name": "hook_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Hook Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/webhooks/{hook_id}/enable": {
       "post": {
         "tags": [
@@ -5870,46 +6125,6 @@
         "summary": "Test Webhook",
         "description": "Envia agora um evento de teste assinado (X-Nexus-Event: ping) e devolve\n{ok, status, ms, error}. Só pelo app; não conta como falha nem desliga.\nVale também para um desligado (testar antes de religar).",
         "operationId": "test_webhook_api_webhooks__hook_id__test_post",
-        "parameters": [
-          {
-            "name": "hook_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "title": "Hook Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/webhooks/{hook_id}": {
-      "delete": {
-        "tags": [
-          "webhooks"
-        ],
-        "summary": "Delete Webhook",
-        "operationId": "delete_webhook_api_webhooks__hook_id__delete",
         "parameters": [
           {
             "name": "hook_id",
@@ -6102,6 +6317,55 @@
       }
     },
     "/api/notes/{note_id}": {
+      "patch": {
+        "tags": [
+          "worklog"
+        ],
+        "summary": "Update Note",
+        "description": "Corrige o texto; a hora da anotação continua a original.",
+        "operationId": "update_note_api_notes__note_id__patch",
+        "parameters": [
+          {
+            "name": "note_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Note Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NoteUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
       "delete": {
         "tags": [
           "worklog"
@@ -6230,6 +6494,55 @@
       }
     },
     "/api/time/{entry_id}": {
+      "patch": {
+        "tags": [
+          "worklog"
+        ],
+        "summary": "Update Time",
+        "description": "Corrige duração, dia ou observação (as mesmas regras do lançamento).",
+        "operationId": "update_time_api_time__entry_id__patch",
+        "parameters": [
+          {
+            "name": "entry_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Entry Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TimeUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
       "delete": {
         "tags": [
           "worklog"
@@ -6355,6 +6668,18 @@
             ],
             "title": "Title"
           },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
           "due_date": {
             "anyOf": [
               {
@@ -6383,7 +6708,7 @@
         },
         "type": "object",
         "title": "AssignEditIn",
-        "description": "Quem atribuiu ajusta enquanto a tarefa está \"a fazer\". Só o que vier muda\n(due_date: null tira o prazo)."
+        "description": "Quem atribuiu ajusta enquanto a tarefa está \"a fazer\". Só o que vier muda\n(due_date ou description: null tira)."
       },
       "AssignIn": {
         "properties": {
@@ -6940,6 +7265,22 @@
           "body"
         ],
         "title": "NoteIn"
+      },
+      "NoteUpdate": {
+        "properties": {
+          "body": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Body"
+          }
+        },
+        "type": "object",
+        "required": [
+          "body"
+        ],
+        "title": "NoteUpdate",
+        "description": "Corrigir o texto de uma anotação (a hora original fica)."
       },
       "ObjectiveIn": {
         "properties": {
@@ -8112,6 +8453,50 @@
         ],
         "title": "TimeIn"
       },
+      "TimeUpdate": {
+        "properties": {
+          "minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1440.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minutes"
+          },
+          "day": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "title": "TimeUpdate",
+        "description": "Corrigir um apontamento. Só o que vier muda (note: null ou vazio tira a observação)."
+      },
       "TimerIn": {
         "properties": {
           "task_id": {
@@ -8241,6 +8626,26 @@
         ],
         "title": "TokenIn"
       },
+      "TokenRenewIn": {
+        "properties": {
+          "expires_in_days": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 365.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires In Days",
+            "default": 90
+          }
+        },
+        "type": "object",
+        "title": "TokenRenewIn"
+      },
       "TourIn": {
         "properties": {
           "done": {
@@ -8320,6 +8725,42 @@
           "url"
         ],
         "title": "WebhookIn"
+      },
+      "WebhookUpdate": {
+        "properties": {
+          "url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500,
+                "minLength": 9
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "events": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 30,
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Events"
+          }
+        },
+        "type": "object",
+        "title": "WebhookUpdate",
+        "description": "Editar sem recriar (o segredo continua): só o que vier muda."
       },
       "WeekDoneIn": {
         "properties": {

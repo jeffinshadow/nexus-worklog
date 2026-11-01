@@ -2,7 +2,8 @@
 // rotinas e projetos. Rota #/busca?q=… ; o termo aparece destacado.
 import { api } from "./api.js";
 import { h, icon, clear, localDay } from "./dom.js";
-import { taskChips } from "./board.js";
+import { errorToast, toast } from "./ui.js";
+import { openRecurring, taskChips } from "./board.js";
 import { corProjeto, iconeProjeto } from "./projects.js";
 import { openTask } from "./task.js";
 import { card, enabled } from "./assistant.js";
@@ -87,7 +88,9 @@ export async function mount(root, ctx) {
       side.append(h("div", { class: "panel-head" }, h("h2", { text: "Rotinas" })));
       for (const x of r.recurring)
         side.append(h("div", { class: "list-row" }, h("div", { class: "t" }, ...highlight(x.label, q),
-          x.active ? null : h("small", { text: "removida" }))));
+          x.active ? null : h("small", { text: "removida" })),
+          x.active ? h("button", { type: "button", class: "btn btn-ghost btn-sm", text: "Editar rotina", "aria-label": "Editar a rotina " + x.label,
+            onClick: () => editRoutine(x.id, refresh) }) : null));
     }
     if (r.projects.length) {
       side.append(h("div", { class: "panel-head" }, h("h2", { text: "Projetos" })));
@@ -96,10 +99,19 @@ export async function mount(root, ctx) {
         dot.style.color = corProjeto(p.color);
         side.append(h("div", { class: "list-row" }, dot, h("div", { class: "t" }, ...highlight(p.name, q),
           p.archived ? h("small", { text: "arquivado" }) : null),
-          h("a", { class: "btn btn-ghost btn-sm", href: "#/tarefas", text: "Ver no quadro",
-            onClick: () => sessionStorage.setItem("nexus.board.project", String(p.id)) })));
+          h("a", { class: "btn btn-ghost btn-sm", href: "#/projetos?id=" + p.id, text: "Abrir projeto", "aria-label": "Abrir o projeto " + p.name })));
       }
     }
     root.append(side);
   }
+}
+
+// Rotina achada na busca: abre o mesmo editor do Hoje, com a agenda atual dela.
+async function editRoutine(id, onDone) {
+  try {
+    const b = await api.get("/board");
+    const item = b.recurring.find((x) => x.id === id);
+    if (!item) { toast("Essa rotina não está mais ativa.", { error: true }); onDone(); return; }
+    openRecurring(item, onDone);
+  } catch (e) { errorToast(e, "Não foi possível abrir a rotina."); }
 }

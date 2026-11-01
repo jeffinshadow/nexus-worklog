@@ -57,8 +57,9 @@ class AssignIn(BaseModel):
 
 class AssignEditIn(BaseModel):
     """Quem atribuiu ajusta enquanto a tarefa está "a fazer". Só o que vier muda
-    (due_date: null tira o prazo)."""
+    (due_date ou description: null tira)."""
     title: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    description: Optional[str] = Field(default=None, max_length=300)  # null ou vazio tira
     due_date: Optional[date] = None
     priority: Optional[int] = Field(default=None, ge=1, le=3)
 
@@ -68,6 +69,8 @@ class AssignEditIn(BaseModel):
             self.title = self.title.strip()
             if not self.title:
                 raise ValueError("título em branco")
+        if self.description is not None:
+            self.description = self.description.strip() or None
         return self
 
 
@@ -215,6 +218,18 @@ class TokenIn(BaseModel):
     expires_in_days: Optional[int] = Field(default=90, ge=1, le=365)
 
 
+class TokenRenewIn(BaseModel):
+    # Nova validade, contada de agora; None = sem validade.
+    expires_in_days: Optional[int] = Field(default=90, ge=1, le=365)
+
+
+def _events(events: list[str]) -> list[str]:
+    evs = [e.strip() for e in events]
+    if any(not re.fullmatch(r"\*|[a-z_]{1,30}\.(\*|[a-z_]{1,30})", e) for e in evs):
+        raise ValueError('eventos: "*", "entidade.*" ou "entidade.acao" (ex.: worklog.finish)')
+    return ["*"] if "*" in evs else sorted(set(evs))
+
+
 class WebhookIn(BaseModel):
     url: str = Field(min_length=9, max_length=500)  # https://...
     # "*" (tudo), a ação exata ("worklog.finish") ou o grupo ("worklog.*").
@@ -223,10 +238,21 @@ class WebhookIn(BaseModel):
     @model_validator(mode="after")
     def _norm(self):
         self.url = self.url.strip()
-        evs = [e.strip() for e in self.events]
-        if any(not re.fullmatch(r"\*|[a-z_]{1,30}\.(\*|[a-z_]{1,30})", e) for e in evs):
-            raise ValueError('eventos: "*", "entidade.*" ou "entidade.acao" (ex.: worklog.finish)')
-        self.events = ["*"] if "*" in evs else sorted(set(evs))
+        self.events = _events(self.events)
+        return self
+
+
+class WebhookUpdate(BaseModel):
+    """Editar sem recriar (o segredo continua): só o que vier muda."""
+    url: Optional[str] = Field(default=None, min_length=9, max_length=500)
+    events: Optional[list[str]] = Field(default=None, min_length=1, max_length=30)
+
+    @model_validator(mode="after")
+    def _norm(self):
+        if self.url is not None:
+            self.url = self.url.strip()
+        if self.events is not None:
+            self.events = _events(self.events)
         return self
 
 
@@ -522,6 +548,18 @@ class NoteIn(BaseModel):
         return self
 
 
+class NoteUpdate(BaseModel):
+    """Corrigir o texto de uma anotação (a hora original fica)."""
+    body: str = Field(min_length=1, max_length=2000)
+
+    @model_validator(mode="after")
+    def _norm(self):
+        self.body = self.body.strip()
+        if not self.body:
+            raise ValueError("anotação em branco")
+        return self
+
+
 class ChecklistIn(BaseModel):
     label: str = Field(min_length=1, max_length=200)
 
@@ -541,6 +579,13 @@ class TimeIn(BaseModel):
     def _norm(self):
         self.external_ref = _ref(self.external_ref)
         return self
+
+
+class TimeUpdate(BaseModel):
+    """Corrigir um apontamento. Só o que vier muda (note: null ou vazio tira a observação)."""
+    minutes: Optional[int] = Field(default=None, ge=1, le=1440)
+    day: Optional[date] = None
+    note: Optional[str] = Field(default=None, max_length=200)
 
 
 # Avisos por e-mail: os padrões daqui valem também quando o usuário ainda não
