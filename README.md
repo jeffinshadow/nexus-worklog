@@ -76,7 +76,7 @@ exclui a conta de vez.
 - **Meu mês** — o mês num olhar, com um seletor só (‹ mês ›, o corrente por
   padrão): uma frase ("Em outubro você fez 50 das 81 rotinas previstas (62%),
   concluiu 20 tarefas e apontou 31h43"), três números e o mês anterior numa
-  linha neutra; depois as rotinas que mais ficaram para trás (o calendário dia
+  linha neutra; depois as rotinas em dias feitos de previstos (o calendário dia
   a dia recolhido), para onde foi o tempo e o que foi entregue (as 5 com mais
   tempo, com o "como resolveu", e "ver todas"). Os números são os mesmos do PDF.
   **Baixar o PDF do mês** é a ação principal; em "Outro período ou formato"
@@ -148,7 +148,7 @@ Capturas de uma conta de demonstração, com dados fictícios.
 *Detalhe da tarefa — checklist, fotos (câmera, print colado ou arrastado), apontamentos de tempo e anotações num lugar só; o botão no topo expande para ler com calma. No menu da tarefa, “Duplicar tarefa” cria outra igual (título, descrição, projetos, objetivo, prioridade e checklist desmarcado), sem tempo, fotos, anotações nem datas.*
 
 ![Meu mês: a frase do mês, três números, rotinas para trás, tempo por projeto e entregas](docs/screenshots/04-retrospectiva.webp)
-*Meu mês — o mês numa frase e três números, com o mês anterior ao lado; as rotinas que mais ficaram para trás, para onde foi o tempo, o que foi entregue e o PDF do mês num botão.*
+*Meu mês — o mês numa frase e três números, com o mês anterior ao lado; as rotinas em dias feitos de previstos, para onde foi o tempo, o que foi entregue e o PDF do mês num botão.*
 
 ![Nova tarefa preenchida a partir de um modelo](docs/screenshots/05-modelo.webp)
 *Modelos — escolhe o modelo no “+ Tarefa” e o checklist vem junto.*

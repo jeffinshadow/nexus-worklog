@@ -230,7 +230,9 @@ def _lede(data: dict) -> str:
     s = data["summary"]
     by_project = bool(data.get("project"))
     frases = []
-    if s["active_days"]:
+    if s["active_days"] and s["period_days"] == 1:
+        frases.append("O dia teve atividade registrada.")
+    elif s["active_days"]:
         frases.append(f"Em {_plural(s['period_days'], 'dia', 'dias')}, "
                       f"{s['active_days'] if s['active_days'] != s['period_days'] else 'todos'} "
                       f"{'teve' if s['active_days'] == 1 else 'tiveram'} atividade registrada.")
@@ -447,8 +449,8 @@ def _chart(pdf: _Report, data: dict) -> None:
 
 
 def _matrix(pdf: _Report, data: dict) -> bool:
-    """Rotinas × dias: ● feita, ○ perdida (vermelho), ● claro = extra, · fora da
-    agenda. Só para períodos de até 62 dias (depois, a lista com barras)."""
+    """Rotinas × dias: ● feita, ○ perdida (anel neutro: fato, não nota), ● claro
+    = extra, · fora da agenda. Só para períodos de até 62 dias (depois, a lista com barras)."""
     stats = [r for r in data["recurring_stats"] if r["due"] or r["extra"]]
     series = data["series"]
     n = len(series)
@@ -460,7 +462,7 @@ def _matrix(pdf: _Report, data: dict) -> bool:
     d = min(step * 0.62, 2.8)
     y = _section(pdf, "Rotinas", need=14 + 6 * min(len(stats), 6), legend=[
         ("feita", lambda x, yy: pdf.dot(x, yy, 2.2, ACCENT)),
-        ("perdida", lambda x, yy: pdf.dot(x + 0.15, yy + 0.15, 1.9, None, outline=BAD, lw=0.35)),
+        ("perdida", lambda x, yy: pdf.dot(x + 0.15, yy + 0.15, 1.9, None, outline=DIM, lw=0.35)),
         ("extra", lambda x, yy: pdf.dot(x, yy, 2.2, ACCENT_MID)),
         ("fora da agenda", lambda x, yy: pdf.dot(x + 0.75, yy + 0.75, 0.7, FAINT)),
     ])
@@ -492,13 +494,13 @@ def _matrix(pdf: _Report, data: dict) -> bool:
             elif mk == "E":
                 pdf.dot(cx, cy, d, ACCENT_MID)
             elif mk == "M":
-                pdf.dot(cx + 0.18, cy + 0.18, d - 0.36, None, outline=BAD, lw=0.35)
+                pdf.dot(cx + 0.18, cy + 0.18, d - 0.36, None, outline=DIM, lw=0.35)
             elif mk == "P":
                 pdf.dot(cx + 0.18, cy + 0.18, d - 0.36, None, outline=FAINT, lw=0.3)
             elif mk == "O":
                 pdf.dot(cx + d / 2 - 0.35, cy + d / 2 - 0.35, 0.7, FAINT)
         pct = round(100 * r["done"] / r["due"]) if r["due"] else None
-        pdf.font("labelb", 7.4, INK if pct is None or pct >= 60 else BAD)
+        pdf.font("labelb", 7.4, INK)  # sem cor por limite: o PDF não dá nota
         pdf.text_at(pdf.w - M - right_w, y, right_w, row_h,
                     (f"{pct}%" if pct is not None else "extra") + "", "R")
         pdf.font("label", 6, DIM)
@@ -527,8 +529,8 @@ def _recurring_list(pdf: _Report, data: dict) -> None:
         bx, bw = M + 74, pdf.cw - 74 - 30
         pdf.box(bx, y + 2.4, bw, 1.2, HAIR, r=0.6)
         if pct:
-            pdf.box(bx, y + 2.4, bw * min(pct, 100) / 100, 1.2, ACCENT if pct >= 60 else BAD, r=0.6)
-        pdf.font("labelb", 7.4, INK if pct is None or pct >= 60 else BAD)
+            pdf.box(bx, y + 2.4, bw * min(pct, 100) / 100, 1.2, ACCENT, r=0.6)
+        pdf.font("labelb", 7.4, INK)
         pdf.text_at(pdf.w - M - 28, y + 0.6, 28, 4.2, f"{r['done']}/{r['due']}" + (f"  {pct}%" if pct is not None else ""), "R")
         y += 9
     pdf.set_y(y + 8)
@@ -750,8 +752,8 @@ def _tokens(pdf: _Report, items: list, x0: float, w: float) -> None:
             pdf.dot(x, y + 1.2, 2, ACCENT)
             color = INK2
         else:
-            pdf.dot(x + 0.15, y + 1.35, 1.7, None, outline=BAD, lw=0.3)
-            color = BAD
+            pdf.dot(x + 0.15, y + 1.35, 1.7, None, outline=DIM, lw=0.3)
+            color = DIM
         pdf.font("sans", 7.6, color)
         pdf.text_at(x + 3.3, y, tw + 1, 4.4, pdf.fit(label, tw + 0.5))
         x += width

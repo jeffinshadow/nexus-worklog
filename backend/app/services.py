@@ -377,7 +377,7 @@ def get_dashboard(user_id: int, month: date | None = None) -> dict:
     return out
 
 
-OVERVIEW_BEHIND = 5        # rotinas "que mais ficaram para trás"
+OVERVIEW_BEHIND = 5        # rotinas com dias sem marcar listadas
 OVERVIEW_DELIVERIES = 300  # entregas listadas (do maior tempo ao menor)
 
 
@@ -390,7 +390,7 @@ def _totals(r: dict) -> dict:
 def month_overview(user_id: int, month: date, first_month: date | None = None) -> dict:
     """O resumo de Meu mês: os números do mês (os MESMOS do PDF do mês, porque
     vêm de get_report_range), os do mês anterior inteiro (para comparar, se a
-    pessoa já registrava), as rotinas que mais ficaram para trás, o tempo por
+    pessoa já registrava), as rotinas com dias sem marcar, o tempo por
     projeto e as entregas com tempo e "como resolveu"."""
     today = app_today()
     end = min(_month_end(month), today)
@@ -408,6 +408,7 @@ def month_overview(user_id: int, month: date, first_month: date | None = None) -
         "month": {**_totals(cur), "now": end == today},
         "previous": {**_totals(old), "month": prev.strftime("%Y-%m")} if old else None,
         "routines": len(stats),
+        "routines_full": sum(1 for r in stats if r["done"] >= r["due"]),  # feitas em todos os dias previstos
         "behind": [{"label": r["label"], "due": r["due"], "done": r["done"]} for r in behind[:OVERVIEW_BEHIND]],
         "projects": [{"name": p["name"], "color": p["color"], "minutes": p["minutes"]}
                      for p in cur["projects"] if p["minutes"]],
