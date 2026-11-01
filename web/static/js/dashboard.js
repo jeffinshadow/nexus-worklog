@@ -307,12 +307,12 @@ function backlogHealth(b) {
         stackedBar([
           { value: b.todo, color: "var(--surface-container-high)", label: "A fazer" },
           { value: b.in_progress, color: "var(--primary)", label: "Em andamento" },
-          { value: b.blocked, color: "var(--error)", label: "Bloqueada" },
+          { value: b.blocked, color: "var(--error)", label: "Aguardando" },
         ], open),
         h("div", { class: "bar-legend" },
           legendItem("A fazer", b.todo, "var(--surface-container-high)"),
           legendItem("Em andamento", b.in_progress, "var(--primary)"),
-          legendItem("Bloqueada", b.blocked, "var(--error)")));
+          legendItem("Aguardando", b.blocked, "var(--error)")));
 
   const ag = b.aging || { new: 0, mid: 0, old: 0 };
   const agingBody = (ag.new + ag.mid + ag.old) === 0

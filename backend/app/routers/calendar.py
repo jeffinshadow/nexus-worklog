@@ -136,13 +136,13 @@ def build_ics(uid: int, include_recurring: bool, cal_name: str) -> str:
             extra.append("PRIORITY:1")
         event(f"task-{t['id']}", t["due_date"], summary, desc, extra)
 
-    # Impedimento com dia combinado para cobrar ("o fornecedor retorna na quinta").
+    # Tarefa aguardando com dia combinado para cobrar ("o fornecedor retorna na quinta").
     for t in db.query_all(
         """SELECT id, title, blocked_reason, follow_up_on FROM worklog_tasks
             WHERE user_id = %s AND status = 'blocked' AND follow_up_on IS NOT NULL""", (uid,)):
         # Sem o motivo (fornecedor, cliente): o feed vai para calendários de terceiros.
         event(f"followup-{t['id']}", t["follow_up_on"], f"Cobrar: {t['title']}",
-              "Tarefa bloqueada com dia combinado para cobrar.",
+              "Tarefa aguardando, com dia combinado para cobrar.",
               [f"URL:{config.APP_URL}/#/tarefas?id={t['id']}"])
 
     # Vencimentos: no dia de vencer e no dia de começar a avisar.

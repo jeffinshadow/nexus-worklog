@@ -269,7 +269,7 @@ function showHelp() {
         ["!alta", "prioridade alta", true],
         ["!plantão", "fora do horário", true],
         ["^amanhã", "prazo: ^hoje, ^sex, ^25/10…", true],
-        ["!bloq motivo", "bloqueada, aguardando o motivo (sempre por último)", true],
+        ["!aguarda motivo", "fica aguardando o motivo (sempre por último)", true],
         ["— 45min", "já conclui, com o tempo apontado", true],
       ]),
       h("p", { class: "help-example" }, "Ex.: ", h("code", { text: "Troca do switch @Matriz #4821 — 45min" }))) : null,

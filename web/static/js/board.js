@@ -19,7 +19,7 @@ const BOARD_DONE_LIMIT = 200; // o servidor manda só as 200 concluídas mais re
 export const STATUS_LABELS = {
   todo: "a fazer",
   in_progress: "em andamento",
-  blocked: "bloqueada",
+  blocked: "aguardando",
   done: "concluída",
 };
 
@@ -33,12 +33,12 @@ export function dayLabel(iso, today) {
 
 // Chips de uma tarefa (compartilhado com a tela Hoje): status,
 // prioridade, prazo, projeto e os contadores de checklist/tempo/anotações.
-// "bloqueada · 3 d": há quanto tempo o impedimento existe.
-// Dias de calendário no fuso da app (bloqueada ontem às 18h = 1 d hoje), como no servidor.
+// "aguardando há 3 d": há quanto tempo a espera existe.
+// Dias de calendário no fuso da app (marcada ontem às 18h = 1 d hoje), como no servidor.
 function blockedDays(t, today) {
   if (t.status !== "blocked" || !t.blocked_at || !today) return "";
   const d = daysBetween(localDay(t.blocked_at), today);
-  return d >= 1 ? ` · ${d} d` : "";
+  return d >= 1 ? ` há ${d} d` : "";
 }
 
 export function taskChips(t, today) {
@@ -49,7 +49,7 @@ export function taskChips(t, today) {
       text: t.follow_up_on < today ? "cobrança atrasada · " + shortDate(t.follow_up_on)
         : t.follow_up_on === today ? "cobrar hoje" : "cobrar " + shortDate(t.follow_up_on) }));
   if (t.status === "blocked" && t.blocked_reason)
-    chips.push(h("span", { class: "chip blocked-reason", title: "Aguardando: " + t.blocked_reason, text: "aguardando " + short(t.blocked_reason.replace(/^aguardando\s+/i, "")) }));
+    chips.push(h("span", { class: "chip blocked-reason", title: "Aguardando: " + t.blocked_reason, text: short(t.blocked_reason.replace(/^aguardando\s+/i, "")) }));
   if (t.priority === 1 && t.status !== "done") chips.push(h("span", { class: "chip prio-1", text: "alta" }));
   if (t.status === "done") {
     // O dia da conclusão no fuso da app (o timestamp vem em UTC: à noite já seria "amanhã").
@@ -115,7 +115,7 @@ export function moreButton(t, onDone) {
         t.status === "done" ? null : running
           ? ["Parar o cronômetro e apontar", "stop", () => stopTimer(onDone)]
           : ["Iniciar o cronômetro", "play", () => startTimer(t, onDone)],
-        canBlock(t) ? ["Bloquear…", "clock", () => blockTask(t, onDone)] : null,
+        canBlock(t) ? ["Aguardando…", "clock", () => blockTask(t, onDone)] : null,
         ["Abrir (ver e editar)", "right", () => openTask(t.id, onDone)],
       ]);
     } }, icon("more-v"));
@@ -137,7 +137,7 @@ export function withMenu(el, t, onDone) {
         ? ["Parar o cronômetro e apontar", "stop", () => stopTimer(onDone)]
         : ["Iniciar o cronômetro", "play", () => startTimer(t, onDone)],
       t.status === "done" ? null : ["Concluir", "check", () => finishTask(t, onDone)],
-      canBlock(t) ? ["Bloquear…", "clock", () => blockTask(t, onDone)] : null,
+      canBlock(t) ? ["Aguardando…", "clock", () => blockTask(t, onDone)] : null,
       ["Excluir", "trash", () => deleteTask(t, onDone)],
     ];
     if (matchMedia("(max-width: 860px)").matches) { sheet(t.title, items); return; }
@@ -160,7 +160,7 @@ export const lateBadge = (open, today) => {
 
 // ------------------------------------------------------- diálogos (export) --
 
-// Dia para cobrar uma bloqueada: o lembrete só aparece em dia útil, então
+// Dia para cobrar uma tarefa aguardando: o lembrete só aparece em dia útil, então
 // um dia não útil vira o dia útil anterior (com aviso).
 export function followUpDay(day) {
   const today = localDateTime(Date.now()).slice(0, 10);
@@ -173,18 +173,18 @@ export function followUpDay(day) {
 
 const canBlock = (t) => t.status !== "done" && t.status !== "blocked";
 
-// Bloquear direto do menu: pergunta o que falta e, se quiser, quando cobrar.
+// "Aguardando…" direto do menu: pergunta o que falta e, se quiser, quando cobrar.
 export function blockTask(t, onDone) {
   const reason = h("input", { type: "text", maxlength: "120", required: "required", placeholder: "Ex.: peça do fornecedor, acesso à sala, aprovação" });
   const follow = h("input", { type: "date", min: localDateTime(Date.now()).slice(0, 10) });
   const err = h("p", { class: "error-text", role: "alert" });
   const form = h("form", {},
-    h("h2", { text: "Bloquear tarefa" }),
+    h("h2", { text: "Aguardando" }),
     h("p", { class: "dialog-note", text: t.title }),
     field("Aguardando o quê?", reason), field("Lembrar de cobrar em (opcional)", follow), err,
     h("div", { class: "dialog-actions" },
       h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
-      h("button", { type: "submit", class: "btn btn-primary", text: "Bloquear" })));
+      h("button", { type: "submit", class: "btn btn-primary", text: "Marcar como aguardando" })));
   const dlg = modal(form);
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
@@ -193,7 +193,7 @@ export function blockTask(t, onDone) {
     try {
       await api.patch(`/worklog/${t.id}`, body);
       dlg.close();
-      toast(`Bloqueada: aguardando ${body.blocked_reason}.`);
+      toast(`Aguardando: ${body.blocked_reason}.`);
       if (onDone) onDone();
     } catch (e) { err.textContent = e.message; }
   });

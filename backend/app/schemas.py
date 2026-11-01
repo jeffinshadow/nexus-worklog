@@ -260,7 +260,7 @@ class WorklogIn(BaseModel):
     completed_at: Optional[str] = When      # com status done (padrão: agora)
     external_ref: Optional[str] = Field(default=None, min_length=1, max_length=120)  # idempotência
     blocked_reason: Optional[str] = Field(default=None, max_length=120)  # o que se aguarda (status blocked)
-    follow_up_on: Optional[date] = None  # bloqueada: dia combinado para cobrar
+    follow_up_on: Optional[date] = None  # aguardando (blocked): dia combinado para cobrar
     resolution: Optional[str] = Field(default=None, max_length=1000)  # com status done: como foi resolvido
 
     @model_validator(mode="after")
@@ -291,7 +291,7 @@ class WorklogUpdate(BaseModel):
     completed_at: Optional[str] = When  # corrigir a data de uma tarefa concluída
     resolution: Optional[str] = Field(default=None, max_length=1000)  # como foi resolvido (null apaga)
     blocked_reason: Optional[str] = Field(default=None, max_length=120)  # o que se aguarda (status blocked)
-    follow_up_on: Optional[date] = None  # bloqueada: dia combinado para cobrar
+    follow_up_on: Optional[date] = None  # aguardando (blocked): dia combinado para cobrar
 
     @model_validator(mode="after")
     def _norm(self):

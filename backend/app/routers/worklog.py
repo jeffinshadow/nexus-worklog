@@ -312,7 +312,7 @@ def update(task_id: int, data: WorklogUpdate, user=Depends(active_user_csrf)):
         values.append(data.status)
         if data.status != "done":
             fields.append("completed_at = NULL")
-    # Impedimento: ao bloquear, desde quando e o que se aguarda; ao sair, limpa.
+    # Aguardando (blocked): desde quando e o quê; ao sair, limpa.
     if final_status == "blocked":
         if before["status"] != "blocked":
             fields.append("blocked_at = now()")

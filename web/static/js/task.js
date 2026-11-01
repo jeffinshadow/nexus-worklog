@@ -229,7 +229,7 @@ export async function openTask(taskId, onChange) {
     const grid = h("div", { class: "props" });
 
     const status = h("select", { "aria-label": "Status" },
-      ...[["todo", "A fazer"], ["in_progress", "Em andamento"], ["blocked", "Bloqueada"], ["done", "Concluída"]]
+      ...[["todo", "A fazer"], ["in_progress", "Em andamento"], ["blocked", "Aguardando"], ["done", "Concluída"]]
         .map(([v, l]) => h("option", { value: v, text: l })));
     status.value = t.status;
     status.addEventListener("change", () => {

@@ -27,8 +27,8 @@ function dueFrom(token) {
 }
 
 // Marcadores no fim do registro, em qualquer ordem: "@Projeto", "#chamado",
-// "!plantão", "^sex" ou "^25/10" (prazo) e "!bloq motivo" (por último: o motivo vai até o fim).
-// Ex.: "Troca de switch @Matriz #4821 !plantão — 45min"; "Trocar HD ^qui !bloq peça da Dell".
+// "!plantão", "^sex" ou "^25/10" (prazo) e "!aguarda motivo" (por último: o motivo vai até o fim;
+// "!bloq", o nome antigo, continua valendo). Ex.: "Trocar HD ^qui !aguarda peça da Dell".
 // Dois "@": o primeiro é o projeto principal, os outros entram como outros projetos.
 const FOLD = (s) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 async function parseMarks(text) {
@@ -36,7 +36,7 @@ async function parseMarks(text) {
   const projects = []; // da esquerda para a direita
   for (;;) {
     let m;
-    const bm = blocked === null && title.match(/\s!bloq(?:\s+(.*))?$/i); // "!bloq" sozinho ou "!bloq motivo" (não "!bloqueio")
+    const bm = blocked === null && title.match(/\s!(?:aguarda|bloq)(?:\s+(.*))?$/i); // sozinho ou com o motivo (não "!aguardando", "!bloqueio")
     if (bm) { blocked = (bm[1] || "").trim().slice(0, 120); title = title.slice(0, bm.index); continue; }
     if ((m = title.match(/\s+\^(hoje|amanh[aã]|seg|ter|qua|qui|sex|s[aá]b|dom|\d{1,2}\/\d{1,2})$/i)) && !due && (due = dueFrom(m[1]))) { title = title.slice(0, m.index); continue; }
     if ((m = title.match(/\s+!alta$/i)) && !high) { high = true; title = title.slice(0, m.index); continue; }
@@ -73,13 +73,13 @@ export async function quickRegister(text, project_id = null) {
     title: marks.title || title, project_id: marks.project ? marks.project.id : project_id,
     extra_project_ids: marks.extraProjects.map((p) => p.id),
     ticket: marks.ticket, after_hours: marks.afterHours, due_date: marks.due, priority: marks.high ? 1 : 2,
-    // !bloq vence o "— 30min": fica bloqueada com o motivo e o tempo apontado, sem concluir.
+    // !aguarda vence o "— 30min": fica aguardando o motivo, e o tempo apontado, sem concluir.
     status: marks.blocked !== null ? "blocked" : comTempo ? "done" : "todo",
     blocked_reason: marks.blocked || null,
   });
   const extras = [marks.project && [marks.project, ...marks.extraProjects].map((p) => p.name).join(" + "), marks.ticket && "#" + marks.ticket, marks.afterHours && "plantão", marks.high && "alta",
     marks.due && "prazo " + marks.due.split("-").reverse().slice(0, 2).join("/"),
-    marks.blocked !== null && (marks.blocked ? "bloqueada: " + marks.blocked : "bloqueada")].filter(Boolean);
+    marks.blocked !== null && (marks.blocked ? "aguardando: " + marks.blocked : "aguardando")].filter(Boolean);
   const com = extras.length ? ` (${extras.join(", ")})` : "";
   if (created && created.queued) {  // sem sinal: o tempo vai junto quando a tarefa for criada
     if (comTempo) await api.after(created.qid, "POST", "/worklog/{id}/time", { minutes });
