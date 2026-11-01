@@ -17,6 +17,7 @@ import ipaddress
 import json
 import logging
 import secrets
+import re
 import socket
 import ssl
 import threading
@@ -78,6 +79,8 @@ def check_url(url: str) -> tuple[str, int, str, str]:
     público — resolve o DNS e todo endereço precisa ser global (nada de rede
     interna, loopback, link-local ou reservado). A conexão usa esse mesmo IP
     (o DNS não troca de endereço entre a checagem e o envio)."""
+    if re.search(r"[\x00-\x20\x7f]|%0[0-9a-f]|%1[0-9a-f]|%7f", url.strip(), re.I):  # controle, cru ou codificado
+        raise Refused("o endereço tem caracteres inválidos")
     parts = urlsplit(url.strip())
     if parts.scheme != "https" or not parts.hostname:
         raise Refused("use um endereço https://")

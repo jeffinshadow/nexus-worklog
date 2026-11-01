@@ -312,3 +312,11 @@ def test_webhook_de_grupo_recebe_o_desfazer():
     from app.webhooks import matches
     assert matches(["worklog.*"], "undo", "worklog") and not matches(["recurring.*"], "undo", "worklog")
     assert matches(["worklog.*"], "worklog.finish", "worklog") and matches(["*"], "undo", "worklog")
+
+
+def test_webhook_recusa_caracteres_de_controle():
+    from app.webhooks import Refused, check_url
+    import pytest
+    for url in ("https://hooks.example.com/a%0d%0aX-Evil: 1", "https://hooks.example.com/a b"):
+        with pytest.raises(Refused):
+            check_url(url)
