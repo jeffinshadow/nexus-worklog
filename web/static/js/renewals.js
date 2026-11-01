@@ -55,7 +55,7 @@ export function openRenewal(r, onChange, renew = false) {
   const label = h("input", { type: "text", maxlength: "120", required: "required", value: r ? r.label : "", placeholder: "ex.: Certificado *.empresa.com.br" });
   const expires = h("input", { type: "date", required: "required", value: r && !renew ? r.expires_on : "" });
   if (renew) {
-    expires.min = addDays(r.expires_on, 1); // renovar é empurrar a data pra frente (ano digitado errado é comum)
+    expires.min = addDays(r.expires_on, 1); // renovar é empurrar a data para frente (ano digitado errado é comum)
     if (r.renew_months) expires.value = addMonths(r.expires_on, r.renew_months); // periódico: já sugere a próxima
   }
   const months = h("input", { type: "number", min: "1", max: "120", value: r && r.renew_months ? String(r.renew_months) : "", placeholder: "ex.: 12" });

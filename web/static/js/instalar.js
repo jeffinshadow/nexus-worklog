@@ -9,10 +9,10 @@ const DISMISS_KEY = "nexus.instalar.dispensado";
 const DISMISS_DAYS = 30;
 const SHARE_KEY = "nexus.compartilhado";
 
-let deferred = null;  // o pedido de instalação que o navegador guardou pra nós
+let deferred = null;  // o pedido de instalação que o navegador guardou para nós
 let card = null;
 
-// O navegador avisa que dá pra instalar antes de o app terminar de abrir: guarda já.
+// O navegador avisa que dá para instalar antes de o app terminar de abrir: guarda já.
 addEventListener("beforeinstallprompt", (ev) => {
   ev.preventDefault();  // sem a barrinha do navegador; o convite é o nosso
   deferred = ev;

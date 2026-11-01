@@ -282,8 +282,8 @@ export function todayCard(b, sum, ctx) {
         const btn = ev.currentTarget;
         btn.disabled = true; // clique duplo gravaria duas anotações
         try {
-          // Com dia combinado, a próxima cobrança vai pra daqui a 2 dias úteis (antes da
-          // anotação: se falhar, nada foi gravado e dá pra tentar de novo).
+          // Com dia combinado, a próxima cobrança vai para daqui a 2 dias úteis (antes da
+          // anotação: se falhar, nada foi gravado e dá para tentar de novo).
           if (n.task.follow_up_on) await api.patch(`/worklog/${n.task.id}`, { follow_up_on: addWorkDays(today, 2, (ME && ME.work_days) || 62) });
           await api.post(`/worklog/${n.task.id}/notes`, { body: n.task.blocked_reason ? `Cobrei: ${n.task.blocked_reason}` : "Cobrei o andamento" });
           toast("Cobrança anotada na tarefa.");
