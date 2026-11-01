@@ -66,7 +66,7 @@ def test_limite_por_email(monkeypatch):
 
 
 def test_tema_da_conta(usuario):
-    assert usuario.get("/auth/me").json()["theme"] == "auto"
+    assert usuario.get("/auth/me").json()["theme"] == "dark"  # escuro é o padrão (sql/033)
     assert usuario.put("/me/theme", {"theme": "light"}).status_code == 200
     assert usuario.get("/auth/me").json()["theme"] == "light"
     assert usuario.put("/me/theme", {"theme": "rosa"}).status_code == 422

@@ -120,7 +120,7 @@ function setup(me) {
           try { await api.put("/me/theme", { theme: v }); me.theme = v; } catch (e) { errorToast(e, "Não foi possível guardar o tema na conta."); }
         } }));
       }
-      paint(me.theme || "auto");
+      paint(me.theme || "dark");
       return frame("Claro ou escuro?", "Automático segue o aparelho: se ele escurece à noite, o Nexus também. Toque para ver como fica. Dá para trocar depois em Configurações > Conta.",
         [seg], null, "Seguir");
     }

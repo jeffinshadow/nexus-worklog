@@ -802,7 +802,7 @@ function themePanel(me) {
       try { await api.put("/me/theme", { theme: v }); me.theme = v; } catch (e) { errorToast(e, "Não foi possível guardar o tema na conta."); }
     } }));
   }
-  paint(me.theme || "auto");
+  paint(me.theme || "dark");
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Aparência" })),
     h("p", { class: "help", text: "Automático acompanha o claro ou escuro do celular e do computador. Claro e Escuro forçam o tema em todos os seus aparelhos." }),
