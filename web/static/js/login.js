@@ -145,7 +145,9 @@ async function openLink(kind, token) {
   try {
     info = await api.get(`/auth/link?kind=${kind}&token=${encodeURIComponent(token)}`);
   } catch (e) {
-    $("link-sub").textContent = invite
+    $("link-sub").textContent = e.status === 429  // limite de tentativas: o link pode estar bom
+      ? "Muitas tentativas agora. Espere um minuto e abra o link de novo."
+      : invite
       ? "Este convite venceu ou já foi usado. Peça um novo a quem administra o Nexus."
       : "Este link venceu ou já foi usado. Peça outro em “Esqueci a senha”.";
     $("form-link").querySelectorAll(".field, #link-submit").forEach((el) => el.classList.add("hidden"));

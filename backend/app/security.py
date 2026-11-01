@@ -133,6 +133,9 @@ class RateLimiter:
 # e-mail+IP (quem erra e bloqueado, nao a dona da conta) e, com teto bem maior,
 # por e-mail (freia tentativa distribuida sem trancar a pessoa por 10 erros).
 login_limiter = RateLimiter(max_hits=10, window_seconds=300)
+# Links de convite/troca de senha: limite próprio (escritório atrás de um IP só não
+# trava o convite de quem chega por causa do login de outros).
+link_limiter = RateLimiter(max_hits=30, window_seconds=300)
 login_email_limiter = RateLimiter(max_hits=100, window_seconds=300)
 # "Esqueci a senha": poucos pedidos por IP e por e-mail (não vira canal de spam).
 reset_limiter = RateLimiter(max_hits=5, window_seconds=900)

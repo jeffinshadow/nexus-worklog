@@ -22,6 +22,7 @@ from ..security import (
     burn_password_check,
     hash_password,
     login_email_limiter,
+    link_limiter,
     login_limiter,
     needs_rehash,
     new_token,
@@ -165,7 +166,7 @@ def forgot(data: ForgotIn, request: Request):
 @router.get("/link")
 def link_info(kind: Literal["invite", "reset"], token: str, request: Request):
     """Para quem abriu o link: de que conta é (ou 404 se venceu/foi usado)."""
-    if not login_limiter.allow(f"ip:{client_ip(request)}"):
+    if not link_limiter.allow(f"ip:{client_ip(request)}"):
         raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
     row = links.peek(token, kind)
     if not row:
@@ -181,7 +182,7 @@ def _set_password(uid: int, password: str) -> None:
 @router.post("/invite/accept")
 def accept_invite(data: LinkPasswordIn, request: Request, response: Response):
     """Convidado cria a própria senha (e o nome) e já entra."""
-    if not login_limiter.allow(f"ip:{client_ip(request)}"):
+    if not link_limiter.allow(f"ip:{client_ip(request)}"):
         raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
     uid = links.consume(data.token, "invite")
     if not uid:
@@ -198,7 +199,7 @@ def accept_invite(data: LinkPasswordIn, request: Request, response: Response):
 def reset_by_link(data: LinkPasswordIn, request: Request, response: Response):
     """Senha nova pelo link do e-mail: encerra as outras sessões e corta chaves
     de API e calendário (como a troca de senha) e já entra."""
-    if not login_limiter.allow(f"ip:{client_ip(request)}"):
+    if not link_limiter.allow(f"ip:{client_ip(request)}"):
         raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
     uid = links.consume(data.token, "reset")
     if not uid:

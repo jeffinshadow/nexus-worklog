@@ -128,6 +128,7 @@ input::placeholder { color: var(--dim); }
 .page-head .eyebrow { margin-top: 6px; }
 .page-head .eyebrow:empty { display: none; }
 .page-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.quick-hint { margin: 6px 0 10px 4px; font: .74rem var(--font-label); color: var(--dim); }  /* os marcadores, sob o registro rápido */
 
 .tabbar { display: none; }
 
@@ -759,7 +760,7 @@ button.nav-link { border: 0; background: transparent; width: 100%; font-family: 
    rolar, janelas de tela inteira e menus que sobem de baixo (bottom sheet). */
 @media (max-width: 860px) { .only-desk { display: none !important; } }
 @media (min-width: 861px) {
-  .only-mob, .appbar, .fab, .more-toggle, .intro-more, .quick-hint { display: none !important; }
+  .only-mob, .appbar, .fab, .more-toggle, .intro-more { display: none !important; }
   .task-dialog:not(.side) .task-appbar, .task-dialog:not(.side) .task-main-actions { display: none; }
   /* Nova tarefa no computador: a mesma ordem de sempre ("Mais opções" só existe no celular). */
   #form-worklog { display: flex; flex-direction: column; }

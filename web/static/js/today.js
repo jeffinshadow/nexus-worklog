@@ -139,7 +139,7 @@ export async function mount(root, ctx, opts = {}) {
     .catch(() => {});
   const phone = matchMedia("(max-width: 860px)").matches;
   const quick = h("input", { type: "text", maxlength: "200", "aria-label": "Registrar tarefa rápida",
-    placeholder: phone ? "Nova tarefa e Enter" : "Registrar e Enter · @projeto #chamado !alta ^amanhã !bloq motivo — 15min" });
+    placeholder: phone ? "Nova tarefa e Enter" : "O que você fez? Enter registra · @projeto — 15min" });
   // "Já resolvido antes" também aqui (por onde entra a maioria das tarefas):
   // o título sem os marcadores, depois de uma pausa na digitação.
   const hint = h("div", { class: "similar hidden", "aria-live": "polite" });
@@ -169,7 +169,9 @@ export async function mount(root, ctx, opts = {}) {
     const project_id = proj.value && proj.value !== "__new" ? Number(proj.value) : null;
     quick.disabled = true;
     try {
-      toast(await quickRegister(quick.value, project_id));
+      // "Ver": a linha nova fica abaixo da dobra no celular (concluídas ou abertas).
+      const msg = await quickRegister(quick.value, project_id);
+      toast(msg, { action: "Ver", onAction: () => document.querySelector(/conclu/i.test(msg) ? ".t-done" : ".t-open")?.scrollIntoView({ behavior: "smooth", block: "start" }) });
     } catch (e) {
       quick.disabled = false;
       errorToast(e, "Erro ao registrar.");
@@ -183,7 +185,7 @@ export async function mount(root, ctx, opts = {}) {
         late.length ? `${late.length} atrasada${late.length > 1 ? "s" : ""}` : "",
         blocked.length ? `${blocked.length} bloqueada${blocked.length > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ") })),
     h("div", { class: "quick-row" }, quick, proj),
-    phone ? h("p", { class: "quick-hint", text: "No fim: @projeto #chamado !alta ^amanhã — 15min" }) : null, hint);
+    h("p", { class: "quick-hint", text: "No fim, se quiser: @projeto #chamado !alta ^amanhã !bloq motivo — 15min" }), hint);
   // Filtro (fica na aba): o número de cada opção ajuda a decidir antes de clicar.
   let filter = sessionStorage.getItem(OPEN_FILTER) || "all";
   if (!FILTERS.some(([k]) => k === filter)) filter = "all";
@@ -260,7 +262,7 @@ function editEvidence(r, day, refresh) {
     photoBox.append(photoGrid(list, { path: `/recurring/${r.id}/photos?day=${day}`, onChange: () => { loadPhotos(); refresh(); } }));
   };
   loadPhotos();
-  const input = h("input", { type: "text", maxlength: "200", value: r.note || "", placeholder: "ex.: backup OK, 2,1 TB, 0 erros",
+  const input = h("input", { type: "text", maxlength: "200", value: r.note || "", placeholder: "ex.: tudo certo; quadro 3 sem aquecimento; backup OK",
     required: r.require_note ? "required" : null });
   const err = h("p", { class: "error-text" });
   // Foto ainda subindo: o "Salvar" espera (fechar antes cortaria o envio).
