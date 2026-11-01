@@ -53,7 +53,8 @@ export function taskChips(t, today) {
   if (t.priority === 1 && t.status !== "done") chips.push(h("span", { class: "chip prio-1", text: "alta" }));
   if (t.status === "done") {
     // O dia da conclusão no fuso da app (o timestamp vem em UTC: à noite já seria "amanhã").
-    if (t.completed_at) chips.push(h("span", { class: "chip done", text: "fim " + shortDate(localDay(t.completed_at)) }));
+    if (t.pending_done) chips.push(h("span", { class: "chip today", text: "concluída · esperando conexão" }));  // feito sem sinal
+    else if (t.completed_at) chips.push(h("span", { class: "chip done", text: "fim " + shortDate(localDay(t.completed_at)) }));
   } else if (t.due_date) {
     if (t.due_date < today) chips.push(h("span", { class: "chip late", text: "atrasada · " + shortDate(t.due_date) }));
     else if (t.due_date === today) chips.push(h("span", { class: "chip today", text: "vence hoje" }));

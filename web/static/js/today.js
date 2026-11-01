@@ -209,7 +209,11 @@ export async function mount(root, ctx, opts = {}) {
     if (!shown.length) list.append(h("p", { class: "empty", text: open.length ? empty : "Nada em aberto." }));
     for (const t of shown) openRow(t);
   }
+  // Feita sem sinal: ainda não tem id no servidor; aparece marcada, sem ações.
+  const pendingRow = (t) => h("div", { class: "list-row" }, h("div", { class: "t" }, h("span", { text: t.title }),
+    h("small", {}, h("span", { class: "card-meta" }, h("span", { class: "chip today", text: "esperando conexão" })))));
   function openRow(t) {
+    if (t.pending) { list.append(pendingRow(t)); return; }
     list.append(withMenu(h("div", { class: "list-row" },
       h("button", { type: "button", class: "icon", title: "Concluir", "aria-label": "Concluir " + t.title, onClick: () => finishTask(t, refresh) }, icon("check")),
       h("div", { class: "t" },
@@ -225,6 +229,7 @@ export async function mount(root, ctx, opts = {}) {
     h("div", { class: "panel-head" }, h("h2", { text: "Concluídas hoje" }), h("span", { class: "count", text: String(doneToday.length) })));
   if (!doneToday.length) donePanel.append(h("p", { class: "empty", text: "Ainda nada hoje." }));
   for (const t of doneToday) {
+    if (t.pending) { donePanel.append(pendingRow(t)); continue; }
     donePanel.append(h("div", { class: "list-row" },
       h("div", { class: "t" },
         h("button", { type: "button", class: "card-open", text: t.title, onClick: () => openTask(t.id, refresh) }),

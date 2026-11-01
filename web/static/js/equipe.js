@@ -7,10 +7,11 @@ import * as board from "./board.js";
 import * as dashboard from "./dashboard.js";
 import * as reports from "./reports.js";
 
+// Nomes diferentes dos itens do menu: aqui é o registro de outra pessoa.
 const SUBVIEWS = [
-  { key: "board", label: "Tarefas" },
-  { key: "dashboard", label: "Retrospectiva" },
-  { key: "reports", label: "Relatórios" },
+  { key: "board", label: "Quadro" },
+  { key: "dashboard", label: "Números" },
+  { key: "reports", label: "PDF" },
 ];
 
 export async function mount(root) {
@@ -36,6 +37,8 @@ export async function mount(root) {
     })));
 
   const content = h("div", {});
+  const note = h("p", { class: "readonly-note" });
+  const paintNote = () => { note.textContent = `somente leitura · registro de ${select.selectedOptions[0]?.textContent.split(" · ")[0] || ""}`; };
   root.append(
     h("div", { class: "admin-bar" },
       field("Pessoa", select),
@@ -45,7 +48,7 @@ export async function mount(root) {
         try { await api.download("/viewer/export/apontamentos.csv"); } catch (e) { errorToast(e, "Falha ao exportar."); } finally { b.disabled = false; }
       } }, icon("download"), "Horas da equipe (CSV)")),
     subtabs,
-    h("p", { class: "readonly-note", text: "visão somente leitura da pessoa selecionada" }),
+    note,
     content);
 
   // Troca rápida de pessoa ou aba: monta fora da tela e só a última resposta entra.
@@ -53,6 +56,7 @@ export async function mount(root) {
   async function renderCurrent() {
     const my = ++seq;
     const uid = select.value;
+    paintNote();
     const box = h("div", {});
     try {
       if (active === "board") await board.mount(box, { readOnly: true, boardUrl: `/viewer/users/${uid}/board` });

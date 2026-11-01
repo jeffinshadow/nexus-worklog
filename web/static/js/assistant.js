@@ -369,12 +369,14 @@ export function boardLine(open, today, me) {
 
 // ------------------------------------------------------------- Relatórios --
 
-export function previewText(p) {
+// whole: "Projeto completo" (sem datas): fala do projeto, não de um período.
+export function previewText(p, whole = false) {
+  const alvo = whole ? "neste projeto" : "neste período";
   if (!p.pontual_done && !p.minutes && !p.recurring_done)
-    return "Não há registros neste período; o relatório sairia vazio.";
+    return `Não há registros ${alvo}; o relatório sairia vazio.`;
   const partes = [plural(p.pontual_done, "tarefa concluída", "tarefas concluídas", "nenhuma tarefa concluída")];
   if (p.minutes) partes.push(`${duration(p.minutes)} apontadas`);
   if (p.recurring_total) partes.push(`${Math.round((100 * p.recurring_done) / p.recurring_total)}% das rotinas cumpridas`);
   const lista = partes.length > 1 ? `${partes.slice(0, -1).join(", ")} e ${partes[partes.length - 1]}` : partes[0];
-  return `Este período tem ${lista}, em ${plural(p.active_days, "dia", "dias")} com atividade.`;
+  return `${whole ? "Este projeto" : "Este período"} tem ${lista}, em ${plural(p.active_days, "dia", "dias")} com atividade.`;
 }

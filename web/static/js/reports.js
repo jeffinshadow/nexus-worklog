@@ -100,7 +100,7 @@ export async function mount(root, opts = {}) {
       const r = await api.get(`/reports/preview?${qs}`);
       if (seq !== previewSeq) return; // chegou uma resposta mais nova
       clear(preview);
-      preview.append(icon("spark"), h("span", { text: previewText(r) }));
+      preview.append(icon("spark"), h("span", { text: previewText(r, !useDates) }));
       preview.classList.remove("hidden");
     } catch { preview.classList.add("hidden"); }
   }

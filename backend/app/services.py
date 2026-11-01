@@ -478,9 +478,10 @@ def _report_inputs(user_id: int, start: date, end: date, project: dict | None = 
     pid = project["id"] if project else None
     pontuais = db.query_all(
         """
-        SELECT w.id, w.title, w.description, w.priority, w.created_at, w.completed_at,
+        SELECT w.id, w.title, w.description, w.priority, w.created_at, w.completed_at, w.resolution,
                p.name AS project, p.color AS project_color,
                (w.completed_at AT TIME ZONE %s)::date AS done_date,
+               (SELECT n.body FROM task_notes n WHERE n.task_id = w.id ORDER BY n.created_at DESC LIMIT 1) AS last_note,
                """ + TASK_COUNTS + """
           FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
          WHERE w.user_id = %s AND w.status = 'done' AND w.completed_at IS NOT NULL

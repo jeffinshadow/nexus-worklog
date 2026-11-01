@@ -319,7 +319,12 @@ button.column-toggle { display: none; }
 .rank-count { font-family: var(--font-label); font-size: .7rem; color: var(--dim); min-width: 36px; text-align: right; }
 .rank-streak { font-family: var(--font-label); font-size: .7rem; color: var(--success); min-width: 30px; text-align: right; }
 .rank-streak.empty { color: transparent; }
-@media (max-width: 560px) { .rank-row { grid-template-columns: minmax(70px, 1fr) 2fr auto auto; } .rank-count { display: none; } }
+/* Celular: o nome numa linha inteira, a barra embaixo (nomes parecidos não se confundem). */
+@media (max-width: 560px) {
+  .rank-row { grid-template-columns: 1fr auto auto; row-gap: 4px; }
+  .rank-label { grid-column: 1 / -1; -webkit-line-clamp: 3; }
+  .rank-count { display: none; }
+}
 .stacked-bar { display: flex; height: 26px; border-radius: 999px; overflow: hidden; background: var(--surface); border: 1px solid var(--outline-variant); }
 .backlog-grid > .chart-card { display: flex; flex-direction: column; }
 .backlog-grid > .chart-card > :last-child { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; gap: 14px; }

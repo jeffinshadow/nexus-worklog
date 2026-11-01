@@ -52,14 +52,16 @@ export async function prepare(file) {
 }
 
 // Envia uma ou mais fotos para `path` (/worklog/{id}/photos ou /recurring/{id}/photos?day=).
+// Sem sinal, a foto (já reduzida) fica na fila do aparelho e vai depois.
 export async function upload(path, files) {
   const list = [...files].filter(isImage);
-  let ok = 0;
+  let ok = 0, queued = 0;
   for (const f of list) {
-    try { await api.post(path, await prepare(f)); ok++; }
+    try { const r = await api.post(path, await prepare(f)); ok++; if (r && r.queued) queued++; }
     catch (e) { errorToast(e, "Não foi possível enviar a foto."); break; }
   }
-  return ok;
+  if (queued) toast(queued > 1 ? `${queued} fotos guardadas: vão quando a conexão voltar.` : "Foto guardada: vai quando a conexão voltar.");
+  return queued ? 0 : ok;
 }
 
 export const thumbUrl = (id) => `/api/photos/${id}?thumb=true`;

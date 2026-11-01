@@ -578,6 +578,22 @@ def _project_tag(pdf: _Report, name, color, x, y, w) -> None:
     pdf.text_at(x + 3.2, y, w - 3.2, 4.2, pdf.fit(name, w - 4))
 
 
+def _proof(r: dict) -> str:
+    """Linha de evidência de uma tarefa concluída: "Resolvido: …" (ou a última
+    anotação) e quantas fotos ela tem. Vazia quando não há nada."""
+    text = (r.get("resolution") or "").strip()
+    label = "Resolvido: "
+    if not text:
+        text, label = (r.get("last_note") or "").strip(), "Anotação: "
+    text = " ".join(text.split())
+    if len(text) > 160:
+        text = text[:157].rstrip() + "…"
+    parts = [label + text] if text else []
+    if r.get("photos_count"):
+        parts.append(f"{r['photos_count']} foto" + ("s" if r["photos_count"] > 1 else "") + " no Nexus")
+    return " · ".join(parts)
+
+
 def _deliveries(pdf: _Report, data: dict) -> None:
     rows = data["deliveries"]
     if not rows:
@@ -595,11 +611,16 @@ def _deliveries(pdf: _Report, data: dict) -> None:
     for r in rows:
         pdf.set_font("sansm", "", 8.6)
         n1 = pdf.lines(r["title"], tw, 4.2)
-        n2 = 0
+        n2 = n3 = 0
         if r["description"]:
             pdf.set_font("sans", "", 7.4)
             n2 = pdf.lines(r["description"], tw, 3.6)
-        h = n1 * 4.2 + n2 * 3.6 + 3.6
+        # A prova do serviço: como resolveu (ou a última anotação) e as fotos.
+        proof = _proof(r)
+        if proof:
+            pdf.set_font("sans", "", 7.2)
+            n3 = pdf.lines(proof, tw, 3.4)
+        h = n1 * 4.2 + n2 * 3.6 + n3 * 3.4 + 3.6
         if pdf.get_y() + h > pdf.bottom:
             pdf.add_page()
             _table_head(pdf, cols)
@@ -616,6 +637,10 @@ def _deliveries(pdf: _Report, data: dict) -> None:
             pdf.font("sans", 7.4, DIM)
             pdf.set_x(x)
             pdf.multi_cell(tw, 3.6, _s(r["description"]), new_x="LEFT", new_y="NEXT")
+        if proof:
+            pdf.font("sans", 7.2, INK2)
+            pdf.set_x(x)
+            pdf.multi_cell(tw, 3.4, _s(proof), new_x="LEFT", new_y="NEXT")
         x += cols[1][1]
         if show_proj:
             _project_tag(pdf, r["project"], r["project_color"], x, y, wp)

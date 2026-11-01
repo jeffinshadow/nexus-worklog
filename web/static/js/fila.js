@@ -12,6 +12,7 @@ const DB = "nexus", STORE = "fila", FAILED = "falhas";
 const QUEUEABLE = [
   /^POST \/worklog$/, /^POST \/worklog\/\d+\/finish$/, /^POST \/worklog\/\d+\/notes$/,
   /^POST \/recurring\/\d+\/toggle$/, /^POST \/timer\/start$/, /^POST \/timer\/stop$/,
+  /^POST \/worklog\/\d+\/photos$/, /^POST \/recurring\/\d+\/photos(\?.*)?$/,  // a foto do campo é a evidência
 ];
 
 export const queueable = (method, path) => QUEUEABLE.some((re) => re.test(`${method} ${path}`));
@@ -78,6 +79,7 @@ function describe(op) {
   if (/\/toggle$/.test(op.path)) return b.done ? "Marcar rotina" : "Desmarcar rotina";
   if (/\/timer\/start$/.test(op.path)) return "Iniciar cronômetro";
   if (/\/timer\/stop$/.test(op.path)) return "Parar cronômetro";
+  if (/\/photos/.test(op.path)) return "Foto";
   return `${op.method} ${op.path}`;
 }
 
@@ -138,6 +140,10 @@ export async function flush() {
     sending = false;
     changed();
   }
+  if (sent) {
+    const { toast } = await import("./ui.js");
+    toast(sent > 1 ? `${sent} alterações feitas sem conexão foram enviadas.` : "A alteração feita sem conexão foi enviada.");
+  }
   if (sent && onSynced) onSynced();
 }
 
@@ -149,6 +155,12 @@ export async function overlay(path, data) {
   if (!ops.length || !data) return data;
   if (/^\/board/.test(path)) {
     for (const op of ops) {
+      if (op.method === "POST" && op.path === "/worklog") {  // criada sem sinal: aparece, marcada
+        const t = { id: "fila-" + op.qid, title: op.body.title, status: op.body.status || "todo", priority: op.body.priority || "normal",
+          created_at: op.at, completed_at: op.body.status === "done" ? op.at : null, pending: true };
+        if (t.status === "done") data.done = [t, ...(data.done || [])];
+        else data.in_progress = [...(data.in_progress || []), t];
+      }
       const m = op.path.match(/^\/recurring\/(\d+)\/toggle$/);
       if (m) for (const r of data.recurring || []) if (r.id === Number(m[1]) && (!op.body.day || op.body.day === data.day)) r.done_today = !!op.body.done;
       const f = op.path.match(/^\/worklog\/(\d+)\/finish$/);
@@ -159,7 +171,7 @@ export async function overlay(path, data) {
   if (t) {
     for (const op of ops) {
       if (op.path === `/worklog/${t[1]}/notes`) data.notes = [{ id: "fila-" + op.qid, body: op.body.body, created_at: op.at, actor: "web", pending: true }, ...(data.notes || [])];
-      if (op.path === `/worklog/${t[1]}/finish`) data.status = "done";
+      if (op.path === `/worklog/${t[1]}/finish`) { data.status = "done"; data.pending_done = true; }
     }
   }
   if (path === "/timer") {
@@ -183,9 +195,10 @@ async function changed() {
   const offline = !navigator.onLine || staleAt;
   if (!offline && !ops.length && !bad.length) { bar?.remove(); bar = null; return; }
   const hora = staleAt ? new Date(staleAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : null;
+  // A contagem vem primeiro: no celular a barra corta o fim.
   const parts = [
-    offline ? (hora ? `Sem conexão · mostrando o que havia às ${hora}` : "Sem conexão") : null,
-    ops.length ? `${ops.length} ${ops.length > 1 ? "alterações esperando" : "alteração esperando"} conexão` : null,
+    ops.length ? `${ops.length} ${ops.length > 1 ? "alterações esperando envio" : "alteração esperando envio"}` : null,
+    offline ? (hora ? `sem conexão desde ${hora}` : "sem conexão") : null,
     bad.length ? `${bad.length} não ${bad.length > 1 ? "puderam" : "pôde"} ser ${bad.length > 1 ? "aplicadas" : "aplicada"}` : null,
   ].filter(Boolean);
   const content = [icon(offline ? "alert" : "clock"), h("span", { text: parts.join(" · ") }),
