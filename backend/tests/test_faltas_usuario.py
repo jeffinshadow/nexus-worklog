@@ -106,3 +106,35 @@ def test_corrigir_texto_do_item_fica_no_lugar(usuario, novo_usuario):
     assert h["summary"].startswith("editou o item") and h["can_undo"]
     assert novo_usuario("outra@example.com").patch(f"/checklist/{a['id']}", {"label": "x"}).status_code == 404
     assert usuario.patch(f"/checklist/{a['id']}", {"label": ""}).status_code == 422
+
+
+# ------------------------------------------------------ exportar pelo período --
+
+def _linhas(r):
+    assert r.status_code == 200, r.text
+    return [l.split(";") for l in r.content.decode("utf-8-sig").strip().split("\r\n")]
+
+
+def test_exportar_tempo_e_tarefas_pelo_periodo(usuario):
+    hoje = app_today()
+    antiga, nova = _tarefa(usuario, title="Antiga"), _tarefa(usuario, title="Nova")
+    usuario.post(f"/worklog/{antiga}/time", {"minutes": 60, "day": str(hoje - timedelta(days=40))})
+    usuario.post(f"/worklog/{nova}/time", {"minutes": 30})
+    # a antiga foi concluída há 35 dias (antes do período)
+    db.execute("UPDATE worklog_tasks SET status = 'done', created_at = now() - interval '45 days', "
+               "completed_at = now() - interval '35 days' WHERE id = %s", (antiga,))
+    q = f"?start={hoje - timedelta(days=7)}&end={hoje}"
+    tempo = _linhas(usuario.get("/export/apontamentos.csv" + q))
+    assert len(tempo) == 2 and tempo[1][1] == "30"
+    r = usuario.get("/export/apontamentos.csv" + q)
+    assert f"nexus-apontamentos-{hoje - timedelta(days=7)}-a-{hoje}.csv" in r.headers["content-disposition"]
+    tarefas = _linhas(usuario.get("/export/tarefas.csv" + q))
+    assert tarefas[0][-2:] == ["minutos_no_periodo", "horas_no_periodo"]
+    assert [t[1] for t in tarefas[1:]] == ["Nova"] and tarefas[1][-2] == "30"
+    # sem período: tudo, como antes (sem as colunas do período)
+    assert len(_linhas(usuario.get("/export/apontamentos.csv"))) == 3
+    tudo = _linhas(usuario.get("/export/tarefas.csv"))
+    assert len(tudo) == 3 and tudo[0][-1] == "como_resolveu"
+    # período pela metade ou invertido
+    assert usuario.get(f"/export/tarefas.csv?start={hoje}").status_code == 400
+    assert usuario.get(f"/export/apontamentos.csv?start={hoje}&end={hoje - timedelta(days=1)}").status_code == 400
