@@ -222,7 +222,6 @@ async function mountRenewals(el, ctx) {
 function mountMore(el) {
   clear(el);
   const items = [
-    ["projetos", "route", "Projetos"],
     ["vencimentos", "calendar", "Vencimentos"],
     ["historico", "history", "Histórico"],
     // A Busca fica sempre na barra; Atribuir vem para cá (na barra só para quem não tem registro próprio).
