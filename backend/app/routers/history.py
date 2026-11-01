@@ -6,7 +6,7 @@ posteriores apagaria trabalho sem aviso. O próprio desfazer fica registrado
 (ação "undo") e não pode ser desfeito de novo.
 """
 from datetime import date
-from typing import Optional
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -82,6 +82,9 @@ ACTION_LABELS = {
     "project.delete": "excluiu o projeto",
     "token.create": "criou a chave de API",
     "token.revoke": "revogou a chave de API",
+    "webhook.create": "criou o webhook para",
+    "webhook.enable": "religou o webhook para",
+    "webhook.delete": "apagou o webhook para",
     "user.invite": "criou a conta (convite)",
     "user.reset_password": "redefiniu a senha",
     "user.invite_resend": "reenviou o convite",
@@ -160,14 +163,50 @@ def _with_names(user_id: int, rows: list) -> list:
     return rows
 
 
+# O feed esconde os eventos dos últimos segundos: duas gravações simultâneas
+# podem terminar fora da ordem dos ids, e o cursor (after) pularia a mais lenta.
+FEED_LAG_SECONDS = 2
+
+
+def feed_item(r: dict) -> dict:
+    """Um evento do feed de mudanças (também o corpo dos webhooks)."""
+    snap = r["after"] or r["before"] or {}
+    item = {"id": r["id"], "at": r["created_at"], "action": r["action"], "entity": r["entity"],
+            "entity_id": r["entity_id"], "actor": r["actor"], "token_name": r["token_name"]}
+    if isinstance(snap, dict) and snap.get("external_ref"):
+        item["external_ref"] = snap["external_ref"]
+    return item
+
+
+def feed(uid: int, after: int, limit: int) -> list:
+    """Eventos da pessoa depois do id `after`, do mais antigo ao mais novo.
+    Exclusão = lápide (action *.delete). Cursor anterior ao que o histórico
+    ainda guarda (180 dias) → 410: o integrador precisa recomeçar do zero."""
+    if after > 0:
+        oldest = db.query_one("SELECT min(id) AS m FROM audit_log")["m"]
+        if oldest is not None and after < oldest - 1:
+            raise HTTPException(status_code=410, detail="cursor anterior ao histórico guardado (180 dias); recomece com after=0")
+    rows = db.query_all(
+        """SELECT id, created_at, actor, token_name, action, entity, entity_id, before, after
+             FROM audit_log
+            WHERE user_id = %s AND id > %s AND created_at <= now() - make_interval(secs => %s)
+            ORDER BY id LIMIT %s""",
+        (uid, after, FEED_LAG_SECONDS, limit),
+    )
+    return [feed_item(r) for r in rows]
+
+
 @router.get("")
 def list_history(
     limit: int = Query(default=50, ge=1, le=200),
     entity: Optional[str] = None,
     entity_id: Optional[int] = None,
+    after: Annotated[Optional[int], Query(ge=0)] = None,  # Annotated: None também quando o MCP chama direto
     user=Depends(active_user),
 ):
     limit = max(1, min(int(limit), 200))  # também quando chamada pelo MCP (sem validação de Query)
+    if after is not None:  # feed de mudanças, para sincronizar (docs/API.md)
+        return feed(user["user_id"], after, limit)
     cond, params = ["user_id = %s"], [user["user_id"]]
     if entity:
         cond.append("entity = %s")

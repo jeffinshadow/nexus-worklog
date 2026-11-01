@@ -283,8 +283,9 @@ def run_once(now: datetime, send=None) -> list[tuple[int, str, str]]:
 
 async def scheduler() -> None:
     """Loop do agendador (uma passada por minuto), dentro do backend: os e-mails
-    (com SMTP configurado) e as notificações dos aparelhos (app/push.py)."""
-    from . import push
+    (com SMTP configurado), as notificações dos aparelhos (app/push.py) e os
+    webhooks (app/webhooks.py)."""
+    from . import push, webhooks
     tz = ZoneInfo(config.APP_TZ)
     log.info("agendador ativo: e-mail %s, notificações nos aparelhos", config.SMTP_HOST or "desligado")
     while True:
@@ -298,6 +299,10 @@ async def scheduler() -> None:
             await asyncio.to_thread(push.run_once, now)
         except Exception:  # noqa: BLE001
             log.exception("agendador de notificações falhou nesta passada")
+        try:
+            await asyncio.to_thread(webhooks.run_once)
+        except Exception:  # noqa: BLE001
+            log.exception("entrega dos webhooks falhou nesta passada")
         if now.minute == 0:  # uma vez por hora: fotos excluídas há 7 dias e de tarefas que não voltam mais
             try:
                 from .routers.photos import cleanup

@@ -106,6 +106,21 @@ def put_assistant(data: AssistantIn, user=Depends(web_active_csrf)):
     return people.assistant_prefs(uid)
 
 
+@router.get("/visibility")
+def visibility(user=Depends(web_active)):
+    """Quem, além da pessoa, alcança o registro dela (Configurações > Conta):
+    visualizador (registros, relatórios e fotos de todos) e admin (que concede
+    papéis). Só nome e papel; sem e-mail."""
+    rows = db.query_all(
+        """SELECT u.email, u.display_name, array_agg(r.role ORDER BY r.role) AS roles
+             FROM users u JOIN user_roles r ON r.user_id = u.id
+            WHERE r.role IN ('admin', 'viewer') AND u.id <> %s
+            GROUP BY u.id ORDER BY lower(COALESCE(u.display_name, u.email))""",
+        (user["user_id"],),
+    )
+    return [{"name": r["display_name"] or people.name_from_email(r["email"]), "roles": r["roles"]} for r in rows]
+
+
 @router.get("/activity")
 def activity(user=Depends(web_active)):
     """Último registro (de qualquer origem): o lembrete de inatividade confere

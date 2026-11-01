@@ -108,6 +108,11 @@ para leitura, o quadro, a retrospectiva e os relatórios de cada pessoa).
   rotinas (`create_recurring`). A IA não exclui tarefa, rotina, projeto nem
   objetivo. Liga no Claude Code, Cursor, Claude Desktop e Gemini CLI
   (docs/API.md); ChatGPT e claude.ai na web ainda não (exigem OAuth).
+- **Integração** — API REST aberta, sem conector para produto específico:
+  `external_ref` em tarefas, projetos, anotações e tempo (repetir não duplica),
+  feed de mudanças (`/api/history?after=`) e webhooks de saída assinados
+  (HMAC-SHA256). Contrato em [`docs/openapi.json`](docs/openapi.json); receitas
+  `curl` em [`docs/API.md`](docs/API.md#integração-passo-a-passo).
 
 ## Telas
 
@@ -244,7 +249,19 @@ incidente e outra quando volta. Logs com rotação (10 MB × 5 por serviço).
   exclui a própria conta em Configurações › Conta (com a senha); o admin também
   exclui uma conta (Admin › Usuários, confirmando o e-mail). Tarefas, rotinas,
   tempo, anotações, chaves e histórico vão junto; ficam só o e-mail e as contagens
-  no histórico de quem excluiu (180 dias). O último admin não sai.
+  no histórico de quem excluiu (180 dias). O último admin não sai. O JSON leva
+  também perfil, preferências, modelos, projetos com objetivos e as chaves
+  externas; as fotos vão à parte, no `fotos.zip` (Relatórios).
+  - **Histórico de 180 dias**: o que você exclui some da tela na hora, mas o
+    "antes" fica no histórico (para o desfazer) e sai de vez em 180 dias. Para
+    apagar já, exclua a conta.
+  - **Backups**: cada deploy grava um dump do banco e guarda os **14 mais
+    recentes** (`deploy.sh`); uma conta excluída sai dos backups quando o último
+    dump que a continha é descartado (até 14 deploys depois).
+  - **Pedidos de convite** (nome, e-mail e motivo de quem ainda não tem conta):
+    apagados 30 dias depois de decididos, ou em 180 dias sem resposta.
+  - **Quem vê o seu registro**: o visualizador (registros, relatórios e fotos de
+    todos) e o admin (que concede papéis); os nomes aparecem em Configurações › Conta.
 - **Sem rastreamento**: só o cookie de sessão; e-mails sem pixel nem links
   redirecionados; CSV exportado neutraliza fórmulas.
 
@@ -256,6 +273,7 @@ backend/sql/       migrações numeradas (o modelo de dados está aqui)
 backend/tests/     suíte (pytest + Postgres real)
 web/static/        index.html, login.html, js/ (um módulo por tela), css/
 docs/API.md        referência da API e do MCP (o Swagger fica desligado)
+docs/openapi.json  contrato da API, gerado por tools/openapi.py (o teste confere)
 ```
 
 Fuso da aplicação em `APP_TZ` (define "hoje", semana — que começa no

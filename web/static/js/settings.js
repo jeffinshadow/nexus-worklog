@@ -1,4 +1,4 @@
-// Configurações: projetos, modelos, avisos, calendário, IA e API (chaves), conta (perfil, assistente, chamados, dias úteis e senha).
+// Configurações: projetos, modelos, avisos, calendário, IA e API (chaves e webhooks), conta (perfil, assistente, chamados, dias úteis e senha).
 import { api } from "./api.js";
 import { h, icon, clear, dateTime, field, matchPasswords } from "./dom.js";
 import { codeBox, confirmDialog, errorToast, modal, toast, warnBox, busy, singleKeysOn, setSingleKeys } from "./ui.js";
@@ -73,7 +73,7 @@ export async function mount(root, ctx) {
       body.append(grid);
     }
     else if (active === "calendario") body.append(await calendarFeed(() => render()));
-    else if (active === "ia") body.append(...aiHelp(), await tokens(() => render()));
+    else if (active === "ia") body.append(...aiHelp(), await tokens(() => render()), await webhooksPanel(() => render()));
     else if (isUser) body.append(profilePanel(ctx.me, render), themePanel(ctx.me), assignmentsPanel(ctx.me), assistantPanel(ctx.me), defaultProjectPanel(ctx.me, (r) => meChanged(ctx.me, r)), ticketsPanel(ctx.me), workDays(ctx.me), shortcutsPanel(), account(ctx.me), await passkeysPanel(render), deleteAccount(isUser));
     else body.append(profilePanel(ctx.me, render), themePanel(ctx.me), account(ctx.me), await passkeysPanel(render), deleteAccount(isUser));
   }
@@ -558,6 +558,81 @@ function showNewToken(res) {
       h("button", { type: "button", class: "btn btn-primary", text: "Pronto", onClick: () => dlg.close() })));
 }
 
+// --------------------------------------------------------------- webhooks --
+
+// Webhook: o Nexus avisa outro sistema (chamados, chat, planilha) a cada mudança.
+async function webhooksPanel(rerender) {
+  const list = await api.get("/webhooks");
+  const url = h("input", { type: "url", maxlength: "500", placeholder: "https://exemplo.com/nexus", required: "required" });
+  const events = h("input", { type: "text", maxlength: "300", placeholder: "* (tudo) ou worklog.finish, worklog.*" });
+  const err = h("p", { class: "error-text" });
+  const create = h("button", { type: "submit", class: "btn btn-primary" }, icon("send"), "Criar webhook");
+  const form = h("form", {}, field("Endereço (https)", url), field("Eventos", events), err, create);
+  form.addEventListener("submit", busy(async (ev) => {
+    ev.preventDefault();
+    err.textContent = "";
+    create.disabled = true;
+    try {
+      const evs = events.value.split(/[\s,]+/).filter(Boolean);
+      const res = await api.post("/webhooks", { url: url.value.trim(), events: evs.length ? evs : ["*"] });
+      showNewSecret(res);
+      rerender();
+    } catch (e) {
+      err.textContent = e.message || "Falha ao criar.";
+      create.disabled = false;
+    }
+  }));
+
+  const rows = list.length ? list.map((w) => {
+    const meta = [w.events.join(", "), w.last_delivered_at ? `entregue ${dateTime(w.last_delivered_at)}` : "nada entregue ainda"];
+    if (w.disabled_at) meta.push(`desligado: ${w.last_error || "falhas seguidas"}`);
+    else if (w.failures) meta.push(`${w.failures} falha(s): ${w.last_error}`);
+    const actions = h("div", { class: "actions" });
+    if (w.disabled_at) {
+      actions.append(h("button", {
+        type: "button", class: "btn btn-ghost btn-sm", text: "Religar", onClick: async () => {
+          try { await api.post(`/webhooks/${w.id}/enable`); toast("Webhook religado: continua de onde parou."); rerender(); }
+          catch (e) { errorToast(e); }
+        },
+      }));
+    }
+    actions.append(h("button", {
+      type: "button", class: "btn btn-danger btn-sm", text: "Apagar", onClick: async () => {
+        if (!(await confirmDialog({ title: "Apagar o webhook?", text: `${w.url} deixa de receber os avisos na hora.`, confirm: "Apagar", danger: true }))) return;
+        try { await api.del(`/webhooks/${w.id}`); toast("Webhook apagado."); rerender(); }
+        catch (e) { errorToast(e); }
+      },
+    }));
+    return h("div", { class: "token-row" + (w.active ? "" : " inactive") },
+      h("span", { class: "token-name", text: w.url }), actions, h("span", { class: "token-meta", text: meta.join(" · ") }));
+  }) : [h("p", { class: "empty", text: "Nenhum webhook ainda." })];
+
+  return h("div", { class: "settings-grid" },
+    h("section", { class: "panel" },
+      h("div", { class: "panel-head" }, h("h2", { text: "Novo webhook" })),
+      h("p", { class: "help", text: "O Nexus manda um POST assinado para esse endereço a cada mudança (tarefa criada, concluída, rotina marcada...). Serve para fechar o chamado, avisar no chat ou alimentar uma planilha. Até 5; detalhes em docs/API.md." }),
+      form),
+    h("section", { class: "panel" },
+      h("div", { class: "panel-head" }, h("h2", { text: "Meus webhooks" }), h("span", { class: "count", text: String(list.filter((w) => w.active).length) + " ativos" })),
+      ...rows));
+}
+
+function showNewSecret(res) {
+  const dlg = modal(
+    h("h2", { text: "Webhook criado" }),
+    h("p", { text: "Segredo de assinatura — copie agora: ele não aparece de novo." }),
+    h("div", { class: "token-box", text: res.secret }),
+    h("p", { class: "dialog-note", text: "Confira o header X-Nexus-Signature com ele (HMAC-SHA256) antes de confiar no aviso." }),
+    h("div", { class: "dialog-actions" },
+      h("button", {
+        type: "button", class: "btn btn-ghost", onClick: async () => {
+          try { await navigator.clipboard.writeText(res.secret); toast("Segredo copiado."); }
+          catch { toast("Selecione e copie manualmente.", { error: true }); }
+        },
+      }, icon("copy"), "Copiar segredo"),
+      h("button", { type: "button", class: "btn btn-primary", text: "Pronto", onClick: () => dlg.close() })));
+}
+
 // ------------------------------------------------------- integração com IA --
 
 function aiHelp() {
@@ -705,7 +780,7 @@ function account(me) {
     try {
       await api.post("/auth/change-password", { current_password: cur.value, new_password: nova.value });
       cur.value = nova.value = nova2.value = "";
-      toast("Senha trocada. Outras sessões, chaves de API e o link do calendário foram encerrados.");
+      toast("Senha trocada. Outras sessões, chaves de API e o link do calendário foram encerrados; webhooks, desligados.");
     } catch (e) {
       err.textContent = e.message || "Falha ao trocar.";
     }
@@ -713,5 +788,16 @@ function account(me) {
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Conta" })),
     h("p", { class: "help mono", text: [me.email, ...(me.roles || []).filter((r) => r !== "user").map((r) => ROLE_SHORT[r])].join(" · ") }),
+    (me.roles || []).includes("user") ? seenBy() : null,
     form);
+}
+
+// Transparência: quem tem papel que alcança o seu registro (visualizador e admin).
+function seenBy() {
+  const line = h("p", { class: "dialog-note" });
+  api.get("/me/visibility").then((list) => {
+    const names = list.map((p) => `${p.name} (${p.roles.map((r) => ROLE_SHORT[r]).join(", ")})`);
+    line.textContent = `Quem pode ver seu registro: ${names.length ? names.join(", ") : "só você"}.`;
+  }).catch(() => line.remove());
+  return line;
 }

@@ -1,6 +1,8 @@
 """Projetos/clientes do usuário: agrupam tarefas pontuais (filtro no quadro,
 no relatório e nas ferramentas da IA). Arquivar esconde dos seletores sem
 apagar nada; excluir tira o projeto das tarefas (ficam "sem projeto")."""
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Response
 from psycopg.errors import UniqueViolation
 
@@ -15,10 +17,16 @@ PALETA = ["#5294E2", "#81C995", "#FDD663", "#C58AF9", "#F28B82", "#78D9EC", "#F6
 
 
 @router.get("")
-def list_projects(include_archived: bool = False, user=Depends(active_user)):
+def list_projects(include_archived: bool = False, external_ref: Optional[str] = None, user=Depends(active_user)):
+    """Com external_ref: só o projeto com essa chave, arquivado ou não (lista vazia se não houver)."""
+    params = [user["user_id"]]
+    if external_ref is not None:
+        found = by_ref(user["user_id"], external_ref.strip())
+        params.append(found["id"] if found else 0)
+        include_archived = True
     return db.query_all(
         f"""
-        SELECT p.id, p.name, p.color, p.description, p.archived, p.created_at,
+        SELECT p.id, p.name, p.color, p.description, p.archived, p.created_at, p.external_ref,
                count(w.id) FILTER (WHERE w.status <> 'done')::int AS open_tasks,
                count(w.id)::int AS total_tasks,
                count(w.id) FILTER (WHERE w.status = 'done')::int AS done_tasks,
@@ -27,10 +35,11 @@ def list_projects(include_archived: bool = False, user=Depends(active_user)):
           LEFT JOIN worklog_tasks w ON w.project_id = p.id
             OR w.id IN (SELECT x.task_id FROM worklog_task_projects x WHERE x.project_id = p.id)
          WHERE p.user_id = %s {'' if include_archived else 'AND NOT p.archived'}
+               {'AND p.id = %s' if external_ref is not None else ''}
          GROUP BY p.id
          ORDER BY p.archived, lower(p.name)
         """,
-        (user["user_id"],),
+        params,
     )
 
 

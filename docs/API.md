@@ -1,10 +1,13 @@
 # Referência da API
 
 API REST do Nexus Worklog, sob **`/api`**, mais o servidor MCP em
-**`/mcp`**. O Swagger/OpenAPI fica **desligado de propósito** — esta página é a
-referência. Campos e limites exatos de cada corpo: os modelos Pydantic em
-`backend/app/schemas.py`. Corpos e respostas em JSON; datas `AAAA-MM-DD` no fuso
-`APP_TZ`; timestamps ISO 8601 com fuso.
+**`/mcp`**. O Swagger fica **desligado de propósito** no servidor — esta página é a
+referência, e o contrato para máquina é o [`openapi.json`](openapi.json) versionado aqui
+(conector personalizado do Power Automate, n8n, Make, geradores de cliente), gerado por
+`tools/openapi.py` e conferido pelos testes. Campos e limites exatos de cada corpo: os
+modelos Pydantic em `backend/app/schemas.py`. Corpos e respostas em JSON; datas
+`AAAA-MM-DD` no fuso `APP_TZ`; timestamps ISO 8601 com fuso. Receitas prontas no fim:
+[Integração passo a passo](#integração-passo-a-passo).
 
 ## Autenticação
 
@@ -20,6 +23,7 @@ Authorization: Bearer nxs_...
 - Sem cookie e sem CSRF. Escopo `write` (lê e altera) ou `read` (escrita → 403).
 - Validade de 1 a 365 dias ou sem validade; revogável. 240 req/min por pessoa, somando as chaves (429).
 - Trocar a própria senha (ou o reset pelo admin) revoga todas as chaves e o link do calendário.
+- 429 e 503 trazem o header `Retry-After` (segundos).
 - Uma chave **nunca** acessa `/api/admin/*`, `/api/viewer/*`, `/api/tokens`, `/api/calendar`,
   `/api/notifications` nem troca senha ou exclui a conta. Atribuir tarefas por chave
   (`/api/assign`, MCP `assign_task`) exige o papel de atribuidor e escopo `write`. Tudo o que ela fizer vai para o
@@ -45,9 +49,24 @@ e `/api/viewer/*` exigem o papel com sessão do app.
 | 404 | não existe ou não é seu |
 | 409 | conflito (nome repetido, desfazer fora de ordem, tarefa com filhos) |
 | 422 | corpo inválido |
+| 410 | cursor do feed (`/api/history?after=`) mais antigo que o histórico guardado |
 | 413 / 415 | logo grande demais / tipo de arquivo não aceito |
-| 429 | limite de tentativas/requisições (login, troca de senha, chave, PDF, teste de e-mail, feed ICS) |
-| 502 / 503 | envio de e-mail falhou / e-mail não configurado ou servidor ocupado (pool ou consulta acima do limite) |
+| 429 | limite de tentativas/requisições (login, troca de senha, chave, PDF, teste de e-mail, feed ICS); com `Retry-After` |
+| 502 / 503 | envio de e-mail falhou / e-mail não configurado ou servidor ocupado (pool ou consulta acima do limite); 503 com `Retry-After` |
+
+### Erros
+
+Todo erro vem como JSON com `detail`, em duas formas:
+
+- **regra** (400, 401, 403, 404, 409, 410, 429, 503...): `detail` é uma **frase** em português, para mostrar a quem usa.
+  `{"detail": "não encontrado"}`
+- **validação** (422, corpo ou parâmetro fora do formato): `detail` é uma **lista** no formato do Pydantic
+  (`loc` = onde, `msg` = o quê, em inglês). `{"detail": [{"type": "string_too_short", "loc": ["body", "title"], "msg": "String should have at least 1 character", ...}]}`
+
+Para automação: 4xx = corrija a chamada (não adianta repetir igual), exceto 429; 429 e 503 trazem
+`Retry-After` (segundos) — espere esse tempo e repita; 5xx sem `Retry-After` = tente mais tarde com
+espera crescente. Escrita repetida por timeout não duplica com `external_ref` (tarefas, projetos,
+anotações e apontamentos).
 
 Legenda: **S** = só sessão do app · **W** = exige escopo `write` (chave) ou CSRF (sessão).
 
@@ -82,6 +101,7 @@ apaga as passkeys da conta; "Esqueci a senha" mantém e avisa por e-mail.
 | `POST /avatar` · `DELETE /avatar` | S W | corpo bruto PNG, JPEG ou WebP até 256 KB (tipo pelo conteúdo; SVG não). O app recorta e reduz antes |
 | `GET /avatar/{user_id}?v=` | S | a própria foto; o admin vê a de todos |
 | `PUT /assistant` | S W | `{enabled, idle_on, idle_minutes (5–480), idle_start, idle_end}` — janela em minutos do dia |
+| `GET /visibility` | S | `[{name, roles}]`: quem, além de você, tem papel `viewer` ou `admin` (a linha "Quem pode ver seu registro" em Conta) |
 | `GET /activity` | S | `{last_activity, timer}`: último registro de qualquer origem (tarefa, rotina, anotação, checklist, tempo, cronômetro) e o cronômetro rodando |
 | `PUT /tickets` | S W | `{ticket_url}` — endereço do sistema de chamados; `{id}` vira o número (sem `{id}`, vai no fim) |
 | `PUT /assignments` | S W | `{accept}` — aceitar receber tarefas de um atribuidor (desligar não mexe nas recebidas) |
@@ -126,18 +146,18 @@ Agenda: `daily` (dias úteis do dono) · `weekly` + `weekdays` (máscara) ·
 
 | Rota | | Corpo / observação |
 | --- | --- | --- |
-| `GET /` | | `?from=&to=` (dias, inclusive) `&by=created\|completed&status=open\|done\|all&limit=` (até 500): tarefas por período, com `external_ref` |
+| `GET /` | | `?from=&to=` (dias, inclusive) `&by=created\|completed&status=open\|done\|all&limit=` (até 500): tarefas por período, com `external_ref`. `?external_ref=` = só a tarefa com essa chave (lista vazia se não houver) |
 | `POST /` | W | `{title, description?, status?, due_date?, project_id?, priority?, ticket?, after_hours?, created_at?, completed_at?, external_ref?, blocked_reason?, follow_up_on?, resolution?}` (`resolution` só com status done: como foi resolvido) (prioridade 1 alta, 2 normal, 3 baixa; `ticket` = número do chamado, sem o "#"; `after_hours` = plantão). Datas retroativas: `AAAA-MM-DD` (criação às 9h, conclusão às 18h) ou data e hora, fuso da app; nunca no futuro, nunca conclusão antes da criação, até `retro_days` (padrão 60). `completed_at` sem `status` = já concluída. `external_ref` repetido devolve a existente (200, `existing: true`) |
 | `GET /{id}` | | tarefa + `checklist`, `notes`, `time`, `minutes`, `today` |
 | `PATCH /{id}` | W | campos a mudar (concluir uma atribuída avisa quem atribuiu, uma vez); `description`/`due_date`/`project_id`/`ticket` = `null` apaga; `completed_at` corrige a data de uma concluída; `resolution` (até 1000; null apaga; só em tarefa concluída) = como foi resolvido; `blocked_reason` (até 120) e `follow_up_on` (dia combinado para cobrar; em dia não útil vai para o dia útil anterior) com status `blocked` = o que se aguarda (`blocked_at` marca desde quando; sair do bloqueio limpa tudo) |
 | `POST /{id}/finish` | W | conclui agora, ou `{completed_at, resolution?}` (mesmas regras; `resolution` = como foi resolvido, até 1000, entra na busca); limpa o bloqueio; com o cronômetro rodando nela, ele para e aponta. Tarefa atribuída: quem atribuiu recebe um e-mail, uma vez |
 | `DELETE /{id}` | W | exclui junto anotações, checklist e tempo (o desfazer devolve tudo) |
-| `POST /{id}/notes` | W | `{body}` (até 2000) |
+| `POST /{id}/notes` | W | `{body, external_ref?}` (até 2000) — `external_ref` repetido devolve a existente (200, `existing: true`) |
 | `DELETE /api/notes/{id}` | W | |
 | `POST /{id}/checklist` | W | `{label}` |
 | `PATCH /api/checklist/{id}` | W | `{label?, done?}` |
 | `DELETE /api/checklist/{id}` | W | |
-| `POST /{id}/time` | W | `{minutes, day?, note?}` — 1–1440 min; até 366 dias atrás, nunca no futuro; máx. 24h somadas por dia |
+| `POST /{id}/time` | W | `{minutes, day?, note?, external_ref?}` — 1–1440 min; até 366 dias atrás, nunca no futuro; máx. 24h somadas por dia; `external_ref` repetido devolve o existente sem somar de novo (200, `existing: true`) |
 | `DELETE /api/time/{id}` | W | |
 
 ## Fotos (só pelo app)
@@ -157,7 +177,7 @@ quantas fotos a tarefa tem.
 
 | Rota | | Corpo |
 | --- | --- | --- |
-| `GET /?include_archived=` | | com `description`, `open_tasks`, `total_tasks` e `objectives` |
+| `GET /?include_archived=&external_ref=` | | com `description`, `external_ref`, `open_tasks`, `total_tasks` e `objectives`; `external_ref` = só o projeto com essa chave, arquivado ou não |
 | `POST /` | W | `{name, color?, description?, external_ref?}` — nome único por usuário, sem diferenciar maiúsculas e acentos (409); `external_ref` repetido devolve o existente (200, `existing`) |
 | `PATCH /{id}` | W | `{name?, color?, description?, archived?}` — `description: null` apaga |
 | `DELETE /{id}` | W | as tarefas ficam sem projeto (o desfazer as devolve) |
@@ -174,14 +194,47 @@ quantas fotos a tarefa tem.
 | `GET /api/export/tarefas.csv` | | idem, com as colunas `aguardando` (motivo do bloqueio) e `como_resolveu` |
 | `GET /api/export/plantao.csv?start=&end=` | | atendimentos de plantão do período (padrão: o mês), com horas por dia e total |
 | `GET /api/export/rotinas.csv?start=&end=` | | trilha de auditoria: cada rotina em cada dia do período (até hoje), prevista/extra, feita (sim/não/pendente) e a evidência — dia sem nada feito também aparece |
-| `GET /api/export/tudo.json` | | tarefas com anotações/checklist/tempo, rotinas com dias feitos, `require_note` e `evidence` (dia + evidência), `renewals` (vencimentos), projetos |
+| `GET /api/export/tudo.json` | | `user`, `profile` (nome, tema, chamados, projeto padrão, aceite), `prefs` (e-mail, notificações, assistente), `projects` (com `description`, `external_ref` e `objectives`), `templates`, `tasks` (com `external_ref`, objetivo, projetos extras, anotações/checklist/tempo), `recurring` (dias feitos, `require_note`, `evidence`), `renewals` e `photos` (quantas; as imagens vão no `fotos.zip`) |
 
 ## Histórico — `/api/history`
 
 | Rota | | Observação |
 | --- | --- | --- |
-| `GET /?limit=&entity=&entity_id=` | | quem fez (app, chave, IA, admin), o quê, `can_undo` |
+| `GET /?limit=&entity=&entity_id=` | | quem fez (app, chave, IA, admin), o quê, `can_undo` (do mais novo ao mais velho) |
+| `GET /?after=<id>&limit=` | | **feed de mudanças**, para sincronizar: os eventos da pessoa com id maior que `after`, do mais velho ao mais novo (até 200 por vez) |
 | `POST /{id}/undo` | W | só a ação mais recente de cada item; criação de tarefa que já tem filhos → 409 |
+
+**Feed de mudanças.** Cada item: `{id, at, action, entity, entity_id, actor, token_name, external_ref?}`.
+`action` = `entidade.verbo` (`worklog.create`, `worklog.update`, `worklog.finish`, `worklog.delete`,
+`note.create`, `time.create`, `recurring.toggle`, `project.update`, `undo`...); `external_ref` vem quando o item tem um.
+Exclusão é uma **lápide** (`*.delete`, o id do item que sumiu). Para buscar o estado atual, leia o item pela
+rota dele (`GET /api/worklog/{entity_id}`). Guarde o último `id` e peça `after=<ele>` de novo; lista vazia =
+em dia. `after=0` começa do mais velho guardado. O histórico guarda 180 dias: um cursor mais velho que isso
+(integração parada há meses) recebe **410** — recomece com `after=0`. Os eventos dos últimos 2 segundos só
+aparecem na próxima leitura (garante a ordem). Escopo `read` basta.
+
+## Webhooks — `/api/webhooks`
+
+O Nexus avisa outro sistema a cada mudança: o mesmo evento do feed, empurrado por `POST`.
+
+| Rota | | Corpo / observação |
+| --- | --- | --- |
+| `GET /` | | os webhooks, com `active`, `failures`, `last_error`, `last_delivered_at`, `disabled_at` |
+| `POST /` | W | `{url, events?}` — só `https://` com endereço público; `events` = `["*"]` (padrão), ações exatas (`worklog.finish`) ou grupos (`worklog.*`); até 5 por pessoa. Devolve `secret` (`whsec_…`) **uma vez** |
+| `POST /{id}/enable` | W | religa um desligado por falhas; continua do evento em que parou |
+| `DELETE /{id}` | W | |
+
+- Corpo: o item do feed + `data` (o estado do item logo depois da mudança, para tarefa, anotação, checklist,
+  tempo, rotina, projeto, objetivo e vencimento; `null` nas exclusões e nos demais). Fotos nunca vão.
+- Headers: `X-Nexus-Event` (a `action`), `X-Nexus-Delivery` (= `id` do evento; use para ignorar repetição) e
+  `X-Nexus-Signature: t=<unix>,v1=<hex>`, onde `v1 = HMAC-SHA256(segredo, "<t>.<corpo bruto>")`. Confira a
+  assinatura e recuse `t` muito antigo (ex.: mais de 5 min).
+- Entrega: uma passada por minuto, um evento por vez e em ordem; só os eventos criados depois do cadastro.
+  Resposta 2xx = entregue. Outra resposta (inclusive redirecionamento, que não é seguido), erro de conexão
+  ou mais de 5 s = falha: tenta de novo em 1 min, 5 min, 30 min, 2 h e 12 h; **5 falhas seguidas desligam**
+  o webhook (aparece em `GET` e na tela). Trocar a senha também desliga todos.
+- O endereço é resolvido a cada envio e recusado se apontar para rede interna, loopback, link-local ou faixa
+  reservada.
 
 ## Calendário, avisos, notificações e chaves (só pelo app)
 
@@ -308,3 +361,81 @@ Gemini CLI (`~/.gemini/settings.json`):
 
 ChatGPT e claude.ai (navegador) ainda não: os conectores deles exigem OAuth, que o Nexus não tem.
 Nesses casos, use um dos clientes acima ou a API REST.
+
+## Integração passo a passo
+
+Receitas com `curl` (em qualquer ferramenta — n8n, Make, Power Automate, script — é a mesma chamada
+HTTP). `NEXUS` = o endereço do seu Nexus; `KEY` = uma chave `write` criada em Configurações › IA e API.
+
+```bash
+NEXUS=https://SEU-HOST; KEY=nxs_SUA_CHAVE
+H=(-H "Authorization: Bearer $KEY" -H "Content-Type: application/json")
+```
+
+**1. Alerta vira tarefa (sem duplicar).** O monitoramento usa o id do alerta como `external_ref`; mandar
+de novo devolve a mesma tarefa (200, `existing: true`) em vez de criar outra.
+
+```bash
+curl -sS -X POST "$NEXUS/api/worklog" "${H[@]}" \
+  -d '{"title": "Disco cheio em srv-db01", "description": "/ acima de 90%", "priority": 1, "external_ref": "alerta-48213"}'
+# 201 {"id": 512}   (repetido: 200 {"id": 512, "existing": true})
+```
+
+**2. Concluir pela referência, com como foi resolvido.**
+
+```bash
+ID=$(curl -sS "$NEXUS/api/worklog?external_ref=alerta-48213" "${H[@]}" | jq '.[0].id')
+curl -sS -X POST "$NEXUS/api/worklog/$ID/finish" "${H[@]}" \
+  -d '{"resolution": "Logs antigos rotacionados; alerta normalizou"}'
+```
+
+**3. Apontar tempo (repetir não soma de novo).**
+
+```bash
+curl -sS -X POST "$NEXUS/api/worklog/$ID/time" "${H[@]}" \
+  -d '{"minutes": 30, "note": "análise e limpeza", "external_ref": "alerta-48213-t1"}'
+```
+
+**4. Ler o feed de mudanças (sincronizar).** Guarde o maior `id` recebido e peça a partir dele.
+
+```bash
+curl -sS "$NEXUS/api/history?after=0&limit=200" "${H[@]}"      # primeira vez
+curl -sS "$NEXUS/api/history?after=91234&limit=200" "${H[@]}"  # depois: só o que mudou
+# [{"id": 91235, "at": "...", "action": "worklog.finish", "entity": "worklog", "entity_id": 512,
+#   "actor": "web", "token_name": null, "external_ref": "alerta-48213"}, ...]
+# 410 = o cursor passou dos 180 dias guardados: recomece com after=0
+```
+
+**5. Conferir a assinatura do webhook.** Use o corpo **bruto** (antes de interpretar o JSON) e o
+segredo `whsec_…` mostrado na criação. Ignore repetições pelo `X-Nexus-Delivery`.
+
+Python:
+
+```python
+import hashlib, hmac, time
+
+def nexus_ok(secret: str, body: bytes, header: str, tolerance: int = 300) -> bool:
+    """body = corpo bruto; header = valor de X-Nexus-Signature."""
+    parts = dict(p.split("=", 1) for p in header.split(",") if "=" in p)
+    t, v1 = parts.get("t", ""), parts.get("v1", "")
+    if not t.isdigit() or abs(time.time() - int(t)) > tolerance:
+        return False  # sem carimbo ou velho demais (reenvio malicioso)
+    expected = hmac.new(secret.encode(), f"{t}.".encode() + body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, v1)
+```
+
+Node:
+
+```js
+const crypto = require("node:crypto");
+
+function nexusOk(secret, rawBody, header, tolerance = 300) {
+  // rawBody = Buffer do corpo bruto; header = valor de X-Nexus-Signature
+  const parts = Object.fromEntries(header.split(",").map((p) => p.split("=")));
+  const t = Number(parts.t);
+  if (!Number.isInteger(t) || Math.abs(Date.now() / 1000 - t) > tolerance) return false;
+  const expected = crypto.createHmac("sha256", secret).update(`${t}.`).update(rawBody).digest();
+  const got = Buffer.from(parts.v1 || "", "hex");
+  return got.length === expected.length && crypto.timingSafeEqual(got, expected);
+}
+```

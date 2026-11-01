@@ -31,6 +31,9 @@ services:
       COOKIE_SECURE: "false"
       APP_TZ: America/Sao_Paulo
       MAIL_SCHEDULER: "false"   # os testes chamam o agendador na mão, com e-mail falso
+      OPENAPI_FILE: /docs/openapi.json  # test_openapi_em_dia compara com o versionado
+    volumes:
+      - ./docs:/docs:ro
     depends_on:
       db-test:
         condition: service_healthy

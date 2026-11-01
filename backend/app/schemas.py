@@ -1,3 +1,4 @@
+import re
 from datetime import date, datetime, time
 from typing import Literal, Optional
 
@@ -168,6 +169,21 @@ class TokenIn(BaseModel):
     scope: Literal["read", "write"] = "write"
     # Validade em dias; None = sem validade (revogue quando não usar mais).
     expires_in_days: Optional[int] = Field(default=90, ge=1, le=365)
+
+
+class WebhookIn(BaseModel):
+    url: str = Field(min_length=9, max_length=500)  # https://...
+    # "*" (tudo), a ação exata ("worklog.finish") ou o grupo ("worklog.*").
+    events: list[str] = Field(default=["*"], min_length=1, max_length=30)
+
+    @model_validator(mode="after")
+    def _norm(self):
+        self.url = self.url.strip()
+        evs = [e.strip() for e in self.events]
+        if any(not re.fullmatch(r"\*|[a-z_]{1,30}\.(\*|[a-z_]{1,30})", e) for e in evs):
+            raise ValueError('eventos: "*", "entidade.*" ou "entidade.acao" (ex.: worklog.finish)')
+        self.events = ["*"] if "*" in evs else sorted(set(evs))
+        return self
 
 
 class BrandingIn(BaseModel):
@@ -429,6 +445,12 @@ class ProjectUpdate(BaseModel):
 
 class NoteIn(BaseModel):
     body: str = Field(min_length=1, max_length=2000)
+    external_ref: Optional[str] = Ref  # repetida devolve a existente
+
+    @model_validator(mode="after")
+    def _norm(self):
+        self.external_ref = _ref(self.external_ref)
+        return self
 
 
 class ChecklistIn(BaseModel):
@@ -444,6 +466,12 @@ class TimeIn(BaseModel):
     minutes: int = Field(ge=1, le=1440)
     day: Optional[date] = None  # padrão: hoje
     note: Optional[str] = Field(default=None, max_length=200)
+    external_ref: Optional[str] = Ref  # repetido devolve o existente
+
+    @model_validator(mode="after")
+    def _norm(self):
+        self.external_ref = _ref(self.external_ref)
+        return self
 
 
 # Avisos por e-mail: os padrões daqui valem também quando o usuário ainda não
