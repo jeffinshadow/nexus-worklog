@@ -1,6 +1,6 @@
 // Tour guiado: abre sozinho no primeiro acesso e de novo pela Ajuda. Duas
 // partes: (1) configurar o Nexus da pessoa com os formulários de verdade
-// (nome, dias úteis, projetos, projeto padrão, rotinas) e (2) um passeio pela
+// (nome, tema, dias úteis, projetos, projeto padrão, rotinas) e (2) um passeio pela
 // tela Hoje, com destaque em cada parte, mostrando como fica o dia a dia.
 // Quem já configurou passa rápido: cada passo vem com o que já está salvo.
 import { api } from "./api.js";
@@ -45,7 +45,7 @@ function setup(me) {
     dlg.addEventListener("close", () => { dlg.remove(); resolve(result); });
     dlg.addEventListener("cancel", () => { result = "close"; });
 
-    const steps = [welcome, profile, workDays, projects, defaultProject, routines, ready];
+    const steps = [welcome, profile, theme, workDays, projects, defaultProject, routines, ready];
     const total = steps.length - 2; // boas-vindas e "pronto" não contam
     const next = () => { step++; dir = 1; paint(); };
     const back = () => { step--; dir = -1; paint(); };
@@ -89,7 +89,7 @@ function setup(me) {
         h("div", { class: "tour-hero" }, h("img", { src: "/img/dragon-mark.svg", alt: "", width: "40", height: "46" })),
         h("h2", { id: "tour-title", text: `Boas-vindas ao Nexus${nome}` }),
         h("p", { class: "tour-intro", text: "O Nexus guarda o seu dia de trabalho: as rotinas que você confere, as tarefas que aparecem e o tempo de cada uma. No fim do dia, da semana ou do mês, o relatório sai pronto." }),
-        h("p", { class: "tour-intro", text: "Primeiro, cinco passos rápidos para deixar o Nexus do seu jeito. Depois, um passeio de um minuto pela tela. Dá para rever tudo depois pela Ajuda." }),
+        h("p", { class: "tour-intro", text: "Primeiro, seis passos rápidos para deixar o Nexus do seu jeito. Depois, um passeio de um minuto pela tela. Dá para rever tudo depois pela Ajuda." }),
         h("div", { class: "dialog-actions tour-actions" },
           h("button", { type: "button", class: "btn btn-text tour-skip", text: "Agora não", onClick: () => end("close") }),
           h("button", { type: "button", class: "btn btn-ghost", text: "Só o passeio", onClick: () => end("walk") }),
@@ -105,6 +105,23 @@ function setup(me) {
           const v = name.value.trim() || null;
           if (v !== (me.display_name || null)) changed(me, await api.put("/me/profile", { display_name: v }));
         });
+    }
+
+    // Tema: muda na hora e fica guardado na conta (como em Configurações > Conta).
+    function theme() {
+      const OPTS = [["auto", "Automático", "Segue o tema do aparelho"], ["light", "Claro", null], ["dark", "Escuro", null]];
+      const seg = h("div", { class: "seg tour-theme", role: "radiogroup", "aria-label": "Tema" });
+      const paint = (cur) => { for (const b of seg.children) b.setAttribute("aria-checked", String(b.dataset.v === cur)); };
+      for (const [v, label, tip] of OPTS) {
+        seg.append(h("button", { type: "button", class: "chip-btn", role: "radio", "data-v": v, title: tip, text: label, onClick: async () => {
+          window.nexusTheme.set(v);
+          paint(v);
+          try { await api.put("/me/theme", { theme: v }); me.theme = v; } catch (e) { errorToast(e, "Não foi possível guardar o tema na conta."); }
+        } }));
+      }
+      paint(me.theme || "auto");
+      return frame("Claro ou escuro?", "Automático segue o aparelho: se ele escurece à noite, o Nexus também. Toque para ver como fica. Dá para trocar depois em Configurações > Conta.",
+        [seg], null, "Seguir");
     }
 
     function workDays() {

@@ -94,7 +94,7 @@ async function route() {
   const prev = kept[name] || {};
   document.getElementById("page-title").textContent = view.title;
   document.getElementById("appbar-title").textContent = view.title;
-  eyebrow.textContent = view.eyebrow || prev.eyebrow || "";
+  setEyebrow(view.eyebrow || prev.eyebrow || "");
   document.title = `${view.title} · Nexus Worklog`;
   setActions(...(prev.actions || []));
 
@@ -167,8 +167,10 @@ function setAssist(node) {
   if (node) slot.append(node);
 }
 
+// A linha abaixo do título; no celular, sobe para a barra do topo junto com ele.
 function setEyebrow(text) {
   document.getElementById("page-eyebrow").textContent = text;
+  document.getElementById("appbar-sub").textContent = text;
 }
 
 function go(name) {
