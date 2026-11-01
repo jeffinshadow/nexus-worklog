@@ -39,7 +39,7 @@
           </div>
           <input id="login-password" name="password" type="password" required autocomplete="current-password" maxlength="128">
         </div>
-        <p class="error-text" id="login-error"></p>
+        <p class="error-text" id="login-error" role="alert"></p>
         <button class="btn btn-primary full" type="submit">Entrar</button>
         <button class="btn btn-ghost full hidden" type="button" id="login-passkey">Entrar com passkey</button>
       </form>
@@ -52,7 +52,7 @@
           <label for="forgot-email">E-mail</label>
           <input id="forgot-email" type="email" required autocomplete="username" maxlength="254">
         </div>
-        <p class="error-text" id="forgot-error"></p>
+        <p class="error-text" id="forgot-error" role="alert"></p>
         <p class="ok-text hidden" id="forgot-ok" role="status"></p>
         <button class="btn btn-primary full" type="submit">Enviar o link</button>
         <button class="btn btn-text full" type="button" id="back-login">Voltar para entrar</button>
@@ -60,8 +60,8 @@
 
       <!-- Link do e-mail: convite (#convite=) ou senha nova (#senha=). -->
       <form id="form-link" class="hidden">
-        <h2 class="auth-title" id="link-title"></h2>
-        <p class="sub" id="link-sub"></p>
+        <h2 class="auth-title" id="link-title" tabindex="-1"></h2>
+        <p class="sub" id="link-sub" role="status"></p>
         <input type="email" id="link-email" autocomplete="username" class="sr-only" tabindex="-1" aria-hidden="true">
         <div class="field hidden" id="link-name-wrap">
           <label for="link-name">Como você quer ser chamado</label>
@@ -75,7 +75,7 @@
           <label for="link-pw2">Confirme a nova senha</label>
           <input id="link-pw2" type="password" required minlength="10" maxlength="128" autocomplete="new-password">
         </div>
-        <p class="error-text" id="link-error"></p>
+        <p class="error-text" id="link-error" role="alert"></p>
         <button class="btn btn-primary full" type="submit" id="link-submit"></button>
         <button class="btn btn-text full hidden" type="button" id="link-back">Ir para entrar</button>
       </form>
@@ -112,7 +112,7 @@
         </div>
         <!-- Armadilha para robôs: invisível para gente (e fora do leitor de tela e do Tab). -->
         <div class="trap" aria-hidden="true"><label for="req-website">Site</label><input id="req-website" type="text" tabindex="-1" autocomplete="off"></div>
-        <p class="error-text" id="request-error"></p>
+        <p class="error-text" id="request-error" role="alert"></p>
         <p class="ok-text hidden" id="request-ok" role="status"></p>
         <button class="btn btn-primary full" type="submit" id="request-submit">Enviar o pedido</button>
         <button class="btn btn-text full" type="button" id="request-back">Voltar para entrar</button>
