@@ -692,7 +692,7 @@ def t_get_period(ctx, args):
              f"  {s['pontual_done']} tarefa(s) concluída(s) · {_dur(s['minutes']) if s['minutes'] else 'nada'} apontado"
              f" · {s['active_days']} dia(s) com registro"]
     if not proj:
-        rec = f"{s['recurring_done']}/{s['recurring_total']} feitas" if s["recurring_total"] else "nenhuma devida"
+        rec = f"{s['recurring_done']}/{s['recurring_total']} feitas" if s["recurring_total"] else "nenhuma prevista"
         lines.append(f"  rotinas: {rec}" + (f" (+{s['recurring_extra']} extra)" if s["recurring_extra"] else ""))
     projs = [p for p in r["projects"] if p["minutes"] or p["done"]]
     if projs:
@@ -710,14 +710,14 @@ def t_get_period(ctx, args):
             lines.append(f"  … e mais {len(r['deliveries']) - 40} (use list_tasks com by=completed)")
     stats = [x for x in r["recurring_stats"] if x["due"] or x["extra"]] if not proj else []
     if stats:
-        lines += ["", "Rotinas no período (feitas/devidas):"]
+        lines += ["", "Rotinas no período (feitas/previstas):"]
         lines += [f"  {x['label']}: {x['done']}/{x['due']}" + (f" (+{x['extra']} extra)" if x["extra"] else "") for x in stats]
     return "\n".join(lines)
 
 
 def _summary_block(title, x, prev=None, prev_label="mesma parte da semana passada"):
     out = [title]
-    rec = f"{x['recurring_done']}/{x['recurring_total']}" if x["recurring_total"] else "nenhuma devida"
+    rec = f"{x['recurring_done']}/{x['recurring_total']}" if x["recurring_total"] else "nenhuma prevista"
     out.append(f"  rotinas {rec}" + (f" (+{x['recurring_extra']} extra)" if x["recurring_extra"] else "")
                + f" · {x['pontual_done']} tarefa(s) concluída(s) · {_dur(x['minutes']) if x['minutes'] else 'nada'} apontado")
     if prev:
@@ -1040,7 +1040,7 @@ TOOLS = {
                        "project": {"type": "string", "description": "Só as tarefas deste projeto (nome ou id; inclui as em que ele é projeto extra)"}}}),
     "get_period": (t_get_period, False,
                    "Como foi um período qualquer (um mês, um trimestre...), como na prévia do relatório: tarefas "
-                   "concluídas, tempo apontado no total e por projeto, rotinas feitas/devidas. Com project, só aquele "
+                   "concluídas, tempo apontado no total e por projeto, rotinas feitas/previstas. Com project, só aquele "
                    "projeto (pergunta do tipo “quanto tempo gastei no cliente X este mês?”).",
                    {"type": "object", "properties": {
                        "from": {**DATE, "description": "Primeiro dia (inclusive)"},
@@ -1049,7 +1049,7 @@ TOOLS = {
     "create_task": (t_create_task, True,
                     "Cria uma tarefa (também retroativa, com created_at/completed_at). Antes de criar, veja get_today ou "
                     "search: se já houver tarefa aberta sobre o mesmo assunto, conclua ou atualize essa em vez de "
-                    "criar outra. Algo já feito: status done e minutes com o tempo gasto.",
+                    "criar outra. Algo já feito: status done e minutes com o tempo apontado.",
                     {"type": "object", "required": ["title"], "properties": {
                         "title": {"type": "string", "maxLength": 200},
                         "description": {"type": ["string", "null"], "maxLength": 300},
@@ -1070,7 +1070,7 @@ TOOLS = {
                         "follow_up_on": {**DATE, "type": ["string", "null"], "description": "Com status blocked: dia combinado para cobrar"},
                         "resolution": {"type": "string", "maxLength": 1000, "description": "Com status done: como foi resolvido (entra na busca)"},
                         "minutes": {"type": "integer", "minimum": 1, "maximum": 1440,
-                                    "description": "Tempo gasto, em minutos: já fica apontado (no dia da conclusão ou do início)"},
+                                    "description": "Tempo, em minutos: já fica apontado (no dia da conclusão ou do início)"},
                         "external_ref": {"type": "string", "maxLength": 120,
                                          "description": "Chave sua para não duplicar: repetida, devolve a tarefa que já existe"}}}),
     "update_task": (t_update_task, True,
@@ -1114,7 +1114,7 @@ TOOLS = {
     "set_checklist_item": (t_set_checklist_item, True, "Marca (done=true) ou reabre um item do checklist (ids em get_task).",
                            {"type": "object", "required": ["item_id"], "properties": {
                                "item_id": {"type": "integer"}, "done": {"type": "boolean", "default": True}}}),
-    "log_time": (t_log_time, True, "Aponta tempo gasto numa tarefa (minutos; dia padrão hoje, nunca no futuro).",
+    "log_time": (t_log_time, True, "Aponta tempo numa tarefa (minutos; dia padrão hoje, nunca no futuro).",
                  {"type": "object", "required": ["task_id", "minutes"], "properties": {
                      "task_id": {"type": "integer"},
                      "minutes": {"type": "integer", "minimum": 1, "maximum": 1440},
@@ -1182,7 +1182,7 @@ TOOLS = {
                           "resolution": {"type": "string", "maxLength": 1000,
                                          "description": "Como foi resolvido (vira base de conhecimento: entra na busca)"}}}),
     "list_recurring": (t_list_recurring, False, "Rotinas de um dia (padrão: hoje; até 7 dias atrás) e se foram feitas. "
-                       "“(exige evidência)”: ao marcar, mande note. “(pausada até DD/MM)”: não é devida nesses dias. "
+                       "“(exige evidência)”: ao marcar, mande note. “(pausada até DD/MM)”: não é prevista nesses dias. "
                        "“próxima em DD/MM”: rotina que conta da última vez (freq after).",
                        {"type": "object", "properties": {"day": DATE}}),
     "set_recurring": (t_set_recurring, True, "Marca (done=true) ou desmarca uma rotina num dia (padrão hoje; até 7 dias atrás). "

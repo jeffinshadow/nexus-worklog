@@ -176,7 +176,7 @@ def test_csv_de_rotinas_auditoria(usuario):
     assert any(";Antivírus;prevista;sim;0 ameaças" in l for l in linhas)
     # Apagar a evidência aparece certo no histórico.
     usuario.post(f"/recurring/{rid}/toggle", {"done": True, "note": ""})
-    assert hist(usuario, entity="recurring", entity_id=rid)[0]["summary"].startswith("apagou a evidência")
+    assert hist(usuario, entity="recurring", entity_id=rid)[0]["summary"].startswith("excluiu a evidência")
 
 
 def test_rotinas_csv_mostra_a_falta(usuario):

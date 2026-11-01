@@ -249,7 +249,7 @@ def test_semanal_com_pdf_e_copia(usuario):
     assert m["cc"] == "gestor@example.com"
     nome, pdf, tipo = m["attachments"][0]
     assert nome.startswith("relatorio-semana-") and pdf[:4] == b"%PDF" and tipo == "application/pdf"
-    assert "anexado" in m["text"] and "verificações devidas" in m["text"]  # a abertura do relatório
+    assert "anexado" in m["text"] and "verificações previstas" in m["text"]  # a abertura do relatório
     # Desligado: sem anexo e sem cópia.
     usuario.c.put("/api/notifications", json={"weekly": True, "weekly_hour": 8}, headers=usuario._h())
     seguinte = segunda + timedelta(days=7)

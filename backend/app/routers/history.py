@@ -58,7 +58,7 @@ ACTION_LABELS = {
     "app.settings": "alterou as configurações gerais",
     "recurring.create": "criou a rotina",
     "recurring.update": "editou a rotina",
-    "recurring.deactivate": "removeu a rotina",
+    "recurring.deactivate": "excluiu a rotina",
     "recurring.toggle": "marcou a rotina",
     "recurring.replace": "trocou a agenda da rotina",
     "recurring.pause": "pausou a rotina",
@@ -83,12 +83,12 @@ ACTION_LABELS = {
     "calendar.create": "criou o link do calendário",
     "calendar.revoke": "revogou o link do calendário",
     "note.create": "anotou na tarefa",
-    "note.delete": "apagou uma anotação da tarefa",
+    "note.delete": "excluiu uma anotação da tarefa",
     "checklist.create": "adicionou o item",
     "checklist.update": "editou o item",
     "checklist.delete": "removeu o item",
     "time.create": "apontou tempo em",
-    "time.delete": "apagou um apontamento de",
+    "time.delete": "excluiu um apontamento de",
     "project.create": "criou o projeto",
     "project.update": "editou o projeto",
     "project.delete": "excluiu o projeto",
@@ -96,7 +96,7 @@ ACTION_LABELS = {
     "token.revoke": "revogou a chave de API",
     "webhook.create": "criou o webhook para",
     "webhook.enable": "religou o webhook para",
-    "webhook.delete": "apagou o webhook para",
+    "webhook.delete": "excluiu o webhook para",
     "user.invite": "criou a conta (convite)",
     "user.reset_password": "redefiniu a senha",
     "user.invite_resend": "reenviou o convite",
@@ -157,7 +157,7 @@ def _label(row) -> str:
     if row["action"] == "recurring.toggle" and row["after"]:
         text = ("marcou" if row["after"]["done"] else "desmarcou") + " a rotina"
         if row["after"]["done"] and row["before"] and row["before"].get("done") and row["after"].get("note") != row["before"].get("note"):
-            text = "anotou a evidência da rotina" if row["after"].get("note") else "apagou a evidência da rotina"
+            text = "anotou a evidência da rotina" if row["after"].get("note") else "excluiu a evidência da rotina"
         dia = str(row["after"]["day"])  # AAAA-MM-DD; fora das aspas, que são do nome
         return f"{text} “{name}” em {dia[8:10]}/{dia[5:7]}" if name else f"{text} em {dia[8:10]}/{dia[5:7]}"
     return f"{text} “{name}”" if name else text

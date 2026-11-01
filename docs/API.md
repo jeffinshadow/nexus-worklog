@@ -135,9 +135,9 @@ apaga as passkeys da conta; "Esqueci a senha" mantém e avisa por e-mail.
 | `POST /` | W | `{label, freq?, weekdays?, month_day?, interval_days?, require_note?, remind_at?}` — `require_note` = marcar exige evidência; `remind_at` (`HH:MM`, também `7h30`/`7h`) = horário do lembrete |
 | `PATCH /{id}` | W | `{label?, require_note?, freq?…}` — mudar a agenda exige `freq` + o parâmetro dela; se a rotina já tem passado, ela é encerrada hoje e uma nova (devolvida em `id`) começa hoje — uma ação só no histórico. Para `freq: "after"`, a nova conta da última marcação da antiga (próxima = última + N novo) |
 | `DELETE /{id}` | W | remove daqui para a frente (o passado fica) |
-| `GET /reminders` | R | rotinas com horário devidas hoje: `{today, items: [{id, label, remind_at, require_note, done}]}` (o lembrete da tela) |
+| `GET /reminders` | R | rotinas com horário previstas hoje: `{today, items: [{id, label, remind_at, require_note, done}]}` (o lembrete da tela) |
 | `POST /{id}/pause` | W | `{until}` (`AAAA-MM-DD`, de hoje até 1 ano) — pausa de hoje até `until`, inclusive (férias, folga, prédio fechado); já pausada = muda o fim. Volta sozinha no dia seguinte |
-| `DELETE /{id}/pause` | W | retomar agora: a pausa termina ontem e hoje a rotina já é devida (400 se não está pausada) |
+| `DELETE /{id}/pause` | W | retomar agora: a pausa termina ontem e hoje a rotina já é prevista (400 se não está pausada) |
 | `POST /{id}/snooze` | W | `{minutes}` (5–120, padrão 10) — adia o lembrete de hoje; as notificações dos aparelhos esperam |
 | `POST /{id}/toggle` | W | `{done, day?, note?}` — `day` até 7 dias atrás e só quando a rotina existia; `note` (até 200) = evidência do que foi conferido (vai pro PDF e pro JSON; remarcar sem `note` mantém a anterior; `note` vazio apaga). Rotina com `require_note` só é marcada com evidência (400) |
 
@@ -154,7 +154,7 @@ uma falta no último dia do ciclo (vencimento + N − 1), quando abre o seguinte
 Marcar antes de vencer é extra e adianta a próxima data. No quadro, `next_due`
 = a próxima data (ou o vencimento já passado do ciclo aberto).
 
-Pausa: nos dias pausados a rotina não é devida em nada (quadro, lembrete,
+Pausa: nos dias pausados a rotina não é prevista em nada (quadro, lembrete,
 notificação, avisos por e-mail, retrospectiva, PDF, resumos, calendário ICS);
 marcar conta como extra. Ela começa sempre no dia em que é pedida, então os
 números já fechados não mudam; cada pausa fica guardada como um período. No

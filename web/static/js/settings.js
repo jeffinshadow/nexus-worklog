@@ -646,9 +646,9 @@ async function webhooksPanel(rerender) {
       }));
     }
     actions.append(h("button", {
-      type: "button", class: "btn btn-danger btn-sm", text: "Apagar", onClick: async () => {
-        if (!(await confirmDialog({ title: "Apagar o webhook?", text: `${w.url} deixa de receber os avisos na hora.`, confirm: "Apagar", danger: true }))) return;
-        try { await api.del(`/webhooks/${w.id}`); toast("Webhook apagado."); rerender(); }
+      type: "button", class: "btn btn-danger btn-sm", text: "Excluir", onClick: async () => {
+        if (!(await confirmDialog({ title: "Excluir o webhook?", text: `${w.url} deixa de receber os avisos na hora.`, confirm: "Excluir", danger: true }))) return;
+        try { await api.del(`/webhooks/${w.id}`); toast("Webhook excluído."); rerender(); }
         catch (e) { errorToast(e); }
       },
     }));
@@ -710,7 +710,7 @@ function aiHelp() {
       h("p", { class: "help", text: "O aplicativo e o site do Gemini (gemini.google.com), o ChatGPT e o Claude no navegador (claude.ai) ainda não ligam no Nexus: os conectores deles pedem um tipo de login (OAuth) que o Nexus não tem. Do Gemini, só o Gemini CLI funciona; nos outros, use um dos programas acima ou a API." })),
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "O que a IA pode fazer" })),
-      h("p", { class: "help", text: "Ver o dia e como foi qualquer período (tempo por projeto), buscar, criar e editar tarefas (com projeto, prioridade e tempo gasto), concluir, criar e marcar rotinas (até 7 dias atrás), anotar progresso, montar checklist, apontar tempo e usar o cronômetro, montar projetos e objetivos, fazer a passagem de turno, ver vencimentos, achar como você resolveu algo parecido antes, consultar o histórico e desfazer um engano dela. Pelo MCP ela não exclui tarefas, rotinas, projetos nem objetivos. Mas a chave “ler e registrar” também vale para a API, que exclui (tudo volta pelo Histórico), e uma IA com terminal no seu computador (Claude Code, Gemini CLI) consegue usar a API. Se você só quer consultas, crie uma chave “só leitura”: com ela, a IA apenas consulta." }),
+      h("p", { class: "help", text: "Ver o dia e como foi qualquer período (tempo por projeto), buscar, criar e editar tarefas (com projeto, prioridade e tempo apontado), concluir, criar e marcar rotinas (até 7 dias atrás), anotar progresso, montar checklist, apontar tempo e usar o cronômetro, montar projetos e objetivos, fazer a passagem de turno, ver vencimentos, achar como você resolveu algo parecido antes, consultar o histórico e desfazer um engano dela. Pelo MCP ela não exclui tarefas, rotinas, projetos nem objetivos. Mas a chave “ler e registrar” também vale para a API, que exclui (tudo volta pelo Histórico), e uma IA com terminal no seu computador (Claude Code, Gemini CLI) consegue usar a API. Se você só quer consultas, crie uma chave “só leitura”: com ela, a IA apenas consulta." }),
       h("p", { class: "dialog-note", text: "API REST direta (scripts, automações):" }),
       codeBox(`curl -H "Authorization: Bearer nxs_SUA_CHAVE" ${location.origin}/api/board`)),
     h("section", { class: "panel" },
@@ -773,7 +773,7 @@ function deleteAccount(isUser) {
   form.addEventListener("submit", busy(async (ev) => {
     ev.preventDefault();
     err.textContent = "";
-    const ok = await confirmDialog({ title: "Excluir a sua conta?", text: "Tudo o que você registrou será apagado agora, sem volta.", confirm: "Excluir para sempre", danger: true });
+    const ok = await confirmDialog({ title: "Excluir a sua conta?", text: "Tudo o que você registrou será excluído agora, sem volta.", confirm: "Excluir para sempre", danger: true });
     if (!ok) return;
     try {
       await api.post("/me/delete", { password: pw.value });

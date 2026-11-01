@@ -77,7 +77,7 @@ export async function mount(root, opts = {}) {
   const dates = h("div", { class: "report-dates" },
     field("Início", startInput),
     field("Fim", endInput));
-  const wholeNote = h("p", { class: "help hidden", text: "Do primeiro registro do projeto até hoje: tudo o que foi entregue, o tempo gasto e o que ainda está aberto." });
+  const wholeNote = h("p", { class: "help hidden", text: "Do primeiro registro do projeto até hoje: tudo o que foi entregue, o tempo apontado e o que ainda está aberto." });
   function sync() {
     const proj = !!projSel.value;
     scope.classList.toggle("hidden", !proj);
@@ -140,7 +140,7 @@ export async function mount(root, opts = {}) {
     root.append(h("div", { class: "report-section" },
       h("h3", { text: "Exportar dados" }),
       h("p", { class: "sub", text: "Seus dados em arquivos abertos (o CSV abre em qualquer planilha), para faturamento, conferência ou backup." }),
-      dl("/export/apontamentos.csv", "Tempo registrado (CSV)", "uma linha por vez que você registrou tempo: dia, horas, tarefa, projeto e observação"),
+      dl("/export/apontamentos.csv", "Tempo apontado (CSV)", "uma linha por apontamento: dia, horas, tarefa, projeto e observação"),
       dl("/export/tarefas.csv", "Tarefas (CSV)", "todas as tarefas com situação, prioridade, projeto, prazo, checklist e horas"),
       dl(() => "/export/plantao.csv?" + new URLSearchParams(Object.entries({ start: startInput.value, end: endInput.value }).filter(([, v]) => v)),
         "Plantão do período (CSV)", "os apontamentos das tarefas marcadas como plantão, de todos os projetos, com as horas e o total — para fechar sobreaviso ou banco de horas (usa o período escolhido acima)"),

@@ -214,7 +214,7 @@ function heatmap(hm) {
     if (op !== 1) r.style.opacity = op;
     if (empty) { r.style.stroke = "var(--outline-variant)"; r.style.strokeWidth = "1"; }
     const label = shortDate(d.date);
-    withTitle(r, d.slots === 0 ? `${label}: sem rotina devida` : `${label}: ${d.done}/${d.slots} feitas`);
+    withTitle(r, d.slots === 0 ? `${label}: sem rotina prevista` : `${label}: ${d.done}/${d.slots} feitas`);
     s.appendChild(r);
   });
 
