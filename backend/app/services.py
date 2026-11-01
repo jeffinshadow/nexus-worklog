@@ -773,6 +773,48 @@ def _report_inputs(user_id: int, start: date, end: date, project: dict | None = 
             "pontuais": pontuais, "entries": entries}
 
 
+def team_report_inputs(uids: list[int], start: date, end: date) -> dict[int, dict]:
+    """_report_inputs de várias pessoas em [start, end] com QUATRO leituras
+    (agenda, rotinas, marcações, concluídas e tempo de todas juntas), sem laço
+    por pessoa: o painel da Equipe soma get_report_range(inputs=...) de cada
+    uma, a mesma conta do PDF e de Meu mês. As concluídas vêm sem os contadores
+    (o painel só conta e reparte por projeto)."""
+    out = {u: {"mask": DEFAULT_WORK_DAYS, "tasks": [], "completions": [], "pontuais": [], "entries": []} for u in uids}
+    if not uids:
+        return out
+    tz = config.APP_TZ
+    for r in db.query_all("SELECT id, work_days FROM users WHERE id = ANY(%s)", (uids,)):
+        out[r["id"]]["mask"] = r["work_days"]
+    sql = (_ROTINAS_SQL.replace("SELECT r.id,", "SELECT r.user_id AS owner_id, r.id,", 1)
+           .replace("r.user_id = %(uid)s", "r.user_id = ANY(%(uids)s)", 1))
+    today = app_today()
+    for r in db.query_all(sql + " ORDER BY r.position, r.id", {"tz": tz, "uids": uids}):
+        r["paused_until"] = pause_end(r, today)
+        out[r.pop("owner_id")]["tasks"].append(r)
+    for c in db.query_all(
+            """SELECT user_id, task_id, completed_date, note FROM recurring_completions
+                WHERE user_id = ANY(%s) AND completed_date BETWEEN %s AND %s""", (uids, start, end)):
+        out[c.pop("user_id")]["completions"].append(c)
+    for w in db.query_all(
+            """SELECT w.user_id, w.id, w.title, w.completed_at, w.resolution,
+                      p.name AS project, p.color AS project_color, """ + PROJECT_ICON + """,
+                      (w.completed_at AT TIME ZONE %s)::date AS done_date, """ + EXTRA_PROJECTS + """
+                 FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
+                WHERE w.user_id = ANY(%s) AND w.status = 'done' AND w.completed_at IS NOT NULL
+                  AND (w.completed_at AT TIME ZONE %s)::date BETWEEN %s AND %s
+                ORDER BY w.completed_at""", (tz, uids, tz, start, end)):
+        out[w.pop("user_id")]["pontuais"].append(w)
+    for e in db.query_all(
+            """SELECT e.user_id, e.day, e.minutes, e.note, w.title, w.after_hours, p.name AS project,
+                      p.color AS project_color, """ + PROJECT_ICON + ", " + EXTRA_PROJECTS + """
+                 FROM time_entries e JOIN worklog_tasks w ON w.id = e.task_id
+                 LEFT JOIN projects p ON p.id = w.project_id
+                WHERE e.user_id = ANY(%s) AND e.day BETWEEN %s AND %s
+                ORDER BY e.day, e.created_at""", (uids, start, end)):
+        out[e.pop("user_id")]["entries"].append(e)
+    return out
+
+
 def _slice_inputs(inp: dict, start: date, end: date) -> dict:
     """Recorte de um _report_inputs de período maior (os resumos leem uma vez só)."""
     return {**inp,

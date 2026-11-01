@@ -736,7 +736,7 @@ export async function mount(root, opts = {}) {
     const list = isDone ? items.slice(0, doneShown) : items;
     for (const it of list) {
       const canCheck = !readOnly && !isDone;  // concluir à esquerda, como no Hoje
-      const card = h("article", { class: "card" + (isOverdue(it, today) ? " overdue" : "") + (it.priority === 1 && !isDone ? " high" : "") + (isDone ? " is-done" : "") + (canCheck ? " has-check" : "") },
+      const card = h("article", { class: "card" + (isOverdue(it, today) ? " overdue" : "") + (it.priority === 1 && !isDone ? " high" : "") + (isDone ? " is-done" : "") + (canCheck ? " has-check" : ""), "data-id": it.id },
         h("h3", {}, readOnly ? it.title : h("button", { type: "button", class: "card-open", text: it.title, onClick: () => openTask(it.id, refresh) })));
       if (it.description) card.append(h("p", { text: it.description }));
       card.append(h("div", { class: "card-meta" }, ...taskChips(it, today)));

@@ -1447,7 +1447,44 @@ dialog.proj-dialog { max-width: 480px; width: min(480px, calc(100vw / var(--ui-z
 .list-row .t .pending-chip { display: inline-block; margin: 2px 0 0 6px; }
 .admin-search { margin-bottom: 8px; }
 .dialog-note.field-note { margin: calc(-1 * var(--gap) + 6px) 0 var(--gap); }
-.equipe-note { margin: 0 0 14px; }
+
+/* Equipe: o painel da equipe, na linguagem de Meu mês. Computador largo:
+   [4 números 3+3+3+3][Precisa de atenção 7][Tempo por projeto 5][Pessoas 12];
+   mais estreito, 2 + 2 números e um quadro por linha; celular, uma coluna. */
+.mm-3 { grid-column: span 3; }
+.mm-5 { grid-column: span 5; }
+.mm-7 { grid-column: span 7; }
+.mm-12 { grid-column: span 12; }
+@media (max-width: 1240px) { .eq-panel .mm-3 { grid-column: span 6; } .eq-panel .mm-5, .eq-panel .mm-7 { grid-column: span 12; } }
+@media (max-width: 760px) { .mm-3, .mm-5, .mm-7, .mm-12, .eq-panel .mm-3, .eq-panel .mm-5, .eq-panel .mm-7 { grid-column: auto; } }
+.eq-hidden { margin: -4px 0 14px; font-size: var(--type-body-s); color: var(--on-surface-variant); }
+.eq-wait-foot { margin-top: auto; padding-top: 10px; }
+.eq-wait-foot .mm-chart-t { margin: 8px 0 0; }
+.eq-att-list, .eq-people { list-style: none; margin: 0; padding: 0; }
+.eq-att { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 2px 12px; align-items: start; width: calc(100% + 16px); margin: 0 -8px;
+  min-height: 52px; padding: 9px 8px; text-align: left; background: none; border: 0; border-radius: var(--radius-s); color: var(--on-surface); }
+.eq-att-list li + li .eq-att { border-top: 1px solid var(--outline-variant); border-radius: 0; }
+.eq-att:hover { background: var(--hover-tint); }
+.eq-att:focus-visible, .eq-person:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.eq-att > .ico { grid-row: span 2; width: 20px; height: 20px; margin-top: 1px; color: var(--on-surface-variant); }
+.eq-att-t { font-size: var(--type-body-s); font-weight: var(--weight-label); line-height: 1.35; overflow-wrap: anywhere; }
+.eq-att-m { font-size: var(--type-caption); color: var(--on-surface-variant); line-height: 1.4; overflow-wrap: anywhere; }
+.eq-people { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+.eq-person { display: grid; grid-template-columns: 44px minmax(0, 1fr); column-gap: 12px; align-items: center; width: 100%; height: 100%;
+  min-height: 76px; padding: 12px; text-align: left; background: var(--surface-container); border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-m); color: var(--on-surface); }
+.eq-person:hover { background-image: linear-gradient(var(--hover-tint), var(--hover-tint)); }
+.eq-person > .avatar { grid-row: 1 / span 3; }
+.eq-ini { background: var(--secondary-container); color: var(--on-secondary-container); }
+.eq-p-name { font-weight: var(--weight-title); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.eq-p-n, .eq-p-last { font-size: var(--type-caption); color: var(--on-surface-variant); line-height: 1.4; }
+.eq-ghost { min-height: 76px; background: transparent; border-style: dashed; }
+.eq-empty-t { margin: 2px 0 12px; font-size: var(--type-body-s); color: var(--on-surface-variant); line-height: 1.45; max-width: 70ch; }
+.eq-empty-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+.eq-person-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: -4px 0 12px; }
+.eq-back { margin-left: -12px; min-height: 44px; }
+.eq-person-name { display: flex; align-items: center; gap: 10px; margin: 0; font-size: var(--type-title); font-weight: var(--weight-title); }
+.card.eq-focus { outline: 2px solid var(--primary); outline-offset: 2px; }
 
 /* Celular: áreas de toque de pelo menos 44 px (Material 3 pede 48 de alvo). Controles
    crescem de verdade; o que precisa continuar pequeno (x do chip, link do chamado,

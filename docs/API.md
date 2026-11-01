@@ -338,8 +338,12 @@ Aparecem no Hoje (só os no aviso), no e-mail da manhã e no calendário (dia de
 
 ## Vê a equipe — `/api/viewer` (só pelo app, papel viewer; tela Equipe)
 
+Quem pode ser visto é decidido num lugar só (`backend/app/visibility.py`): hoje, papel `user` e o aceite
+(`PUT /api/me/viewers`). Vale para todas as rotas abaixo, para as fotos e para a foto de perfil.
+
 | Rota | | Observação |
 | --- | --- | --- |
+| `GET /team?month=AAAA-MM` | | o painel da Equipe (padrão: o mês corrente, até hoje), tudo SOMADO de quem pode ser visto e está com a conta em uso: `month {recurring_done, recurring_total, pontual_done, minutes, now}` (a soma do PDF/Meu mês de cada pessoa; as horas são as do CSV do mesmo período), `trend` (até 6 meses da equipe, terminando no escolhido), `waiting`/`open` (agora), `attention` (até 6: `kind` `assigned` = atribuída por você e aguardando ou a fazer sem nada registrado há 5 dias, `waiting` = aguardando há mais tempo, `due` = prazo até 7 dias ou já passado; com `task_id`, `user_id`, `name`, `days`), `projects` (tempo por nome de projeto), `people` (ordem alfabética: `open`, `waiting`, `last_activity`, `avatar`), `people_count`, `hidden_count` (contas com registro que não compartilham, sem nomes; você não conta), `months` (para o seletor) e `can_assign`. Sem média, tendência ou ranking por pessoa |
 | `GET /users` | | contas com registro próprio (papel `user`) que deram o aceite (`PUT /api/me/viewers`) |
 | `GET /users/{id}/board` · `/dashboard` · `/projects` · `/reports/export` | | visão só leitura da pessoa; sem o aceite, 404. No `/dashboard?month=`, o `overview` vem sem `behind`, `trend`, `average` e `compare` (sem placar nem comparação) |
 | `GET /export/apontamentos.csv?start=&end=` | | horas de quem aceitou, com coluna `usuario`, do período (`AAAA-MM-DD`; padrão: o mês corrente; até 1 ano) |
