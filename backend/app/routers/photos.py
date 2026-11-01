@@ -109,9 +109,14 @@ def list_routine(recurring_id: int, day: date, user=Depends(web_active)):
 
 @router.get("/photos/{photo_id}")
 def get_photo(photo_id: int, thumb: bool = False, user=Depends(web_active)):
-    row = db.query_one(f"SELECT user_id, mime, {'thumb' if thumb else 'image'} AS data FROM photos "
-                       "WHERE id = %s AND deleted_at IS NULL", (photo_id,))
-    if not row or (row["user_id"] != user["user_id"] and "viewer" not in (user.get("roles") or [])):
+    # Foto de outra pessoa: só o visualizador, e só se ela aceitou (como em routers/viewer.py).
+    row = db.query_one(f"""SELECT f.user_id, f.mime, f.{'thumb' if thumb else 'image'} AS data,
+                                  (u.viewers_allowed AND EXISTS (SELECT 1 FROM user_roles r
+                                       WHERE r.user_id = u.id AND r.role = 'user')) AS viewable
+                             FROM photos f JOIN users u ON u.id = f.user_id
+                            WHERE f.id = %s AND f.deleted_at IS NULL""", (photo_id,))
+    if not row or (row["user_id"] != user["user_id"]
+                   and not ("viewer" in (user.get("roles") or []) and row["viewable"])):
         raise HTTPException(status_code=404, detail="foto não encontrada")
     data = bytes(row["data"])
     # O conteúdo de um id nunca muda, mas é evidência de cliente: o navegador guarda

@@ -2,7 +2,8 @@
 (quadro, retrospectiva, relatório em PDF) e baixa as horas da equipe.
 
 Só pelo app (nunca por chave de API), como o admin. Lista só contas com o
-papel Usuário: quem não tem registro próprio não tem o que mostrar.
+papel Usuário que deram o aceite (users.viewers_allowed, em Configurações >
+Conta): quem não aceitou responde 404, como quem não existe.
 """
 from datetime import date
 from typing import Optional
@@ -23,7 +24,8 @@ router = APIRouter(prefix="/api/viewer", tags=["viewer"])
 def _ensure_user(user_id: int) -> dict:
     row = db.query_one(
         """SELECT u.id, u.email FROM users u
-            WHERE u.id = %s AND EXISTS (SELECT 1 FROM user_roles r WHERE r.user_id = u.id AND r.role = 'user')""",
+            WHERE u.id = %s AND u.viewers_allowed
+              AND EXISTS (SELECT 1 FROM user_roles r WHERE r.user_id = u.id AND r.role = 'user')""",
         (user_id,),
     )
     if not row:
@@ -35,7 +37,8 @@ def _ensure_user(user_id: int) -> dict:
 def list_users(viewer=Depends(require_viewer)):
     rows = db.query_all(
         """SELECT u.id, u.email FROM users u
-            WHERE EXISTS (SELECT 1 FROM user_roles r WHERE r.user_id = u.id AND r.role = 'user')
+            WHERE u.viewers_allowed
+              AND EXISTS (SELECT 1 FROM user_roles r WHERE r.user_id = u.id AND r.role = 'user')
             ORDER BY lower(u.email)""")
     return [{**r, **people.profile(r["id"])} for r in rows]
 
@@ -73,5 +76,5 @@ def user_report_export(
 
 @router.get("/export/apontamentos.csv")
 def team_time_csv(viewer=Depends(require_viewer)):
-    """Apontamentos de todos os usuários (some por cliente/projeto na planilha)."""
-    return time_csv(None, f"nexus-apontamentos-equipe-{app_today().isoformat()}.csv")
+    """Apontamentos de quem aceitou o visualizador (some por cliente/projeto na planilha)."""
+    return time_csv(None, f"nexus-apontamentos-equipe-{app_today().isoformat()}.csv", viewable_only=True)
