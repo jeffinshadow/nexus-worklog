@@ -42,12 +42,14 @@ export async function mount(root, ctx) {
       onClick: () => {
         active = key;
         for (const b of seg.children) b.setAttribute("aria-selected", b.textContent === label ? "true" : "false");
+        seg.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
         window.history.replaceState(null, "", "#/config?aba=" + key); // recarregar volta à mesma aba
         render();
       },
     }));
   }
   root.append(seg, body);
+  seg.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "center" });  // celular: as abas rolam de lado
 
   // Troca rápida de aba: só a última resposta entra na tela.
   let seq = 0;
