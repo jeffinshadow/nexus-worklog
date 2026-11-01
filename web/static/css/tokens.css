@@ -113,6 +113,11 @@
   --inverse-surface: #E4E2E3;       /* aviso (snackbar) e dicas */
   --inverse-on-surface: #303031;
   --inverse-primary: #00569A;
+  --snackbar-bg: #2C2C2D;          /* aviso no escuro: contêiner mais alto (como no desktop), não placa clara */
+  --snackbar-fg: #F0EDEE;
+  --snackbar-action: #8AB8F0;
+  --scrim: rgba(0, 0, 0, .55);      /* véu atrás de diálogos e folhas */
+  --glow-shadow: 0 0 14px 1px color-mix(in srgb, #5294E2 45%, transparent);  /* brilho do horizonte do login */
   --chart-muted: #3B5170;           /* secundário: barras secundárias dos gráficos */
   --accent-purple: #B98EFF;         /* terciário */
   --accent-cyan: #62C7E0;
@@ -184,6 +189,11 @@
   --inverse-surface: #2E3035;
   --inverse-on-surface: #F0F0F5;
   --inverse-primary: #8AB8F0;
+  --snackbar-bg: #2E3035;          /* aviso no claro: superfície invertida (snackbar do M3) */
+  --snackbar-fg: #F0F0F5;
+  --snackbar-action: #8AB8F0;
+  --scrim: rgba(0, 0, 0, .32);
+  --glow-shadow: none;             /* no claro o brilho vira mancha cinza */
   --chart-muted: #A6C3ED;
   --accent-purple: #7B51BF;
   --accent-cyan: #007286;
@@ -249,6 +259,11 @@
   --inverse-surface: #2E3035;
   --inverse-on-surface: #F0F0F5;
   --inverse-primary: #8AB8F0;
+  --snackbar-bg: #2E3035;          /* aviso no claro: superfície invertida (snackbar do M3) */
+  --snackbar-fg: #F0F0F5;
+  --snackbar-action: #8AB8F0;
+  --scrim: rgba(0, 0, 0, .32);
+  --glow-shadow: none;             /* no claro o brilho vira mancha cinza */
   --chart-muted: #A6C3ED;
   --accent-purple: #7B51BF;
   --accent-cyan: #007286;

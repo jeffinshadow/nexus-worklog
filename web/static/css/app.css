@@ -242,7 +242,8 @@ button.column-toggle { display: none; }
   border: 1px solid transparent; color: var(--on-surface-variant); background: var(--surface-container-high);
   transition: background-color var(--dur-short) var(--ease-standard), color var(--dur-short) var(--ease-standard); }
 .chip.in_progress { color: var(--on-primary-container); background: var(--primary-container); }
-.chip.blocked, .chip.late { color: var(--on-error-container); background: var(--error-container); }
+.chip.late { color: var(--on-error-container); background: var(--error-container); }
+.chip.blocked { color: var(--on-tertiary-container); background: var(--tertiary-container); }  /* aguardando: espera, não erro */
 .chip.done { color: var(--on-success-container); background: var(--success-container); }
 .chip.today, .chip.prio-1, .chip.blocked-reason, .chip.rem-at.soon, .chip.rem-at.due { color: var(--on-warning-container); background: var(--warning-container); }
 .chip.after-hours { color: var(--on-tertiary-container); background: var(--tertiary-container); }
@@ -361,7 +362,7 @@ dialog {
 /* Entrada dos diálogos (Material 3): cresce um pouco e aparece, na curva enfática. */
 dialog[open] { animation: dialog-in var(--dur-medium) var(--ease-emphasized-decel); }
 @keyframes dialog-in { from { opacity: 0; transform: scale(.96); } }
-dialog::backdrop { background: color-mix(in srgb, var(--shadow) 55%, transparent); backdrop-filter: blur(3px); }  /* véu (scrim) */
+dialog::backdrop { background: var(--scrim); backdrop-filter: blur(3px); }  /* véu (scrim) */
 dialog[open]::backdrop { animation: scrim-in var(--dur-medium) var(--ease-standard); }
 @keyframes scrim-in { from { opacity: 0; } }
 dialog h2 { font-size: var(--type-headline); font-weight: var(--weight-title); letter-spacing: -.02em; margin: 0 0 18px; }
@@ -373,13 +374,13 @@ dialog p { color: var(--on-surface-variant); font-size: var(--type-body); }
 /* left/right fixos (não left: 50% + translate): o toast pode usar a largura toda, não só metade. */
 .toasts { position: fixed; left: 16px; right: 16px; bottom: 24px; z-index: 100; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; }
 @media (max-width: 860px) { .toasts { bottom: calc(86px + env(safe-area-inset-bottom)); } }
-/* Aviso no estilo snackbar do Material 3: superfície invertida, ação em texto no primário invertido. */
+/* Aviso no estilo snackbar do Material 3: no escuro o contêiner mais alto (como no desktop), no claro a superfície invertida. */
 .toast { pointer-events: auto; display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 6px 8px 6px 16px; border-radius: var(--radius-s);
-  background: var(--inverse-surface); color: var(--inverse-on-surface); box-shadow: var(--elev-2); font-size: var(--type-body);
+  background: var(--snackbar-bg); color: var(--snackbar-fg); box-shadow: var(--elev-2); font-size: var(--type-body);
   animation: toast-in var(--dur-medium) var(--ease-emphasized-decel); }
 .toast.error { background: var(--error-container); color: var(--on-error-container); }
 .toast .btn { height: 36px; padding: 0 12px; font-size: var(--type-body-s); flex-shrink: 0; white-space: nowrap;
-  background: transparent; border-color: transparent; color: var(--inverse-primary); }
+  background: transparent; border-color: transparent; color: var(--snackbar-action); }
 .toast.error .btn { color: var(--on-error-container); }
 .toast { max-width: 560px; }
 /* Texto longo (título de tarefa): até duas linhas, e a pílula vira um retângulo arredondado. */
@@ -406,7 +407,7 @@ dialog p { color: var(--on-surface-variant); font-size: var(--type-body); }
 @media (prefers-reduced-motion: reduce) { .boot-progress > span { animation-duration: 3s; } }
 .view-error { margin: 32px auto; max-width: 420px; text-align: center; }
 .auth-wrap::before { content: ''; position: absolute; inset: 0; z-index: -1; background: radial-gradient(600px circle at 70% 35%, color-mix(in srgb, var(--primary) 14%, transparent), transparent 60%); }
-.auth-wrap::after { content: ''; position: absolute; left: 0; right: 0; top: 62%; height: 1px; z-index: -1; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--primary) 20%, transparent) 15%, var(--primary) 55%, color-mix(in srgb, var(--primary-hi) 80%, transparent) 70%, transparent); box-shadow: 0 0 14px 1px color-mix(in srgb, var(--primary) 45%, transparent); }
+.auth-wrap::after { content: ''; position: absolute; left: 0; right: 0; top: 62%; height: 1px; z-index: -1; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--primary) 20%, transparent) 15%, var(--primary) 55%, color-mix(in srgb, var(--primary-hi) 80%, transparent) 70%, transparent); box-shadow: var(--glow-shadow); }
 .auth-card { background: var(--surface-pop); border: 1px solid var(--pop-border); box-shadow: var(--elev-2); border-radius: var(--radius-xl); padding: 30px 28px; width: 100%; max-width: 400px; }
 .auth-card h1 { font-size: var(--type-headline); font-weight: var(--weight-title); letter-spacing: -.03em; margin-bottom: 4px; text-align: center; }
 .auth-card .sub { color: var(--on-surface-variant); font-size: var(--type-body); margin: 0 0 20px; text-align: center; }
