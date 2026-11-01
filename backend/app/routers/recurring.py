@@ -46,21 +46,40 @@ def create(data: RecurringIn, user=Depends(active_user_csrf)):
     return row
 
 
-def _last_time(uid: int, old: dict):
-    """"Depois da última vez": a última marcação da rotina antiga (antes de hoje;
-    a de hoje passa para a nova). Sem marcação, se a antiga já era 'after', o
-    ponto de onde ela contava. A nova segue contando dali (última + N novo)."""
+def _last_time(uid: int, old: dict, until=None):
+    """"Depois da última vez": a última marcação da rotina antiga (antes de hoje,
+    ou de `until`, o dia da troca; a desse dia passa para a nova). Sem marcação,
+    se a antiga já era 'after', o ponto de onde ela contava. A nova segue
+    contando dali (última + N novo)."""
     r = db.query_one(
         """SELECT (SELECT max(completed_date) FROM recurring_completions
                     WHERE task_id = t.id AND user_id = t.user_id AND completed_date < %s) AS last,
                   t.freq, t.after_from, (t.created_at AT TIME ZONE %s)::date AS start_d
              FROM recurring_tasks t WHERE t.id = %s AND t.user_id = %s""",
-        (app_today(), config.APP_TZ, old["id"], uid))
+        (until or app_today(), config.APP_TZ, old["id"], uid))
     if not r:
         return None
     if r["last"]:
         return max(r["last"], r["after_from"]) if r["after_from"] else r["last"]
     return (r["after_from"] or r["start_d"]) if r["freq"] == "after" else None
+
+
+def refresh_after_from(uid: int, rid: int) -> None:
+    """Marcar ou desmarcar um dia passado numa rotina já substituída (troca de
+    agenda) move a "última vez" de onde a sucessora 'after' conta."""
+    for _ in range(50):
+        nxt = db.query_one(
+            """SELECT r.id, r.freq, (r.created_at AT TIME ZONE %s)::date AS start_d
+                 FROM audit_log a JOIN recurring_tasks r ON r.id = a.entity_id AND r.user_id = a.user_id
+                WHERE a.user_id = %s AND a.action = 'recurring.replace' AND a.undone_at IS NULL
+                  AND (a.after->>'replaced')::bigint = %s
+                ORDER BY a.id DESC LIMIT 1""", (config.APP_TZ, uid, rid))
+        if not nxt:
+            return
+        if nxt["freq"] == "after":
+            db.execute("UPDATE recurring_tasks SET after_from = %s WHERE id = %s AND user_id = %s",
+                       (_last_time(uid, {"id": rid}, nxt["start_d"]), nxt["id"], uid))
+        rid = nxt["id"]
 
 
 def replace_routine(user: dict, before: dict, new: dict, freeze: dict | None = None) -> int:
@@ -197,6 +216,8 @@ def toggle(task_id: int, data: ToggleIn, user=Depends(active_user_csrf)):
             (task_id, user["user_id"], today),
         )
     new_note = (old_note if keep else note) if data.done else None
+    if was != data.done:
+        refresh_after_from(user["user_id"], task_id)
     if was != data.done or (data.done and new_note != old_note):
         audit.record(user, "recurring.toggle", "recurring", task_id,
                      before={"day": today, "done": was, "note": old_note},

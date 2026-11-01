@@ -439,9 +439,10 @@ def delete(task_id: int, user=Depends(active_user_csrf)):
     before = _own_task(user["user_id"], task_id)
     # Anotações, checklist e tempo vão junto (CASCADE): ficam no histórico para o desfazer.
     before["children"] = {
-        "notes": db.query_all("SELECT id, body, actor, token_name, created_at FROM task_notes WHERE task_id = %s", (task_id,)),
+        "notes": db.query_all("SELECT id, body, actor, token_name, created_at, external_ref FROM task_notes WHERE task_id = %s", (task_id,)),
         "checklist": db.query_all("SELECT id, label, done, position FROM task_checklist WHERE task_id = %s", (task_id,)),
-        "time": db.query_all("SELECT id, minutes, day, note, actor, token_name, created_at FROM time_entries WHERE task_id = %s", (task_id,)),
+        "time": db.query_all("SELECT id, minutes, day, note, actor, token_name, created_at, external_ref, started_at, ended_at"
+                              " FROM time_entries WHERE task_id = %s", (task_id,)),
     }
     db.execute("DELETE FROM worklog_tasks WHERE id = %s AND user_id = %s", (task_id, user["user_id"]))
     audit.record(user, "worklog.delete", "worklog", task_id, before=before)
@@ -487,7 +488,7 @@ def delete_note(note_id: int, user=Depends(active_user_csrf)):
     row = db.query_one(
         """DELETE FROM task_notes n USING worklog_tasks w
             WHERE n.id = %s AND n.user_id = %s AND w.id = n.task_id
-        RETURNING n.id, n.task_id, n.body, n.actor, n.token_name, n.created_at, w.title""",
+        RETURNING n.id, n.task_id, n.body, n.actor, n.token_name, n.created_at, n.external_ref, w.title""",
         (note_id, user["user_id"]),
     )
     if not row:
@@ -582,7 +583,8 @@ def delete_time(entry_id: int, user=Depends(active_user_csrf)):
     row = db.query_one(
         """DELETE FROM time_entries t USING worklog_tasks w
             WHERE t.id = %s AND t.user_id = %s AND w.id = t.task_id
-        RETURNING t.id, t.task_id, t.minutes, t.day, t.note, t.actor, t.token_name, t.created_at, w.title""",
+        RETURNING t.id, t.task_id, t.minutes, t.day, t.note, t.actor, t.token_name, t.created_at,
+                  t.external_ref, t.started_at, t.ended_at, w.title""",
         (entry_id, user["user_id"]),
     )
     if not row:

@@ -14,6 +14,7 @@ from .. import audit, db
 from . import photos
 from ..labels import dur
 from ..services import RETRO_DAYS, app_today, app_tz, board_day_range, set_extra_projects
+from .recurring import refresh_after_from
 from .worklog import check_day_total
 from ..deps import active_user, active_user_csrf
 
@@ -368,9 +369,11 @@ def _put_objective(uid: int, o: dict) -> None:
 
 
 def _put_note(uid: int, task_id: int, n: dict) -> None:
-    db.execute("""INSERT INTO task_notes (id, task_id, user_id, body, actor, token_name, created_at)
-                  OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-               (n["id"], task_id, uid, n["body"], n["actor"], n["token_name"], n["created_at"]))
+    """A chave externa volta junto (se ninguém a usou nesse meio-tempo): o reenvio não duplica."""
+    db.execute("""INSERT INTO task_notes (id, task_id, user_id, body, actor, token_name, created_at, external_ref)
+                  OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+               (n["id"], task_id, uid, n["body"], n["actor"], n["token_name"], n["created_at"],
+                _ref_livre_em("task_notes", uid, n.get("external_ref"))))
 
 
 def _put_item(uid: int, task_id: int, c: dict) -> None:
@@ -380,9 +383,11 @@ def _put_item(uid: int, task_id: int, c: dict) -> None:
 
 
 def _put_time(uid: int, task_id: int, e: dict) -> None:
-    db.execute("""INSERT INTO time_entries (id, task_id, user_id, minutes, day, note, actor, token_name, created_at)
-                  OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-               (e["id"], task_id, uid, e["minutes"], e["day"], e["note"], e["actor"], e["token_name"], e["created_at"]))
+    db.execute("""INSERT INTO time_entries (id, task_id, user_id, minutes, day, note, actor, token_name, created_at,
+                                            external_ref, started_at, ended_at)
+                  OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+               (e["id"], task_id, uid, e["minutes"], e["day"], e["note"], e["actor"], e["token_name"], e["created_at"],
+                _ref_livre_em("time_entries", uid, e.get("external_ref")), e.get("started_at"), e.get("ended_at")))
 
 
 def _current_routine(uid: int, rid: int) -> int:
@@ -517,7 +522,15 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
             db.execute("UPDATE recurring_pauses SET end_d = %s WHERE id = %s AND recurring_id = %s",
                        (before["pause"]["end_d"], before["pause"]["id"], eid))
         else:
-            db.execute("DELETE FROM recurring_pauses WHERE id = %s AND recurring_id = %s", (after["pause"]["id"], eid))
+            # Pausa nova: desfeita no próprio dia, some; depois disso, age como "retomar"
+            # (termina ontem), para os dias já passados (talvez num mês fechado) não virarem falta.
+            p = db.query_one("SELECT start_d FROM recurring_pauses WHERE id = %s AND recurring_id = %s",
+                             (after["pause"]["id"], eid))
+            if p and p["start_d"] < app_today():
+                db.execute("UPDATE recurring_pauses SET end_d = LEAST(end_d, %s) WHERE id = %s AND recurring_id = %s",
+                           (app_today() - timedelta(days=1), after["pause"]["id"], eid))
+            else:
+                db.execute("DELETE FROM recurring_pauses WHERE id = %s AND recurring_id = %s", (after["pause"]["id"], eid))
         # A agenda mudou depois (a pausa foi copiada para a rotina nova): vale para a atual.
         if (atual := _current_routine(uid, eid)) != eid:
             _set_pause_today(atual, date.fromisoformat(str(before["pause"]["end_d"])) if before.get("pause") else None)
@@ -536,6 +549,7 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
             db.execute(
                 "DELETE FROM recurring_completions WHERE task_id = %s AND user_id = %s AND completed_date = %s",
                 (eid, uid, day))
+        refresh_after_from(uid, eid)
     elif a == "photo.create":
         if not photos.soft_delete(uid, eid):
             raise _gone()
