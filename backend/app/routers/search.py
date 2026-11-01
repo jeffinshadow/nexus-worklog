@@ -122,7 +122,7 @@ def search(q: str = Query(..., min_length=2, max_length=100), user=Depends(activ
             WHERE user_id = %(uid)s AND nx_fold(label) LIKE %(like)s
             ORDER BY active DESC, position, id LIMIT 20""", params)
     projects = db.query_all(
-        """SELECT id, name, color, archived FROM projects
+        """SELECT id, name, color, COALESCE(icon, 'pasta') AS icon, archived FROM projects
             WHERE user_id = %(uid)s AND nx_fold(name) LIKE %(like)s ORDER BY archived, lower(name) LIMIT 20""", params)
 
     # Abertas primeiro (mais urgentes), depois concluídas mais recentes.

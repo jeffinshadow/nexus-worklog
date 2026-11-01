@@ -966,7 +966,7 @@ def _compact(r: dict) -> dict:
         "minutes_after_hours": s["minutes_after_hours"],
         "active_days": s["active_days"],
         "deliveries": [{"id": w["id"], "title": w["title"], "project": w["project"],
-                        "project_color": w["project_color"], "minutes": w["minutes"],
+                        "project_color": w["project_color"], "project_icon": w["project_icon"], "minutes": w["minutes"],
                         "assigned_by_name": w.get("assigned_by_name")} for w in r["deliveries"]],
         "projects": [p for p in r["projects"] if p["minutes"] or p["done"]],
         "missed": [x["label"] for x in r["recurring_stats"] if x["due"] > x["done"]],

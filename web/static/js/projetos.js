@@ -3,11 +3,11 @@
 // Ordem: arrastar pela alça no computador; no celular e no teclado, pelo ⋮
 // (subir, descer, mover para outro objetivo). Progresso e status vêm do servidor.
 import { api } from "./api.js";
-import { h, icon, clear, field, shortDate, localDay } from "./dom.js";
+import { h, icon, clear, field, shortDate, localDay, daysBetween } from "./dom.js";
 import { busy, confirmDialog, errorToast, modal, popupMenu, sheet, toast, undoLatest } from "./ui.js";
 import { finishTask, openWorklog, taskChips } from "./board.js";
-import { editingTaskId, openTask } from "./task.js";
-import { PALETA, askName, invalidateProjects, corProjeto } from "./projects.js";
+import { duration, editingTaskId, openTask } from "./task.js";
+import { PALETA, invalidateProjects, listProjects, projTile, projectDialog } from "./projects.js";
 
 const STATUS = { todo: "não iniciado", in_progress: "em andamento", done: "concluído" };
 const phone = () => matchMedia("(max-width: 860px)").matches;
@@ -35,43 +35,105 @@ function progress(done, total, label = true) {
 
 // ------------------------------------------------------------------ lista --
 
+// "hoje", "ontem", "há 5 dias": informação para ver o que está parado (sem alerta).
+function quando(ts, today) {
+  if (!ts) return "";
+  const d = daysBetween(localDay(ts), today);
+  return d <= 0 ? "hoje" : d === 1 ? "ontem" : `há ${d} dias`;
+}
+
+// Os números do projeto: em aberto · aguardando · horas no mês.
+function numeros(p, cls = "proj-nums") {
+  const n = (v, l) => h("span", { class: "proj-num" }, h("strong", { class: "mono", text: v }), h("span", { text: l }));
+  return h("div", { class: cls },
+    n(String(p.open_tasks), "em aberto"), n(String(p.waiting_tasks), "aguardando"),
+    n(p.minutes_month ? duration(p.minutes_month) : "0h", "no mês"));
+}
+
+// Lista: aba, ordem e busca valem enquanto o app está aberto (a ordem fica no aparelho).
+const lista = { tab: "ativos", q: "", sort: (() => { try { return localStorage.getItem("nexus.projetos.ordem") || "atividade"; } catch { return "atividade"; } })() };
+
+// Estado vazio: exemplos por área, com ícone; um toque cria o projeto.
+const EXEMPLOS = [
+  ["TI e redes", [["Servidores", "servidor"], ["Rede da matriz", "rede"], ["Help desk", "computador"]]],
+  ["Manutenção predial", [["Prédio Centro", "predio"], ["Elétrica", "eletrica"], ["Hidráulica", "hidraulica"]]],
+  ["Atendimento e campo", [["Loja Vila Velha", "loja"], ["Clínica Sul", "clinica"], ["Frota", "veiculo"]]],
+];
+
 async function mountList(root, ctx) {
   const list = await api.get("/projects?include_archived=true");
   ctx.setEyebrow("objetivos e tarefas");
-  const novo = async () => {
-    const name = await askName();
-    if (!name) return;
-    try {
-      const p = await api.post("/projects", { name });
-      invalidateProjects();
-      location.hash = `#/projetos?id=${p.id}`;
-    } catch (e) { errorToast(e, "Não foi possível criar o projeto."); }
-  };
-  ctx.setActions(h("button", { type: "button", class: "btn btn-primary", "data-fab": "", onClick: novo }, icon("add"), "Projeto"));
+  const today = localDay(new Date().toISOString());
+  const proxCor = () => PALETA[list.length % PALETA.length];  // a mesma escolha do servidor
+  const abrir = (p) => { if (p) location.hash = `#/projetos?id=${p.id}`; };
+  const novo = async (preset = {}) => abrir(await projectDialog(null, { color: proxCor(), ...preset }));
+  ctx.setActions(h("button", { type: "button", class: "btn btn-primary", "data-fab": "", onClick: () => novo() }, icon("add"), "Projeto"));
   clear(root);
-  const ativos = list.filter((p) => !p.archived), arquivados = list.filter((p) => p.archived);
   if (!list.length) {
-    root.append(h("section", { class: "panel" }, h("p", { class: "empty",
-      text: "Nenhum projeto ainda. Projetos agrupam as tarefas de um cliente ou de uma frente; dentro deles, objetivos em ordem de execução." })));
+    const rapido = async (name, iconName) => {
+      try {
+        const p = await api.post("/projects", { name, icon: iconName, color: proxCor() });
+        invalidateProjects();
+        abrir(p);
+      } catch (e) { errorToast(e, "Não foi possível criar o projeto."); }
+    };
+    root.append(h("section", { class: "panel proj-empty" },
+      h("h2", { text: "Comece pelo primeiro projeto" }),
+      h("p", { class: "help", text: "Projetos agrupam as tarefas de um cliente, de um local ou de uma frente; dentro deles, objetivos em ordem de execução. Toque num exemplo para criar (dá para renomear depois) ou crie com outro nome." }),
+      ...EXEMPLOS.map(([area, itens]) => h("div", { class: "proj-ex" }, h("h3", { text: area }),
+        h("div", { class: "proj-ex-row" }, ...itens.map(([nome, ic]) =>
+          h("button", { type: "button", class: "proj-ex-btn", onClick: () => rapido(nome, ic) }, projTile({ icon: ic, color: PALETA[0] }, "proj-tile-sm"), nome))))),
+      h("button", { type: "button", class: "btn btn-ghost", onClick: () => novo() }, icon("add"), "Outro nome…")));
     return;
   }
+
+  const ativos = list.filter((p) => !p.archived), arquivados = list.filter((p) => p.archived);
+  if (!arquivados.length) lista.tab = "ativos";
+  const grid = h("div", { class: "proj-grid" });
   const card = (p) => {
-    const dot = h("span", { class: "dot big" });
-    dot.style.background = corProjeto(p.color);
-    return h("a", { class: "proj-card" + (p.archived ? " archived" : ""), href: `#/projetos?id=${p.id}` },
-      h("div", { class: "proj-card-head" }, dot, h("h2", { text: p.name }), p.archived ? h("span", { class: "chip", text: "arquivado" }) : null),
-      progress(p.done_tasks, p.total_tasks),
-      h("p", { class: "proj-card-meta", text: [
-        p.objectives ? `${p.objectives} objetivo${p.objectives > 1 ? "s" : ""}` : "sem objetivos",
-        p.open_tasks ? `${p.open_tasks} em aberto` : "nada em aberto"].join(" · ") }));
+    const temObj = p.objectives > 0;
+    return h("a", { class: "proj-card", href: `#/projetos?id=${p.id}` },
+      h("div", { class: "proj-card-head" }, projTile(p),
+        h("div", { class: "proj-card-title" }, h("h2", { text: p.name }),
+          h("small", { class: "proj-last", text: "última atividade " + quando(p.last_activity, today) }))),
+      temObj ? progress(p.objectives_done, p.objectives, false) : progress(p.done_tasks, p.total_tasks, false),
+      h("p", { class: "proj-card-meta", text: temObj
+        ? `${p.objectives_done} de ${p.objectives} objetivo${p.objectives > 1 ? "s" : ""} concluído${p.objectives_done === 1 ? "" : "s"}`
+        : p.total_tasks ? `${p.done_tasks} de ${p.total_tasks} tarefas concluídas` : "nenhuma tarefa ainda" }),
+      numeros(p));
   };
-  root.append(h("div", { class: "proj-grid" }, ...ativos.map(card)));
-  if (arquivados.length) {
-    const box = h("div", { class: "proj-grid hidden" }, ...arquivados.map(card));
-    const toggle = h("button", { type: "button", class: "btn btn-text btn-sm", text: `Arquivados (${arquivados.length})`,
-      "aria-expanded": "false", onClick: () => { const open = box.classList.toggle("hidden"); toggle.setAttribute("aria-expanded", String(!open)); } });
-    root.append(h("div", { class: "proj-archived" }, toggle, box));
-  }
+  const busca = h("input", { type: "search", class: "proj-search", placeholder: "Buscar projeto", "aria-label": "Buscar projeto", value: lista.q });
+  const fold = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const paint = () => {
+    const base = lista.tab === "arquivados" ? arquivados : ativos;
+    const q = fold(lista.q.trim());
+    const rows = base.filter((p) => !q || fold(p.name).includes(q));
+    rows.sort(lista.sort === "nome" ? (a, b) => a.name.localeCompare(b.name, "pt-BR")
+      : (a, b) => (b.last_activity || "").localeCompare(a.last_activity || "") || a.name.localeCompare(b.name, "pt-BR"));
+    clear(grid);
+    grid.append(...rows.map(card));
+    if (!rows.length) grid.append(h("p", { class: "empty", text: q ? "Nenhum projeto com esse nome." : "Nenhum projeto ativo: reative um dos arquivados ou crie um novo." }));
+  };
+  busca.addEventListener("input", () => { lista.q = busca.value; paint(); });
+  const tabs = h("div", { class: "seg seg-sm proj-tabs", role: "tablist", "aria-label": "Projetos" },
+    ...[["ativos", `Ativos (${ativos.length})`], ["arquivados", `Arquivados (${arquivados.length})`]].map(([k, t]) =>
+      h("button", { type: "button", class: "chip-btn", role: "tab", "aria-selected": String(lista.tab === k), text: t,
+        disabled: k === "arquivados" && !arquivados.length ? "disabled" : null,
+        onClick: (ev) => {
+          lista.tab = k;
+          for (const b of tabs.children) b.setAttribute("aria-selected", String(b === ev.currentTarget));
+          paint();
+        } })));
+  const ordem = h("select", { class: "select-sm proj-sort", "aria-label": "Ordenar projetos" },
+    h("option", { value: "atividade", text: "Atividade recente" }), h("option", { value: "nome", text: "Nome" }));
+  ordem.value = lista.sort;
+  ordem.addEventListener("change", () => {
+    lista.sort = ordem.value;
+    try { localStorage.setItem("nexus.projetos.ordem", ordem.value); } catch { /* sem armazenamento: vale só agora */ }
+    paint();
+  });
+  root.append(h("div", { class: "proj-toolbar" }, tabs, list.length > 8 ? busca : null, ordem), grid);
+  paint();
 }
 
 // ---------------------------------------------------------------- projeto --
@@ -86,8 +148,10 @@ async function mountProject(root, ctx, pid) {
   const refresh = () => mountProject(root, ctx, pid);
   const today = localDay(new Date().toISOString());
   const p = o.project;
-  // O título da página é o projeto aberto (como o detalhe de qualquer item); a lista volta pelo link.
-  document.getElementById("page-title").textContent = p.name;
+  // O título da página é o projeto aberto (como o detalhe de qualquer item), com o
+  // ícone grande na cor dele; a lista volta pelo link. O próximo título troca o texto todo.
+  const titulo = document.getElementById("page-title");
+  titulo.replaceChildren(projTile(p, "proj-tile-lg"), h("span", { text: p.name }));
   ctx.setEyebrow(p.archived ? "projeto arquivado" : "projeto");
   document.title = `${p.name} · Nexus Worklog`;
   ctx.setActions(
@@ -95,23 +159,34 @@ async function mountProject(root, ctx, pid) {
     h("button", { type: "button", class: "btn btn-primary", "data-fab": "", onClick: () => editObjective(pid, null, refresh) }, icon("add"), "Objetivo"));
 
   clear(root);
-  const dot = h("span", { class: "dot big" });
-  dot.style.background = corProjeto(p.color);
   const projMenu = h("button", { type: "button", class: "icon", title: "Ações do projeto", "aria-label": "Ações do projeto" }, icon("more-v"));
   projMenu.addEventListener("click", () => actionsMenu(projMenu, p.name, [
-    ["Editar projeto", "edit", () => editProject(p, refresh)],
-    [p.archived ? "Reativar" : "Arquivar", "folder", () => saveProject(p, { archived: !p.archived },
-      p.archived ? "Projeto reativado." : "Arquivado: some dos seletores, as tarefas continuam.", refresh)],
+    ["Editar projeto", "edit", async () => { if (await projectDialog(p)) refresh(); }],
+    p.archived ? ["Reativar", "folder", () => saveProject(p, { archived: false }, "Projeto reativado.", refresh)]
+      : ["Arquivar…", "folder", () => archiveProject(p, o.totals.total - o.totals.done, refresh)],
     ["Excluir projeto", "trash", () => deleteProject(p)],
   ]));
+  const upcoming = o.upcoming.length ? h("div", { class: "proj-upcoming" },
+    h("h3", { text: "Próximos prazos" }),
+    h("ul", {}, ...o.upcoming.map((x) => {
+      const late = x.due_date < today;
+      const label = h("span", { class: "proj-up-t" }, x.kind === "objective" ? icon("target") : null, x.title);
+      return h("li", {}, x.kind === "task"
+        ? h("button", { type: "button", class: "card-open", onClick: () => openTask(x.id, refresh) }, label) : label,
+        h("span", { class: "chip " + (late ? "late" : x.due_date === today ? "today" : ""),
+          text: late ? "atrasado · " + shortDate(x.due_date) : x.due_date === today ? "hoje" : shortDate(x.due_date) }));
+    }))) : null;
   root.append(h("div", { class: "proj-head" },
     h("div", { class: "proj-bar" }, h("a", { class: "btn btn-text btn-sm proj-back", href: "#/projetos" }, icon("left"), "Todos os projetos"),
-      h("span", { class: "proj-color" }, dot), projMenu),
+      projMenu),
     p.description ? h("p", { class: "proj-desc", text: p.description }) : null,
+    h("div", { class: "proj-summary" }, numeros(p, "proj-nums proj-nums-lg"),
+      h("p", { class: "proj-last", text: "última atividade " + quando(p.last_activity, today) })),
     progress(o.totals.done, o.totals.total),
     h("p", { class: "proj-card-meta", text: o.objectives.length
       ? `${o.objectives.length} objetivo${o.objectives.length > 1 ? "s" : ""} · ${o.totals.objectives_open} em aberto · na ordem de execução`
-      : "Crie objetivos (as demandas principais) e ponha as tarefas na ordem em que vão ser feitas." })));
+      : "Crie objetivos (as demandas principais) e ponha as tarefas na ordem em que vão ser feitas." }),
+    upcoming));
 
   const blocks = h("div", { class: "obj-list" });
   o.objectives.forEach((ob, i) => blocks.append(objectiveBlock(ob, i, o, pid, today, refresh)));
@@ -392,37 +467,47 @@ async function saveProject(p, patch, msg, refresh) {
   } catch (e) { errorToast(e, "Não foi possível salvar."); }
 }
 
-function editProject(p, refresh) {
-  const name = h("input", { type: "text", maxlength: "60", required: "required", value: p.name });
-  const desc = h("textarea", { rows: "3", maxlength: "500", placeholder: "Do que se trata (opcional)" });
-  desc.value = p.description || "";
-  let color = p.color;
-  const swatches = h("div", { class: "swatches", role: "radiogroup", "aria-label": "Cor" }, ...PALETA.map((c) => {
-    const b = h("button", { type: "button", class: "swatch", role: "radio", title: c, "aria-label": c,
-      "aria-checked": String(c.toLowerCase() === (color || "").toLowerCase()) });
-    b.style.background = corProjeto(c);
-    b.addEventListener("click", () => {
-      color = c;
-      for (const x of swatches.children) x.setAttribute("aria-checked", String(x === b));
-    });
-    return b;
-  }));
+// Arquivar com segurança: diz quantas tarefas em aberto ainda têm este projeto
+// como principal e deixa escolher: manter, concluir agora ou mover para outro.
+async function archiveProject(p, abertas, refresh) {
+  const outros = (await listProjects(true).catch(() => [])).filter((x) => x.id !== p.id);
+  let escolha = "keep";
+  const destino = h("select", { "aria-label": "Projeto que recebe as tarefas", disabled: "disabled" },
+    ...outros.map((x) => h("option", { value: String(x.id), text: x.name })));
+  const opcao = (valor, texto, extra = null) => {
+    const r = h("input", { type: "radio", name: "arq-tarefas", value: valor });
+    if (valor === escolha) r.checked = true;
+    r.addEventListener("change", () => { escolha = valor; destino.disabled = valor !== "move"; });
+    return h("div", { class: "arq-op" }, h("label", { class: "check-line" }, r, texto), extra);
+  };
   const err = h("p", { class: "error-text" });
-  const form = h("form", {}, h("h2", { text: "Projeto" }), field("Nome do projeto ou cliente", name), field("Descrição", desc),
-    h("div", { class: "field" }, h("span", { class: "field-label", text: "Cor" }), swatches), err,
+  const n = `${abertas} tarefa${abertas > 1 ? "s" : ""} em aberto`;
+  const form = h("form", {}, h("h2", { text: `Arquivar “${p.name}”?` }),
+    h("p", { class: "dialog-note", text: "O projeto sai dos seletores e da lista de ativos; nada é apagado e dá para reativar quando quiser." }),
+    abertas ? h("fieldset", { class: "arq-fs" }, h("legend", { text: `Ainda há ${n} neste projeto. O que fazer com ${abertas > 1 ? "elas" : "ela"}?` }),
+      opcao("keep", "Manter como estão (continuam no quadro)"),
+      opcao("done", "Concluir agora"),
+      outros.length ? opcao("move", "Mover para outro projeto", destino) : null) : null,
+    err,
     h("div", { class: "dialog-actions" },
       h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
-      h("button", { type: "submit", class: "btn btn-primary", text: "Salvar" })));
+      h("button", { type: "submit", class: "btn btn-primary", text: "Arquivar" })));
   form.addEventListener("submit", busy(async () => {
+    const body = { open_tasks: escolha };
+    if (escolha === "move") body.move_to = Number(destino.value);
     try {
-      await api.patch(`/projects/${p.id}`, { name: name.value.trim(), description: desc.value.trim() || null, color });
+      const r = await api.post(`/projects/${p.id}/archive`, body);
       invalidateProjects();
       dlg.close();
+      const alvo = escolha === "move" ? outros.find((x) => x.id === body.move_to)?.name : "";
+      toast(r.moved ? `Arquivado; ${r.moved} tarefa${r.moved > 1 ? "s" : ""} foi para ${alvo}.`
+        : r.done ? `Arquivado; ${r.done} tarefa${r.done > 1 ? "s" : ""} concluída${r.done > 1 ? "s" : ""}.`
+          : "Arquivado: some dos seletores, as tarefas continuam.",
+      r.moved || r.done ? {} : { action: "Desfazer", onAction: () => undoLatest("project", p.id, () => { invalidateProjects(); refresh(); }) });
       refresh();
-    } catch (e) { err.textContent = e.message || "Não foi possível salvar."; }
+    } catch (e) { err.textContent = e.message || "Não foi possível arquivar."; }
   }));
   const dlg = modal(form);
-  name.focus();
 }
 
 async function deleteProject(p) {

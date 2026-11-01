@@ -3,7 +3,7 @@
 import { api } from "./api.js";
 import { h, icon, clear, localDay } from "./dom.js";
 import { taskChips } from "./board.js";
-import { corProjeto } from "./projects.js";
+import { corProjeto, iconeProjeto } from "./projects.js";
 import { openTask } from "./task.js";
 import { card, enabled } from "./assistant.js";
 
@@ -92,8 +92,8 @@ export async function mount(root, ctx) {
     if (r.projects.length) {
       side.append(h("div", { class: "panel-head" }, h("h2", { text: "Projetos" })));
       for (const p of r.projects) {
-        const dot = h("span", { class: "dot" });
-        dot.style.background = corProjeto(p.color);
+        const dot = iconeProjeto(p.icon);
+        dot.style.color = corProjeto(p.color);
         side.append(h("div", { class: "list-row" }, dot, h("div", { class: "t" }, ...highlight(p.name, q),
           p.archived ? h("small", { text: "arquivado" }) : null),
           h("a", { class: "btn btn-ghost btn-sm", href: "#/tarefas", text: "Ver no quadro",

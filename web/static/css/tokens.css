@@ -156,6 +156,7 @@
   --proj-6: #62C7E0;
   --proj-7: #F6AE6B;
   --proj-8: #ACABAD;
+  --on-proj: #0B0D10;              /* ícone sobre o quadradinho na cor do projeto */
 
   --ink-code: #D6D4D5;
   --avatar-fg: #FFFFFF;
@@ -239,6 +240,7 @@
   --proj-6: #007286;
   --proj-7: #8A5300;
   --proj-8: #5F636B;
+  --on-proj: #FFFFFF;
   --ink-code: #2E3035;
   --avatar-fg: #FFFFFF;
   --tint: #000000;
@@ -320,6 +322,7 @@
   --proj-6: #007286;
   --proj-7: #8A5300;
   --proj-8: #5F636B;
+  --on-proj: #FFFFFF;
   --ink-code: #2E3035;
   --avatar-fg: #FFFFFF;
   --tint: #000000;
