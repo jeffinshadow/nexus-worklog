@@ -8,14 +8,14 @@ import { pushPanel } from "./notificacoes.js";
 import { cancelled, register as registerPasskey, supported as passkeySupported } from "./passkey.js";
 
 const TABS = [
+  ["conta", "Conta"],
   ["modelos", "Modelos"],
   ["avisos", "Avisos"],
   ["calendario", "Calendário"],
   ["ia", "IA e API"],
-  ["conta", "Conta"],
 ];
 const OLD_TABS = { dias: "conta", chaves: "ia" }; // links antigos
-const ROLE_SHORT = { admin: "admin", assigner: "atribuidor", viewer: "visualizador" };
+const ROLE_SHORT = { admin: "admin", assigner: "atribui tarefas", viewer: "visualizador" };
 
 // Dias úteis como máscara de bits, domingo = bit 0 (igual ao backend).
 const DAYS = [
@@ -85,7 +85,8 @@ export async function mount(root, ctx) {
     }
     else if (active === "calendario") body.append(await calendarFeed(() => render()));
     else if (active === "ia") body.append(...aiHelp(), await tokens(() => render()), await webhooksPanel(() => render()));
-    else if (isUser) body.append(profilePanel(ctx.me, render), themePanel(ctx.me), assignmentsPanel(ctx.me), assistantPanel(ctx.me), defaultProjectPanel(ctx.me, (r) => meChanged(ctx.me, r)), ticketsPanel(ctx.me), workDays(ctx.me), shortcutsPanel(), account(ctx.me), await passkeysPanel(render), deleteAccount(isUser));
+    // Conta: primeiro o que muda o dia (dias úteis, projeto padrão), depois quem vê e manda tarefas.
+    else if (isUser) body.append(workDays(ctx.me), defaultProjectPanel(ctx.me, (r) => meChanged(ctx.me, r)), privacyPanel(ctx.me), profilePanel(ctx.me, render), themePanel(ctx.me), assistantPanel(ctx.me), ticketsPanel(ctx.me), shortcutsPanel(), account(ctx.me), await passkeysPanel(render), deleteAccount(isUser));
     else body.append(profilePanel(ctx.me, render), themePanel(ctx.me), account(ctx.me), await passkeysPanel(render), deleteAccount(isUser));
   }
   await render();
@@ -331,7 +332,7 @@ function workDays(me) {
   });
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Meus dias úteis" })),
-    h("p", { class: "help", text: "As rotinas que repetem “nos dias úteis” seguem estes dias. O que você marcar fora da agenda de uma rotina fica salvo como extra e não entra no percentual. Atenção: mudar os dias úteis recalcula também os indicadores dos dias anteriores." }),
+    h("p", { class: "help", text: "As rotinas que repetem “nos dias úteis” seguem estes dias. O que você marcar fora da agenda de uma rotina fica salvo como extra e não entra no percentual. Atenção: mudar os dias úteis recalcula também os números dos dias anteriores." }),
     h("fieldset", { class: "weekday-picker" },
       ...boxes.map(({ label, cb }) => h("label", { class: "weekday-option" }, cb, h("span", { text: label })))),
     err, save);
@@ -360,15 +361,15 @@ async function notices() {
     return { key, on, hour, el: h("div", { class: "notice-row" },
       h("label", { class: "notice-main" }, on, h("span", {}, h("strong", { text: title }), h("small", { text: help }))), hour) };
   });
-  // Semanal: o PDF anexado e uma cópia (gestor, cliente) — só valem com o resumo da semana ligado.
+  // Semanal: o PDF anexado e uma cópia (quem acompanha o trabalho) — só valem com o resumo da semana ligado.
   const weekly = rows.find((r) => r.key === "weekly");
   const pdf = h("input", { type: "checkbox" });
   pdf.checked = !!p.weekly_pdf;
-  const cc = h("input", { type: "email", maxlength: "254", value: p.weekly_cc || "", placeholder: "ex.: gestor@empresa.com.br (opcional)",
+  const cc = h("input", { type: "email", maxlength: "254", value: p.weekly_cc || "", placeholder: "ex.: colega@empresa.com.br",
     autocomplete: "off", "aria-label": "Mandar cópia do resumo semanal para" });
   const weeklyExtra = h("div", { class: "notice-sub" },
     h("label", { class: "weekday-option" }, pdf, h("span", { text: "Anexar o relatório da semana em PDF (o mesmo de Meu mês > PDF, com os títulos das tarefas)" })),
-    field("Mandar cópia para (gestor, cliente)", cc),
+    field("Mandar cópia para quem acompanha meu trabalho (opcional)", cc),
     h("p", { class: "dialog-note", text: "A cópia recebe o mesmo e-mail, com o PDF se estiver ligado. Use só com quem já acompanha o seu trabalho." }));
   const syncWeekly = () => { pdf.disabled = cc.disabled = !weekly.on.checked; weeklyExtra.classList.toggle("off", !weekly.on.checked); };
   weekly.on.addEventListener("change", syncWeekly);
@@ -677,17 +678,24 @@ function aiHelp() {
       codeBox(`curl -H "Authorization: Bearer nxs_SUA_CHAVE" ${location.origin}/api/board`)),
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Comandos prontos" })),
-      h("p", { class: "help", text: "O Nexus oferece dois comandos para a IA: o resumo da semana (para o gestor, o time ou um cliente) e o resumo para a equipe (ontem, hoje e o que está aguardando). No Claude Code eles aparecem como comandos de barra:" }),
+      h("p", { class: "help", text: "O Nexus oferece dois comandos para a IA: o resumo da semana (para o time, um cliente ou quem acompanha seu trabalho) e o resumo para a equipe (ontem, hoje e o que está aguardando). No Claude Code eles aparecem como comandos de barra:" }),
       codeBox("/mcp__nexus__resumo_semanal o cliente\n/mcp__nexus__daily"),
       h("p", { class: "dialog-note", text: "Em outras IAs, cole o pedido:" }),
-      codeBox("Use o Nexus (get_summary e get_today) e escreva um resumo da minha semana para o meu gestor: o que foi entregue por projeto, o tempo por projeto, o que segue em andamento e o que está aguardando. Só com o que está registrado.")),
+      codeBox("Use o Nexus (get_summary e get_today) e escreva um resumo da minha semana para quem acompanha meu trabalho: o que foi entregue por projeto, o tempo por projeto, o que segue em andamento e o que está aguardando. Só com o que está registrado.")),
   ];
 }
 
 // ------------------------------------------------------- tarefas atribuídas --
 
+// Os dois aceites num painel só: sem eles, ninguém manda tarefas nem vê o registro.
+function privacyPanel(me) {
+  return h("section", { class: "panel" },
+    h("div", { class: "panel-head" }, h("h2", { text: "Quem vê e quem manda tarefas para você" })),
+    ...assignments(me), ...seenBy(me));
+}
+
 // Consentimento: sem ele, ninguém consegue mandar tarefas para esta pessoa.
-function assignmentsPanel(me) {
+function assignments(me) {
   const cb = h("input", { type: "checkbox" });
   cb.checked = !!me.accepts_assignments_at;
   const since = h("p", { class: "dialog-note" });
@@ -707,11 +715,10 @@ function assignmentsPanel(me) {
     } catch (e) { cb.checked = !cb.checked; errorToast(e); }
     finally { cb.disabled = false; }
   });
-  return h("section", { class: "panel" },
-    h("div", { class: "panel-head" }, h("h2", { text: "Receber tarefas" })),
-    h("p", { class: "help", text: "Quem tem a função de atribuidor de tarefas pode mandar tarefas para você, mas só se você permitir aqui. A tarefa recebida é sua: você edita, conclui ou exclui. Quem mandou só corrige ou cancela enquanto ela está a fazer e você não registrou nada nela." }),
+  return [
+    h("p", { class: "help", text: "Quem tem o papel de atribuir tarefas pode mandar tarefas para você, mas só se você permitir aqui. A tarefa recebida é sua: você edita, conclui ou exclui. Quem mandou só corrige ou cancela enquanto ela está a fazer e você não registrou nada nela." }),
     h("label", { class: "weekday-option" }, cb, h("span", { text: "Permitir que me atribuam tarefas" })),
-    since);
+    since];
 }
 
 // --------------------------------------------------------- excluir a conta --
@@ -799,7 +806,7 @@ function account(me) {
     try {
       await api.post("/auth/change-password", { current_password: cur.value, new_password: nova.value });
       cur.value = nova.value = nova2.value = "";
-      toast("Senha trocada. Outras sessões, chaves de API e o link do calendário foram encerrados; webhooks, desligados.");
+      toast("Senha trocada. Outras sessões, chaves de API e o link do calendário foram encerrados; integrações (webhooks), desligadas.");
     } catch (e) {
       err.textContent = e.message || "Não foi possível trocar.";
     }
@@ -807,7 +814,6 @@ function account(me) {
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Conta" })),
     h("p", { class: "help mono", text: [me.email, ...(me.roles || []).filter((r) => r !== "user").map((r) => ROLE_SHORT[r])].join(" · ") }),
-    ...((me.roles || []).includes("user") ? seenBy(me) : []),
     form);
 }
 
