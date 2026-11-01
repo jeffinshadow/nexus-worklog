@@ -261,7 +261,7 @@ function showHelp(focus) {
       ...(user ? [["Hoje", "Rotinas do dia, tarefas em aberto (com filtro) e o registro rápido."],
         ["Tarefas", "O quadro completo e o detalhe de cada tarefa: anotações, checklist, cronômetro, tempo."],
         ["Projetos", "Cada projeto com os objetivos em ordem de execução e as tarefas de cada um."],
-        ["Meu mês", "Como foi o mês numa frase: rotinas, tarefas concluídas e tempo; o que ficou para trás, para onde foi o tempo, o que foi entregue e o PDF do mês. Outro período, um projeto e a exportação dos dados ficam em “Outro período ou formato”."]] : []),
+        ["Meu mês", "Como foi o mês numa frase, com o PDF do mês. Embaixo, o painel: rotinas em dia, tarefas concluídas e horas apontadas, cada um com os últimos 6 meses e uma palavra que situa o mês na sua própria média (acima, na média, abaixo — só para você ver o seu ritmo; quem acompanha a equipe não vê); o calendário do mês, com cada dia pintado pela parte das rotinas feitas (mais forte = mais feitas); o ritmo por semana; o tempo por projeto; e as rotinas que pedem atenção. Depois, o que foi entregue. Outro período, um projeto e a exportação dos dados ficam em “Outro período ou formato”."]] : []),
       ["Histórico", "Tudo o que mudou, com desfazer."],
       ...(has("assigner") ? [["Atribuir", "Do papel “Manda tarefas”. Manda uma tarefa para quem aceitou receber. Enquanto ela está a fazer, você ainda corrige ou cancela; depois, é da pessoa."]] : []),
       ...(has("viewer") ? [["Equipe", "Do papel “Vê a equipe”. O registro de quem permitiu (cada pessoa decide em Configurações > Conta), só para ver e tirar relatório."]] : []),

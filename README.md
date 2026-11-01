@@ -75,10 +75,22 @@ exclui a conta de vez.
   Atribuir com quem tirou e quando. Conta com acesso bloqueado não recebe.
 - **Meu mês** — o mês num olhar, com um seletor só (‹ mês ›, o corrente por
   padrão): uma frase ("Em outubro você fez 50 das 81 rotinas previstas (62%),
-  concluiu 20 tarefas e apontou 31h43"), três números e o mês anterior numa
-  linha neutra; depois as rotinas em dias feitos de previstos (o calendário dia
-  a dia recolhido), para onde foi o tempo e o que foi entregue (as 5 com mais
-  tempo, com o "como resolveu", e "ver todas"). Os números são os mesmos do PDF.
+  concluiu 20 tarefas e apontou 31h43") e o PDF; depois um **painel** num
+  contêiner próprio (grade de 12 colunas; uma coluna no celular): rotinas em
+  dia (anel + linha dos últimos 6 meses), tarefas concluídas e horas apontadas
+  (número + barras dos 6 meses, o mês em destaque), cada um com uma palavra
+  neutra que situa o mês na média da própria pessoa (acima / na média / abaixo,
+  sem cor nem seta); o calendário do mês (domingo a sábado, cada dia pintado
+  pela parte das rotinas feitas, como no GitHub; só extras em outro tom;
+  pausado e futuro vazios); o ritmo por semana (tarefas e horas); o tempo por
+  projeto (rosca com legenda em horas) e as rotinas que pedem atenção. Por
+  fim, o que foi entregue (as 5 com mais tempo, com o "como resolveu", e "ver
+  todas"). Os números são os mesmos do PDF, mês a mês. "Na média" = até 5
+  pontos percentuais (rotinas) ou 15% (tarefas, horas; no mínimo 1 tarefa e 1
+  hora) da média dos meses anteriores, com pelo menos 2 meses inteiros; no mês
+  corrente, proporcional aos dias passados e só depois da primeira semana. Na
+  Equipe aparecem o mês e o calendário, sem a tendência, a média e o ranking
+  de rotinas (não é placar).
   **Baixar o PDF do mês** é a ação principal; em "Outro período ou formato"
   ficam o PDF de outras datas, por projeto ou do projeto inteiro, e as
   exportações. O PDF é editorial: o período em texto corrido, os números, o ritmo, a
@@ -150,8 +162,8 @@ Capturas de uma conta de demonstração, com dados fictícios.
 ![Detalhe de uma tarefa com checklist, fotos, tempo e anotações](docs/screenshots/03-tarefa.webp)
 *Detalhe da tarefa — checklist, fotos (câmera, print colado ou arrastado), apontamentos de tempo e anotações num lugar só; o botão no topo expande para ler com calma. No menu da tarefa, “Duplicar tarefa” cria outra igual (título, descrição, projetos, objetivo, prioridade e checklist desmarcado), sem tempo, fotos, anotações nem datas.*
 
-![Meu mês: a frase do mês, três números, rotinas para trás, tempo por projeto e entregas](docs/screenshots/04-retrospectiva.webp)
-*Meu mês — o mês numa frase e três números, com o mês anterior ao lado; as rotinas em dias feitos de previstos, para onde foi o tempo, o que foi entregue e o PDF do mês num botão.*
+![Meu mês: a frase do mês e o painel com indicadores, calendário, ritmo e tempo por projeto](docs/screenshots/04-retrospectiva.webp)
+*Meu mês — o mês numa frase e o PDF num botão; o painel com rotinas, tarefas e horas dos últimos 6 meses, o calendário do mês pintado pelas rotinas feitas, o ritmo por semana, o tempo por projeto e o que foi entregue.*
 
 ![Nova tarefa preenchida a partir de um modelo](docs/screenshots/05-modelo.webp)
 *Modelos — escolhe o modelo no “+ Tarefa” e o checklist vem junto.*
