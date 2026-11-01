@@ -1,7 +1,7 @@
 // Configurações: projetos, modelos, avisos, calendário, IA e API (chaves), conta (perfil, assistente, chamados, dias úteis e senha).
 import { api } from "./api.js";
 import { h, icon, clear, dateTime, field, matchPasswords } from "./dom.js";
-import { codeBox, confirmDialog, errorToast, modal, toast, warnBox, busy } from "./ui.js";
+import { codeBox, confirmDialog, errorToast, modal, toast, warnBox, busy, singleKeysOn, setSingleKeys } from "./ui.js";
 import { defaultProjectPanel, fillProjectSelect } from "./projects.js";
 import { avatar, squarePhoto } from "./profile.js";
 import { pushPanel } from "./notificacoes.js";
@@ -283,8 +283,15 @@ function ticketsPanel(me) {
 function shortcutsPanel() {
   const keys = [["n", "nova tarefa"], ["/", "buscar"], ["h", "Hoje"], ["t", "Tarefas"], ["r", "Retrospectiva"],
     ["l", "Relatórios"], ["s", "parar o cronômetro"], ["?", "ver todos os atalhos"]];
+  // Desligar: para quem usa controle por voz ou esbarra numa tecla sem querer.
+  const on = h("input", { type: "checkbox" });
+  on.checked = singleKeysOn();
+  on.addEventListener("change", () => setSingleKeys(on.checked));
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Atalhos de teclado" })),
+    h("div", { class: "notice-row" },
+      h("label", { class: "notice-main" }, on, h("span", {}, h("strong", { text: "Atalhos de uma tecla" }),
+        h("small", { text: "Vale para este aparelho. Desligados, as letras abaixo não fazem nada." })))),
     h("dl", { class: "shortcuts" }, ...keys.flatMap(([k, l]) => [h("dt", {}, h("kbd", { text: k })), h("dd", { text: l })])),
     h("p", { class: "help", text: "Funcionam fora dos campos de texto." }));
 }

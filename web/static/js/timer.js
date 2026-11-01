@@ -36,8 +36,10 @@ export function setTimer(t) {
       h("span", { class: "timer-dot", "aria-hidden": "true" }),
       h("button", { type: "button", class: "timer-task", title: `Abrir a tarefa: ${state.title}`, text: state.title,
         onClick: () => openTask(state.task_id, onChange) }),
-      h("span", { class: "timer-time" }),
-      h("button", { type: "button", class: "icon", title: "Parar e apontar o tempo", "aria-label": "Parar o cronômetro e apontar o tempo", onClick: () => stopTimer() }, icon("stop")));
+      h("span", { class: "timer-time", "aria-hidden": "true" }), // muda a cada segundo: fora do leitor de tela
+      h("button", { type: "button", class: "icon", title: "Parar e apontar o tempo", "aria-label": "Parar o cronômetro e apontar o tempo", onClick: () => stopTimer(),
+        // O tempo corrido vai no nome do botão ao chegar nele (sem região viva).
+        onFocus: (ev) => ev.currentTarget.setAttribute("aria-label", `Parar o cronômetro (${elapsed(Date.now() - new Date(state.started_at).getTime())}) e apontar o tempo`) }, icon("stop")));
   }
   if (!state) return;
   const start = new Date(state.started_at).getTime();

@@ -2,7 +2,7 @@
 // concluídas. Também exporta o diálogo de nova tarefa, usado pela tela Hoje.
 import { api } from "./api.js";
 import { h, icon, clear, field, addDays, shortDate, localDay, localDateTime, daysBetween } from "./dom.js";
-import { confirmDialog, errorToast, toast, undoLatest, busy, modal, sheet, navBadge, popupMenu } from "./ui.js";
+import { confirmDialog, errorToast, toast, undoLatest, busy, modal, sheet, navBadge, popupMenu, focusAfterRemoval } from "./ui.js";
 import { extraProjectsField, fillObjectiveSelect, fillProjectSelect, listProjects, projectChips } from "./projects.js";
 import { openTask, openTaskId, editingTaskId, duration, parseDuration } from "./task.js";
 import { boardLine } from "./assistant.js";
@@ -201,10 +201,11 @@ export function blockTask(t, onDone) {
 }
 
 export async function deleteTask(t, onDone) {
+  const refocus = focusAfterRemoval(); // o foco vai para a tarefa que ficar no lugar
   if (!(await confirmDialog({ title: "Excluir tarefa?", text: `“${t.title}” sai do quadro. Dá para desfazer pelo histórico.`, confirm: "Excluir", danger: true }))) return false;
   try {
     await api.del(`/worklog/${t.id}`);
-    onDone && onDone();
+    Promise.resolve(onDone && onDone()).then(refocus);
     toast("Tarefa excluída.", { action: "Desfazer", onAction: () => undoLatest("worklog", t.id, onDone) });
     return true;
   } catch (e) {
@@ -224,6 +225,8 @@ export function openWorklog(onDone, opts = {}) {
   // Tempo já na criação (técnico em campo: "Loja X, 2h"); depois, pelo detalhe.
   const timeInput = document.getElementById("wl-time");
   timeInput.value = "";
+  timeInput.setCustomValidity("");
+  timeInput.oninput = () => timeInput.setCustomValidity(""); // erro some ao corrigir
   const projSel = document.getElementById("wl-project");
   const pickedProject = () => (projSel.value && projSel.value !== "__new" ? Number(projSel.value) : null);
   const extraBox = document.getElementById("wl-extra");
@@ -359,7 +362,10 @@ export function openWorklog(onDone, opts = {}) {
       payload.follow_up_on = followUpDay(followUp.value || null);
     }
     const minutes = timeInput.value.trim() ? parseDuration(timeInput.value) : null;
-    if (minutes === null && timeInput.value.trim()) { toast("Tempo inválido. Ex.: 45, 1h30, 2:15.", { error: true }); timeInput.focus(); return; }
+    if (minutes === null && timeInput.value.trim()) {
+      // Erro no próprio campo (balão nativo + aria-invalid), como o "Preencha este campo".
+      timeInput.setCustomValidity("Tempo inválido. Ex.: 45, 1h30, 2:15."); timeInput.reportValidity(); return;
+    }
     const btn = ev.submitter;
     if (btn) btn.disabled = true; // duplo clique criava a tarefa duas vezes
     try {
@@ -523,9 +529,10 @@ function askResolution(t, onDone) {
 
 export async function finishTask(t, onDone, { fromEdit = false } = {}) {
   if (!fromEdit && editingTaskId() === t.id) { toast("Termine a edição da tarefa (Pronto) antes de concluir."); return; }
+  const refocus = focusAfterRemoval(); // o foco vai para a tarefa que ficar no lugar
   try {
     const r = await api.post(`/worklog/${t.id}/finish`);
-    onDone && onDone();
+    Promise.resolve(onDone && onDone()).then(refocus);
     if (r && r.queued) { toast(`Concluída sem conexão: ${t.title}. Vai quando a conexão voltar.`); return; }
     // A base de conhecimento só cresce se for perguntada na hora de concluir.
     toast(`Concluída: ${t.title}`, { actions: [

@@ -31,6 +31,12 @@ a { color: var(--primary-hi); text-decoration: none; }
 .eyebrow { font-size: 0.74rem; color: var(--primary); letter-spacing: .02em; }
 ::selection { background: var(--primary); color: var(--on-primary); }
 :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 8px; }
+/* Destinos de foco por script (título da tela, conteúdo): sem anel, não são controles. */
+#page-title:focus, #main:focus, .auth-title:focus { outline: none; }
+/* "Pular para o conteúdo": primeiro Tab da página; só aparece com o foco. */
+.skip-link { position: fixed; top: 8px; left: 8px; z-index: 3000; padding: 10px 16px; border-radius: 12px;
+  background: var(--primary); color: var(--on-primary); font-weight: 600; text-decoration: none; transform: translateY(-200%); }
+.skip-link:focus { transform: none; }
 
 /* ------------------------------------------------------------- ícones -- */
 .ico, .icon svg { width: 20px; height: 20px; flex: none; fill: none; }
@@ -75,6 +81,9 @@ input, select, textarea {
 }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-container); }
 input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--primary); }
+/* A caixa de seleção nativa ignora a borda: o foco vira o anel cheio, como nos botões. */
+input[type="checkbox"]:focus { box-shadow: none; }
+input[type="checkbox"]:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 input::placeholder { color: var(--dim); }
 .field { margin-bottom: var(--gap); }
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); }
@@ -579,7 +588,8 @@ mark { background: color-mix(in srgb, var(--primary) 28%, transparent); color: v
 /* Sem foto: silhueta azul sobre o tom de destaque, cortada embaixo pelo círculo. */
 .avatar-default { background: var(--primary-container); color: var(--primary-hi); overflow: hidden; place-items: center; }
 .avatar-default .ico { width: 100%; height: 100%; }  /* cabeça no terço de cima, ombros na borda de baixo (como o avatar padrão do sistema) */
-.profile-row { display: flex; gap: 18px; align-items: center; margin-bottom: 12px; }
+.profile-row { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; margin-bottom: 12px; }
+.profile-row > div { flex: 1 1 200px; min-width: 0; }
 .profile-row .help { margin: 8px 0 0; }
 
 #assist-slot > .assist { margin-bottom: 22px; }  /* acima do título da página */
@@ -1015,6 +1025,14 @@ body.rail .nav a:active, body.rail .sidebar .nav-link:active { transform: scale(
   .fab #fab-label { max-width: 12em; overflow: hidden; white-space: nowrap; transition: max-width .2s var(--ease), opacity .15s; }
   .fab.compact { padding: 0 16px; gap: 0; }
   .fab.compact #fab-label { max-width: 0; opacity: 0; }
+}
+
+/* Zoom alto (ou celular deitado): pouca altura. A barra do topo rola junto com
+   a página (não fica fixa) e o botão flutuante fica só com o ícone. */
+@media (max-width: 860px) and (max-height: 420px) {
+  .appbar { position: absolute; }
+  .fab { padding: 0 16px; gap: 0; }
+  .fab #fab-label { max-width: 0; opacity: 0; }
 }
 
 /* Quem pediu menos movimento ao sistema: nada desliza nem cresce. */

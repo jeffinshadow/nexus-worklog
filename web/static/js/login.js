@@ -13,8 +13,18 @@ const $ = (id) => document.getElementById(id);
 const forms = ["form-login", "form-forgot", "form-link", "form-request"];
 function show(id) {
   for (const f of forms) $(f).classList.toggle("hidden", f !== id);
+  if (id === "form-login") document.title = "Entrar · Nexus Worklog"; // volta de um link do e-mail
   const first = $(id).querySelector("input:not(.sr-only)");
   if (first) first.focus();
+}
+
+// Erro de envio: marca os campos culpados (aria-invalid) e liga a mensagem a
+// eles; a mensagem em si tem role="alert" e é lida na hora.
+function invalid(ids, errId, on) {
+  for (const id of ids) {
+    if (on) { $(id).setAttribute("aria-invalid", "true"); $(id).setAttribute("aria-describedby", errId); }
+    else { $(id).removeAttribute("aria-invalid"); $(id).removeAttribute("aria-describedby"); }
+  }
 }
 
 // Volta à tela que pediu o login (link de e-mail ou calendário): só rotas do app (#/...).
@@ -26,6 +36,7 @@ $("form-login").addEventListener("submit", async (ev) => {
   const err = $("login-error");
   const btn = ev.submitter;
   err.textContent = "";
+  invalid(["login-email", "login-password"], "login-error", false);
   if (btn) btn.disabled = true; // clique repetido gasta tentativas do limite de login
   try {
     await api.post("/auth/login", {
@@ -35,6 +46,7 @@ $("form-login").addEventListener("submit", async (ev) => {
     location.href = destino;
   } catch (e) {
     err.textContent = e.message || "Falha no login.";
+    invalid(["login-email", "login-password"], "login-error", true);
     if (btn) btn.disabled = false;
   }
 });
@@ -110,6 +122,7 @@ $("form-forgot").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const err = $("forgot-error"), ok = $("forgot-ok"), btn = ev.submitter;
   err.textContent = "";
+  invalid(["forgot-email"], "forgot-error", false);
   if (btn) btn.disabled = true;
   try {
     await api.post("/auth/forgot", { email: $("forgot-email").value });
@@ -118,6 +131,7 @@ $("form-forgot").addEventListener("submit", async (ev) => {
     ok.classList.remove("hidden");
   } catch (e) {
     err.textContent = e.message || "Não foi possível enviar.";
+    invalid(["forgot-email"], "forgot-error", true);
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -140,6 +154,9 @@ async function openLink(kind, token) {
   $("link-name-wrap").classList.toggle("hidden", !invite);
   $("auth-foot").classList.add("hidden");
   show("form-link");
+  // Tela própria: título da aba e foco no título (o leitor anuncia onde está).
+  document.title = (invite ? "Criar senha" : "Senha nova") + " · Nexus Worklog";
+  $("link-title").focus();
   const err = $("link-error");
   let info;
   try {
@@ -166,6 +183,7 @@ async function openLink(kind, token) {
   $("form-link").onsubmit = async (ev) => { // onsubmit: um link novo troca o anterior
     ev.preventDefault();
     err.textContent = "";
+    invalid(["link-pw"], "link-error", false);
     const btn = ev.submitter;
     if (btn) btn.disabled = true;
     try {
@@ -175,6 +193,7 @@ async function openLink(kind, token) {
       location.href = "/";
     } catch (e) {
       err.textContent = e.message || "Não foi possível salvar.";
+      invalid(["link-pw"], "link-error", true);
       if (btn) btn.disabled = false;
     }
   };
