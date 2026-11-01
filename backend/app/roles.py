@@ -3,7 +3,7 @@
   user      tem o próprio registro (Hoje, Tarefas, Rotinas...) e pode receber tarefas
   admin     contas, permissões e configurações gerais
   assigner  atribui tarefas a quem consentiu (pelo app ou por chave de API/MCP)
-  viewer    vê os registros e tira relatórios de todos (só pelo app)
+  viewer    vê os registros e tira relatórios de quem aceitou (só pelo app; users.viewers_allowed)
 
 users.role espelha "admin" só por compatibilidade (rollback e código antigo).
 """

@@ -38,7 +38,7 @@ Authorization: Bearer nxs_...
 
 **Papéis** (acumuláveis, em `roles` no `/api/auth/me`): `user` (o próprio registro),
 `admin` (contas, permissões, configurações), `assigner` (atribui tarefas) e `viewer`
-(registros e relatórios de todos). Todo dado é filtrado por `user_id`; `/api/admin/*`
+(registros e relatórios de quem aceitou, `PUT /api/me/viewers`). Todo dado é filtrado por `user_id`; `/api/admin/*`
 e `/api/viewer/*` exigem o papel com sessão do app.
 
 | Código | Quando |
@@ -76,7 +76,7 @@ Legenda: **S** = só sessão do app · **W** = exige escopo `write` (chave) ou C
 | --- | --- | --- |
 | `POST /login` | público | `{email, password}` → identidade + `csrf_token`; limite por IP e por e-mail (falhas) |
 | `POST /logout` | S W | |
-| `GET /me` | | `{id, email, display_name, name, avatar, assistant, role, roles, retro_days, support_contact, accepts_assignments_at, ticket_url, must_change_password, work_days, tz, csrf_token}` — `name` é o de exibição ou, sem ele, o derivado do e-mail; `role` só espelha `admin` (compatibilidade) |
+| `GET /me` | | `{id, email, display_name, name, avatar, assistant, role, roles, retro_days, support_contact, accepts_assignments_at, viewers_allowed, ticket_url, must_change_password, work_days, tz, csrf_token}` — `name` é o de exibição ou, sem ele, o derivado do e-mail; `role` só espelha `admin` (compatibilidade) |
 | `POST /change-password` | S W | `{current_password, new_password}`; encerra as outras sessões e revoga chaves e calendário |
 | `POST /settings` | W | `{work_days}` — máscara, domingo = bit 0 (seg–sex = 62). Não reescreve o passado: rotinas "dias úteis" com história são encerradas com os dias antigos e recomeçam hoje; não se desfaz pelo histórico |
 
@@ -101,10 +101,11 @@ apaga as passkeys da conta; "Esqueci a senha" mantém e avisa por e-mail.
 | `POST /avatar` · `DELETE /avatar` | S W | corpo bruto PNG, JPEG ou WebP até 256 KB (tipo pelo conteúdo; SVG não). O app recorta e reduz antes |
 | `GET /avatar/{user_id}?v=` | S | a própria foto; o admin vê a de todos |
 | `PUT /assistant` | S W | `{enabled, idle_on, idle_minutes (5–480), idle_start, idle_end}` — janela em minutos do dia |
-| `GET /visibility` | S | `[{name, roles}]`: quem, além de você, tem papel `viewer` ou `admin` (a linha "Quem pode ver seu registro" em Conta) |
+| `GET /visibility` | S | `[{name, roles}]`: quem, além de você, tem papel `viewer` ou `admin` (a linha "Quem pode ver seu registro" em Conta; o visualizador só vê se `viewers_allowed`) |
 | `GET /activity` | S | `{last_activity, timer}`: último registro de qualquer origem (tarefa, rotina, anotação, checklist, tempo, cronômetro) e o cronômetro rodando |
 | `PUT /tickets` | S W | `{ticket_url}` — endereço do sistema de chamados; `{id}` vira o número (sem `{id}`, vai no fim) |
 | `PUT /assignments` | S W | `{accept}` — aceitar receber tarefas de um atribuidor (desligar não mexe nas recebidas) |
+| `PUT /viewers` | S W | `{accept}` → `{viewers_allowed}` — permitir que visualizadores vejam seu registro (quadro, números, PDF, horas, fotos). Contas novas começam com `false`; vai ao histórico (`viewers.consent`) |
 | `POST /delete` | S W | `{password}` — exclui a conta e todos os dados dela; o último admin não sai |
 
 ## Cronômetro e modelos
@@ -166,7 +167,7 @@ Agenda: `daily` (dias úteis do dono) · `weekly` + `weekdays` (máscara) ·
 | --- | --- | --- |
 | `POST /api/worklog/{id}/photos` | S W | `{image, thumb, width?, height?}` em base64 — PNG, JPEG ou WebP pelo conteúdo; foto até 1 MB (o app já reduz a 1600 px e regrava, sem EXIF/GPS), miniatura até 96 KB; até 10 por tarefa; cota por pessoa em Admin > Geral |
 | `POST /api/recurring/{id}/photos?day=` · `GET` | S W | o mesmo, como evidência da rotina no dia (até 7 dias atrás) |
-| `GET /api/photos/{id}?thumb=` | S | a imagem (dona ou visualizador); cache privado e imutável |
+| `GET /api/photos/{id}?thumb=` | S | a imagem (dona, ou visualizador se a dona aceitou); cache privado e imutável |
 | `DELETE /api/photos/{id}` | S W | some na hora; volta pelo histórico em até 7 dias, depois sai de vez |
 | `GET /api/export/fotos.zip` | S | todas as fotos, numa pasta por tarefa e por rotina |
 
@@ -287,9 +288,9 @@ Aparecem no Hoje (só os no aviso), no e-mail da manhã e no calendário (dia de
 
 | Rota | | Observação |
 | --- | --- | --- |
-| `GET /users` | | contas com registro próprio (papel `user`) |
-| `GET /users/{id}/board` · `/dashboard` · `/projects` · `/reports/export` | | visão só leitura da pessoa |
-| `GET /export/apontamentos.csv` | | horas de todos, com coluna `usuario` |
+| `GET /users` | | contas com registro próprio (papel `user`) que deram o aceite (`PUT /api/me/viewers`) |
+| `GET /users/{id}/board` · `/dashboard` · `/projects` · `/reports/export` | | visão só leitura da pessoa; sem o aceite, 404 |
+| `GET /export/apontamentos.csv` | | horas de quem aceitou, com coluna `usuario` |
 
 ## Atribuição — `/api/assign`
 
