@@ -463,7 +463,7 @@ def t_list_objectives(ctx, args):
 
 
 def t_list_recurring(ctx, args):
-    day = _call(check_board_day, date.fromisoformat(args["day"])) if args.get("day") else None
+    day = _call(check_board_day, _day(args.get("day"))) if args.get("day") else None
     b = services.get_board(ctx["user_id"], day)
     head = f"Rotinas de {b['day'].isoformat()} ({'dia útil' if b['work_day'] else 'dia não útil'}; marcar fora da agenda conta como extra):"
     rows = _recurring_rows(b["recurring"])
@@ -548,7 +548,16 @@ def t_set_recurring(ctx, args):
     rid = args.get("recurring_id")
     if rid is None:
         raise ToolError("informe recurring_id (veja list_recurring)")
-    res = _call(recurring_routes.toggle, int(rid), data, user=ctx)
+    try:
+        res = _call(recurring_routes.toggle, int(rid), data, user=ctx)
+    except ToolError as e:
+        # Mudar a agenda ou o nome cria uma rotina nova (id novo) a partir daquele dia.
+        if str(e) == "não encontrado":
+            raise ToolError(f"rotina R{rid} não encontrada (veja list_recurring)") from None
+        if "não existia nesse dia" in str(e):
+            raise ToolError(f"a rotina R{rid} não valia nesse dia: quando a agenda ou o nome muda, a rotina ganha "
+                            "um id novo. Use o id de list_recurring desse dia (day=AAAA-MM-DD)") from None
+        raise
     nota = f" Evidência: {res['note']}." if res.get("note") else ""
     return f"Rotina R{rid} {'marcada' if res['done'] else 'desmarcada'} em {res['day'].isoformat()}.{nota}"
 
