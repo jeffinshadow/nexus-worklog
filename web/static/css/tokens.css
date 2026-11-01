@@ -118,7 +118,7 @@
   --snackbar-action: #8AB8F0;
   --scrim: rgba(0, 0, 0, .55);      /* véu atrás de diálogos e folhas */
   --glow-shadow: 0 0 14px 1px color-mix(in srgb, #5294E2 45%, transparent);  /* brilho do horizonte do login */
-  --chart-muted: #3B5170;           /* secundário: barras secundárias dos gráficos */
+  --chart-muted: #52719C;           /* secundário: barras secundárias dos gráficos (≥ 3:1 sobre --surface-tile) */
   --accent-purple: #B98EFF;         /* terciário */
   --accent-cyan: #62C7E0;
 
@@ -137,13 +137,16 @@
   --info-container: #0F3C47;
   --on-info-container: #C3EEF8;
 
-  /* Calendário de rotinas (Meu mês): degraus sólidos do primário e a cor do número em cada um. */
+  /* Calendário de rotinas (Meu mês): degraus sólidos do primário (cerca de 1,36:1 entre
+     vizinhos, 1,75:1 no último) e a cor do número em cada um. --heat-line: o contorno
+     tracejado do dia sem previsão (≥ 3:1 sobre --surface-tile; o dia fica sem fundo). */
   --heat-0: #2C2C2D;               /* dia com rotina prevista e nenhuma feita */
-  --heat-1: #2A3C53;
-  --heat-2: #36577F;
-  --heat-3: #4A82C4;
+  --heat-1: #2E425B;
+  --heat-2: #36577E;
+  --heat-3: #376BA8;
   --heat-4: #5294E2;
-  --heat-3-ink: #0B0D10;
+  --heat-3-ink: #F0EDEE;
+  --heat-line: #6D6F79;
   /* Meu mês: os quadros do painel (um degrau acima do contêiner do painel). */
   --surface-tile: #222324;
   /* Cores de projeto: o hex gravado (PALETA em projects.js) vira um destes
@@ -208,7 +211,7 @@
   --snackbar-action: #8AB8F0;
   --scrim: rgba(0, 0, 0, .32);
   --glow-shadow: none;             /* no claro o brilho vira mancha cinza */
-  --chart-muted: #A6C3ED;
+  --chart-muted: #7B94B6;
   --accent-purple: #7B51BF;
   --accent-cyan: #007286;
   --success: #00774F;
@@ -225,11 +228,12 @@
   --info-container: #C6ECF5;
   --on-info-container: #004E5C;
   --heat-0: #D9DBE2;
-  --heat-1: #B4CAE3;
-  --heat-2: #85ADD5;
+  --heat-1: #A5C0DD;
+  --heat-2: #7AA6D1;
   --heat-3: #508CC5;
   --heat-4: #1A6AB5;
   --heat-3-ink: #191C20;
+  --heat-line: #8F9099;
   --surface-tile: #FFFFFF;
   /* projetos no claro: 3:1 em gráfico e 4,5:1 como texto sobre branco */
   --proj-1: #1A6AB5;
@@ -290,7 +294,7 @@
   --snackbar-action: #8AB8F0;
   --scrim: rgba(0, 0, 0, .32);
   --glow-shadow: none;             /* no claro o brilho vira mancha cinza */
-  --chart-muted: #A6C3ED;
+  --chart-muted: #7B94B6;
   --accent-purple: #7B51BF;
   --accent-cyan: #007286;
   --success: #00774F;
@@ -307,11 +311,12 @@
   --info-container: #C6ECF5;
   --on-info-container: #004E5C;
   --heat-0: #D9DBE2;
-  --heat-1: #B4CAE3;
-  --heat-2: #85ADD5;
+  --heat-1: #A5C0DD;
+  --heat-2: #7AA6D1;
   --heat-3: #508CC5;
   --heat-4: #1A6AB5;
   --heat-3-ink: #191C20;
+  --heat-line: #8F9099;
   --surface-tile: #FFFFFF;
   /* projetos no claro: 3:1 em gráfico e 4,5:1 como texto sobre branco */
   --proj-1: #1A6AB5;

@@ -57,7 +57,7 @@ def user_dashboard(user_id: int, month: Optional[str] = MONTH, viewer=Depends(re
     if out.get("overview"):
         # Quem acompanha vê o mês (como no PDF), sem placar: nem o ranking por
         # rotina, nem a tendência dos meses, nem a comparação com a média da pessoa.
-        out["overview"].update(behind=[], trend=[], average=None, compare=None)
+        out["overview"].update(behind=[], trend=[], average=None, compare=None, previous=None)
     return out
 
 

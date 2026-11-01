@@ -563,6 +563,8 @@ def month_overview(user_id: int, month: date, first_day: date | None = None) -> 
         "days": days,
         "routines": len(stats),
         "routines_full": sum(1 for r in stats if r["done"] >= r["due"]),  # feitas em todos os dias previstos
+        # Primeiro dia da primeira rotina da pessoa (mês anterior a ele: "As rotinas começaram em dd/mm").
+        "first_routine": min((t["start_d"] for t in inputs["tasks"]), default=None),
         "behind": [{"label": r["label"], "due": r["due"], "done": r["done"]} for r in behind[:OVERVIEW_BEHIND]],
         "projects": [{"name": p["name"], "color": p["color"], "icon": p["icon"], "minutes": p["minutes"]}
                      for p in cur["projects"] if p["minutes"]],
