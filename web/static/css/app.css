@@ -645,7 +645,7 @@ mark { background: color-mix(in srgb, var(--primary) 28%, transparent); color: v
 .assist-note .ico { width: 16px; height: 16px; color: var(--primary-hi); flex: none; }
 
 .idle-config { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; margin: 4px 0 16px 30px; font-size: var(--type-body); color: var(--on-surface-variant); }
-.idle-config label { display: flex; gap: 8px; align-items: center; }
+.idle-config label { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }  /* 320 px: os horários descem, sem rolagem lateral */
 .input-sm { width: auto; height: 36px; padding: 0 10px; }
 .idle-config input[type="number"] { width: 80px; }
 
@@ -978,7 +978,9 @@ body.rail-peek .sidebar { width: var(--sidebar-w); z-index: 45; box-shadow: var(
   background: var(--surface-pop); border: 1px solid var(--line-2); box-shadow: var(--elev-2); animation: toast-in .12s var(--ease); }
 .pop-menu button { display: flex; align-items: center; gap: 12px; width: 100%; height: 40px; padding: 0 16px; border: 0;
   background: transparent; color: var(--on-surface); font: inherit; text-align: left; cursor: pointer; }
-.pop-menu button:hover, .pop-menu button:focus-visible { background: var(--surface-container-high); outline: none; }
+.pop-menu button:hover, .pop-menu button:focus-visible { background: var(--surface-container-high); }
+/* Item focado pelo teclado: contorno de 2 px (o fundo sozinho quase não se vê). */
+.pop-menu button:focus-visible, .sugg-item:focus-visible, .sugg-all:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 .pop-menu .ico { width: 20px; height: 20px; color: var(--on-surface-variant); }
 .tooltip { position: fixed; z-index: 1001; max-width: 260px; padding: 5px 9px; border-radius: var(--radius-s); pointer-events: none;
   font: 500 calc(var(--type-caption) * var(--ui-zoom))/1.35 var(--font-sans); color: var(--surface); background: var(--on-surface);
@@ -990,7 +992,7 @@ body.rail-peek .sidebar { width: var(--sidebar-w); z-index: 45; box-shadow: var(
   background: var(--surface-pop); border: 1px solid var(--line-2); box-shadow: var(--elev-2); }
 .sugg-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 0; border-radius: var(--radius-s);
   background: transparent; color: var(--on-surface); font: inherit; font-size: var(--type-body-s); text-align: left; cursor: pointer; }
-.sugg-item:hover, .sugg-item:focus-visible { background: var(--surface-container-high); outline: none; }
+.sugg-item:hover, .sugg-item:focus-visible { background: var(--surface-container-high); }
 .sugg-item .ico { flex: none; width: 16px; height: 16px; color: var(--dim); }
 .sugg-t mark { padding: 0; }
 .sugg-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -998,7 +1000,7 @@ body.rail-peek .sidebar { width: var(--sidebar-w); z-index: 45; box-shadow: var(
 .sugg-empty { padding: 8px 10px; font-size: var(--type-body-s); color: var(--dim); }
 .sugg-all { display: block; width: 100%; margin-top: 4px; padding: 8px 10px; border: 0; border-top: 1px solid var(--outline-variant);
   border-radius: 0 0 var(--radius-s) var(--radius-s); background: transparent; color: var(--primary-hi); font: inherit; font-size: var(--type-body-s); text-align: left; cursor: pointer; }
-.sugg-all:hover, .sugg-all:focus-visible { background: var(--surface-container-high); outline: none; }
+.sugg-all:hover, .sugg-all:focus-visible { background: var(--surface-container-high); }
 
 /* Exportar dados: itens de lista com título, descrição e download. */
 .export-item { display: flex; align-items: center; gap: 14px; width: 100%; padding: 12px 10px; border: 0; border-top: 1px solid var(--outline-variant);
@@ -1045,9 +1047,15 @@ body.rail .nav a:active, body.rail .sidebar .nav-link:active { transform: scale(
    a página (não fica fixa) e o botão flutuante fica só com o ícone. */
 @media (max-width: 860px) and (max-height: 420px) {
   .appbar { position: absolute; }
-  .fab { padding: 0 16px; gap: 0; }
-  .fab #fab-label { max-width: 0; opacity: 0; }
+  /* Zoom de 400%: a barra de baixo fica no fim da página e a ação principal
+     volta ao cabeçalho, em vez de cobrirem metade da tela. */
+  .tabbar { position: static; }
+  .main, body:has(.fab:not(.hidden)) .main { padding-bottom: 16px; }
+  .fab { display: none !important; }
+  #page-actions [data-fab] { display: inline-flex; }
+  .timer-mobile:not(.hidden) { position: static; margin: 0 16px 8px; }
 }
+@media (max-width: 359px) { .figs { grid-template-columns: 1fr 1fr; } }
 
 /* Quem pediu menos movimento ao sistema: nada desliza nem cresce. */
 @media (prefers-reduced-motion: reduce) {
