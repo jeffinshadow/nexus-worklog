@@ -31,6 +31,9 @@ services:
       COOKIE_SECURE: "false"
       APP_TZ: America/Sao_Paulo
       MAIL_SCHEDULER: "false"   # os testes chamam o agendador na mão, com e-mail falso
+      # Suíte em paralelo (pytest-xdist): 8 processos, um banco por processo, arquivo inteiro
+      # no mesmo processo. Para rodar em série: PYTEST_ADDOPTS="" na linha de comando.
+      PYTEST_ADDOPTS: "-n 8 --dist loadfile"
       OPENAPI_FILE: /docs/openapi.json  # test_openapi_em_dia compara com o versionado
     volumes:
       - ./docs:/docs:ro
