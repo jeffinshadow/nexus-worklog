@@ -272,7 +272,7 @@ export async function openTask(taskId, onChange) {
     prio.value = String(t.priority || 2);
     prio.addEventListener("change", () => save({ priority: Number(prio.value) }));
 
-    const ticket = h("input", { type: "text", maxlength: "41", placeholder: "ex.: 4821", autocomplete: "off", "aria-label": "Chamado" });
+    const ticket = h("input", { type: "text", maxlength: "41", placeholder: "ex.: 4821", autocomplete: "off", "aria-label": "Nº do chamado ou OS" });
     ticket.value = t.ticket || "";
     inline(ticket, () => cur.ticket || "", (v) => ({ ticket: v || null }));
     ticket.id = "f-ticket-" + t.id;
@@ -285,7 +285,7 @@ export async function openTask(taskId, onChange) {
     grid.append(field("Status", status), field("Prazo", due), field("Projeto / cliente", proj), field("Prioridade", prio),
       objField,
       h("div", { class: "field wide" }, h("span", { class: "field-label", text: "Outros projetos" }), extras.el),
-      h("div", { class: "field" }, h("label", { for: ticket.id, text: "Chamado" }),
+      h("div", { class: "field" }, h("label", { for: ticket.id, text: "Nº do chamado ou OS" }),
         url ? h("div", { class: "with-link" }, ticket, h("a", { class: "icon", href: url, target: "_blank", rel: "noopener noreferrer", title: "Abrir o chamado", "aria-label": "Abrir o chamado" }, icon("right"))) : ticket),
       h("div", { class: "field field-check" }, h("label", { class: "weekday-option" }, afterHours, h("span", { text: "Plantão / fora do horário" }))));
 
@@ -293,7 +293,7 @@ export async function openTask(taskId, onChange) {
       const reason = h("input", { type: "text", maxlength: "120", placeholder: "ex.: retorno do fornecedor", "aria-label": "Aguardando o quê?" });
       reason.value = t.blocked_reason || "";
       inline(reason, () => cur.blocked_reason || "", (v) => ({ blocked_reason: v || null }));
-      const follow = h("input", { type: "date", "aria-label": "Cobrar em" });
+      const follow = h("input", { type: "date", "aria-label": "Lembrar de cobrar em" });
       follow.value = t.follow_up_on || "";
       // Hoje ou depois — mas uma cobrança já atrasada pode ficar como está.
       follow.min = t.follow_up_on && t.follow_up_on < today ? t.follow_up_on : today;
@@ -302,7 +302,7 @@ export async function openTask(taskId, onChange) {
         follow.value = day || "";
         save({ follow_up_on: day });
       });
-      grid.append(field("Aguardando o quê?", reason), field("Cobrar em", follow));
+      grid.append(field("Aguardando o quê?", reason), field("Lembrar de cobrar em", follow));
     }
     if (t.status === "done") {
       const now = localDateTime(Date.now());

@@ -42,19 +42,19 @@ export async function mount(root, opts = {}) {
     periodNav(a, () => mount(root, opts), root),
     section("Rotinas · consistência", [
       h("div", { class: "consist-grid" },
-        chartCard("Aderência diária", (mes ? `${cap(mes)}` : "Últimas 4 semanas") + " — % das rotinas feitas nos dias da agenda.", heatmap(a.heatmap), "compact heat"),
-        chartCard("Aderência por rotina", (mes ? `${cap(mes)}` : "Últimos 30 dias") + " — dias feitos ÷ dias da agenda de cada rotina.", taskRanking(a.task_adherence, ph), "grow"),
+        chartCard("Rotinas feitas por dia", (mes ? `${cap(mes)}` : "Últimas 4 semanas") + " — quanto das rotinas previstas foi feito em cada dia.", heatmap(a.heatmap), "compact heat"),
+        chartCard("Cada rotina", (mes ? `${cap(mes)}` : "Últimos 30 dias") + " — dias feitos ÷ dias previstos de cada uma.", taskRanking(a.task_adherence, ph), "grow"),
       ),
     ]),
     section("Tarefas · fluxo", [
       h("div", { class: "chart-grid fluxo-grid" },
-        chartCard("Concluídas por semana", mes ? `Semanas de ${mes} (as das pontas começam ou terminam no mês vizinho).` : "Vazão das últimas 4 semanas.", throughput(a.throughput, ph)),
+        chartCard("Concluídas por semana", mes ? `Semanas de ${mes} (as das pontas começam ou terminam no mês vizinho).` : "Últimas 4 semanas.", throughput(a.throughput, ph)),
         chartCard("Tempo por projeto", `Horas apontadas ${ph}. Tarefa em mais de um projeto conta em cada um.`, projectTime(a.projects, ph)),
       ),
     ]),
     a.backlog
-      ? section("Backlog · saúde", [backlogHealth(a.backlog)])
-      : h("p", { class: "chart-note dash-past-note", text: "Backlog e sequências são do momento: aparecem em “Últimos 30 dias” e no mês corrente." })
+      ? section("Em aberto agora", [backlogHealth(a.backlog)])
+      : h("p", { class: "chart-note dash-past-note", text: "O que está em aberto e as sequências são do momento: aparecem em “Últimos 30 dias” e no mês corrente." })
   );
 }
 
@@ -173,7 +173,7 @@ function heatmap(hm) {
   s.setAttribute("width", w);
   s.setAttribute("height", height);
   s.setAttribute("role", "img");
-  s.setAttribute("aria-label", "Calendário de aderência das rotinas");
+  s.setAttribute("aria-label", "Calendário das rotinas feitas");
 
   // Rótulos de mês (quando a coluna inicia um mês diferente da anterior).
   let prevMonth = -1;
@@ -324,8 +324,8 @@ function backlogHealth(b) {
 
   return h("div", {},
     h("div", { class: "chart-grid backlog-grid" },
-      chartCard("Backlog por status", "Tarefas em aberto agora.", statusBody),
-      chartCard("Envelhecimento", "Há quanto tempo as abertas existem.", agingBody)));
+      chartCard("Por situação", "Tarefas em aberto agora.", statusBody),
+      chartCard("Há quanto tempo", "Há quanto tempo as abertas existem.", agingBody)));
 }
 
 function stackedBar(segs, total) {

@@ -1,7 +1,8 @@
 # Nexus Worklog
 
-Registro do dia de trabalho para profissionais de TI — suporte, infraestrutura,
-redes, segurança, desenvolvimento — e para quem precisa do relatório deles.
+Registro do dia de trabalho para quem faz suporte, em qualquer área — TI,
+infraestrutura, redes, manutenção, atendimento técnico — e para quem precisa
+do relatório deles. O foco é ajudar cada pessoa a organizar a própria rotina.
 Multiusuário, auto-hospedado, sem frameworks JS nem passo de build.
 Prioridades: **simples > seguro > funcional > elegante**.
 

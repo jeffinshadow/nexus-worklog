@@ -84,7 +84,7 @@ function ticketChip(ticket) {
   const url = ticketUrl(ticket);
   return url
     ? h("a", { class: "chip ticket", href: url, target: "_blank", rel: "noopener noreferrer", title: "Abrir o chamado", text: "#" + ticket })
-    : h("span", { class: "chip ticket", title: "Chamado", text: "#" + ticket });
+    : h("span", { class: "chip ticket", title: "Chamado ou OS", text: "#" + ticket });
 }
 
 // Resumo da agenda de uma rotina ("seg, qua", "todo dia 5", "a cada 15 dias").

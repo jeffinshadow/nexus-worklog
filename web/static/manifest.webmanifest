@@ -1,7 +1,7 @@
 {
   "name": "Nexus Worklog",
   "short_name": "Nexus",
-  "description": "O registro do dia de trabalho de quem faz TI: tarefas, rotinas, cronômetro e o relatório da semana.",
+  "description": "O registro do dia de quem faz suporte, em qualquer área: tarefas, rotinas, cronômetro e o relatório da semana.",
   "lang": "pt-BR",
   "id": "/",
   "start_url": "/#/hoje",

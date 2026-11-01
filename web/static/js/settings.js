@@ -272,9 +272,9 @@ function ticketsPanel(me) {
     } catch (e) { errorToast(e, "Use um endereço começando com http:// ou https://."); }
   });
   return h("section", { class: "panel" },
-    h("div", { class: "panel-head" }, h("h2", { text: "Chamados" })),
-    h("p", { class: "help", text: "Endereço do sistema de chamados da sua equipe (GLPI, TomTicket, Jira...). Onde estiver {id} entra o número do chamado; sem {id}, ele vai no fim. Com o endereço, o “#4821” das tarefas abre o chamado." }),
-    field("Endereço do chamado", url),
+    h("div", { class: "panel-head" }, h("h2", { text: "Chamados e ordens de serviço" })),
+    h("p", { class: "help", text: "Opcional. Se a sua equipe usa um sistema de chamados ou de ordens de serviço, cole o endereço de um deles, trocando o número por {id} (ex.: https://sistema.empresa/os/{id}). Sem {id}, o número vai no fim. Com o endereço, o “#4821” das tarefas abre o chamado." }),
+    field("Endereço do chamado ou OS", url),
     h("div", { class: "row-actions" }, save));
 }
 
@@ -665,7 +665,7 @@ async function passkeysPanel(rerender) {
     catch (e) { if (!cancelled(e)) errorToast(e, "Não foi possível criar a passkey."); }
   }));
   return h("section", { class: "panel" },
-    h("div", { class: "panel-head" }, icon("key"), h("h2", { text: "Passkeys" })),
+    h("div", { class: "panel-head" }, icon("key"), h("h2", { text: "Entrar com digital ou rosto" })),
     h("p", { class: "help", text: "Entre sem digitar a senha: com a digital, o rosto, o PIN do Windows ou uma chave física. A passkey fica no aparelho (ou no gerenciador de senhas dele); o Nexus guarda só a parte pública. A senha continua valendo." }),
     ...list.map((p) => h("div", { class: "token-row" },
       h("span", { class: "token-name", text: p.name || "Passkey" }),

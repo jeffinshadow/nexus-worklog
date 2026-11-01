@@ -9,8 +9,9 @@ import { errorToast } from "./ui.js";
 import { listProjects } from "./projects.js";
 
 const DAYS = [[1, "Seg"], [2, "Ter"], [3, "Qua"], [4, "Qui"], [5, "Sex"], [6, "Sáb"], [0, "Dom"]];
-const PROJ_HINTS = ["Suporte", "Infraestrutura", "Interno"];
-const ROUTINE_HINTS = ["Conferir os backups da noite", "Olhar os alertas do monitoramento", "Revisar a fila de chamados",
+// Exemplos de várias áreas de suporte (TI, manutenção, atendimento): ninguém se sente fora.
+const PROJ_HINTS = ["Atendimento", "Manutenção", "Interno"];
+const ROUTINE_HINTS = ["Revisar a fila de pedidos", "Conferir os backups da noite", "Fazer a ronda do prédio",
   "Conferir o e-mail do plantão"];
 
 let running = false;
@@ -201,7 +202,7 @@ function setup(me) {
         return { label, cb };
       });
       const custom = h("input", { type: "text", maxlength: "200", placeholder: "Ex.: Verificar o link da filial" });
-      return frame("O que você confere todo dia?", "Rotinas são as verificações que se repetem. Você marca no Hoje, anota a evidência (“backup OK, 2,1 TB”) e o relatório mostra a aderência. Elas seguem os dias úteis; a agenda de cada uma (semanal, mensal…) muda depois.",
+      return frame("O que você confere todo dia?", "Rotinas são as verificações que se repetem. Você marca no Hoje, anota a evidência (“quadro 3 sem aquecimento”, “backup OK”) e o relatório mostra quantas foram feitas. Elas seguem os dias úteis; a agenda de cada uma (semanal, mensal…) muda depois.",
         [board.recurring.length ? h("p", { class: "dialog-note", text: "Você já tem: " + board.recurring.map((r) => r.label).join(", ") + "." }) : null,
           h("div", { class: "tour-picks" }, ...picks.map(({ label, cb }) => h("label", { class: "check-row" }, cb, h("span", { class: "label", text: label })))),
           field("Outra rotina (opcional)", custom)],
@@ -234,7 +235,7 @@ function setup(me) {
 // celular), título e texto. Parada sem alvo visível é pulada.
 const STOPS = [
   [[".quick-row input"], "Registro rápido",
-    "Escreva o que fez e aperte Enter. No fim, marcadores opcionais: @Projeto (dois @ = dois projetos), #chamado, !alta, ^amanhã e “— 30min”, que já conclui com o tempo. Ex.: “Troca do switch @Matriz #4821 — 45min”."],
+    "Escreva o que fez e aperte Enter. Dois atalhos ajudam: @Projeto escolhe o projeto e “— 30min” já conclui com o tempo. Ex.: “Troca do disjuntor @Matriz — 45min”. Os outros (#chamado, !alta, ^amanhã) estão na Ajuda."],
   [[".open-filter"], "Filtro das abertas",
     "Para focar: só o que vence hoje (as atrasadas entram junto) ou só as de prioridade alta. A escolha fica até você fechar a aba."],
   [[".t-rec"], "Rotinas do dia",
@@ -242,7 +243,7 @@ const STOPS = [
   [["#assist-slot > *"], "O assistente",
     "A saudação, o que pede atenção (atrasadas, bloqueadas há dias) e, à tarde, o resumo do dia. Ele cabe numa linha e se desliga em Configurações > Conta."],
   [["[data-fab]", "#fab"], "Tarefa completa",
-    "Quando precisa de mais: prazo, prioridade, projetos, chamado, checklist e tempo. Atalho: tecla n. Depois, tudo se edita no próprio detalhe da tarefa (o lápis ao lado do título)."],
+    "Quando precisa de mais: prazo, prioridade, projetos, chamado, checklist e tempo. Depois, tudo se edita no próprio detalhe da tarefa (o lápis ao lado do título)."],
   [["#page-actions .btn-ghost"], "Passagem de turno",
     "No fim do turno, um texto pronto com o que fica aberto, o que está bloqueado e por quê, e o que foi feito. É só colar no chat da equipe."],
   [['#nav [data-view="tarefas"]', '#tabbar [data-view="tarefas"]'], "Tarefas",
