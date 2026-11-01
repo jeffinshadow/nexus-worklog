@@ -43,7 +43,7 @@ export async function mount(root, ctx) {
   };
   const tabs = h("div", { class: "seg seg-sm", role: "tablist", "aria-label": "Meu mês" },
     ...TABS.map(([key, text]) => h("button", { type: "button", class: "chip-btn", role: "tab", text, "data-tab": key,
-      onClick: () => { if (key === tab) return; tab = key; window.history.replaceState(null, "", "#/mes?aba=" + key); paintTabs(); show(); } })));
+      onClick: () => { if (key === tab) return; tab = key; window.history.replaceState(null, "", "#/mes?aba=" + key); paintTabs(); show().catch((e) => errorToast(e)); } })));
   const paintTabs = () => { for (const b of tabs.children) b.setAttribute("aria-selected", String(b.dataset.tab === tab)); };
   const content = h("div", { class: "mes-content" });
 
