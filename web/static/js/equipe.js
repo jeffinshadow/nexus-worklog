@@ -1,19 +1,18 @@
 // Equipe (Visualizador de tarefas): o registro de cada pessoa que aceitou
-// (Configurações > Conta), somente leitura: quadro, retrospectiva, relatório
-// em PDF e as horas dessas pessoas em CSV.
+// (Configurações > Conta), somente leitura: quadro, o mês (a mesma tela de Meu
+// mês, com o PDF) e as horas dessas pessoas em CSV.
 import { api } from "./api.js";
 import { h, icon, clear, field, localDay, addDays } from "./dom.js";
 import { errorToast, actionMenu } from "./ui.js";
 import * as board from "./board.js";
-import * as dashboard from "./dashboard.js";
-import * as reports from "./reports.js";
+import * as mes from "./mes.js";
 
 // Nomes diferentes dos itens do menu: aqui é o registro de outra pessoa.
 const SUBVIEWS = [
   { key: "board", label: "Quadro" },
-  { key: "dashboard", label: "Números" },
-  { key: "reports", label: "PDF" },
+  { key: "mes", label: "Mês e PDF" },
 ];
+const monthState = { month: null, months: null }; // o mês escolhido vale para todas as pessoas
 
 export async function mount(root) {
   const users = await api.get("/viewer/users");
@@ -73,8 +72,8 @@ export async function mount(root) {
     const box = h("div", {});
     try {
       if (active === "board") await board.mount(box, { readOnly: true, boardUrl: `/viewer/users/${uid}/board` });
-      else if (active === "dashboard") await dashboard.mount(box, { dashUrl: `/viewer/users/${uid}/dashboard` });
-      else await reports.mount(box, { exportBase: `/viewer/users/${uid}/reports/export`, projectsUrl: `/viewer/users/${uid}/projects` });
+      else await mes.view(box, { state: monthState, who: select.selectedOptions[0]?.textContent.split(" · ")[0] || "a pessoa",
+        dashUrl: `/viewer/users/${uid}/dashboard`, exportBase: `/viewer/users/${uid}/reports/export`, projectsUrl: `/viewer/users/${uid}/projects` });
     } catch (e) {
       clear(box);
       if (e && e.status === 404 && my === seq) {

@@ -222,7 +222,7 @@ function recap(sum, t, go) {
     const w = sum.week;
     return {
       line: `Nesta semana: ${plural(w.pontual_done, "tarefa concluída", "tarefas concluídas", "nenhuma tarefa concluída")}${w.minutes ? ` e ${duration(w.minutes)} apontadas` : ""}. O relatório da semana já pode ser gerado.`,
-      act: action("Gerar relatório", () => go("mes?aba=pdf&periodo=semana")),
+      act: action("Gerar relatório", () => go("mes?periodo=semana")),
     };
   }
   return { line: null, act: null };
@@ -315,44 +315,6 @@ export function todayCard(b, sum, ctx) {
   if (ask) items.push({ key: "hoje:nome", lines: [], extra: ask });
 
   return stack("hoje", { hello: greeting(me.name), lines: [resumo, r.line && !r.act ? r.line : null, fechamento] }, items);
-}
-
-// --------------------------------------------------------- Retrospectiva --
-
-export function retroCard(a, me) {
-  if (!enabled(me)) return null;
-  const lines = [];
-  // O período da tela: "nos últimos 30 dias" ou "em setembro" (mês escolhido).
-  const MES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
-  const per = a.period && a.period.month ? "em " + MES[Number(a.period.month.slice(5)) - 1] : "nos últimos 30 dias";
-  const rot = (a.task_adherence && a.task_adherence.tasks) || [];
-  const pct = (r) => Math.round((100 * r.done) / r.slots);
-  if (rot.length >= 2) {
-    const best = rot.reduce((x, y) => (y.done / y.slots > x.done / x.slots ? y : x));
-    const worst = rot[0]; // vem ordenado: a mais pulada primeiro
-    if (pct(best) > pct(worst))
-      lines.push(`Sua rotina mais consistente ${per} é ${q(best.label)} (${pct(best)}%). ` +
-        `A que mais escapa é ${q(worst.label)} (${pct(worst)}%)${pct(worst) < 50 ? "; talvez a agenda dela mereça uma revisão" : ""}.`);
-  } else if (rot.length === 1) {
-    lines.push(`Sua rotina ${q(rot[0].label)} foi feita em ${pct(rot[0])}% dos dias da agenda ${per}.`);
-  }
-  const streak = rot.filter((r) => r.streak >= 3).sort((x, y) => y.streak - x.streak)[0];
-  if (streak) lines.push(`${q(streak.label)} está em dia há ${streak.streak} dias seguidos.`);
-  const proj = ((a.projects && a.projects.items) || []).filter((p) => p.minutes);
-  const total = proj.reduce((s, p) => s + p.minutes, 0);
-  if (proj.length >= 2 && total) {
-    const top = proj[0];
-    const share = Math.round((100 * top.minutes) / total);
-    if (share >= 40) lines.push(`${share}% do tempo apontado ${per} foi para ${top.name ? q(top.name) : "tarefas sem projeto"}.`);
-  }
-  const weeks = (a.throughput && a.throughput.weeks) || [];
-  const done = weeks.reduce((s, w) => s + w.done, 0);
-  if (weeks.length && !lines.length)
-    lines.push(done ? `${a.period && a.period.month ? per.charAt(0).toUpperCase() + per.slice(1) : "Nas últimas 4 semanas"}, você concluiu ${plural(done, "tarefa", "tarefas")}.`
-      : `Ainda não há tarefas concluídas ${a.period && a.period.month ? per : "nas últimas 4 semanas"} para analisar.`);
-  if (!lines.length) return null;
-  const [first, ...rest] = lines.slice(0, 3);
-  return stack("retro", { lines: [first], compact: true }, rest.map((l, i) => ({ key: `retro:${i}`, lines: [l] })));
 }
 
 // ---------------------------------------------------------------- Tarefas --

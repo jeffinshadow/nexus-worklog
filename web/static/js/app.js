@@ -36,7 +36,7 @@ const VIEWS = {
   tarefas: { title: "Tarefas", need: "user", mount: (el, ctx) => board.mount(el, ctx) },
   projetos: { title: "Projetos", need: "user", mount: (el, ctx) => projetos.mount(el, ctx) },
   vencimentos: { title: "Vencimentos", need: "user", eyebrow: "o que renovar", mount: (el, ctx) => mountRenewals(el, ctx) },
-  mes: { title: "Meu mês", need: "user", eyebrow: "números e PDF", mount: (el, ctx) => mes.mount(el, ctx) },
+  mes: { title: "Meu mês", need: "user", eyebrow: "como foi o mês", mount: (el, ctx) => mes.mount(el, ctx) },
   historico: { title: "Histórico", eyebrow: "o que mudou", mount: (el) => history.mount(el) },
   config: { title: "Configurações", mount: (el, ctx) => settings.mount(el, ctx) },
   atribuir: { title: "Atribuir tarefas", need: "assigner", eyebrow: "para a equipe", mount: (el, ctx) => atribuir.mount(el, ctx) },
@@ -46,8 +46,9 @@ const VIEWS = {
   busca: { title: "Busca", need: "user", eyebrow: "em tudo", mount: (el, ctx) => search.mount(el, ctx) },
 };
 
-// Telas que viraram abas de Meu mês: links antigos (favoritos, e-mails) continuam valendo.
-const MOVED = { dashboard: "mes?aba=numeros", relatorios: "mes?aba=pdf" };
+// Telas que viraram Meu mês: links antigos (favoritos, e-mails) continuam valendo;
+// os Relatórios chegam com a exportação aberta.
+const MOVED = { dashboard: "mes", relatorios: "mes?aba=pdf" };
 
 const has = (role) => !!me && (me.roles || []).includes(role);
 const allowed = (name) => VIEWS[name] && (!VIEWS[name].need || has(VIEWS[name].need));
@@ -261,7 +262,7 @@ function showHelp(focus) {
       ...(user ? [["Hoje", "Rotinas do dia, tarefas em aberto (com filtro) e o registro rápido."],
         ["Tarefas", "O quadro completo e o detalhe de cada tarefa: anotações, checklist, cronômetro, tempo."],
         ["Projetos", "Cada projeto com os objetivos em ordem de execução e as tarefas de cada um."],
-        ["Meu mês", "O mês em números (rotinas, tarefas, tempo por projeto) e os Relatórios: o PDF do período ou de um projeto e a exportação dos dados."]] : []),
+        ["Meu mês", "Como foi o mês numa frase: rotinas, tarefas concluídas e tempo; o que ficou para trás, para onde foi o tempo, o que foi entregue e o PDF do mês. Outro período, um projeto e a exportação dos dados ficam em “Outro período ou formato”."]] : []),
       ["Histórico", "Tudo o que mudou, com desfazer."],
       ...(has("assigner") ? [["Atribuir", "Manda uma tarefa para quem aceitou receber. Enquanto ela está a fazer, você ainda corrige ou cancela; depois, é da pessoa."]] : []),
       ...(has("viewer") ? [["Equipe", "O registro de quem permitiu (cada pessoa decide em Configurações > Conta), só para ver e tirar relatório."]] : []),
@@ -479,8 +480,8 @@ async function boot() {
     n: ["Nova tarefa", () => openWorklog(route)],
     h: ["Ir para Hoje", () => go("hoje")],
     t: ["Ir para Tarefas", () => go("tarefas")],
-    r: ["Ir para Meu mês (números)", () => go("mes?aba=numeros")],
-    l: ["Ir para Meu mês (Relatórios)", () => go("mes?aba=pdf")],
+    r: ["Ir para Meu mês", () => go("mes")],
+    l: ["Ir para Meu mês (outro período ou formato)", () => go("mes?aba=pdf")],
     s: ["Parar o cronômetro (e apontar)", () => { if (timerState()) stopTimer(); }],
     "?": ["Mostrar estes atalhos", showShortcuts],
   };

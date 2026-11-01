@@ -265,7 +265,7 @@ const STOPS = [
   [['#nav [data-view="projetos"]'], "Projetos",
     "Cada projeto com os objetivos (as demandas principais) na ordem de execução e as tarefas de cada um. Arraste para mudar a ordem; o progresso de cada objetivo se calcula sozinho."],
   [['#nav [data-view="mes"]', '#tabbar [data-view="mes"]'], "Meu mês",
-    "O mês em números (rotinas, tarefas, tempo por projeto) e o PDF do período ou de um projeto inteiro, para prestar contas. O Histórico guarda cada mudança, com desfazer."],
+    "Como foi o mês numa frase, o que ficou para trás, para onde foi o tempo, o que foi entregue e o PDF do mês, para prestar contas. O Histórico guarda cada mudança, com desfazer."],
   [["#btn-help", '#tabbar [data-view="mais"]'], "Ajuda",
     "Atalhos, o manual tela por tela e este tour de novo, quando quiser."],
 ];
