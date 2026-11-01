@@ -1,4 +1,4 @@
-// Meu mês: os números (a antiga Retrospectiva) e o PDF (os antigos Relatórios)
+// Meu mês: os números (a antiga Retrospectiva) e os Relatórios (PDF e exportação)
 // numa tela só, com o mês escolhido uma vez no topo (o corrente por padrão).
 // Números mostra o mês; no PDF, o mesmo mês preenche as datas (dá para ajustar
 // lá, ou pegar uma semana). #/mes?aba=numeros|pdf; #/dashboard e #/relatorios
@@ -9,7 +9,7 @@ import * as dashboard from "./dashboard.js";
 import * as reports from "./reports.js";
 
 const MONTHS_LONG = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
-const TABS = [["numeros", "Números"], ["pdf", "PDF"]];
+const TABS = [["numeros", "Números"], ["pdf", "Relatórios"]];
 
 // Ficam enquanto o app estiver aberto: voltar à tela mostra o que estava.
 let month = null;   // "AAAA-MM"

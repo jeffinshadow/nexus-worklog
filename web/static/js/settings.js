@@ -250,7 +250,7 @@ function editTemplate(t, rerender) {
   const err = h("p", { class: "error-text" });
   const form = h("form", {}, h("h2", { text: t ? "Editar modelo" : "Novo modelo" }),
     field("Nome do modelo", name), field("Título da tarefa", title), field("Descrição (uma linha)", desc),
-    h("div", { class: "field-row" }, field("Prioridade", prio), field("Projeto / cliente", proj)),
+    h("div", { class: "field-row" }, field("Prioridade", prio), field("Projeto", proj)),
     h("label", { class: "weekday-option" }, after, h("span", { text: "Plantão / fora do horário" })),
     field("Checklist (um item por linha, até 30)", items), err,
     h("div", { class: "dialog-actions" },
@@ -294,7 +294,7 @@ function ticketsPanel(me) {
 
 function shortcutsPanel() {
   const keys = [["n", "nova tarefa"], ["/", "buscar"], ["h", "Hoje"], ["t", "Tarefas"], ["r", "Meu mês (números)"],
-    ["l", "Meu mês (PDF)"], ["s", "parar o cronômetro"], ["?", "ver todos os atalhos"]];
+    ["l", "Meu mês (Relatórios)"], ["s", "parar o cronômetro"], ["?", "ver todos os atalhos"]];
   // Desligar: para quem usa controle por voz ou esbarra numa tecla sem querer.
   const on = h("input", { type: "checkbox" });
   on.checked = singleKeysOn();
@@ -368,7 +368,7 @@ async function notices() {
   const cc = h("input", { type: "email", maxlength: "254", value: p.weekly_cc || "", placeholder: "ex.: colega@empresa.com.br",
     autocomplete: "off", "aria-label": "Mandar cópia do resumo semanal para" });
   const weeklyExtra = h("div", { class: "notice-sub" },
-    h("label", { class: "weekday-option" }, pdf, h("span", { text: "Anexar o relatório da semana em PDF (o mesmo de Meu mês > PDF, com os títulos das tarefas)" })),
+    h("label", { class: "weekday-option" }, pdf, h("span", { text: "Anexar o relatório da semana em PDF (o mesmo de Meu mês > Relatórios, com os títulos das tarefas)" })),
     field("Mandar cópia para quem acompanha meu trabalho (opcional)", cc),
     h("p", { class: "dialog-note", text: "A cópia recebe o mesmo e-mail, com o PDF se estiver ligado. Use só com quem já acompanha o seu trabalho." }));
   const syncWeekly = () => { pdf.disabled = cc.disabled = !weekly.on.checked; weeklyExtra.classList.toggle("off", !weekly.on.checked); };
@@ -678,7 +678,7 @@ function aiHelp() {
       codeBox(`curl -H "Authorization: Bearer nxs_SUA_CHAVE" ${location.origin}/api/board`)),
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Comandos prontos" })),
-      h("p", { class: "help", text: "O Nexus oferece dois comandos para a IA: o resumo da semana (para o time, um cliente ou quem acompanha seu trabalho) e o resumo para a equipe (ontem, hoje e o que está aguardando). No Claude Code eles aparecem como comandos de barra:" }),
+      h("p", { class: "help", text: "O Nexus oferece dois comandos para a IA: o resumo da semana (para o time, um cliente ou quem acompanha seu trabalho) e o resumo para a equipe (ontem, hoje e o que está aguardando). No Claude Code eles aparecem como comandos de barra (o /mcp__nexus__daily é o resumo para a equipe):" }),
       codeBox("/mcp__nexus__resumo_semanal o cliente\n/mcp__nexus__daily"),
       h("p", { class: "dialog-note", text: "Em outras IAs, cole o pedido:" }),
       codeBox("Use o Nexus (get_summary e get_today) e escreva um resumo da minha semana para quem acompanha meu trabalho: o que foi entregue por projeto, o tempo por projeto, o que segue em andamento e o que está aguardando. Só com o que está registrado.")),
@@ -729,7 +729,7 @@ function deleteAccount(isUser) {
   const err = h("p", { class: "error-text" });
   const form = h("form", {},
     h("p", { class: "help", text: "Apaga a sua conta e tudo o que está nela: tarefas, rotinas, tempo apontado, anotações, chaves de API e histórico. Não dá para desfazer." }),
-    isUser ? h("p", { class: "dialog-note" }, "Quer guardar uma cópia? Baixe antes em ", h("a", { href: "#/mes?aba=pdf", text: "Meu mês > PDF" }), " (JSON ou CSV).") : null,
+    isUser ? h("p", { class: "dialog-note" }, "Quer guardar uma cópia? Baixe antes em ", h("a", { href: "#/mes?aba=pdf", text: "Meu mês > Relatórios" }), " (JSON ou CSV).") : null,
     field("Sua senha, para confirmar", pw), err,
     h("button", { type: "submit", class: "btn btn-danger", text: "Excluir minha conta" }));
   form.addEventListener("submit", busy(async (ev) => {
@@ -772,22 +772,22 @@ async function passkeysPanel(rerender) {
   const ua = navigator.userAgent;
   const guess = /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) ? "iPad" : /Android/.test(ua) ? "Celular Android"
     : /Windows/.test(ua) ? "Windows" : /Mac OS X/.test(ua) ? "Mac" : "Este aparelho";
-  const add = h("button", { type: "button", class: "btn btn-primary btn-sm" }, icon("add"), "Adicionar passkey neste aparelho");
+  const add = h("button", { type: "button", class: "btn btn-primary btn-sm" }, icon("add"), "Usar a digital ou o rosto neste aparelho");
   add.addEventListener("click", busy(async () => {
-    try { await registerPasskey(guess); toast("Passkey criada. Na próxima vez, entre com ela."); rerender(); }
-    catch (e) { if (!cancelled(e)) errorToast(e, "Não foi possível criar a passkey."); }
+    try { await registerPasskey(guess); toast("Pronto. Na próxima vez, entre com a digital ou o rosto."); rerender(); }
+    catch (e) { if (!cancelled(e)) errorToast(e, "Não foi possível cadastrar a digital ou o rosto."); }
   }));
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Entrar com digital ou rosto" })),
-    h("p", { class: "help", text: "Entre sem digitar a senha: com a digital, o rosto, o PIN do Windows ou uma chave física. A passkey fica no aparelho (ou no gerenciador de senhas dele); o Nexus guarda só a parte pública. A senha continua valendo." }),
+    h("p", { class: "help", text: "Entre sem digitar a senha: com a digital, o rosto, o PIN do Windows ou uma chave física. O acesso (uma chave chamada passkey) fica no aparelho ou no gerenciador de senhas dele; o Nexus guarda só a parte pública. A senha continua valendo." }),
     ...list.map((p) => h("div", { class: "token-row" },
-      h("span", { class: "token-name", text: p.name || "Passkey" }),
+      h("span", { class: "token-name", text: p.name || "Aparelho" }),
       h("span", { class: "token-meta", text: (p.last_used_at ? "usada " + dateTime(p.last_used_at) : "criada " + dateTime(p.created_at)) + (p.backed_up ? " · sincronizada" : "") }),
-      h("button", { type: "button", class: "icon", title: "Remover esta passkey", "aria-label": "Remover " + (p.name || "passkey"), onClick: async () => {
-        if (!(await confirmDialog({ title: "Remover a passkey?", text: "Ela deixa de entrar no Nexus. Para tirar também do aparelho, apague nas configurações de senhas dele.", confirm: "Remover", danger: true }))) return;
+      h("button", { type: "button", class: "icon", title: "Remover este acesso", "aria-label": "Remover o acesso de " + (p.name || "este aparelho"), onClick: async () => {
+        if (!(await confirmDialog({ title: "Remover este acesso?", text: "Este aparelho deixa de entrar no Nexus com a digital ou o rosto. Para tirar também do aparelho, apague nas configurações de senhas dele.", confirm: "Remover", danger: true }))) return;
         try { await api.del(`/auth/passkeys/${p.id}`); rerender(); } catch (e) { errorToast(e); }
       } }, icon("trash")))),
-    passkeySupported() ? h("div", { class: "row-actions" }, add) : h("p", { class: "dialog-note", text: "Este navegador não cria passkeys." }));
+    passkeySupported() ? h("div", { class: "row-actions" }, add) : h("p", { class: "dialog-note", text: "Este navegador não permite entrar com a digital ou o rosto." }));
 }
 
 function account(me) {

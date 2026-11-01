@@ -112,7 +112,7 @@ export async function mount(root, opts = {}) {
 
   root.append(h("div", { class: "report-section" },
     h("h3", { text: "Relatório em PDF" }),
-    intro("Indicadores, ritmo, rotinas, tarefas concluídas, o que está em aberto e o diário com o tempo apontado. Escolhendo um projeto, sai só o que é dele — do período que você quiser ou do projeto inteiro."),
+    intro("Números do mês, ritmo, rotinas, tarefas concluídas, o que está em aberto e o diário com o tempo apontado. Escolhendo um projeto, sai só o que é dele — do período que você quiser ou do projeto inteiro."),
     projSel.options.length > 1 ? field("Projeto", projSel, "report-project") : null,
     scope, wholeNote, quick,
     h("div", { class: "report-controls" }, dates, btn),
@@ -139,14 +139,14 @@ export async function mount(root, opts = {}) {
     };
     root.append(h("div", { class: "report-section" },
       h("h3", { text: "Exportar dados" }),
-      h("p", { class: "sub", text: "Seus dados em formato aberto, para planilha, faturamento ou backup." }),
-      dl("/export/apontamentos.csv", "Apontamentos (CSV)", "um registro por apontamento de tempo: dia, horas, tarefa, projeto e observação"),
-      dl("/export/tarefas.csv", "Tarefas (CSV)", "todas as tarefas com status, prioridade, projeto, prazo, checklist e horas"),
+      h("p", { class: "sub", text: "Seus dados em arquivos abertos (o CSV abre em qualquer planilha), para faturamento, conferência ou backup." }),
+      dl("/export/apontamentos.csv", "Tempo registrado (CSV)", "uma linha por vez que você registrou tempo: dia, horas, tarefa, projeto e observação"),
+      dl("/export/tarefas.csv", "Tarefas (CSV)", "todas as tarefas com situação, prioridade, projeto, prazo, checklist e horas"),
       dl(() => "/export/plantao.csv?" + new URLSearchParams(Object.entries({ start: startInput.value, end: endInput.value }).filter(([, v]) => v)),
         "Plantão do período (CSV)", "os apontamentos das tarefas marcadas como plantão, de todos os projetos, com as horas e o total — para fechar sobreaviso ou banco de horas (usa o período escolhido acima)"),
       dl(() => "/export/rotinas.csv?" + new URLSearchParams(Object.entries({ start: startInput.value, end: endInput.value }).filter(([, v]) => v)),
-        "Rotinas e evidências (CSV)", "trilha de auditoria: cada rotina em cada dia, se foi feita e o que foi conferido (usa o período escolhido acima)"),
-      dl("/export/tudo.json", "Tudo (JSON)", "tarefas com anotações, checklist, tempo e como foram resolvidas; rotinas com dias feitos e evidências; vencimentos; projetos"),
+        "Rotinas e evidências (CSV)", "para comprovar: cada rotina em cada dia, se foi feita e o que foi conferido (usa o período escolhido acima)"),
+      dl("/export/tudo.json", "Tudo (cópia completa, para backup)", "um arquivo JSON com tarefas, anotações, checklist, tempo e como foram resolvidas; rotinas com dias feitos e evidências; vencimentos; projetos"),
       dl("/export/fotos.zip", "Fotos (ZIP)", "todas as fotos das tarefas e das evidências das rotinas, numa pasta por tarefa e por rotina")));
   }
 

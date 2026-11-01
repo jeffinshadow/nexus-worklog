@@ -471,7 +471,7 @@ async function boot() {
     h: ["Ir para Hoje", () => go("hoje")],
     t: ["Ir para Tarefas", () => go("tarefas")],
     r: ["Ir para Meu mês (números)", () => go("mes?aba=numeros")],
-    l: ["Ir para Meu mês (PDF)", () => go("mes?aba=pdf")],
+    l: ["Ir para Meu mês (Relatórios)", () => go("mes?aba=pdf")],
     s: ["Parar o cronômetro (e apontar)", () => { if (timerState()) stopTimer(); }],
     "?": ["Mostrar estes atalhos", showShortcuts],
   };

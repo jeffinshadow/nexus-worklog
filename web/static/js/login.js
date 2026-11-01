@@ -60,7 +60,7 @@ async function withPasskey(opts) {
     await passkeyLogin(opts);
     location.href = destino;
   } catch (e) {
-    if (!cancelled(e)) err.textContent = e.message || "Não foi possível entrar com a passkey.";
+    if (!cancelled(e)) err.textContent = e.message || "Não foi possível entrar com a digital ou o rosto.";
   }
 }
 if (passkeySupported()) {
