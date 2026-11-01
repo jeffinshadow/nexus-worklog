@@ -138,3 +138,45 @@ def test_exportar_tempo_e_tarefas_pelo_periodo(usuario):
     # período pela metade ou invertido
     assert usuario.get(f"/export/tarefas.csv?start={hoje}").status_code == 400
     assert usuario.get(f"/export/apontamentos.csv?start={hoje}&end={hoje - timedelta(days=1)}").status_code == 400
+
+
+# --------------------------------------------------------- ordem das rotinas --
+
+def _rotina(u, label):
+    r = u.post("/recurring", {"label": label})
+    assert r.status_code == 201, r.text
+    return r.json()["id"]
+
+
+def _ordem(u):
+    return [r["label"] for r in u.get("/board").json()["recurring"]]
+
+
+def test_ordem_das_rotinas_com_desfazer(usuario, novo_usuario):
+    a, b, c = (_rotina(usuario, x) for x in ("Abrir a loja", "Ar-condicionado", "Câmeras"))
+    assert usuario.post("/recurring/order", {"ids": [c, a, b]}).json() == {"ok": True}
+    assert _ordem(usuario) == ["Câmeras", "Abrir a loja", "Ar-condicionado"]
+    # lista parcial: a que faltou fica depois, na ordem que tinha
+    assert usuario.post("/recurring/order", {"ids": [b]}).status_code == 200
+    assert _ordem(usuario) == ["Ar-condicionado", "Câmeras", "Abrir a loja"]
+    # nova entra no fim
+    _rotina(usuario, "Fechar")
+    assert _ordem(usuario)[-1] == "Fechar"
+    h = usuario.get("/history?limit=1&entity=recurring_order").json()[0]
+    assert h["summary"] == "mudou a ordem das rotinas" and h["can_undo"]
+    assert usuario.post(f"/history/{h['id']}/undo").status_code == 200
+    assert _ordem(usuario) == ["Câmeras", "Abrir a loja", "Ar-condicionado", "Fechar"]
+    # repetida, de outra pessoa ou excluída: recusa
+    assert usuario.post("/recurring/order", {"ids": [a, a]}).status_code == 400
+    outra = novo_usuario("outra@example.com")
+    x = _rotina(outra, "Dela")
+    assert usuario.post("/recurring/order", {"ids": [x, a]}).status_code == 400
+    assert outra.post("/recurring/order", {"ids": [a]}).status_code == 400
+    usuario.delete(f"/recurring/{c}")
+    assert usuario.post("/recurring/order", {"ids": [c, a]}).status_code == 400
+    # trocar a agenda (vira outra rotina) mantém o lugar
+    usuario.post("/recurring/order", {"ids": [b, a]})
+    db.execute("UPDATE recurring_tasks SET created_at = now() - interval '3 days' WHERE id = %s", (a,))
+    usuario.post(f"/recurring/{a}/toggle", {"done": True, "day": str(app_today() - timedelta(days=1))})
+    assert usuario.patch(f"/recurring/{a}", {"label": "Abrir a loja", "freq": "weekly", "weekdays": 62}).status_code == 200
+    assert _ordem(usuario)[:2] == ["Ar-condicionado", "Abrir a loja"]

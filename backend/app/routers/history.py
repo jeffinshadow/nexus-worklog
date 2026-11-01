@@ -14,7 +14,7 @@ from .. import audit, db
 from . import photos
 from ..labels import dur
 from ..services import RETRO_DAYS, app_today, app_tz, board_day_range, set_extra_projects
-from .recurring import refresh_after_from
+from .recurring import active_order, refresh_after_from, renumber
 from .worklog import check_day_total
 from ..deps import active_user, active_user_csrf
 
@@ -24,7 +24,7 @@ UNDOABLE = {
     "worklog.create", "worklog.assign", "worklog.update", "worklog.finish", "worklog.delete",
     "worklog.assign_update",
     "recurring.create", "recurring.update", "recurring.deactivate", "recurring.toggle", "recurring.replace",
-    "recurring.pause", "recurring.resume",
+    "recurring.pause", "recurring.resume", "recurring.order",
     "note.create", "note.update", "note.delete", "time.update", "checklist.create", "checklist.update", "checklist.delete",
     "time.create", "time.delete", "project.create", "project.update", "project.delete",
     "renewal.create", "renewal.update", "renewal.renew", "renewal.delete",
@@ -63,6 +63,7 @@ ACTION_LABELS = {
     "recurring.replace": "trocou a agenda da rotina",
     "recurring.pause": "pausou a rotina",
     "recurring.resume": "retomou a rotina",
+    "recurring.order": "mudou a ordem das rotinas",
     "settings.update": "alterou os dias úteis",
     "notifications.update": "alterou os avisos por e-mail",
     "profile.update": "alterou o nome de exibição",
@@ -632,6 +633,11 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
                               WHERE id = %s AND user_id = %s""",
                           (before["title"], before["description"], before["due_date"], eid, uid)):
             raise HTTPException(status_code=409, detail="o objetivo não existe mais")
+    elif a == "recurring.order":
+        # A ordem anterior volta; rotina criada (ou trocada de agenda) depois fica no fim, na ordem atual.
+        atual = active_order(uid)
+        antes = [i for i in before["ids"] if i in atual]
+        renumber(uid, antes + [i for i in atual if i not in antes])
     elif a == "objective.order":
         # A ordem anterior volta; objetivo criado depois fica no fim, na ordem atual.
         atual = [r["id"] for r in db.query_all(

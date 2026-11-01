@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from .. import audit, db, push
 from ..config import config
 from ..deps import active_user, active_user_csrf
-from ..schemas import PauseIn, RecurringIn, RecurringUpdate, SnoozeIn, ToggleIn
+from ..schemas import OrderIn, PauseIn, RecurringIn, RecurringUpdate, SnoozeIn, ToggleIn
 from ..services import app_today, app_tz, is_pending, recurring_vigente, rotinas, work_mask
 from .board import check_board_day
 
@@ -44,6 +44,35 @@ def create(data: RecurringIn, user=Depends(active_user_csrf)):
     audit.record(user, "recurring.create", "recurring", row["id"],
                  after=audit.recurring_snapshot(row["id"], user["user_id"]))
     return row
+
+
+def active_order(uid: int) -> list[int]:
+    return [r["id"] for r in db.query_all(
+        "SELECT id FROM recurring_tasks WHERE user_id = %s AND active ORDER BY position, id", (uid,))]
+
+
+def renumber(uid: int, ids: list[int]) -> None:
+    for i, rid in enumerate(ids, start=1):
+        db.execute("UPDATE recurring_tasks SET position = %s WHERE id = %s AND user_id = %s", (i, rid, uid))
+
+
+@router.post("/order")
+def order(data: OrderIn, user=Depends(active_user_csrf)):
+    """Ordem das rotinas no Hoje: as ativas, na ordem nova. Uma que não veio na
+    lista (criada em outro aparelho) fica depois, na ordem que tinha. A anterior
+    fica no histórico, com desfazer. Rotina nova entra no fim."""
+    uid = user["user_id"]
+    ids = active_order(uid)
+    if len(set(data.ids)) != len(data.ids):
+        raise HTTPException(status_code=400, detail="rotina repetida na lista")
+    if not set(data.ids) <= set(ids):
+        raise HTTPException(status_code=400, detail="rotina não encontrada (pode ter sido excluída); atualize a tela")
+    new = data.ids + [i for i in ids if i not in data.ids]
+    if new == ids:
+        return {"ok": True}
+    renumber(uid, new)
+    audit.record(user, "recurring.order", "recurring_order", uid, before={"ids": ids}, after={"ids": new})
+    return {"ok": True}
 
 
 def _last_time(uid: int, old: dict, until=None):

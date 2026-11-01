@@ -1548,3 +1548,15 @@ dialog .pack-intro { margin: -8px 0 14px; }
 .tour-pack { margin: 0 0 6px; }
 .pack-btn { margin-top: 6px; }
 .pack-offer { margin-top: 20px; }
+
+/* Ordem das rotinas (Hoje): setas Subir/Descer com alvo de 44px; alça para arrastar no computador */
+.reorder-dialog { width: min(520px, calc(100vw - 32px)); }
+.reorder-list { list-style: none; margin: 8px 0 4px; padding: 0; display: grid; gap: 4px; max-height: 60vh; overflow-y: auto; }
+.reorder-row { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 8px; border-radius: var(--radius-m); background: var(--surface-container-high); border: 1px solid var(--card-border); }
+.reorder-row.dragging { opacity: .45; }
+.reorder-row .grip { display: inline-flex; padding: 4px; }
+.reorder-n { width: 22px; text-align: right; color: var(--dim); font-size: var(--type-label); }
+.reorder-label { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: var(--type-body); color: var(--on-surface); }
+.reorder-row button.icon { width: 44px; height: 44px; }
+.reorder-row button.icon.up .ico { transform: rotate(180deg); }
+.reorder-row button.icon:disabled { opacity: .38; }
