@@ -38,3 +38,11 @@ def test_criar_reenviado_nao_duplica(usuario):
     a = usuario.post("/worklog", corpo).json()
     b = usuario.post("/worklog", corpo).json()
     assert a["id"] == b["id"] and b.get("existing")
+
+
+def test_concluir_com_hora_do_mesmo_minuto_da_criacao(usuario):
+    """Sem sinal, a conclusão leva a hora do aparelho só com minutos: no mesmo minuto da criação vale."""
+    from zoneinfo import ZoneInfo
+    tid = usuario.post("/worklog", {"title": "Rápida"}).json()["id"]
+    agora = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%Y-%m-%dT%H:%M")
+    assert usuario.post(f"/worklog/{tid}/finish", {"completed_at": agora}).status_code == 200

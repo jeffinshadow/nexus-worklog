@@ -87,6 +87,8 @@ def resolve_completed(raw: Optional[str], created: datetime, now: datetime) -> d
         if when < created and day == created.astimezone(app_tz()).date():
             when = created
     _check_window(when, "data de conclusão", now)
+    if created - timedelta(minutes=1) < when < created:  # hora com minutos (sem segundos) do mesmo minuto
+        when = created
     if when < created:
         raise HTTPException(status_code=400, detail="data de conclusão anterior à criação da tarefa")
     return when

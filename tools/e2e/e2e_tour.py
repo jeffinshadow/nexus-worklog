@@ -89,7 +89,7 @@ try:
     check("tour abre sozinho", wait("!!document.querySelector('dialog.tour-dialog[open]')", 8))
     time.sleep(.4); shot("t01-boas-vindas")
     click(btn("Começar"))
-    check("passo nome", wait("document.querySelector('#tour-title')?.textContent.includes('chamado')"))
+    check("passo nome", wait("document.querySelector('#tour-title')?.textContent.includes('nome')"))
     shot("t02-nome")
     click(btn("Salvar e seguir")); check("passo tema", wait("document.querySelector('#tour-title')?.textContent.includes('escuro')"))
     shot("t02b-tema")
