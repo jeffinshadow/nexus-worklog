@@ -27,7 +27,7 @@ import { initTimer, stopTimer, timerState } from "./timer.js";
 import { openWorklog } from "./board.js";
 import { openTask, closeSidePanel } from "./task.js";
 import { startTour } from "./tour.js";
-import { modal, busy, initTooltips, initRailPeek, syncRail, calmMotion, toast } from "./ui.js";
+import { modal, busy, initTooltips, initRailPeek, syncRail, calmMotion, toast, singleKeysOn } from "./ui.js";
 
 let me = null;
 
@@ -69,7 +69,15 @@ function setActions(...nodes) {
   }
 }
 
+// Troca de tela pedida agora pelo menu ou por atalho: ao terminar, o foco vai
+// para o título da tela nova (o leitor anuncia onde chegou). Recargas e o
+// carregamento inicial não mexem no foco.
+let navAt = 0;
+document.addEventListener("click", (ev) => { if (ev.target.closest && ev.target.closest("a[data-view]")) navAt = Date.now(); }, true);
+
 async function route() {
+  const wantFocus = Date.now() - navAt < 1500;
+  navAt = 0;
   let name = (location.hash.replace(/^#\/?/, "") || home()).split("?")[0];
   if (!allowed(name)) name = home();
   const view = VIEWS[name];
@@ -140,6 +148,7 @@ async function route() {
     }
   }
   window.scrollTo(0, 0);
+  if (wantFocus && seq === routeSeq) document.getElementById("page-title").focus({ preventScroll: true });
   // Link direto para uma tarefa (#/tarefas?id=N: e-mail de atribuição, calendário).
   const taskId = Number(new URLSearchParams(location.hash.split("?")[1] || "").get("id"));
   if (name === "tarefas" && taskId > 0 && seq === routeSeq) {
@@ -172,6 +181,7 @@ function setEyebrow(text) {
 }
 
 function go(name) {
+  navAt = Date.now();
   location.hash = "#/" + name;
 }
 
@@ -451,13 +461,13 @@ async function boot() {
   function showShortcuts() {
     const dlg = modal(h("h2", { text: "Atalhos de teclado" }),
       h("dl", { class: "shortcuts" }, ...Object.entries(SHORTCUTS).flatMap(([k, [label]]) => [h("dt", {}, h("kbd", { text: k })), h("dd", { text: label })])),
-      h("p", { class: "dialog-note", text: "Funcionam fora dos campos de texto. Esc fecha qualquer janela." }),
+      h("p", { class: "dialog-note", text: "Funcionam fora dos campos de texto. Esc fecha qualquer janela. Dá para desligá-los em Configurações." }),
       h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Fechar", onClick: () => dlg.close() })));
   }
   document.addEventListener("keydown", (ev) => {
     if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
     const sc = SHORTCUTS[ev.key.length === 1 ? ev.key.toLowerCase() : ""] || SHORTCUTS[ev.key];
-    if (!sc || !has("user")) return;  // atalhos são do registro próprio
+    if (!sc || !has("user") || !singleKeysOn()) return;  // atalhos são do registro próprio; desligáveis em Configurações
     const tag = (document.activeElement && document.activeElement.tagName) || "";
     if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag) || document.activeElement?.isContentEditable || document.querySelector("dialog[open]:not(.side)")) return;
     ev.preventDefault();
