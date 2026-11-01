@@ -239,16 +239,13 @@ function setup(me) {
 const QUICK = [[".quick-row input"], "Registro rápido",
   "Escreva o que fez e aperte Enter. Dois atalhos ajudam: @Projeto escolhe o projeto e “— 30min” já conclui com o tempo. Ex.: “Troca do disjuntor @Matriz — 45min”. Os outros (#chamado, !alta, ^amanhã) estão na Ajuda."];
 const ROUTINES = [[".t-rec"], "Rotinas do dia",
-  "Marque o que conferiu. No ⋮ de cada rotina, anote a evidência ou transforme um achado em tarefa. As setas voltam até 7 dias para marcar o que ficou para trás."];
-// Celular: o bloquinho só aparece depois de marcar; o resto fica no ⋮.
-const PHONE_ROUTINES = [ROUTINES[0], ROUTINES[1],
-  "Marque o que conferiu. Depois de marcar, o bloquinho anota a evidência; no ⋮, um achado vira tarefa. As setas voltam até 7 dias."];
+  "Marque o que conferiu. Depois de marcar, o bloquinho anota a evidência; no ⋮, um achado vira tarefa. As setas voltam até 7 dias para marcar o que ficou para trás."];
 const HANDOFF = [["#page-actions .btn-ghost"], "Passagem de turno",
   "No fim do turno, um texto pronto com o que fica aberto, o que está aguardando e por quê, e o que foi feito. É só colar no chat da equipe."];
 // Celular: só o essencial do dia, em quatro paradas (o resto se descobre usando).
 const PHONE_STOPS = [
   QUICK,
-  PHONE_ROUTINES,
+  ROUTINES,
   [[".t-open .list-row[data-task-id]"], "Uma tarefa", // sem tarefas ainda (primeiro dia), a parada é pulada
     "Toque no nome para abrir: anotações, checklist, fotos e tempo. O ✓ conclui. No ⋮ ficam o cronômetro, “Aguardando…” e “Duplicar tarefa”."],
   HANDOFF,

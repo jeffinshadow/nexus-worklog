@@ -76,6 +76,13 @@ export function popupMenu(x, y, items) {
   menuClose = close;
 }
 
+// Botão ⋮: no celular, a folha de baixo; no computador, o menu junto do botão.
+export function actionMenu(btn, title, items) {
+  if (matchMedia("(max-width: 860px)").matches) { sheet(title, items); return; }
+  const r = btn.getBoundingClientRect();
+  popupMenu(r.right - 220, r.bottom + 4, items);
+}
+
 // Quem pediu ao sistema menos movimento (as animações em JS também respeitam).
 const calm = matchMedia("(prefers-reduced-motion: reduce)");
 export const calmMotion = () => calm.matches;

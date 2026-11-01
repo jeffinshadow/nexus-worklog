@@ -5,7 +5,7 @@
 // Abre por cima do quadro/Hoje; ao fechar, quem abriu recarrega (onChange).
 import { api } from "./api.js";
 import { h, icon, clear, addDays, shortDate, dateTime, field, localDateTime } from "./dom.js";
-import { errorToast, modal, toast, undoLatest, busy, sheet, syncRail, growFrom, refocusBy, popupMenu } from "./ui.js";
+import { errorToast, modal, toast, undoLatest, busy, sheet, syncRail, growFrom, refocusBy, actionMenu } from "./ui.js";
 import { finishTask, deleteTask, duplicateTask, followUpDay, isOverdue, ticketUrl, taskChips, blockTask, canBlock } from "./board.js";
 import { extraProjectsField, fillObjectiveSelect, fillProjectSelect } from "./projects.js";
 import { session } from "./session.js";
@@ -182,9 +182,7 @@ export async function openTask(taskId, onChange, opts = {}) {
           ["Excluir tarefa", "trash", remove],
         ];
         // Computador (painel ao lado): menu junto do botão, como o clique direito; celular: folha de baixo.
-        if (!side) { sheet(t.title, items); return; }
-        const r = ev.currentTarget.getBoundingClientRect();
-        popupMenu(r.right - 220, r.bottom + 4, items);
+        if (!side) sheet(t.title, items); else actionMenu(ev.currentTarget, t.title, items);
       } }, icon("more-v")));
     const running = (timerState() || {}).task_id === t.id;
     const mainActs = t.status === "done" ? null : h("div", { class: "task-main-actions" },

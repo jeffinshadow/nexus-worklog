@@ -195,12 +195,13 @@ button.column-toggle { display: none; }
 .day-nav { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin: 0 0 10px; padding: 3px; border-radius: var(--radius-full); border: 1px solid var(--outline-variant); background: var(--surface); }
 .day-nav button.icon { width: 32px; height: 32px; font-size: 1.1rem; }
 .day-nav-label { font-size: var(--type-body-s); font-weight: 500; }
-.day-note { margin: 0 0 10px; font-size: var(--type-caption); color: var(--warning); }
+.day-note { margin: 0 0 10px; font-size: var(--type-caption); color: var(--dim); }  /* explicação, não alerta */
 
 .check-row { display: flex; align-items: center; gap: 10px; padding: 7px 4px 7px 6px; border-radius: var(--radius-m); transition: background-color .2s; }
 .check-row:hover { background: color-mix(in srgb, var(--tint) 3%, transparent); }
 .check-row .label { flex: 1; font-size: var(--type-body); }
-.check-row.done .label { text-decoration: line-through; text-decoration-color: var(--dim); color: var(--dim); }
+.check-row.done .label { color: var(--dim); }
+.check-row.done .rec-title, .check-row.done:not(:has(.rec-title)) .label { text-decoration: line-through; text-decoration-color: var(--dim); }  /* risca o nome, não a agenda */
 .check-row button.icon { opacity: 0; width: 30px; height: 30px; }
 .check-row:hover button.icon, .check-row button.icon:focus-visible { opacity: 1; }
 /* Concluir à esquerda, no mesmo lugar do Hoje (caixa de seleção de lista, Material 3); cronômetro e ⋮ ficam à direita. */
