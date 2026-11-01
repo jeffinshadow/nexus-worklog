@@ -4,8 +4,7 @@ import { h, icon, clear, setTimeZone, matchPasswords } from "./dom.js";
 import * as today from "./today.js";
 import * as board from "./board.js";
 import * as projetos from "./projetos.js";
-import * as dashboard from "./dashboard.js";
-import * as reports from "./reports.js";
+import * as mes from "./mes.js";
 import * as history from "./history.js";
 import * as settings from "./settings.js";
 import * as admin from "./admin.js";
@@ -37,8 +36,7 @@ const VIEWS = {
   tarefas: { title: "Tarefas", need: "user", mount: (el, ctx) => board.mount(el, ctx) },
   projetos: { title: "Projetos", need: "user", mount: (el, ctx) => projetos.mount(el, ctx) },
   vencimentos: { title: "Vencimentos", need: "user", eyebrow: "o que renovar", mount: (el, ctx) => mountRenewals(el, ctx) },
-  dashboard: { title: "Retrospectiva", need: "user", eyebrow: "seus números", mount: (el, ctx) => dashboard.mount(el, { me: ctx.me, setAssist: ctx.setAssist }) },
-  relatorios: { title: "Relatórios", need: "user", eyebrow: "PDF e exportação", mount: (el, ctx) => reports.mount(el, { me: ctx.me }) },
+  mes: { title: "Meu mês", need: "user", eyebrow: "números e PDF", mount: (el, ctx) => mes.mount(el, ctx) },
   historico: { title: "Histórico", eyebrow: "o que mudou", mount: (el) => history.mount(el) },
   config: { title: "Configurações", mount: (el, ctx) => settings.mount(el, ctx) },
   atribuir: { title: "Atribuir tarefas", need: "assigner", eyebrow: "para a equipe", mount: (el, ctx) => atribuir.mount(el, ctx) },
@@ -47,6 +45,9 @@ const VIEWS = {
   mais: { title: "Mais", mount: (el) => mountMore(el) },
   busca: { title: "Busca", need: "user", eyebrow: "em tudo", mount: (el, ctx) => search.mount(el, ctx) },
 };
+
+// Telas que viraram abas de Meu mês: links antigos (favoritos, e-mails) continuam valendo.
+const MOVED = { dashboard: "mes?aba=numeros", relatorios: "mes?aba=pdf" };
 
 const has = (role) => !!me && (me.roles || []).includes(role);
 const allowed = (name) => VIEWS[name] && (!VIEWS[name].need || has(VIEWS[name].need));
@@ -79,6 +80,7 @@ async function route() {
   const wantFocus = Date.now() - navAt < 1500;
   navAt = 0;
   let name = (location.hash.replace(/^#\/?/, "") || home()).split("?")[0];
+  if (MOVED[name]) { window.history.replaceState(null, "", "#/" + MOVED[name]); name = "mes"; }
   if (!allowed(name)) name = home();
   const view = VIEWS[name];
 
@@ -218,7 +220,6 @@ function mountMore(el) {
   const items = [
     ["projetos", "route", "Projetos"],
     ["vencimentos", "calendar", "Vencimentos"],
-    ["dashboard", "dashboard", "Retrospectiva"],
     ["historico", "history", "Histórico"],
     // Quem atribui tem Atribuir na barra; a Busca vem para cá.
     has("assigner") ? ["busca", "search", "Busca"] : ["atribuir", "send", "Atribuir tarefas"],
@@ -256,8 +257,7 @@ function showHelp() {
       ...(user ? [["Hoje", "Rotinas do dia, tarefas em aberto (com filtro) e o registro rápido."],
         ["Tarefas", "O quadro completo e o detalhe de cada tarefa: anotações, checklist, cronômetro, tempo."],
         ["Projetos", "Cada projeto com os objetivos em ordem de execução e as tarefas de cada um."],
-        ["Retrospectiva", "A semana e o mês em números."],
-        ["Relatórios", "PDF do período ou de um projeto, e a exportação dos dados."]] : []),
+        ["Meu mês", "O mês em números (rotinas, tarefas, tempo por projeto) e o PDF do período ou de um projeto, com a exportação dos dados."]] : []),
       ["Histórico", "Tudo o que mudou, com desfazer."],
       ["Configurações", user ? "Modelos, avisos, calendário, IA e a sua conta (projeto padrão, dias úteis)." : "IA e API, e a sua conta."],
     ])),
@@ -274,7 +274,7 @@ function showHelp() {
       ]),
       h("p", { class: "help-example" }, "Ex.: ", h("code", { text: "Troca do switch @Matriz #4821 — 45min" }))) : null,
     user && desk ? sec("key", "Atalhos de teclado", list([
-      ["n", "nova tarefa", true], ["/", "buscar", true], ["h t r l", "Hoje, Tarefas, Retrospectiva, Relatórios", true],
+      ["n", "nova tarefa", true], ["/", "buscar", true], ["h t", "Hoje, Tarefas", true], ["r l", "Meu mês: números, PDF", true],
       ["s", "parar o cronômetro", true], ["?", "ver todos os atalhos", true],
     ])) : null,
     sec("mail", "Suporte", me.support_contact
@@ -453,8 +453,8 @@ async function boot() {
     n: ["Nova tarefa", () => openWorklog(route)],
     h: ["Ir para Hoje", () => go("hoje")],
     t: ["Ir para Tarefas", () => go("tarefas")],
-    r: ["Ir para Retrospectiva", () => go("dashboard")],
-    l: ["Ir para Relatórios", () => go("relatorios")],
+    r: ["Ir para Meu mês (números)", () => go("mes?aba=numeros")],
+    l: ["Ir para Meu mês (PDF)", () => go("mes?aba=pdf")],
     s: ["Parar o cronômetro (e apontar)", () => { if (timerState()) stopTimer(); }],
     "?": ["Mostrar estes atalhos", showShortcuts],
   };

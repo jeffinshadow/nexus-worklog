@@ -222,7 +222,7 @@ function recap(sum, t, go) {
     const w = sum.week;
     return {
       line: `Nesta semana: ${plural(w.pontual_done, "tarefa concluída", "tarefas concluídas", "nenhuma tarefa concluída")}${w.minutes ? ` e ${duration(w.minutes)} apontadas` : ""}. O relatório da semana já pode ser gerado.`,
-      act: action("Gerar relatório", () => go("relatorios")),
+      act: action("Gerar relatório", () => go("mes?aba=pdf&periodo=semana")),
     };
   }
   return { line: null, act: null };

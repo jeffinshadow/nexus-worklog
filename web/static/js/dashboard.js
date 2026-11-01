@@ -9,9 +9,11 @@ const MONTHS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "
 const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const MONTHS_LONG = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 
-// Período escolhido (fica enquanto a aba estiver aberta): null = últimos 30 dias,
-// ou "AAAA-MM". As setas andam por [null, mês corrente, mês anterior, ...].
+// Período escolhido na Equipe (fica enquanto a aba estiver aberta): null = últimos
+// 30 dias, ou "AAAA-MM". As setas andam por [null, mês corrente, mês anterior, ...].
+// Em Meu mês, o mês vem de fora (opts.month) e a tela não desenha as setas.
 let month = null;
+let shown = null; // o mês desenhado agora (para as frases de "vazio")
 const monthName = (m) => MONTHS_LONG[Number(m.slice(5)) - 1] + " de " + m.slice(0, 4);
 // Como o período entra nas frases: "nos últimos 30 dias" / "em setembro".
 function periodPhrase(p) {
@@ -22,14 +24,18 @@ function periodPhrase(p) {
 // sem libs, coerente com a CSP rígida.
 export async function mount(root, opts = {}) {
   const base = opts.dashUrl || "/dashboard";
+  const outside = "month" in opts; // Meu mês: o período é escolhido lá
   let a;
-  try {
+  if (outside) a = (await api.get(opts.month ? `${base}?month=${opts.month}` : base)) || {};
+  else try {
     a = (await api.get(month ? `${base}?month=${month}` : base)) || {};
   } catch (e) {
     if (!month) throw e;
     month = null; // mês que deixou de existir (outra pessoa, outro período): volta ao padrão
     a = (await api.get(base)) || {};
   }
+  shown = outside ? opts.month : month;
+  if (opts.onMonths) opts.onMonths(a.months || []);
   const p = a.period || {};
   const mes = p.month ? MONTHS_LONG[Number(p.month.slice(5)) - 1] : null;
   const ph = periodPhrase(p);
@@ -39,7 +45,7 @@ export async function mount(root, opts = {}) {
   // assistente só na própria (o admin vendo outra pessoa não recebe "sua rotina").
   if (!opts.dashUrl && opts.setAssist) opts.setAssist(retroCard(a, opts.me));
   root.append(
-    periodNav(a, () => mount(root, opts), root),
+    outside ? null : periodNav(a, () => mount(root, opts), root),
     section("Rotinas · consistência", [
       h("div", { class: "consist-grid" },
         chartCard("Rotinas feitas por dia", (mes ? `${cap(mes)}` : "Últimas 4 semanas") + " — quanto das rotinas previstas foi feito em cada dia.", heatmap(a.heatmap), "compact heat"),
@@ -54,7 +60,8 @@ export async function mount(root, opts = {}) {
     ]),
     a.backlog
       ? section("Em aberto agora", [backlogHealth(a.backlog)])
-      : h("p", { class: "chart-note dash-past-note", text: "O que está em aberto e as sequências são do momento: aparecem em “Últimos 30 dias” e no mês corrente." })
+      : h("p", { class: "chart-note dash-past-note", text: outside ? "O que está em aberto e as sequências são do momento: aparecem no mês corrente."
+        : "O que está em aberto e as sequências são do momento: aparecem em “Últimos 30 dias” e no mês corrente." })
   );
 }
 
@@ -159,7 +166,7 @@ function heatColor(d) {
 
 function heatmap(hm) {
   if (!hm || !hm.days || !hm.days.length || hm.days.every((d) => d.slots === 0))
-    return emptyBox(month ? "nenhuma rotina na agenda neste mês" : "sem rotinas ainda");
+    return emptyBox(shown ? "nenhuma rotina na agenda neste mês" : "sem rotinas ainda");
   const days = hm.days; // semanas inteiras, começando num domingo
   const lead = Math.max(0, days.findIndex((d) => !d.out)); // dias do mês anterior na 1ª coluna
   const cols = Math.ceil(days.length / 7);
@@ -291,7 +298,7 @@ function throughput(tp, ph = "nos últimos 30 dias") {
     title: `semana de ${shortDate(w.week_start)}: ${w.done} concluída(s)`,
   }));
   const chart = verticalBars(items, { color: "var(--primary)" });
-  if (total === 0) return h("div", { class: "fluxo-body" }, chart, h("p", { class: "chart-note", text: month ? `nenhuma tarefa concluída ${ph}` : "nenhuma tarefa concluída nas últimas 4 semanas" }));
+  if (total === 0) return h("div", { class: "fluxo-body" }, chart, h("p", { class: "chart-note", text: shown ? `nenhuma tarefa concluída ${ph}` : "nenhuma tarefa concluída nas últimas 4 semanas" }));
   return h("div", { class: "fluxo-body" }, chart);
 }
 
