@@ -44,18 +44,22 @@ export async function mount(root, opts = {}) {
   const btn = h("button", { type: "button", class: "btn btn-primary", onClick: run }, icon("reports"), "Exportar PDF");
 
   // Períodos prontos como botão segmentado: o que bate com as datas fica marcado.
+  // Só um: no domingo dia 1º, "Esta semana" e "Este mês" são o mesmo dia, e vale
+  // o tocado (datas digitadas marcam o primeiro que bater).
   const periods = ranges(today);
-  const quick = h("div", { class: "seg seg-sm quick", role: "group", "aria-label": "Período" }, ...periods.map(([label, a, b]) =>
+  let picked = -1;
+  const quick = h("div", { class: "seg seg-sm quick", role: "group", "aria-label": "Período" }, ...periods.map(([label, a, b], i) =>
     h("button", { type: "button", class: "chip-btn", text: label, "aria-pressed": "false",
-      onClick: () => { startInput.value = a; endInput.value = b; markPeriod(); refreshPreview(); } })));
+      onClick: () => { startInput.value = a; endInput.value = b; picked = i; markPeriod(); refreshPreview(); } })));
   function markPeriod() {
+    const fits = (i) => periods[i][1] === startInput.value && periods[i][2] === endInput.value;
+    const sel = picked >= 0 && fits(picked) ? picked : periods.findIndex((_, i) => fits(i));
     [...quick.children].forEach((b, i) => {
-      const on = periods[i][1] === startInput.value && periods[i][2] === endInput.value;
-      b.setAttribute("aria-pressed", String(on));
-      b.setAttribute("aria-selected", String(on)); // mesmo visual do .seg
+      b.setAttribute("aria-pressed", String(i === sel));
+      b.setAttribute("aria-selected", String(i === sel)); // mesmo visual do .seg
     });
   }
-  for (const el of [startInput, endInput]) el.addEventListener("change", markPeriod);
+  for (const el of [startInput, endInput]) el.addEventListener("change", () => { picked = -1; markPeriod(); });
 
   // Com projeto escolhido: "projeto completo" (padrão, sem datas) ou um período.
   let whole = true;
