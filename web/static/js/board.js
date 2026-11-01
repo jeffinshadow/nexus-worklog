@@ -340,7 +340,9 @@ export function openWorklog(onDone, opts = {}) {
       .catch(() => {});
   };
   // Já vem com o projeto padrão (Configurações > Conta), ou o da tela de onde veio; "Sem projeto" tira.
-  const projReady = fillProjectSelect(projSel, opts.project_id || (session.me && session.me.default_project_id) || null,
+  // project_id null (quadro filtrado em "Sem projeto"): sem projeto, mesmo com um padrão.
+  const startProject = opts.project_id !== undefined ? opts.project_id : (session.me && session.me.default_project_id) || null;
+  const projReady = fillProjectSelect(projSel, startProject,
     () => { extras.sync(); syncObjectives(); })
     .then(() => { extras.sync(); return syncObjectives(opts.objective_id || null); }).catch(() => {});
   const ticket = document.getElementById("wl-ticket");
@@ -710,8 +712,14 @@ export async function mount(root, opts = {}) {
   if (opts.setActions && !readOnly) {
     opts.setActions(
       filter.options.length > 2 ? h("div", { class: "filter-wrap" }, filter, clearFilter) : null,
-      h("button", { type: "button", class: "btn btn-primary", "data-fab": "", onClick: () => openWorklog(refresh) }, icon("add"), "Tarefa")
+      h("button", { type: "button", class: "btn btn-primary", "data-fab": "", onClick: () => openWorklog(refresh, newTaskOpts()) }, icon("add"), "Tarefa")
     );
+  }
+
+  // Quadro filtrado: a tarefa nova já vem com o projeto do filtro (como na tela do projeto).
+  function newTaskOpts() {
+    if (project === "") return {};
+    return { project_id: project === "0" ? null : Number(project) };
   }
 
   function render(data) {
