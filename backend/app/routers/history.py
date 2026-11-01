@@ -22,6 +22,7 @@ router = APIRouter(prefix="/api/history", tags=["history"])
 UNDOABLE = {
     "worklog.create", "worklog.assign", "worklog.update", "worklog.finish", "worklog.delete",
     "recurring.create", "recurring.update", "recurring.deactivate", "recurring.toggle", "recurring.replace",
+    "recurring.pause", "recurring.resume",
     "note.create", "note.delete", "checklist.create", "checklist.update", "checklist.delete",
     "time.create", "time.delete", "project.create", "project.update", "project.delete",
     "renewal.create", "renewal.update", "renewal.renew", "renewal.delete",
@@ -51,6 +52,8 @@ ACTION_LABELS = {
     "recurring.deactivate": "removeu a rotina",
     "recurring.toggle": "marcou a rotina",
     "recurring.replace": "trocou a agenda da rotina",
+    "recurring.pause": "pausou a rotina",
+    "recurring.resume": "retomou a rotina",
     "settings.update": "alterou os dias úteis",
     "notifications.update": "alterou os avisos por e-mail",
     "profile.update": "alterou o nome de exibição",
@@ -125,6 +128,9 @@ def _label(row) -> str:
         papeis = ", ".join(LABELS.get(r, r) for r in row["after"].get("roles", [])) or "nenhum"
         return f"alterou as permissões ({papeis})"
     text = ACTION_LABELS.get(row["action"], row["action"])
+    if row["action"] == "recurring.pause" and (row["after"] or {}).get("pause"):
+        fim = str(row["after"]["pause"]["end_d"])  # AAAA-MM-DD
+        text = f"pausou até {fim[8:10]}/{fim[5:7]} a rotina"
     if row["action"] == "recurring.toggle" and row["after"]:
         text = ("marcou" if row["after"]["done"] else "desmarcou") + " a rotina"
         if row["after"]["done"] and row["before"] and row["before"].get("done") and row["after"].get("note") != row["before"].get("note"):
@@ -446,6 +452,16 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
                    (after["replaced"], eid, uid))  # senão o CASCADE da exclusão apagaria as fotos
         db.execute("DELETE FROM recurring_tasks WHERE id = %s AND user_id = %s", (eid, uid))
         _restore_recurring(uid, before)
+    elif a in ("recurring.pause", "recurring.resume"):
+        # Volta o período como era (pausa nova: some). Na janela da remoção:
+        # depois disso os dias da pausa já viraram números fechados.
+        if (app_today() - row["created_at"].astimezone(app_tz()).date()).days > RETRO_DAYS:
+            raise HTTPException(status_code=409, detail="essa mudança já saiu da janela de 7 dias; pause ou retome de novo")
+        if before.get("pause"):
+            db.execute("UPDATE recurring_pauses SET end_d = %s WHERE id = %s AND recurring_id = %s",
+                       (before["pause"]["end_d"], before["pause"]["id"], eid))
+        else:
+            db.execute("DELETE FROM recurring_pauses WHERE id = %s AND recurring_id = %s", (after["pause"]["id"], eid))
     elif a == "recurring.toggle":
         day = date.fromisoformat(before["day"])
         min_day, today = board_day_range(app_today())
