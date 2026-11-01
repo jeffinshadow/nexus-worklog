@@ -25,7 +25,7 @@ from ..config import config
 from ..labels import PRIO_PT, STATUS_PT
 from ..labels import dur as _dur
 from ..schemas import (AssignIn, ChecklistIn, ChecklistUpdate, FinishIn, NoteIn, ObjectiveIn, ObjectiveUpdate, OrderIn,
-                       ProjectIn, ProjectUpdate, RecurringIn, TimeIn, TimerIn, TimerStopIn, ToggleIn, WorklogIn, WorklogUpdate)
+                       ProjectIn, ProjectUpdate, RecurringIn, RecurringUpdate, TimeIn, TimerIn, TimerStopIn, ToggleIn, WorklogIn, WorklogUpdate)
 from . import assign as assign_routes
 from . import history as history_routes
 from . import objectives as objective_routes
@@ -811,11 +811,15 @@ def t_get_handoff(ctx, args):
 
 def t_get_history(ctx, args):
     rows = history_routes.list_history(limit=int(args.get("limit", 20)), entity=None, entity_id=None, user=ctx)
+    # [pode desfazer] só no que ESTA chave fez: o undo do MCP recusa o resto.
+    mine = {r["id"] for r in db.query_all(
+        "SELECT id FROM audit_log WHERE user_id = %s AND token_id = %s AND id = ANY(%s)",
+        (ctx["user_id"], ctx.get("token_id"), [r["id"] for r in rows]))} if rows and ctx.get("token_id") else set()
     out = []
     for r in rows:
         who = {"web": "app", "api": f"API ({r['token_name']})", "mcp": f"IA ({r['token_name']})",
                "admin": "admin"}.get(r["actor"], r["actor"])
-        flags = " [desfeita]" if r["undone"] else (" [pode desfazer]" if r["can_undo"] else "")
+        flags = " [desfeita]" if r["undone"] else (" [pode desfazer]" if r["can_undo"] and r["id"] in mine else "")
         out.append(f"#{r['id']} {r['created_at'].astimezone(services.app_tz()):%d/%m %H:%M} {who}: {r['summary']}{flags}")
     return "\n".join(out) or "(sem histórico)"
 
@@ -823,11 +827,39 @@ def t_get_history(ctx, args):
 def t_undo(ctx, args):
     # A IA só desfaz o que ela mesma (esta chave) fez — nunca o trabalho do usuário.
     hid = int(args["history_id"])
-    row = db.query_one("SELECT token_id FROM audit_log WHERE id = %s AND user_id = %s", (hid, ctx["user_id"]))
+    row = db.query_one("SELECT id, token_id, action, entity_id, before, after FROM audit_log WHERE id = %s AND user_id = %s",
+                       (hid, ctx["user_id"]))
     if not row or row["token_id"] != ctx.get("token_id"):
         raise ToolError("só dá para desfazer ações feitas por esta chave")
+    o_que = history_routes._label(history_routes._with_names(ctx["user_id"], [row])[0])  # em português, como no histórico
     res = _call(history_routes.undo, hid, user=ctx)
-    return f"Desfeito: ação #{res['undid']} ({res['action']})."
+    return f"Desfeito (ação #{res['undid']}): {o_que}."
+
+
+def t_update_recurring(ctx, args):
+    """Edita nome, agenda, horário ou evidência pela mesma rota do app (PATCH):
+    agenda nova numa rotina com passado encerra a atual e cria outra (id novo)."""
+    uid = ctx["user_id"]
+    args = dict(args)
+    rid = args.pop("recurring_id", None)
+    if rid is None:
+        raise ToolError("informe recurring_id (veja list_recurring)")
+    if "weekdays" in args:
+        args["weekdays"] = _weekdays_mask(args["weekdays"]) or None
+    data = _call(RecurringUpdate, **args)
+    try:
+        res = _call(recurring_routes.update, int(rid), data, user=ctx)
+    except ToolError as e:
+        if str(e) == "não encontrado":
+            raise ToolError(f"rotina R{rid} não encontrada (veja list_recurring)") from None
+        if str(e) == "nada mudou na rotina":
+            raise ToolError("nada a mudar: envie label, freq (com o parâmetro dela), remind_at ou require_note") from None
+        raise
+    row = db.query_one("""SELECT id, label, freq, weekdays, month_day, interval_days, require_note, remind_at
+                            FROM recurring_tasks WHERE id = %s AND user_id = %s""", (res["id"], uid))
+    novo = (f" A agenda mudou a partir de hoje: a rotina agora é R{res['id']} (R{rid} fica no histórico com os dias "
+            "anteriores; use o id novo daqui em diante).") if res.get("replaced") else ""
+    return "Atualizada: " + _routine_line(row) + novo
 
 
 # nome -> (função, escreve?, descrição, inputSchema)
@@ -1059,11 +1091,24 @@ TOOLS = {
                         "after_hours": {"type": "boolean", "default": False}}}),
     "list_assigned": (t_list_assigned, False, "Atribuidor: tarefas que você atribuiu, com o status atual.",
                       {"type": "object", "properties": {}}),
-    "get_history": (t_get_history, False, "Últimas ações na conta (app, API ou IA), com o que pode ser desfeito.",
+    "get_history": (t_get_history, False, "Últimas ações na conta (app, API ou IA). [pode desfazer] marca o que esta chave "
+                    "pode desfazer com undo (só o que ela mesma fez); o resto a pessoa desfaz no app, em Histórico.",
                     {"type": "object", "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 20}}}),
     "undo": (t_undo, True, "Desfaz uma ação do histórico (só a mais recente de cada item).",
              {"type": "object", "required": ["history_id"], "properties": {"history_id": {"type": "integer"}}}),
 }
+
+# Mesmos campos do create_recurring (sem padrões: o que não vier não muda), mais o id.
+TOOLS["update_recurring"] = (
+    t_update_recurring, True,
+    "Edita uma rotina: nome, agenda (freq com o parâmetro dela), horário do lembrete (remind_at; null tira) ou se "
+    "exige evidência. Envie só o que muda. Mudar a agenda de uma rotina que já tem dias passados cria um id novo "
+    "a partir de hoje (o passado fica como estava). A IA não remove rotinas.",
+    {"type": "object", "required": ["recurring_id"], "properties": {
+        "recurring_id": {"type": "integer", "description": "id da rotina (R<n> em get_today/list_recurring), não de tarefa"},
+        **{k: {kk: vv for kk, vv in v.items() if kk != "default"}
+           for k, v in TOOLS["create_recurring"][3]["properties"].items()},
+        "remind_at": {"type": ["string", "null"], "description": "Horário HH:MM (o app lembra perto dele); null tira o horário"}}})
 
 PROMPTS = {
     "resumo_semanal": {
