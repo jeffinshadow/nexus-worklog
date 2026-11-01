@@ -70,7 +70,7 @@ def test_resumo_do_mes_bate_com_o_pdf(usuario):
     # Entregas: do maior tempo ao menor, com o "como resolveu".
     assert [d["title"] for d in ov["deliveries"]] == ["Longa", "Curta", "Sem tempo"]
     assert ov["deliveries"][0]["resolution"] == "Troquei o switch do andar 2" and ov["deliveries"][0]["minutes"] == 200
-    assert ov["projects"] == [{"name": None, "color": None, "minutes": 215}]
+    assert ov["projects"] == [{"name": None, "color": None, "icon": None, "minutes": 215}]
 
 
 def test_mes_corrente_e_sem_mes_anterior(usuario):

@@ -8,16 +8,18 @@ from psycopg.errors import UniqueViolation
 from .. import audit, db
 from ..deps import active_user, active_user_csrf
 from ..schemas import ObjectiveIn, ObjectiveUpdate, OrderIn, TaskOrderIn
-from ..services import ASSIGNER_NAME, TASK_COUNTS
+from ..services import ASSIGNER_NAME, PROJECT_ICON, TASK_COUNTS, project_rows
 
 router = APIRouter(prefix="/api", tags=["objectives"])
 
 COLS = "id, project_id, title, description, due_date, position, created_at, external_ref"
 DONE_SHOWN = 30  # concluídas por bloco (as mais recentes)
+UPCOMING = 5     # próximos prazos no cabeçalho do projeto
 
 
 def own_project(uid: int, project_id: int) -> dict:
-    row = db.query_one("SELECT id, name, color, description, archived FROM projects WHERE id = %s AND user_id = %s",
+    row = db.query_one("""SELECT id, name, color, COALESCE(icon, 'pasta') AS icon, description, archived
+                            FROM projects WHERE id = %s AND user_id = %s""",
                        (project_id, uid))
     if not row:
         raise HTTPException(status_code=404, detail="projeto não encontrado")
@@ -70,7 +72,7 @@ _TASK_SELECT = """
     SELECT w.id, w.title, w.description, w.status, w.due_date, w.created_at, w.completed_at,
            w.priority, w.project_id, w.ticket, w.after_hours, w.assigned_by, w.blocked_reason, w.blocked_at,
            w.follow_up_on, w.objective_id, w.exec_position,
-           p.name AS project_name, p.color AS project_color, """ + ASSIGNER_NAME + ", " + TASK_COUNTS + """
+           p.name AS project_name, p.color AS project_color, """ + PROJECT_ICON + ", " + ASSIGNER_NAME + ", " + TASK_COUNTS + """
       FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
      WHERE w.user_id = %s AND w.project_id = %s"""
 
@@ -81,7 +83,8 @@ def overview(project_id: int, user=Depends(active_user)):
     progresso, o status e as tarefas (abertas na ordem; concluídas recentes),
     e o bloco "Sem objetivo"."""
     uid = user["user_id"]
-    project = own_project(uid, project_id)
+    own_project(uid, project_id)
+    project = project_rows(uid, only_id=project_id)[0]  # com os números do cartão
     objectives = db.query_all(
         f"SELECT {COLS} FROM project_objectives WHERE user_id = %s AND project_id = %s ORDER BY position, id",
         (uid, project_id))
@@ -99,8 +102,15 @@ def overview(project_id: int, user=Depends(active_user)):
                 "tasks": abertas, "done_tasks": feitas[:DONE_SHOWN]}
 
     out = [{**o, **block(o["id"])} for o in objectives]
+    # Próximos prazos: tarefas abertas e objetivos não concluídos com data (atrasados primeiro).
+    prazos = sorted(
+        [{"kind": "task", "id": t["id"], "title": t["title"], "due_date": t["due_date"]} for t in open_tasks if t["due_date"]]
+        + [{"kind": "objective", "id": o["id"], "title": o["title"], "due_date": o["due_date"]}
+           for o in out if o["due_date"] and o["status"] != "done"],
+        key=lambda x: (x["due_date"], x["title"].lower()))
     return {
         "project": project,
+        "upcoming": prazos[:UPCOMING],
         "objectives": out,
         "unassigned": block(None),
         "totals": {"total": len(open_tasks) + len(done_tasks), "done": len(done_tasks),

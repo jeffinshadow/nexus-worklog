@@ -139,7 +139,8 @@ def _due_between(t: dict, start: date, end: date, mask: int) -> int:
 
 # Projetos além do principal ([{id, name, color}], por nome): as etiquetas
 # "+ Filial" e o tempo por projeto, que conta a tarefa inteira em cada um.
-EXTRA_PROJECTS = """(SELECT COALESCE(json_agg(json_build_object('id', xp.id, 'name', xp.name, 'color', xp.color)
+EXTRA_PROJECTS = """(SELECT COALESCE(json_agg(json_build_object('id', xp.id, 'name', xp.name, 'color', xp.color,
+                                                        'icon', COALESCE(xp.icon, 'pasta'))
                                       ORDER BY lower(xp.name)), '[]'::json)
        FROM worklog_task_projects x JOIN projects xp ON xp.id = x.project_id
       WHERE x.task_id = w.id) AS extra_projects"""
@@ -158,6 +159,72 @@ TASK_COUNTS = """
 # Tarefa `w` no projeto %s: o principal ou um dos extras.
 IN_PROJECT = """(w.project_id = %s OR EXISTS (SELECT 1 FROM worklog_task_projects x
                                              WHERE x.task_id = w.id AND x.project_id = %s))"""
+
+
+# Ícone do projeto de uma tarefa (`p` = o projeto principal): "pasta" quando não
+# escolhido; nulo quando a tarefa não tem projeto.
+PROJECT_ICON = "COALESCE(p.icon, CASE WHEN p.id IS NOT NULL THEN 'pasta' END) AS project_icon"
+
+
+# Os números de cada projeto numa consulta só (agregação; nada de laço por
+# projeto nem JOIN com OR): tarefas da pessoa (principal e extras, unidas antes:
+# o OR no JOIN fazia o banco varrer as tarefas de todas as contas), tempo do mês,
+# objetivos concluídos e a última atividade (tarefa criada, concluída ou posta
+# em espera, tempo apontado, anotação).
+_STATS_SQL = """
+    WITH t AS (
+        SELECT id, project_id AS pid, status, GREATEST(created_at, completed_at, blocked_at) AS at
+          FROM worklog_tasks WHERE user_id = %(u)s AND project_id IS NOT NULL
+        UNION
+        SELECT w.id, x.project_id, w.status, GREATEST(w.created_at, w.completed_at, w.blocked_at)
+          FROM worklog_task_projects x JOIN worklog_tasks w ON w.id = x.task_id WHERE w.user_id = %(u)s
+    ), e AS (
+        SELECT task_id, COALESCE(sum(minutes) FILTER (WHERE day >= %(m)s), 0)::int AS mins, max(created_at) AS at
+          FROM time_entries WHERE user_id = %(u)s GROUP BY task_id
+    ), n AS (
+        SELECT task_id, max(created_at) AS at FROM task_notes
+         WHERE task_id IN (SELECT id FROM t) GROUP BY task_id
+    ), tp AS (
+        SELECT t.pid,
+               count(*) FILTER (WHERE t.status <> 'done')::int AS open_tasks,
+               count(*)::int AS total_tasks,
+               count(*) FILTER (WHERE t.status = 'done')::int AS done_tasks,
+               count(*) FILTER (WHERE t.status = 'blocked')::int AS waiting_tasks,
+               COALESCE(sum(e.mins), 0)::int AS minutes_month,
+               max(GREATEST(t.at, e.at, n.at)) AS at
+          FROM t LEFT JOIN e ON e.task_id = t.id LEFT JOIN n ON n.task_id = t.id
+         GROUP BY t.pid
+    ), ob AS (
+        -- objetivo concluído = todas as tarefas dele concluídas (como na tela do projeto)
+        SELECT o.project_id AS pid, count(*)::int AS objectives,
+               count(*) FILTER (WHERE s.total > 0 AND s.done = s.total)::int AS objectives_done,
+               max(o.created_at) AS at
+          FROM project_objectives o
+          LEFT JOIN (SELECT objective_id, count(*) AS total, count(*) FILTER (WHERE status = 'done') AS done
+                       FROM worklog_tasks WHERE user_id = %(u)s AND objective_id IS NOT NULL
+                      GROUP BY objective_id) s ON s.objective_id = o.id
+         WHERE o.user_id = %(u)s GROUP BY o.project_id
+    )
+    SELECT p.id, p.name, p.color, COALESCE(p.icon, 'pasta') AS icon, p.description, p.archived, p.created_at,
+           p.external_ref,
+           COALESCE(tp.open_tasks, 0) AS open_tasks, COALESCE(tp.total_tasks, 0) AS total_tasks,
+           COALESCE(tp.done_tasks, 0) AS done_tasks, COALESCE(tp.waiting_tasks, 0) AS waiting_tasks,
+           COALESCE(tp.minutes_month, 0) AS minutes_month,
+           COALESCE(ob.objectives, 0) AS objectives, COALESCE(ob.objectives_done, 0) AS objectives_done,
+           GREATEST(p.created_at, tp.at, ob.at) AS last_activity
+      FROM projects p LEFT JOIN tp ON tp.pid = p.id LEFT JOIN ob ON ob.pid = p.id
+     WHERE p.user_id = %(u)s {filtro}
+     ORDER BY p.archived, lower(p.name)
+"""
+
+
+def project_rows(uid: int, include_archived: bool = False, only_id: int | None = None) -> list[dict]:
+    """Projetos da pessoa com os números (lista, cartão e cabeçalho do projeto)."""
+    filtro = "" if include_archived or only_id is not None else "AND NOT p.archived"
+    if only_id is not None:
+        filtro += " AND p.id = %(id)s"
+    return db.query_all(_STATS_SQL.format(filtro=filtro),
+                        {"u": uid, "m": app_today().replace(day=1), "id": only_id})
 
 
 def default_project(user_id: int) -> int | None:
@@ -282,7 +349,7 @@ def get_board(user_id: int, day: date | None = None, project: int | None = None)
         return """
         SELECT w.id, w.title, w.description, w.status, w.due_date, w.created_at, w.completed_at,
                w.priority, w.project_id, w.ticket, w.after_hours, w.assigned_by, w.blocked_reason, w.blocked_at, w.follow_up_on,
-               p.name AS project_name, p.color AS project_color, """ + ASSIGNER_NAME + """,
+               p.name AS project_name, p.color AS project_color, """ + PROJECT_ICON + ", " + ASSIGNER_NAME + """,
                """ + TASK_COUNTS + extra + """
           FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
          WHERE w.user_id = %s"""
@@ -497,11 +564,11 @@ def month_overview(user_id: int, month: date, first_day: date | None = None) -> 
         "routines": len(stats),
         "routines_full": sum(1 for r in stats if r["done"] >= r["due"]),  # feitas em todos os dias previstos
         "behind": [{"label": r["label"], "due": r["due"], "done": r["done"]} for r in behind[:OVERVIEW_BEHIND]],
-        "projects": [{"name": p["name"], "color": p["color"], "minutes": p["minutes"]}
+        "projects": [{"name": p["name"], "color": p["color"], "icon": p["icon"], "minutes": p["minutes"]}
                      for p in cur["projects"] if p["minutes"]],
         "multi_project": cur["multi_project"],
         "deliveries": [{"id": w["id"], "title": w["title"], "project": w["project"],
-                        "project_color": w["project_color"], "minutes": w["minutes"],
+                        "project_color": w["project_color"], "project_icon": w["project_icon"], "minutes": w["minutes"],
                         "resolution": (w["resolution"] or "")[:240] or None}
                        for w in deliveries[:OVERVIEW_DELIVERIES]],
     }
@@ -678,7 +745,7 @@ def _report_inputs(user_id: int, start: date, end: date, project: dict | None = 
     pontuais = db.query_all(
         """
         SELECT w.id, w.title, w.description, w.priority, w.created_at, w.completed_at, w.resolution,
-               p.name AS project, p.color AS project_color,
+               p.name AS project, p.color AS project_color, """ + PROJECT_ICON + """,
                (w.completed_at AT TIME ZONE %s)::date AS done_date,
                (SELECT n.body FROM task_notes n WHERE n.task_id = w.id ORDER BY n.created_at DESC LIMIT 1) AS last_note,
                """ + ASSIGNER_NAME + ", " + TASK_COUNTS + """
@@ -691,6 +758,7 @@ def _report_inputs(user_id: int, start: date, end: date, project: dict | None = 
     entries = db.query_all(
         """
         SELECT e.day, e.minutes, e.note, w.title, w.after_hours, p.name AS project, p.color AS project_color,
+               """ + PROJECT_ICON + """,
                """ + EXTRA_PROJECTS + """
           FROM time_entries e
           JOIN worklog_tasks w ON w.id = e.task_id
@@ -822,16 +890,16 @@ def get_report_range(user_id: int, start: date, end: date, project: dict | None 
     # A tarefa em mais de um projeto conta inteira em cada um (a soma pode
     # passar do total; o relatório diz isso).
     def each_project(r):
-        yield r["project"], r["project_color"]
+        yield r["project"], r["project_color"], r.get("project_icon")
         for x in r.get("extra_projects") or []:
-            yield x["name"], x["color"]
+            yield x["name"], x["color"], x.get("icon")
     for e in entries:
-        for name, color in each_project(e):
-            p = by_project.setdefault(name or "", {"name": name, "color": color, "minutes": 0, "done": 0})
+        for name, color, ic in each_project(e):
+            p = by_project.setdefault(name or "", {"name": name, "color": color, "icon": ic, "minutes": 0, "done": 0})
             p["minutes"] += e["minutes"]
     for w in pontuais:
-        for name, color in each_project(w):
-            p = by_project.setdefault(name or "", {"name": name, "color": color, "minutes": 0, "done": 0})
+        for name, color, ic in each_project(w):
+            p = by_project.setdefault(name or "", {"name": name, "color": color, "icon": ic, "minutes": 0, "done": 0})
             p["done"] += 1
 
     return {

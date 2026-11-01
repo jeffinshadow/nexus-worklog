@@ -171,7 +171,8 @@ def export(kind: str, user=Depends(active_user)):
                               (list(by_id),)):
             by_id[x["task_id"]].setdefault("extra_project_ids", []).append(x["project_id"])
         projects = db.query_all(
-            "SELECT id, name, color, description, external_ref, archived, created_at FROM projects WHERE user_id = %s ORDER BY id",
+            """SELECT id, name, color, COALESCE(icon, 'pasta') AS icon, description, external_ref, archived, created_at
+                 FROM projects WHERE user_id = %s ORDER BY id""",
             (uid,))
         objs = {}
         for o in db.query_all(

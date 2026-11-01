@@ -274,6 +274,11 @@ def list_history(
     return out
 
 
+def _icone(name):
+    """Ícone do projeto no banco: a pasta (padrão) e registros antigos sem ícone ficam NULL."""
+    return None if name in (None, "pasta") else name
+
+
 def _projeto_existente(uid: int, project_id):
     """Ao desfazer, o projeto antigo pode ter sido excluído: volta sem projeto."""
     if project_id is None:
@@ -627,15 +632,17 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
     elif a == "project.update":
         if db.query_one("SELECT 1 FROM projects WHERE user_id = %s AND name = %s AND id <> %s", (uid, before["name"], eid)):
             raise HTTPException(status_code=409, detail="já existe um projeto com esse nome")
-        db.execute("UPDATE projects SET name = %s, color = %s, description = %s, archived = %s WHERE id = %s AND user_id = %s",
-                   (before["name"], before["color"], before.get("description"), before["archived"], eid, uid))
+        db.execute("""UPDATE projects SET name = %s, color = %s, icon = %s, description = %s, archived = %s
+                       WHERE id = %s AND user_id = %s""",
+                   (before["name"], before["color"], _icone(before.get("icon")), before.get("description"),
+                    before["archived"], eid, uid))
     elif a == "project.delete":
         if db.query_one("SELECT 1 FROM projects WHERE user_id = %s AND name = %s", (uid, before["name"])):
             raise HTTPException(status_code=409, detail="já existe um projeto com esse nome")
         db.execute(
-            """INSERT INTO projects (id, user_id, name, color, description, archived, external_ref)
-               OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-            (eid, uid, before["name"], before["color"], before.get("description"), before["archived"],
+            """INSERT INTO projects (id, user_id, name, color, icon, description, archived, external_ref)
+               OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+            (eid, uid, before["name"], before["color"], _icone(before.get("icon")), before.get("description"), before["archived"],
              _ref_livre_em("projects", uid, before.get("external_ref"))))
         # As tarefas que estavam nele voltam (se ninguém as pôs em outro projeto).
         db.execute("UPDATE worklog_tasks SET project_id = %s WHERE user_id = %s AND project_id IS NULL AND id = ANY(%s)",

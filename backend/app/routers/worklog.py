@@ -12,7 +12,7 @@ from ..schemas import ChecklistIn, ChecklistUpdate, FinishIn, NoteIn, TimeIn, Wo
 from .assign import notify_assigner
 from .objectives import check_objective, next_position, objective_project
 from ..services import is_work_day, work_mask
-from ..services import ASSIGNER_NAME, EXTRA_PROJECTS, app_today, app_tz, default_project, set_extra_projects, task_retro_days
+from ..services import ASSIGNER_NAME, EXTRA_PROJECTS, PROJECT_ICON, app_today, app_tz, default_project, set_extra_projects, task_retro_days
 
 router = APIRouter(prefix="/api/worklog", tags=["worklog"])
 items = APIRouter(prefix="/api", tags=["worklog"])  # rotas por id de anotação/item/tempo
@@ -254,7 +254,7 @@ def detail(task_id: int, user=Depends(active_user)):
                w.priority, w.project_id, w.ticket, w.after_hours, w.external_ref, w.assigned_by, w.assigned_at,
                w.blocked_reason, w.blocked_at, w.follow_up_on, w.resolution,
                w.objective_id, (SELECT o.title FROM project_objectives o WHERE o.id = w.objective_id) AS objective_title,
-               p.name AS project_name, p.color AS project_color, """ + ASSIGNER_NAME + ", " + EXTRA_PROJECTS + """
+               p.name AS project_name, p.color AS project_color, """ + PROJECT_ICON + ", " + ASSIGNER_NAME + ", " + EXTRA_PROJECTS + """
           FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
          WHERE w.id = %s AND w.user_id = %s
         """,
