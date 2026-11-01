@@ -642,6 +642,26 @@ async function webhooksPanel(rerender) {
     if (w.disabled_at) meta.push(`desligado: ${w.last_error || "falhas seguidas"}`);
     else if (w.failures) meta.push(`${w.failures} falha(s): ${w.last_error}`);
     const actions = h("div", { class: "actions" });
+    const result = h("p", { class: "token-meta wh-test", role: "status" });
+    const test = h("button", {
+      type: "button", class: "btn btn-ghost btn-sm", text: "Testar",
+      title: "Envia agora um aviso de teste (ping), assinado, e mostra a resposta",
+      onClick: async () => {
+        test.disabled = true;
+        result.className = "token-meta wh-test";
+        result.textContent = "Enviando o teste…";
+        try {
+          const r = await api.post(`/webhooks/${w.id}/test`);
+          result.classList.add(r.ok ? "ok" : "bad");
+          result.textContent = r.ok ? `Chegou: o destino respondeu HTTP ${r.status} em ${r.ms} ms.`
+            : `Não chegou: ${r.error} (${r.ms} ms). O teste não conta como falha.`;
+        } catch (e) {
+          result.classList.add("bad");
+          result.textContent = e.message || "Não foi possível testar.";
+        } finally { test.disabled = false; }
+      },
+    });
+    actions.append(test);
     if (w.disabled_at) {
       actions.append(h("button", {
         type: "button", class: "btn btn-ghost btn-sm", text: "Religar", onClick: async () => {
@@ -658,7 +678,7 @@ async function webhooksPanel(rerender) {
       },
     }));
     return h("div", { class: "token-row" + (w.active ? "" : " inactive") },
-      h("span", { class: "token-name", text: w.url }), actions, h("span", { class: "token-meta", text: meta.join(" · ") }));
+      h("span", { class: "token-name", text: w.url }), actions, h("span", { class: "token-meta", text: meta.join(" · ") }), result);
   }) : [h("p", { class: "empty", text: "Nenhum webhook ainda." })];
 
   return h("div", { class: "settings-grid" },
@@ -668,7 +688,22 @@ async function webhooksPanel(rerender) {
       form),
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Meus webhooks" }), h("span", { class: "count", text: String(list.filter((w) => w.active).length) + " ativos" })),
-      ...rows));
+      ...rows),
+    recipesPanel());
+}
+
+// Receitas prontas (no site): avisos e planilha usando o webhook e a API, sem conector para produto.
+function recipesPanel() {
+  const base = "https://shadow.tec.br/nexus-api";
+  const link = (hash, text) => h("a", { href: `${base}#${hash}`, target: "_blank", rel: "noopener noreferrer", text });
+  return h("section", { class: "panel" },
+    h("div", { class: "panel-head" }, h("h2", { text: "Receitas prontas" })),
+    h("p", { class: "help", text: "Passo a passo com o código mínimo (que confere a assinatura). O Nexus só avisa o endereço; quem fala com o chat, o e-mail ou a planilha é a sua automação ou um script curto. Depois de criar o webhook, use Testar para ver se o aviso chega." }),
+    h("ol", { class: "help" },
+      h("li", {}, link("r-telegram", "Avisar um grupo do Telegram"), " quando uma tarefa for concluída ou ficar aguardando."),
+      h("li", {}, link("r-email", "Mandar um e-mail"), " a alguém quando algo acontecer."),
+      h("li", {}, link("r-planilha", "Registrar cada tarefa concluída numa planilha"), " (Google Sheets)."),
+      h("li", {}, link("r-alerta", "Alerta do monitoramento vira tarefa"), ", sem duplicar.")));
 }
 
 function showNewSecret(res) {

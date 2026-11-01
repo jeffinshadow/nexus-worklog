@@ -5811,6 +5811,47 @@
         }
       }
     },
+    "/api/webhooks/{hook_id}/test": {
+      "post": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Test Webhook",
+        "description": "Envia agora um evento de teste assinado (X-Nexus-Event: ping) e devolve\n{ok, status, ms, error}. Só pelo app; não conta como falha nem desliga.\nVale também para um desligado (testar antes de religar).",
+        "operationId": "test_webhook_api_webhooks__hook_id__test_post",
+        "parameters": [
+          {
+            "name": "hook_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Hook Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/webhooks/{hook_id}": {
       "delete": {
         "tags": [

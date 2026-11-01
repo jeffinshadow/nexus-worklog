@@ -145,6 +145,8 @@ invite_req_limiter = RateLimiter(max_hits=5, window_seconds=3600)
 invite_req_email_limiter = RateLimiter(max_hits=2, window_seconds=86400)
 # PDF: gerar e pesado (CPU, um processo so). Ate 6 por usuario por minuto.
 pdf_limiter = RateLimiter(max_hits=6, window_seconds=60)
+# Testar webhook: cada teste é um POST para fora (até 15 s); 5 por minuto por pessoa.
+webhook_test_limiter = RateLimiter(max_hits=5, window_seconds=60)
 # Erros do navegador mandados ao log: poucos por pessoa (não vira canal de spam no log).
 client_error_limiter = RateLimiter(max_hits=10, window_seconds=300)
 

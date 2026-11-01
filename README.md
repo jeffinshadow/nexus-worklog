@@ -153,8 +153,9 @@ exclui a conta de vez.
 - **Integração** — API REST aberta, sem conector para produto específico:
   `external_ref` em tarefas, projetos, anotações e tempo (repetir não duplica),
   feed de mudanças (`/api/history?after=`) e webhooks de saída assinados
-  (HMAC-SHA256). Contrato em [`docs/openapi.json`](docs/openapi.json); receitas
-  `curl` em [`docs/API.md`](docs/API.md#integração-passo-a-passo).
+  (HMAC-SHA256), com botão Testar. Contrato em [`docs/openapi.json`](docs/openapi.json);
+  receitas `curl` em [`docs/API.md`](docs/API.md#integração-passo-a-passo) e, prontas,
+  aviso no Telegram, e-mail e planilha em [`docs/API.md`](docs/API.md#receitas-avisos-e-planilha).
 
 ## Telas
 
