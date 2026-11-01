@@ -124,37 +124,40 @@ export async function view(root, opts) {
 //   [Calendário do mês 8                   ][Ritmo do mês 4   ]
 //   [Tempo por projeto 8                   ][Rotinas: atenção 4]
 
+// Rotinas extras do mês (feitas fora da agenda): contam na frase e no "mês vazio", como no PDF.
+const extrasOf = (ov) => ov.days.reduce((a, d) => a + (d.extra || 0), 0);
+const isEmpty = (m, extras) => !m.recurring_total && !m.pontual_done && !m.minutes && !extras;
+
 function screen(a, opts, reload) {
   const ov = a.overview;
-  const m = ov.month, mes = nameOf(a.period.month);
-  const empty = !m.recurring_total && !m.pontual_done && !m.minutes;
-  const nodes = [hero(ov, mes, opts)];
-  // Mês ainda vazio: o painel só aparece se houver meses anteriores para situar (a própria pessoa).
-  const history = ov.trend.slice(0, -1).some((t) => t.recurring_total || t.pontual_done || t.minutes);
-  if (empty && !history) return nodes;
-  nodes.push(panel(ov, a.period.month, mes, !!opts.dashUrl));
-  if (!empty) nodes.push(deliveriesCard(ov, mes, opts, reload));
+  const mes = nameOf(a.period.month);
+  const extras = extrasOf(ov);
+  const nodes = [hero(ov, mes, opts, extras)];
+  // Mês sem nenhum registro (rotina, extra, tarefa ou tempo): só a frase, sem gráficos vazios.
+  if (isEmpty(ov.month, extras)) return nodes;
+  nodes.push(panel(ov, a.period.month, mes, !!opts.dashUrl), deliveriesCard(ov, mes, opts, reload));
   return nodes;
 }
 
-// "Em outubro você fez 50 das 81 rotinas previstas (62%), concluiu 20 tarefas e apontou 31h43."
-function sentence(m, mes, who) {
+// "Em outubro você fez 50 das 81 rotinas previstas (62%), mais 3 extras, concluiu 20 tarefas e apontou 31h43."
+function sentence(m, mes, who, extras) {
+  if (isEmpty(m, extras)) return `Nada registrado${who ? ` por ${who}` : ""} em ${mes}${m.now ? " até agora" : ""}.`;
   const quando = `Em ${mes}${m.now ? ", até agora," : ""}`;
   const sujeito = who ? ` ${who}` : " você";
-  if (!m.recurring_total && !m.pontual_done && !m.minutes)
-    return `${quando} nada registrado${who ? ` por ${who}` : ""}.`;
   // Só o que aconteceu (o zero aparece nos números, sem virar cobrança na frase).
   const partes = [];
-  if (m.recurring_total) partes.push(`fez ${m.recurring_done} das ${m.recurring_total} rotinas previstas (${pct(m.recurring_done, m.recurring_total)}%)`);
+  const mais = extras ? `, mais ${plural(extras, "extra", "extras")}` : ""; // o mesmo texto do PDF
+  if (m.recurring_total) partes.push(`fez ${m.recurring_done} das ${m.recurring_total} rotinas previstas (${pct(m.recurring_done, m.recurring_total)}%)${mais}`);
+  else if (extras) partes.push(`marcou ${plural(extras, "rotina extra", "rotinas extras")}`);
   if (m.pontual_done) partes.push(`concluiu ${plural(m.pontual_done, "tarefa", "tarefas")}`);
   if (m.minutes) partes.push(`apontou ${duration(m.minutes)}`);
   const lista = partes.length > 1 ? `${partes.slice(0, -1).join(", ")} e ${partes[partes.length - 1]}` : partes[0];
   return `${quando}${sujeito} ${lista}.`;
 }
 
-function hero(ov, mes, opts) {
+function hero(ov, mes, opts, extras) {
   const m = ov.month;
-  const empty = !m.recurring_total && !m.pontual_done && !m.minutes;
+  const empty = isEmpty(m, extras);
   const base = opts.exportBase || "/reports/export";
   const btn = h("button", { type: "button", class: "btn btn-primary", onClick: async () => {
     btn.disabled = true;
@@ -162,8 +165,9 @@ function hero(ov, mes, opts) {
     catch (e) { errorToast(e, "Não foi possível gerar o PDF."); } finally { btn.disabled = false; }
   } }, icon("reports"), `Baixar o PDF de ${mes}`);
   return h("section", { class: "mes-hero" },
-    h("p", { class: "mes-sentence", text: sentence(m, mes, opts.who) }),
-    empty ? (opts.dashUrl ? null : h("p", { class: "mes-prev", text: "O que você registrar no Hoje (rotinas, tarefas e tempo) aparece aqui." }))
+    h("p", { class: "mes-sentence", text: sentence(m, mes, opts.who, extras) }),
+    // O convite a registrar só no mês corrente da própria pessoa.
+    empty ? (opts.dashUrl || !m.now ? null : h("p", { class: "mes-prev", text: "O que você registrar no Hoje (rotinas, tarefas e tempo) aparece aqui." }))
       : h("div", { class: "mes-actions" }, btn));
 }
 
@@ -184,11 +188,12 @@ function tile(span, cls, title, sub, ...body) {
 }
 
 function panel(ov, month, mes, team) {
-  // O calendário aparece com rotina no mês; no mês corrente, também se os meses anteriores tinham.
+  // O calendário é das rotinas com rotina no mês (no mês corrente, também se os
+  // meses anteriores tinham); sem rotina, é pintado pelas tarefas concluídas.
   const hasRoutines = ov.routines > 0 || ov.days.some((d) => d.due || d.extra || d.paused)
     || (ov.month.now && ov.trend.slice(0, -1).some((t) => t.recurring_total));
   const tiles = [...kpis(ov, month, team)];
-  if (hasRoutines) tiles.push(calendarTile(ov, month));
+  tiles.push(hasRoutines ? calendarTile(ov, month) : tasksCalendarTile(ov, month));
   tiles.push(rhythmTile(ov, month), projectsTile(ov, mes, 8));
   if (hasRoutines) tiles.push(attentionTile(ov, mes, team));
   return h("section", { class: "mm-panel", "aria-label": `Painel de ${mes}` }, ...tiles);
@@ -224,11 +229,18 @@ function kpis(ov, month, team) {
 
   // Rotinas em dia: o anel do mês + a linha dos 6 meses.
   const p = m.recurring_total ? pct(m.recurring_done, m.recurring_total) : null;
+  // Sem rotina em nenhum dos 6 meses, a linha ficaria vazia: no lugar dela, quando
+  // o mês é anterior à primeira rotina, uma linha diz quando elas começaram.
+  const rotTrend = trend && slots.some((k) => byMonth[k] && byMonth[k].recurring_total);
+  const fr = ov.first_routine;
+  const began = !m.recurring_total && fr && fr.slice(0, 7) > month
+    ? h("p", { class: "mm-began", text: `As rotinas começaram em ${ddmm(fr, month)}.` }) : null;
   const rot = tile(4, "mm-kpi", "Rotinas em dia", null,
     h("div", { class: "mm-kpi-main" }, ring(p),
       h("p", { class: "mm-fact", text: m.recurring_total ? `${m.recurring_done} de ${m.recurring_total} previstas` : "sem rotinas previstas" })),
-    trend ? lineChart(slots, byMonth, avg && avg.recurring_pct, month) : null,
-    trend ? foot(ov, "routines", avg && avg.recurring_pct != null ? `média: ${Math.round(avg.recurring_pct)}%` : "") : null);
+    began,
+    rotTrend ? lineChart(slots, byMonth, avg && avg.recurring_pct, month) : null,
+    rotTrend ? foot(ov, "routines", avg && avg.recurring_pct != null ? `média: ${Math.round(avg.recurring_pct)}%` : "") : null);
 
   const tasks = tile(4, "mm-kpi", "Tarefas concluídas", null,
     h("div", { class: "mm-kpi-main" }, h("p", { class: "mm-n", text: String(m.pontual_done) }),
@@ -362,8 +374,8 @@ function dayInfo(d, iso, mes, today) {
   return { cls: "none", label: `${when}: sem rotina prevista` };
 }
 
-function calendarTile(ov, month) {
-  const mes = nameOf(month);
+// A grade do mês (domingo a sábado) com um rótulo por dia; cellOf(dia, iso, hoje) => {cls, label}.
+function calTable(ov, month, caption, describedBy, cellOf) {
   const today = localDay(Date.now());
   const byDate = Object.fromEntries(ov.days.map((d) => [d.date, d]));
   const first = month + "-01";
@@ -379,12 +391,18 @@ function calendarTile(ov, month) {
   for (let r = 0; r < cells.length; r += 7) {
     rows.push(h("tr", {}, ...cells.slice(r, r + 7).map((iso) => {
       if (!iso) return h("td", { class: "out" });
-      const info = dayInfo(byDate[iso], iso, mes, today);
+      const info = cellOf(byDate[iso], iso, today);
       return h("td", { class: `${info.cls}${iso === today ? " today" : ""}`, title: info.label },
         h("span", { class: "mm-dn", "aria-hidden": "true", text: String(Number(iso.slice(8))) }),
         h("span", { class: "sr-only", text: info.label }));
     })));
   }
+  return h("table", { class: "mm-cal", "aria-describedby": describedBy },
+    h("caption", { class: "sr-only", text: caption }), h("thead", {}, head), h("tbody", {}, ...rows));
+}
+
+function calendarTile(ov, month) {
+  const mes = nameOf(month);
   // O resumo do mês em texto (para todo mundo, e é o que o leitor ouve primeiro).
   const due = ov.days.filter((d) => d.due);
   const all = due.filter((d) => d.done >= d.due).length, none = due.filter((d) => !d.done).length;
@@ -397,16 +415,46 @@ function calendarTile(ov, month) {
     ? `${plural(due.length, "dia com rotina prevista", "dias com rotina prevista")}: ${partes.join(", ")}${extras ? `; ${plural(extras, "dia", "dias")} só com extras` : ""}.`
     : `Nenhum dia com rotina prevista${extras ? `; ${plural(extras, "dia", "dias")} só com extras` : ""}.`;
   const sub = h("p", { class: "mm-sub", id: `mm-cal-${month}`, text: resumo });
-  const table = h("table", { class: "mm-cal", "aria-describedby": sub.id },
-    h("caption", { class: "sr-only", text: `Rotinas dia a dia em ${mes}` }), h("thead", {}, head), h("tbody", {}, ...rows));
-
-  const sw = (cls, text) => h("span", { class: `mm-sw ${cls}`, title: text });
+  const table = calTable(ov, month, `Rotinas dia a dia em ${mes}`, sub.id, (d, iso, today) => dayInfo(d, iso, mes, today));
   const legend = h("div", { class: "mm-legend", "aria-hidden": "true" },
     h("span", { class: "mm-leg-scale" }, h("span", { text: "menos" }), sw("l0", "nenhuma feita"), sw("l1", "até um terço"),
       sw("l2", "até dois terços"), sw("l3", "quase todas"), sw("l4", "todas"), h("span", { text: "mais" })),
     h("span", { class: "mm-leg-item" }, sw("extra", "só extras"), h("span", { text: "só extras" })),
     h("span", { class: "mm-leg-item" }, sw("none", "sem rotina prevista"), h("span", { text: "sem previsão" })));
   return tile(8, "mm-cal-tile", "Rotinas no mês, dia a dia", null, sub, table, legend);
+}
+
+const sw = (cls, text) => h("span", { class: `mm-sw ${cls}`, title: text });
+
+// "11/10" (com o ano quando não é o do mês mostrado).
+const ddmm = (iso, month) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}${iso.slice(0, 4) !== month.slice(0, 4) ? "/" + iso.slice(0, 4) : ""}`;
+
+// Mês sem rotina, mas com tarefas ou tempo: o calendário pintado pelas tarefas
+// concluídas em cada dia, em degraus relativos ao próprio mês (o dia com mais é
+// o degrau cheio).
+function tasksCalendarTile(ov, month) {
+  const mes = nameOf(month);
+  const max = Math.max(0, ...ov.days.map((d) => d.pontual_done));
+  const cellOf = (d, iso, today) => {
+    const when = `${Number(iso.slice(8))} de ${mes}`;
+    if (!d) return { cls: "fut", label: `${when}: ainda não chegou` };
+    const n = d.pontual_done;
+    const tempo = d.minutes ? `, ${duration(d.minutes)} de tempo apontado` : "";
+    if (n) return { cls: "l" + Math.max(1, Math.ceil((4 * n) / max)), label: `${when}: ${plural(n, "tarefa concluída", "tarefas concluídas")}${tempo}` };
+    return { cls: "none", label: `${when}: ${iso === today ? "hoje, nenhuma tarefa concluída ainda" : "nenhuma tarefa concluída"}${tempo}` };
+  };
+  const taskDays = ov.days.filter((d) => d.pontual_done).length;
+  const timeDays = ov.days.filter((d) => d.minutes).length;
+  const resumo = taskDays
+    ? `${plural(taskDays, "dia com tarefa concluída", "dias com tarefa concluída")}; no dia com mais, ${plural(max, "tarefa", "tarefas")}.`
+    : `Nenhuma tarefa concluída; tempo apontado em ${plural(timeDays, "dia", "dias")}.`;
+  const sub = h("p", { class: "mm-sub", id: `mm-cal-${month}`, text: resumo });
+  const table = calTable(ov, month, `Tarefas concluídas dia a dia em ${mes}`, sub.id, cellOf);
+  const legend = h("div", { class: "mm-legend", "aria-hidden": "true" },
+    h("span", { class: "mm-leg-scale" }, h("span", { text: "menos" }), sw("l1", "menos tarefas"), sw("l2", "mais tarefas"),
+      sw("l3", "mais tarefas"), sw("l4", "o dia com mais tarefas"), h("span", { text: "mais" }),
+      h("span", { class: "mm-leg-what", text: "· tarefas concluídas" })));
+  return tile(8, "mm-cal-tile", "Tarefas no mês, dia a dia", null, sub, table, legend);
 }
 
 // ------------------------------------------------------ 3) ritmo do mês --
@@ -518,11 +566,12 @@ function attentionTile(ov, mes, team) {
   if (full >= ov.routines) return tile(4, "mm-att", title, null, h("p", { class: "mes-ok" }, icon("check"),
     h("span", { text: ov.routines === 1 ? "A rotina foi feita em todos os dias previstos." : `As ${ov.routines} rotinas foram feitas em todos os dias previstos.` })));
   if (team || !ov.behind.length) {
+    const frase = h("p", { class: "mes-ok",
+      text: `${full} de ${plural(ov.routines, "rotina", "rotinas")} ${full === 1 ? "feita" : "feitas"} em todos os dias previstos.` });
+    if (team) return tile(4, "mm-att", title, null, frase); // de outra pessoa: só a frase, sem medidor
     const fill = h("span");
     fill.style.width = pct(full, ov.routines) + "%";
-    return tile(4, "mm-att", title, null, h("p", { class: "mes-ok",
-      text: `${full} de ${plural(ov.routines, "rotina", "rotinas")} ${full === 1 ? "feita" : "feitas"} em todos os dias previstos.` }),
-    h("span", { class: "mes-track mm-meter", "aria-hidden": "true" }, fill));
+    return tile(4, "mm-att", title, null, frase, h("span", { class: "mes-track mm-meter", "aria-hidden": "true" }, fill));
   }
   return tile(4, "mm-att", title, "dias feitos de previstos", h("div", { class: "mes-rows" }, ...ov.behind.map((r) => {
     const fill = h("span");
