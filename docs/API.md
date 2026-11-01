@@ -316,7 +316,7 @@ Leitura: `get_today`, `get_summary`, `get_period` (`from`, `to`, `project`: conc
 Escrita (chave `write`): `create_task` (com `minutes` = tempo gasto, já apontado; `created_at`, `completed_at`, `external_ref`, `blocked_reason`, `follow_up_on`, `resolution`), `update_task` (com `completed_at`, `blocked_reason`, `follow_up_on`, `resolution`), `complete_task` (com `completed_at` e `resolution`),
 `add_note`, `add_checklist_item`, `set_checklist_item`, `log_time`, `start_timer`, `stop_timer` (`at` = hora em que parou, HH:MM ou data e hora),
 `create_from_template`, `set_recurring` (`recurring_id`, `note` = evidência), `create_recurring` (`label`, `freq`, `weekdays` em nomes seg/ter..., `month_day`, `interval_days`, `remind_at`, `require_note`; nome repetido devolve a existente), `undo` (só ações da própria chave).
-Projetos e objetivos: `create_project` / `create_objective` (nome ou título repetido, sem diferenciar maiúsculas e acentos, ou `external_ref` repetido devolvem o existente; `position` 1 = primeiro), `update_project` (`archived` em vez de excluir), `update_objective` (com `position`), `reorder_objectives` (a lista completa; a ordem anterior vai pro histórico, com desfazer). O status do objetivo é automático (pelas tarefas). A IA não exclui o que o usuário fez, nem projetos e objetivos.
+Projetos e objetivos: `create_project` / `create_objective` (nome ou título repetido, sem diferenciar maiúsculas e acentos, ou `external_ref` repetido devolvem o existente; `position` 1 = primeiro), `update_project` (`archived` em vez de excluir), `update_objective` (com `position`), `reorder_objectives` (a lista completa; a ordem anterior vai pro histórico, com desfazer). O status do objetivo é automático (pelas tarefas). Pelo MCP a IA não exclui nada (tarefas, rotinas, projetos, objetivos). A mesma chave `write`, porém, vale para a API REST, que exclui (com desfazer no Histórico): uma IA com terminal (Claude Code, Gemini CLI) consegue chamá-la. Para quem só quer consultas, use uma chave `read`.
 Só com o papel de atribuidor: `list_assignable`, `list_assigned` e `assign_task` (`to` = U<id>, e-mail ou nome).
 
 Prompts (`prompts/list`, `prompts/get`): `resumo_semanal` (argumento `para`: gestor, time, cliente) e `daily`.
@@ -343,8 +343,13 @@ Cursor (`mcp.json`) e outros clientes que aceitam URL e cabeçalho:
 { "mcpServers": { "nexus": { "url": "https://SEU-HOST/mcp", "headers": { "Authorization": "Bearer nxs_SUA_CHAVE" } } } }
 ```
 
-Claude Desktop (só fala com programas locais; o `mcp-remote` faz a ponte e precisa do Node.js). Em
-Configurações > Desenvolvedor > Editar configuração (`claude_desktop_config.json`), depois reabra o app:
+Claude Desktop (só fala com programas locais; o `mcp-remote` faz a ponte e precisa do Node.js):
+
+1. Instale o Node.js, versão LTS, em [nodejs.org](https://nodejs.org) (instalador comum).
+2. No Claude Desktop: Configurações > Desenvolvedor > Editar configuração. Abre a pasta do
+   `claude_desktop_config.json`; abra o arquivo num editor de texto (Bloco de Notas, TextEdit).
+3. Arquivo vazio ou só com `{}`: apague tudo e cole o bloco abaixo. Já tem conteúdo: veja a seguir.
+4. Salve, feche o app por completo e abra de novo. O `nexus` aparece no ícone de ferramentas.
 
 ```json
 { "mcpServers": { "nexus": {
@@ -353,14 +358,35 @@ Configurações > Desenvolvedor > Editar configuração (`claude_desktop_config.
     "env": { "NEXUS_AUTH": "Bearer nxs_SUA_CHAVE" } } } }
 ```
 
-Gemini CLI (`~/.gemini/settings.json`):
+Se o arquivo já tiver conteúdo, não cole por cima nem no fim (o JSON fica inválido e o app abre sem
+o Nexus). Já existe `"mcpServers"`: cole só o trecho `"nexus": { … }` dentro dele, separado do
+servidor anterior por vírgula. Não existe: acrescente `"mcpServers": { … }` como mais uma chave do
+objeto principal, também com vírgula. Exemplo:
+
+```json
+{
+  "preferences": { "...": "o que já estava aqui" },
+  "mcpServers": {
+    "outro-servidor": { "...": "o que já estava aqui" },
+    "nexus": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://SEU-HOST/mcp", "--header", "Authorization:${NEXUS_AUTH}"],
+      "env": { "NEXUS_AUTH": "Bearer nxs_SUA_CHAVE" }
+    }
+  }
+}
+```
+
+Gemini CLI, o Gemini de terminal (`~/.gemini/settings.json`; no Windows,
+`C:\Users\<você>\.gemini\settings.json`):
 
 ```json
 { "mcpServers": { "nexus": { "httpUrl": "https://SEU-HOST/mcp", "headers": { "Authorization": "Bearer nxs_SUA_CHAVE" } } } }
 ```
 
-ChatGPT e claude.ai (navegador) ainda não: os conectores deles exigem OAuth, que o Nexus não tem.
-Nesses casos, use um dos clientes acima ou a API REST.
+O app e o site do Gemini (gemini.google.com), o ChatGPT e o claude.ai (navegador) ainda não ligam:
+os conectores deles exigem OAuth, que o Nexus não tem. Do Gemini, só o Gemini CLI funciona; nos
+outros, use um dos clientes acima ou a API REST.
 
 ## Integração passo a passo
 

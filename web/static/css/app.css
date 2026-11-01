@@ -268,6 +268,8 @@ button.column-toggle { display: none; }
 .seg button.chip-btn[aria-selected="true"], .seg button.chip-btn[aria-checked="true"] { background: var(--primary-container); color: var(--on-surface); }
 .settings-grid { display: grid; gap: var(--gap); }
 .panel p.help { color: var(--on-surface-variant); font-size: .88rem; margin-bottom: 14px; max-width: 62ch; }
+.panel ol.help { color: var(--on-surface-variant); font-size: .88rem; margin: 0 0 14px; padding-left: 1.4em; max-width: 62ch; display: grid; gap: 4px; }
+.panel ol.help a { color: var(--primary); }
 .weekday-picker { border: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
 .weekday-picker legend { font-size: .8rem; color: var(--on-surface-variant); margin-bottom: 8px; padding: 0; }
 .weekday-option { display: inline-flex; align-items: center; gap: 8px; margin: 0; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--on-surface); font-size: .9rem; cursor: pointer; }
