@@ -17,7 +17,7 @@ const phone = () => matchMedia("(max-width: 860px)").matches;
 function rowMenu(btn, title, items) {
   if (phone()) { sheet(title, items); return; }
   const r = btn.getBoundingClientRect();
-  popupMenu(r.left, r.bottom + 4, items);
+  popupMenu(r.left, r.bottom + 4, items, r.top);
 }
 
 // Busca por nome ou e-mail nas listas de contas (só aparece com lista longa).

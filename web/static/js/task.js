@@ -265,21 +265,23 @@ export async function openTask(taskId, onChange, opts = {}) {
     savedTimer = setTimeout(() => { saved.textContent = ""; }, 1800);
     if (redraw) { refocus = document.activeElement && document.activeElement.getAttribute("aria-label"); await render(); }
   }
-  // Campo de texto: Enter confirma (sai do campo), Esc desfaz; salva ao sair.
+  // Campo de texto: Enter salva, Esc desfaz (os dois mantêm o foco no campo;
+  // Esc sem nada a desfazer fecha, como fora dele); salva também ao sair.
   // toPatch(valor) devolve o que mandar, ou null para voltar ao valor anterior.
   function inline(el, original, toPatch) {
     const multi = el.tagName === "TEXTAREA" && !el.classList.contains("inline-title");
-    el.addEventListener("keydown", (ev) => {
-      if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); el.value = original(); grow(el); el.blur(); }
-      else if (ev.key === "Enter" && (!multi || ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); el.blur(); }
-    });
-    el.addEventListener("blur", () => {
+    const commit = () => {
       const v = el.value.trim();
       if (v === original()) return;
       const patch = toPatch(v);
       if (!patch) { el.value = original(); grow(el); return; }
       save(patch);
+    };
+    el.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape" && el.value.trim() !== original()) { ev.preventDefault(); ev.stopPropagation(); el.value = original(); grow(el); }
+      else if (ev.key === "Enter" && (!multi || ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); commit(); }
     });
+    el.addEventListener("blur", commit);
   }
   function grow(el) {
     if (!el.classList.contains("inline-title")) return;
