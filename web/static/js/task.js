@@ -5,7 +5,7 @@
 // Abre por cima do quadro/Hoje; ao fechar, quem abriu recarrega (onChange).
 import { api } from "./api.js";
 import { h, icon, clear, addDays, shortDate, dateTime, field, localDateTime } from "./dom.js";
-import { errorToast, modal, toast, undoLatest, busy, sheet, syncRail, growFrom } from "./ui.js";
+import { errorToast, modal, toast, undoLatest, busy, sheet, syncRail, growFrom, refocusBy } from "./ui.js";
 import { finishTask, deleteTask, followUpDay, isOverdue, ticketUrl, taskChips } from "./board.js";
 import { extraProjectsField, fillObjectiveSelect, fillProjectSelect } from "./projects.js";
 import { session } from "./session.js";
@@ -334,7 +334,7 @@ export async function openTask(taskId, onChange) {
       const cb = h("input", { type: "checkbox", "aria-label": c.label });
       cb.checked = c.done;
       cb.addEventListener("change", async () => {
-        try { await api.patch(`/checklist/${c.id}`, { done: cb.checked }); touch(); }
+        try { await api.patch(`/checklist/${c.id}`, { done: cb.checked }); await touch(); refocusBy(body, c.label); }
         catch (e) { cb.checked = !cb.checked; errorToast(e); }
       });
       sec.append(h("label", { class: "check-row" + (c.done ? " done" : "") }, cb, h("span", { class: "label", text: c.label }),

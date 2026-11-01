@@ -2,7 +2,7 @@
 // tela. É o único lugar das rotinas (marcar até 7 dias atrás, editar, achado).
 import { api } from "./api.js";
 import { h, icon, clear, weekdayDate, localDay, addDays } from "./dom.js";
-import { errorToast, modal, toast, busy, sheet } from "./ui.js";
+import { errorToast, modal, toast, busy, sheet, refocusBy } from "./ui.js";
 import { reminderState, refreshReminders } from "./lembretes.js";
 import { photoGrid } from "./fotos.js";
 import { openRecurring, openWorklog, finishTask, taskChips, isOverdue, scheduleLabel, dayLabel, moreButton, desk, lateBadge, withMenu } from "./board.js";
@@ -92,7 +92,8 @@ export async function mount(root, ctx, opts = {}) {
       try {
         await api.post(`/recurring/${r.id}/toggle`, { done: cb.checked, day: b.day }); // o dia da tela, não o do relógio
         refreshReminders();
-        refresh();
+        await refresh();
+        refocusBy(root, r.label); // a lista foi redesenhada: o foco volta para a mesma rotina
       } catch (e) {
         cb.checked = !cb.checked;
         errorToast(e, "Erro ao salvar.");

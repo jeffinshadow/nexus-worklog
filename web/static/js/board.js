@@ -2,7 +2,7 @@
 // concluídas. Também exporta o diálogo de nova tarefa, usado pela tela Hoje.
 import { api } from "./api.js";
 import { h, icon, clear, addDays, shortDate, localDay, localDateTime, daysBetween } from "./dom.js";
-import { confirmDialog, errorToast, toast, undoLatest, busy, modal, sheet, navBadge, popupMenu } from "./ui.js";
+import { confirmDialog, errorToast, toast, undoLatest, busy, modal, sheet, navBadge, popupMenu, focusAfterRemoval } from "./ui.js";
 import { extraProjectsField, fillObjectiveSelect, fillProjectSelect, listProjects, projectChips } from "./projects.js";
 import { openTask, openTaskId, editingTaskId, duration, parseDuration } from "./task.js";
 import { boardLine } from "./assistant.js";
@@ -167,10 +167,11 @@ export function followUpDay(day) {
 }
 
 export async function deleteTask(t, onDone) {
+  const refocus = focusAfterRemoval(); // o foco vai para a tarefa que ficar no lugar
   if (!(await confirmDialog({ title: "Excluir tarefa?", text: `“${t.title}” sai do quadro. Dá para desfazer pelo histórico.`, confirm: "Excluir", danger: true }))) return false;
   try {
     await api.del(`/worklog/${t.id}`);
-    onDone && onDone();
+    Promise.resolve(onDone && onDone()).then(refocus);
     toast("Tarefa excluída.", { action: "Desfazer", onAction: () => undoLatest("worklog", t.id, onDone) });
     return true;
   } catch (e) {
@@ -489,9 +490,10 @@ function askResolution(t, onDone) {
 
 export async function finishTask(t, onDone, { fromEdit = false } = {}) {
   if (!fromEdit && editingTaskId() === t.id) { toast("Termine a edição da tarefa (Pronto) antes de concluir."); return; }
+  const refocus = focusAfterRemoval(); // o foco vai para a tarefa que ficar no lugar
   try {
     const r = await api.post(`/worklog/${t.id}/finish`);
-    onDone && onDone();
+    Promise.resolve(onDone && onDone()).then(refocus);
     if (r && r.queued) { toast(`Concluída sem conexão: ${t.title}. Vai quando a conexão voltar.`); return; }
     // A base de conhecimento só cresce se for perguntada na hora de concluir.
     toast(`Concluída: ${t.title}`, { actions: [

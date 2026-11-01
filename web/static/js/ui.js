@@ -3,9 +3,16 @@
 import { api } from "./api.js";
 import { h, icon } from "./dom.js";
 
-// Diálogo modal criado na hora; some do DOM ao fechar.
+// Diálogo modal criado na hora; some do DOM ao fechar. O primeiro título (h2)
+// vira o nome do diálogo para o leitor de tela.
+let dlgSeq = 0;
 export function modal(...children) {
   const dlg = h("dialog", {}, ...children);
+  const title = dlg.querySelector("h2");
+  if (title) {
+    if (!title.id) title.id = "dlg-t" + ++dlgSeq;
+    dlg.setAttribute("aria-labelledby", title.id);
+  }
   document.body.appendChild(dlg);
   dlg.addEventListener("close", () => dlg.remove());
   dlg.showModal();
@@ -21,6 +28,7 @@ export function sheet(title, items) {
     h("div", { class: "menu-list" }, ...items.filter(Boolean).map(([label, ic, fn]) =>
       h("button", { type: "button", class: "nav-btn", onClick: () => { dlg.close(); fn(); } }, icon(ic), h("span", { text: label })))));
   dlg.classList.add("sheet");
+  if (title) dlg.setAttribute("aria-label", title);
   dlg.addEventListener("click", (ev) => { if (ev.target === dlg) dlg.close(); });
   return dlg;
 }
@@ -34,7 +42,7 @@ export function popupMenu(x, y, items) {
   if (menuClose) menuClose();
   const back = document.activeElement;
   const menu = h("div", { class: "pop-menu", role: "menu" }, ...items.filter(Boolean).map(([label, ic, fn]) =>
-    h("button", { type: "button", role: "menuitem", onClick: () => { close(); fn(); } }, icon(ic), h("span", { text: label }))));
+    h("button", { type: "button", role: "menuitem", onClick: () => { close(); if (back && back.isConnected && back.focus) back.focus(); fn(); } }, icon(ic), h("span", { text: label }))));
   document.documentElement.append(menu);
   const r = menu.getBoundingClientRect();
   menu.style.left = Math.max(8, Math.min(x, innerWidth - r.width - 8)) + "px";
@@ -203,6 +211,9 @@ export function confirmDialog({ title, text, confirm = "Confirmar", danger = fal
 }
 
 // Aviso curto no rodapé. opts: { error, action: "Desfazer", onAction }
+// Com ação, fica 12 s e pausa enquanto o mouse ou o foco estão nele (só some
+// depois que o foco sai). Não puxa o foco: "Desfazer" também vai pelo Ctrl+Z.
+let undoAction = null;
 export function toast(message, opts = {}) {
   const box = document.getElementById("toasts");
   if (!box) return;
@@ -211,14 +222,73 @@ export function toast(message, opts = {}) {
   const long = String(message).length > 48; // não cabe numa linha de pílula
   const el = h("div", { class: "toast" + (opts.error ? " error" : "") + (long ? " long" : "") + (actions.length ? " has-actions" : ""), role: "status",
     title: long ? message : null }, h("span", { text: message }));
+  let undo = null;
+  const remove = () => {
+    // O foco estava num botão do aviso: volta para o conteúdo, não para o <body>.
+    if (el.contains(document.activeElement)) document.getElementById("main")?.focus({ preventScroll: true });
+    el.remove();
+    if (undoAction === undo) undoAction = null;
+  };
   for (const [label, fn] of actions) {
+    const run = async () => { remove(); await fn?.(); };
+    const isUndo = /^Desfazer/.test(label);
+    if (isUndo) undo = run;
     el.append(h("button", {
       type: "button", class: "btn btn-ghost btn-sm", text: label,
-      onClick: async () => { el.remove(); await fn?.(); },
+      "aria-keyshortcuts": isUndo ? "Control+Z" : null, onClick: run,
     }));
   }
+  if (undo) { undoAction = undo; el.append(h("span", { class: "sr-only", text: "Ctrl+Z desfaz." })); }
   box.append(el);
-  setTimeout(() => el.remove(), actions.length ? 9000 : 3500);
+  const ms = actions.length ? 12000 : 3500;
+  let timer = setTimeout(remove, ms), hover = false;
+  const hold = () => { clearTimeout(timer); timer = null; };
+  const resume = () => { if (!timer && !hover && !el.contains(document.activeElement)) timer = setTimeout(remove, 4000); };
+  el.addEventListener("pointerenter", () => { hover = true; hold(); });
+  el.addEventListener("pointerleave", () => { hover = false; resume(); });
+  el.addEventListener("focusin", hold);
+  el.addEventListener("focusout", (ev) => { if (!el.contains(ev.relatedTarget)) setTimeout(resume); });
+}
+// Ctrl+Z (fora de campos de texto) aperta o "Desfazer" do aviso que está na tela.
+document.addEventListener("keydown", (ev) => {
+  if (!undoAction || ev.key.toLowerCase() !== "z" || !(ev.ctrlKey || ev.metaKey) || ev.shiftKey || ev.altKey) return;
+  const a = document.activeElement;
+  if (a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable)) return; // o Ctrl+Z do próprio campo
+  if (document.querySelector("dialog[open]:not(.side)")) return;
+  ev.preventDefault();
+  undoAction();
+});
+
+// Atalhos de uma tecla (n, h, t, s...): ligados por padrão; dá para desligar
+// em Configurações (vale para este aparelho).
+const KEYS_KEY = "nexus.atalhos";
+export const singleKeysOn = () => { try { return localStorage.getItem(KEYS_KEY) !== "off"; } catch { return true; } };
+export function setSingleKeys(on) {
+  try { localStorage.setItem(KEYS_KEY, on ? "on" : "off"); } catch { /* sem armazenamento: vale só agora */ }
+}
+
+// Foco que não se perde quando a lista é redesenhada: depois de render(),
+// volta ao controle de mesmo nome (aria-label) dentro de scope.
+export function refocusBy(scope, label) {
+  if (!scope || !label) return;
+  const el = scope.querySelector(`[aria-label="${CSS.escape(label)}"]`);
+  if (el) el.focus();
+}
+
+// Tarefa que sai da lista (concluir, excluir) com o foco nela: guarda a posição
+// e, depois do redesenho, foca a que ficou no lugar (ou a anterior, ou o título).
+export function focusAfterRemoval() {
+  const a = document.activeElement;
+  const item = a && a.closest ? a.closest("#main [data-task-id]") : null;
+  if (!item) return () => {};
+  const i = [...document.querySelectorAll("#main [data-task-id]")].indexOf(item);
+  return () => {
+    if (document.activeElement && document.activeElement !== document.body && document.activeElement.isConnected) return; // já foi para outro lugar (ex.: um diálogo)
+    const items = [...document.querySelectorAll("#main [data-task-id]")].filter((el) => el.offsetParent);
+    const next = items[Math.min(i, items.length - 1)];
+    const target = next ? next.querySelector(".card-open, button") || next : document.getElementById("page-title");
+    if (target) target.focus();
+  };
 }
 
 // Formulário: o botão de envio fica desabilitado até o handler terminar
