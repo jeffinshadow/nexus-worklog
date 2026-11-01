@@ -387,8 +387,6 @@ def _project_arg(uid: int, args: dict) -> int:
 
 def t_create_objective(ctx, args):
     uid = ctx["user_id"]
-    if "status" in args:
-        raise ToolError(AUTO_STATUS)
     pid = _project_arg(uid, args)
     data = _call(ObjectiveIn, **_fields(args, ("title", "description", "due_date", "position", "external_ref")))
     if found := objective_routes.by_ref(uid, data.external_ref):
@@ -408,8 +406,6 @@ def _move(ctx, ob: dict, position: int) -> None:
 
 def t_update_objective(ctx, args):
     uid = ctx["user_id"]
-    if "status" in args:
-        raise ToolError(AUTO_STATUS)
     pid = _resolve_project(uid, args.get("project"))
     oid = _resolve_objective(uid, args.get("objective"), pid)
     if oid is None:
@@ -880,9 +876,47 @@ def _tool_list(ctx) -> list:
         out.append({
             "name": name,
             "description": desc,
-            "inputSchema": schema,
+            "inputSchema": {**schema, "additionalProperties": False},
             "annotations": {"readOnlyHint": not writes, "destructiveHint": False},
         })
+    return out
+
+
+# Dica para quando a IA manda o título (ou outra coisa) no lugar do número.
+ID_HINT = {"task_id": "o número da tarefa (#n em get_today, list_tasks ou search), não o título",
+           "recurring_id": "o número da rotina (R<n> em get_today ou list_recurring)",
+           "item_id": "o número do item do checklist (em get_task)",
+           "history_id": "o número da ação (#n em get_history)"}
+
+
+def _check_args(name: str, schema: dict, args) -> dict:
+    """Confere os argumentos contra o inputSchema antes de chamar a ferramenta:
+    campo desconhecido é recusado (senão a IA acha que registrou o que foi
+    ignorado), obrigatório faltando e número que não é número viram erro claro.
+    Aceita "#12"/"R12" nos campos inteiros (a IA copia o id como aparece)."""
+    if not isinstance(args, dict):
+        raise ToolError("arguments deve ser um objeto JSON")
+    props = schema.get("properties", {})
+    extra = sorted(set(args) - set(props))
+    if "status" in extra and name.endswith("_objective"):
+        raise ToolError(AUTO_STATUS)
+    if extra:
+        validos = ", ".join(props) or "nenhum (esta ferramenta não recebe argumentos)"
+        raise ToolError(f"argumento desconhecido: {', '.join(extra)} (nada foi feito). Válidos: {validos}")
+    falta = [k for k in schema.get("required", []) if args.get(k) is None]
+    if falta:
+        raise ToolError(f"falta o campo {', '.join(falta)}")
+    out = dict(args)
+    for k, v in args.items():
+        if v is None or props[k].get("type") != "integer":
+            continue
+        if isinstance(v, float) and v.is_integer():
+            v = int(v)
+        if isinstance(v, str) and v.strip().lstrip("#RrMmVvUu").isdigit():
+            v = int(v.strip().lstrip("#RrMmVvUu"))
+        if isinstance(v, bool) or not isinstance(v, int):
+            raise ToolError(f"{k} deve ser um número inteiro" + (f": {ID_HINT[k]}" if k in ID_HINT else ""))
+        out[k] = v
     return out
 
 
@@ -921,14 +955,16 @@ def _handle(ctx, msg):
         spec = TOOLS.get(name) if _allowed(ctx, name) else None
         if not spec:
             return _rpc_error(rid, -32602, f"ferramenta desconhecida: {name}")
-        fn, writes = spec[0], spec[1]
+        fn, writes, schema = spec[0], spec[1], spec[3]
         try:
             if writes and ctx.get("scope") != "write":
                 raise ToolError("esta chave de API é só de leitura")
-            text, is_error = fn(ctx, args), False
+            text, is_error = fn(ctx, _check_args(name, schema, args)), False
         except ToolError as e:
             text, is_error = str(e), True
-        except (KeyError, ValueError, TypeError) as e:
+        except KeyError as e:
+            text, is_error = f"falta o campo {e.args[0]}", True
+        except (ValueError, TypeError) as e:
             text, is_error = f"parâmetros inválidos: {e}", True
         result = {"content": [{"type": "text", "text": text}], "isError": is_error}
     else:
