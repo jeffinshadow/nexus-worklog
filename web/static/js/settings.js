@@ -788,16 +788,37 @@ function account(me) {
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Conta" })),
     h("p", { class: "help mono", text: [me.email, ...(me.roles || []).filter((r) => r !== "user").map((r) => ROLE_SHORT[r])].join(" · ") }),
-    (me.roles || []).includes("user") ? seenBy() : null,
+    ...((me.roles || []).includes("user") ? seenBy(me) : []),
     form);
 }
 
-// Transparência: quem tem papel que alcança o seu registro (visualizador e admin).
-function seenBy() {
+// Aceite do visualizador + transparência: quem tem papel que alcança o seu
+// registro (visualizador e admin). Desligado, só você vê.
+function seenBy(me) {
+  const cb = h("input", { type: "checkbox" });
+  cb.checked = !!me.viewers_allowed;
+  const help = h("p", { class: "help" });
   const line = h("p", { class: "dialog-note" });
-  api.get("/me/visibility").then((list) => {
+  let list = [];
+  const paint = () => {
+    const viewers = list.filter((p) => p.roles.includes("viewer")).map((p) => p.name);
+    help.textContent = `${viewers.length ? `Visualizadores (${viewers.join(", ")})` : "Visualizadores (hoje, ninguém tem esse papel)"} veem, sem editar, seu quadro, seus números, seus relatórios em PDF, suas horas e suas fotos. Só se você permitir.`;
     const names = list.map((p) => `${p.name} (${p.roles.map((r) => ROLE_SHORT[r]).join(", ")})`);
-    line.textContent = `Quem pode ver seu registro: ${names.length ? names.join(", ") : "só você"}.`;
-  }).catch(() => line.remove());
-  return line;
+    line.textContent = cb.checked
+      ? `Quem pode ver seu registro: ${names.length ? names.join(", ") : "só você"}.`
+      : "Quem pode ver seu registro: só você.";
+  };
+  paint();
+  api.get("/me/visibility").then((res) => { list = res; paint(); }).catch(() => line.remove());
+  cb.addEventListener("change", async () => {
+    cb.disabled = true;
+    try {
+      const res = await api.put("/me/viewers", { accept: cb.checked });
+      meChanged(me, res);
+      paint();
+      toast(cb.checked ? "Pronto: visualizadores veem seu registro." : "Visualizadores não veem mais seu registro.");
+    } catch (e) { cb.checked = !cb.checked; errorToast(e); }
+    finally { cb.disabled = false; }
+  });
+  return [help, h("label", { class: "weekday-option" }, cb, h("span", { text: "Permitir que visualizadores vejam meu registro" })), line];
 }

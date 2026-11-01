@@ -1,5 +1,6 @@
-// Equipe (Visualizador de tarefas): o registro de cada pessoa, somente leitura
-// (quadro, retrospectiva, relatório em PDF) e as horas da equipe em CSV.
+// Equipe (Visualizador de tarefas): o registro de cada pessoa que aceitou
+// (Configurações > Conta), somente leitura: quadro, retrospectiva, relatório
+// em PDF e as horas dessas pessoas em CSV.
 import { api } from "./api.js";
 import { h, icon, clear, field } from "./dom.js";
 import { errorToast } from "./ui.js";
@@ -18,7 +19,7 @@ export async function mount(root) {
   const users = await api.get("/viewer/users");
   clear(root); // só depois da resposta: na volta à tela, a visita anterior fica até chegar
   if (!users.length) {
-    root.append(h("p", { class: "empty", text: "Nenhuma pessoa com registro ainda." }));
+    root.append(h("p", { class: "empty", text: "Ninguém liberou o registro para visualizadores ainda. Cada pessoa decide em Configurações > Conta, em “Permitir que visualizadores vejam meu registro”." }));
     return;
   }
   const select = h("select", {},
@@ -42,7 +43,7 @@ export async function mount(root) {
   root.append(
     h("div", { class: "admin-bar" },
       field("Pessoa", select),
-      h("button", { type: "button", class: "btn btn-ghost", title: "Horas de todos, com pessoa e projeto (some por cliente na planilha)", onClick: async (ev) => {
+      h("button", { type: "button", class: "btn btn-ghost", title: "Horas de quem liberou o registro, com pessoa e projeto (some por cliente na planilha)", onClick: async (ev) => {
         const b = ev.currentTarget;
         b.disabled = true;
         try { await api.download("/viewer/export/apontamentos.csv"); } catch (e) { errorToast(e, "Não foi possível exportar."); } finally { b.disabled = false; }
