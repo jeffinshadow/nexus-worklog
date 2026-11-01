@@ -79,7 +79,7 @@ configure(raw);
 // { queued: true, qid }; leituras servidas do cache avisam a barra e recebem
 // por cima o que está na fila.
 async function request(method, path, body, opts = {}) {
-  if (method === "POST" && /^\/worklog(\/\d+\/(notes|time))?$/.test(path) && body && !body.external_ref)
+  if (method === "POST" && /^\/(worklog(\/\d+\/(notes|time|photos))?|recurring\/\d+\/photos(\?.*)?)$/.test(path) && body && !body.external_ref)
     body = { ...body, external_ref: "app-" + crypto.randomUUID() };  // reenviar (fila, timeout) nunca duplica
   let res;
   try {

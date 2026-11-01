@@ -91,3 +91,15 @@ def test_equipe_lista_so_quem_entrou_e_tem_acesso_em_ordem_de_nome(admin, novo_u
     emails, nomes = [u["email"] for u in lista], [u["name"] for u in lista]
     assert "bloq@example.com" not in emails and "convite@example.com" not in emails
     assert nomes.index("Ana Lima") < nomes.index("Zé Campos")
+
+
+def test_foto_reenviada_com_a_mesma_chave_nao_duplica(usuario):
+    from test_fotos import _foto
+    t = usuario.post("/worklog", {"title": "Rack B"}).json()["id"]
+    corpo = {**_foto(), "external_ref": "app-foto-1"}
+    r1 = usuario.post(f"/worklog/{t}/photos", corpo)
+    r2 = usuario.post(f"/worklog/{t}/photos", corpo)  # a fila reenviou depois do timeout
+    assert (r1.status_code, r2.status_code) == (201, 200)
+    assert r2.json()["id"] == r1.json()["id"] and r2.json()["existing"] is True
+    assert len(usuario.get(f"/worklog/{t}").json()["photos"]) == 1
+    assert usuario.post(f"/worklog/{t}/photos", _foto()).status_code == 201  # sem chave: foto nova

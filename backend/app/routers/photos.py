@@ -17,6 +17,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import StreamingResponse
+from psycopg.errors import UniqueViolation
 from pydantic import BaseModel, Field
 
 from .. import audit, db
@@ -39,6 +40,8 @@ class PhotoIn(BaseModel):
     width: Optional[int] = Field(default=None, ge=1, le=10000)
     height: Optional[int] = Field(default=None, ge=1, le=10000)
     at: Optional[datetime] = None  # hora do aparelho (tirada sem sinal, enviada depois); até 24 h atrás
+    # Idempotência (como nas anotações): reenviar com a mesma chave devolve a foto que já existe (200).
+    external_ref: Optional[str] = Field(default=None, min_length=1, max_length=120)
 
 
 def _decode(text: str, limit: int, what: str) -> tuple[bytes, str]:
@@ -62,8 +65,19 @@ def _quota(uid: int, extra: int) -> None:
         raise HTTPException(status_code=413, detail="o espaço de fotos da sua conta está cheio; exclua fotos antigas ou fale com o admin")
 
 
-def _store(user: dict, data: PhotoIn, task_id: int | None = None, recurring_id: int | None = None, day: date | None = None) -> dict:
+def _by_ref(uid: int, ref):
+    return ref and db.query_one("SELECT id, width, height, created_at FROM photos WHERE user_id = %s AND external_ref = %s",
+                                (uid, ref))
+
+
+def _store(user: dict, data: PhotoIn, task_id: int | None = None, recurring_id: int | None = None, day: date | None = None,
+           response: Response | None = None) -> dict:
     uid = user["user_id"]
+    ref = (data.external_ref or "").strip() or None
+    if found := _by_ref(uid, ref):
+        if response is not None:
+            response.status_code = 200
+        return {**found, "existing": True}
     image, mime = _decode(data.image, MAX_BYTES, "foto")
     thumb, _ = _decode(data.thumb, MAX_THUMB, "miniatura")
     where, params = ("task_id = %s", (task_id,)) if task_id else ("recurring_id = %s AND day = %s", (recurring_id, day))
@@ -72,30 +86,35 @@ def _store(user: dict, data: PhotoIn, task_id: int | None = None, recurring_id: 
     if n >= MAX_PER_ITEM:
         raise HTTPException(status_code=409, detail=f"até {MAX_PER_ITEM} fotos em cada tarefa ou rotina do dia")
     _quota(uid, len(image) + len(thumb))
-    row = db.query_one(
-        """INSERT INTO photos (user_id, task_id, recurring_id, day, mime, image, thumb, width, height, bytes, created_at)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, COALESCE(%s, now()))
-           RETURNING id, width, height, created_at""",
-        (uid, task_id, recurring_id, day, mime, image, thumb, data.width, data.height, len(image) + len(thumb),
-         device_time(data.at, "a foto")))
+    try:
+        row = db.query_one(
+            """INSERT INTO photos (user_id, task_id, recurring_id, day, mime, image, thumb, width, height, bytes, created_at, external_ref)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, COALESCE(%s, now()), %s)
+               RETURNING id, width, height, created_at""",
+            (uid, task_id, recurring_id, day, mime, image, thumb, data.width, data.height, len(image) + len(thumb),
+             device_time(data.at, "a foto"), ref))
+    except UniqueViolation:  # duas chamadas iguais ao mesmo tempo: a segunda devolve a primeira
+        if response is not None:
+            response.status_code = 200
+        return {**_by_ref(uid, ref), "existing": True}
     audit.record(user, "photo.create", "photo", row["id"],
                  after={"task_id": task_id, "recurring_id": recurring_id, "day": day, "bytes": len(image)})
     return row
 
 
 @router.post("/worklog/{task_id}/photos", status_code=201)
-def add_to_task(task_id: int, data: PhotoIn, user=Depends(web_active_csrf)):
+def add_to_task(task_id: int, data: PhotoIn, response: Response, user=Depends(web_active_csrf)):
     if not db.query_one("SELECT 1 FROM worklog_tasks WHERE id = %s AND user_id = %s", (task_id, user["user_id"])):
         raise HTTPException(status_code=404, detail="tarefa não encontrada")
-    return _store(user, data, task_id=task_id)
+    return _store(user, data, task_id=task_id, response=response)
 
 
 @router.post("/recurring/{recurring_id}/photos", status_code=201)
-def add_to_routine(recurring_id: int, data: PhotoIn, day: Optional[date] = None, user=Depends(web_active_csrf)):
+def add_to_routine(recurring_id: int, data: PhotoIn, response: Response, day: Optional[date] = None, user=Depends(web_active_csrf)):
     from ..services import app_today
     if not db.query_one("SELECT 1 FROM recurring_tasks WHERE id = %s AND user_id = %s", (recurring_id, user["user_id"])):
         raise HTTPException(status_code=404, detail="rotina não encontrada")
-    return _store(user, data, recurring_id=recurring_id, day=check_board_day(day) or app_today())
+    return _store(user, data, recurring_id=recurring_id, day=check_board_day(day) or app_today(), response=response)
 
 
 def for_task(uid: int, task_id: int) -> list[dict]:

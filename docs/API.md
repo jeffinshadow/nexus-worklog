@@ -186,7 +186,7 @@ pausada leva a pausa para a nova.
 
 | Rota | | Corpo |
 | --- | --- | --- |
-| `POST /api/worklog/{id}/photos` | S W | `{image, thumb, width?, height?, at?}` em base64 (`at` = hora do aparelho, mesma regra das anotações) — PNG, JPEG ou WebP pelo conteúdo; foto até 1 MB (o app já reduz a 1600 px e regrava, sem EXIF/GPS), miniatura até 96 KB; até 10 por tarefa; cota por pessoa em Admin > Geral |
+| `POST /api/worklog/{id}/photos` | S W | `{image, thumb, width?, height?, at?, external_ref?}` em base64 (`at` = hora do aparelho, mesma regra das anotações; `external_ref` repetido devolve a foto que já existe, 200 com `existing`) — PNG, JPEG ou WebP pelo conteúdo; foto até 1 MB (o app já reduz a 1600 px e regrava, sem EXIF/GPS), miniatura até 96 KB; até 10 por tarefa; cota por pessoa em Admin > Geral |
 | `POST /api/recurring/{id}/photos?day=` · `GET` | S W | o mesmo, como evidência da rotina no dia (até 7 dias atrás) |
 | `GET /api/photos/{id}?thumb=` | S | a imagem (dona, ou visualizador se a dona aceitou); cache privado e imutável |
 | `DELETE /api/photos/{id}` | S W | some na hora; volta pelo histórico em até 7 dias, depois sai de vez |
