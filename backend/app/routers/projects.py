@@ -19,7 +19,7 @@ PALETA = ["#5294E2", "#81C995", "#FDD663", "#C58AF9", "#F28B82", "#78D9EC", "#F6
 @router.get("")
 def list_projects(include_archived: bool = False, external_ref: Optional[str] = None, user=Depends(active_user)):
     """Com external_ref: só o projeto com essa chave, arquivado ou não (lista vazia se não houver)."""
-    params = [user["user_id"]]
+    params = [user["user_id"], user["user_id"], user["user_id"]]
     if external_ref is not None:
         found = by_ref(user["user_id"], external_ref.strip())
         params.append(found["id"] if found else 0)
@@ -32,8 +32,13 @@ def list_projects(include_archived: bool = False, external_ref: Optional[str] = 
                count(w.id) FILTER (WHERE w.status = 'done')::int AS done_tasks,
                (SELECT count(*) FROM project_objectives o WHERE o.project_id = p.id)::int AS objectives
           FROM projects p
-          LEFT JOIN worklog_tasks w ON w.project_id = p.id
-            OR w.id IN (SELECT x.task_id FROM worklog_task_projects x WHERE x.project_id = p.id)
+          -- Só as tarefas da pessoa (principal e extras), unidas antes: o OR no
+          -- JOIN fazia o banco varrer as tarefas de todas as contas.
+          LEFT JOIN (SELECT id, project_id AS pid, status FROM worklog_tasks
+                      WHERE user_id = %s AND project_id IS NOT NULL
+                     UNION
+                     SELECT t.id, x.project_id, t.status FROM worklog_task_projects x
+                       JOIN worklog_tasks t ON t.id = x.task_id WHERE t.user_id = %s) w ON w.pid = p.id
          WHERE p.user_id = %s {'' if include_archived else 'AND NOT p.archived'}
                {'AND p.id = %s' if external_ref is not None else ''}
          GROUP BY p.id

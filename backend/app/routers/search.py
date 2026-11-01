@@ -106,9 +106,10 @@ def search(q: str = Query(..., min_length=2, max_length=100), user=Depends(activ
         if r["description"] and fq in fold(r["description"]):
             t["hits"].append({"kind": "descrição", "text": _snippet(r["description"], fq)})
     for kind, extra, join, cond, field in [
-        ("anotação", ", n.body AS hit", "JOIN task_notes n ON n.task_id = w.id", "nx_fold(n.body) LIKE %(like)s", "hit"),
-        ("checklist", ", c.label AS hit", "JOIN task_checklist c ON c.task_id = w.id", "nx_fold(c.label) LIKE %(like)s", "hit"),
-        ("apontamento", ", e.note AS hit", "JOIN time_entries e ON e.task_id = w.id", "nx_fold(e.note) LIKE %(like)s", "hit"),
+        # user_id também no JOIN: o banco filtra pelo índice da pessoa, não varre todas as contas.
+        ("anotação", ", n.body AS hit", "JOIN task_notes n ON n.task_id = w.id AND n.user_id = %(uid)s", "nx_fold(n.body) LIKE %(like)s", "hit"),
+        ("checklist", ", c.label AS hit", "JOIN task_checklist c ON c.task_id = w.id AND c.user_id = %(uid)s", "nx_fold(c.label) LIKE %(like)s", "hit"),
+        ("apontamento", ", e.note AS hit", "JOIN time_entries e ON e.task_id = w.id AND e.user_id = %(uid)s", "nx_fold(e.note) LIKE %(like)s", "hit"),
         ("como resolveu", ", w.resolution AS hit", "", "nx_fold(w.resolution) LIKE %(like)s", "hit"),
     ]:
         for r in db.query_all(base.format(extra=extra, join=join, cond=cond), params):

@@ -207,6 +207,9 @@ class _Report(FPDF):
         return t.rstrip() + "…"
 
     def lines(self, text: str, w: float, h: float) -> int:
+        # Cabe numa linha (o caso comum): sem a simulação do multi_cell, que pesa no PDF de um ano.
+        if "\n" not in text and self.get_string_width(_s(text)) <= w - 1:
+            return 1
         return len(self.multi_cell(w, h, _s(text), dry_run=True, output="LINES")) or 1
 
     def para(self, x, y, w, lh, text) -> float:
@@ -596,12 +599,26 @@ def _proof(r: dict) -> str:
     return " · ".join(parts)
 
 
+# Período longo (um ano): a tabela de concluídas vai até este tanto e o diário
+# sai; o resto está na exportação CSV. Mantém o PDF em minutos na VM pequena.
+LONG_DAYS, MAX_ROWS = 62, 500
+
+
 def _deliveries(pdf: _Report, data: dict) -> None:
     rows = data["deliveries"]
     if not rows:
         return
+    total = len(rows)
+    cut = total - MAX_ROWS if data.get("long") and total > MAX_ROWS else 0
+    if cut:
+        rows = rows[-MAX_ROWS:]  # as mais recentes
     prio = [("prioridade alta", lambda x, y: pdf.dot(x + 0.4, y + 0.4, 1.4, WARN))] if any(r["priority"] == 1 for r in rows) else None
-    _section(pdf, f"Tarefas concluídas ({len(rows)})", legend=prio)
+    _section(pdf, f"Tarefas concluídas ({total})", legend=prio)
+    if cut:
+        pdf.font("sans", 7.4, DIM)
+        pdf.set_x(M)
+        pdf.multi_cell(pdf.cw, 3.8, _s(f"As {MAX_ROWS} mais recentes; as outras {cut} estão na exportação CSV."), new_x="LEFT", new_y="NEXT")
+        pdf.ln(2)
     show_proj = not data.get("project")
     wp = 38 if show_proj else 0
     cols = [("dia", 14, "L"), ("tarefa", pdf.cw - 14 - wp - 16 - 14, "L")]
@@ -859,7 +876,15 @@ def build_report_pdf(user_email: str, start: date, end: date, data: dict, brandi
     if not data.get("project") and not _matrix(pdf, data):
         _recurring_list(pdf, data)
     _projects(pdf, data)
+    data = {**data, "long": (end - start).days > LONG_DAYS}
     _deliveries(pdf, data)
     _open(pdf, data)
-    _diary(pdf, data)
+    if not data["long"]:
+        _diary(pdf, data)
+    else:  # dia a dia de um período longo: PDF de até 2 meses ou a exportação
+        pdf.room(16)
+        pdf.font("sans", 7.6, DIM)
+        pdf.set_x(M)
+        pdf.multi_cell(pdf.cw, 4, _s("O diário dia a dia sai em relatórios de até 2 meses. Para o período inteiro, "
+                                      "use a exportação CSV em Meu mês > PDF."), new_x="LEFT", new_y="NEXT")
     return bytes(pdf.output())
