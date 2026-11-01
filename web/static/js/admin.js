@@ -121,7 +121,7 @@ async function mountUsers(root) {
     const email = emailById.get(uid) || "";
     const ok = await confirmDialog({
       title: "Redefinir senha?",
-      text: `Gera uma senha temporária para ${email}. As sessões, as chaves de API e o link do calendário dele são revogados; no próximo login ele define uma senha nova.`,
+      text: `Gera uma senha temporária para ${email}. As sessões, as chaves de API e o link de calendário da conta são revogados; no próximo login, a pessoa define uma senha nova.`,
       confirm: "Redefinir", danger: true,
     });
     if (!ok) return;
@@ -200,7 +200,7 @@ async function mountUsers(root) {
       h("h2", { text: "Senha temporária" }),
       h("p", {}, "Usuário: ", h("strong", { text: email })),
       codeBox(pw),
-      h("p", { class: "dialog-note", text: "Repasse agora — não será exibida novamente. O usuário deverá trocá-la no próximo login." }),
+      h("p", { class: "dialog-note", text: "Repasse agora — não será exibida novamente. A pessoa deverá trocá-la no próximo login." }),
       h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Pronto", onClick: () => dlg.close() })));
   }
 }
