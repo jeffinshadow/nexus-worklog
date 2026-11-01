@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from .. import db
 from ..deps import active_user
 from ..labels import fold
-from ..services import ASSIGNER_NAME, EXTRA_PROJECTS
+from ..services import ASSIGNER_NAME, EXTRA_PROJECTS, PROJECT_ICON
 
 router = APIRouter(prefix="/api", tags=["search"])
 
@@ -85,12 +85,12 @@ def search(q: str = Query(..., min_length=2, max_length=100), user=Depends(activ
         if not t:
             t = tasks[row["id"]] = {k: row[k] for k in (
                 "id", "title", "status", "priority", "due_date", "completed_at", "created_at",
-                "project_name", "project_color", "extra_projects", "ticket", "after_hours", "assigned_by_name")} | {"hits": []}
+                "project_name", "project_color", "project_icon", "extra_projects", "ticket", "after_hours", "assigned_by_name")} | {"hits": []}
         return t
 
     base = """SELECT w.id, w.title, w.description, w.status, w.priority, w.due_date, w.completed_at,
                      w.created_at, w.ticket, w.after_hours, p.name AS project_name, p.color AS project_color,
-                     """ + ASSIGNER_NAME + ", " + EXTRA_PROJECTS + """{extra}
+                     """ + PROJECT_ICON + ", " + ASSIGNER_NAME + ", " + EXTRA_PROJECTS + """{extra}
                 FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id {join}
                WHERE w.user_id = %(uid)s AND {cond}
                ORDER BY w.created_at DESC LIMIT 200"""
@@ -122,7 +122,7 @@ def search(q: str = Query(..., min_length=2, max_length=100), user=Depends(activ
             WHERE user_id = %(uid)s AND nx_fold(label) LIKE %(like)s
             ORDER BY active DESC, position, id LIMIT 20""", params)
     projects = db.query_all(
-        """SELECT id, name, color, archived FROM projects
+        """SELECT id, name, color, COALESCE(icon, 'pasta') AS icon, archived FROM projects
             WHERE user_id = %(uid)s AND nx_fold(name) LIKE %(like)s ORDER BY archived, lower(name) LIMIT 20""", params)
 
     # Abertas primeiro (mais urgentes), depois concluídas mais recentes.

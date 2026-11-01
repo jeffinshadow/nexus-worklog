@@ -2,7 +2,7 @@
 // gestão em Configurações. A cor vem da API e entra via CSSOM (CSP ok).
 import { api } from "./api.js";
 import { h, icon, clear, field } from "./dom.js";
-import { errorToast, toast } from "./ui.js";
+import { busy, errorToast, modal, toast } from "./ui.js";
 
 export const PALETA = ["#5294E2", "#81C995", "#FDD663", "#C58AF9", "#F28B82", "#78D9EC", "#F6AE6B", "#A1A1A8"];
 
@@ -13,6 +13,31 @@ export function corProjeto(hex) {
   if (!hex) return "var(--dim)";
   const i = PALETA.findIndex((c) => c.toLowerCase() === String(hex).toLowerCase());
   return i < 0 ? hex : `var(--proj-${i + 1})`;
+}
+
+// Ícones de projeto: biblioteca fixa (sprite #icon-proj-<nome> em index.html;
+// a mesma lista do backend, schemas.PROJECT_ICONS). Sem escolha = pasta.
+export const ICONES = [
+  ["pasta", "Pasta"], ["predio", "Prédio"], ["loja", "Loja"], ["clinica", "Clínica"], ["fabrica", "Fábrica"],
+  ["escola", "Escola"], ["casa", "Casa"], ["escritorio", "Escritório"], ["servidor", "Servidor"], ["rede", "Rede"],
+  ["wifi", "Wi-Fi"], ["seguranca", "Segurança"], ["manutencao", "Manutenção"], ["eletrica", "Elétrica"],
+  ["hidraulica", "Hidráulica"], ["veiculo", "Veículo"], ["pessoa", "Pessoa"], ["maleta", "Maleta"],
+  ["computador", "Computador"], ["celular", "Celular"], ["camera", "Câmera"], ["carrinho", "Carrinho"],
+  ["calendario", "Calendário"], ["estrela", "Estrela"],
+];
+const NOMES_ICONE = new Set(ICONES.map(([n]) => n));
+
+export function iconeProjeto(nome) {
+  const el = icon("proj-" + (NOMES_ICONE.has(nome) ? nome : "pasta"));
+  el.classList.add("proj-ico");
+  return el;
+}
+
+// O ícone num quadradinho sólido na cor do projeto (cartão, cabeçalho, prévia).
+export function projTile(p, extra = "") {
+  const el = h("span", { class: "proj-tile" + (extra ? " " + extra : ""), "aria-hidden": "true" }, iconeProjeto(p.icon));
+  el.style.background = corProjeto(p.color);
+  return el;
 }
 
 let cache = null;
@@ -26,17 +51,18 @@ export function invalidateProjects() {
   cache = null;
 }
 
-// Etiqueta "● Nome" de uma tarefa (nada se ela não tem projeto).
+// Etiqueta "[ícone] Nome" de uma tarefa (nada se ela não tem projeto): o ícone
+// do projeto na cor dele, no lugar da bolinha.
 export function projectChip(t) {
   if (!t.project_name) return null;
-  const dot = h("span", { class: "dot" });
-  dot.style.background = corProjeto(t.project_color);
-  return h("span", { class: "chip project" }, dot, t.project_name);
+  const ic = iconeProjeto(t.project_icon);
+  ic.style.color = corProjeto(t.project_color);
+  return h("span", { class: "chip project" }, ic, t.project_name);
 }
 
 // Etiquetas de todos os projetos da tarefa: o principal e os extras.
 export function projectChips(t) {
-  const extras = (t.extra_projects || []).map((p) => projectChip({ project_name: p.name, project_color: p.color }));
+  const extras = (t.extra_projects || []).map((p) => projectChip({ project_name: p.name, project_color: p.color, project_icon: p.icon }));
   return [projectChip(t), ...extras].filter(Boolean);
 }
 
@@ -58,7 +84,7 @@ export function extraProjectsField(initial, getPrincipal, onChange) {
     }
     for (const id of ids) {
       const p = list.find((x) => x.id === id) || { id, name: "(projeto arquivado)", color: null };
-      const chip = projectChip({ project_name: p.name, project_color: p.color });
+      const chip = projectChip({ project_name: p.name, project_color: p.color, project_icon: p.icon });
       chip.append(h("button", { type: "button", class: "chip-x", title: "Tirar " + p.name, "aria-label": "Tirar o projeto " + p.name,
         onClick: () => { ids = ids.filter((x) => x !== id); paint(); onChange(ids); } }, icon("close")));
       el.append(chip);
@@ -167,5 +193,88 @@ export function askName() {
     document.body.append(dlg);
     dlg.showModal();
     input.focus();
+  });
+}
+
+// Grupo de opções (cor, ícone) com setas do teclado: só a marcada entra no Tab.
+function radioGroup(label, cls, items, current, onPick) {
+  const box = h("div", { class: cls, role: "radiogroup", "aria-label": label });
+  const mark = (b) => {
+    for (const x of box.children) {
+      x.setAttribute("aria-checked", String(x === b));
+      x.tabIndex = x === b ? 0 : -1;
+    }
+  };
+  for (const [value, name, paint] of items) {
+    const b = h("button", { type: "button", role: "radio", title: name, "aria-label": name, "data-value": value });
+    paint(b);
+    b.addEventListener("click", () => { mark(b); onPick(value); });
+    box.append(b);
+  }
+  box.addEventListener("keydown", (ev) => {
+    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[ev.key];
+    if (!step) return;
+    ev.preventDefault();
+    const all = [...box.children];
+    const next = all[(all.indexOf(document.activeElement) + step + all.length) % all.length];
+    next.focus();
+    next.click();
+  });
+  mark([...box.children].find((b) => b.dataset.value === current) || box.firstChild);
+  return box;
+}
+
+// Criar ou editar o projeto: prévia do cartão, nome, descrição, cor e o ícone
+// (grade de toque logo abaixo da cor). Resolve com o projeto salvo (ou null).
+// `preset` (só ao criar): {name, color, icon} já sugeridos.
+export function projectDialog(p = null, preset = {}) {
+  return new Promise((resolve) => {
+    let saved = null;
+    const cur = p || preset;
+    let color = cur.color || PALETA[0];
+    let iconName = cur.icon || "pasta";
+    const name = h("input", { type: "text", maxlength: "60", required: "required", value: cur.name || "", placeholder: "Ex.: Loja Vila Velha" });
+    const desc = h("textarea", { rows: "2", maxlength: "500", placeholder: "Do que se trata (opcional)" });
+    desc.value = cur.description || "";
+    const prevTile = projTile({ color, icon: iconName }, "proj-tile-md");
+    const prevName = h("strong", { class: "proj-preview-name" });
+    const paintPreview = () => {
+      prevTile.style.background = corProjeto(color);
+      prevTile.replaceChildren(iconeProjeto(iconName));
+      prevName.textContent = name.value.trim() || "Nome do projeto";
+    };
+    name.addEventListener("input", paintPreview);
+    const swatches = radioGroup("Cor", "swatches swatches-lg", PALETA.map((c, i) => [c, `Cor ${i + 1}`, (b) => {
+      b.className = "swatch-btn";
+      const dot = h("span", { class: "swatch-dot" });
+      dot.style.background = corProjeto(c);
+      b.append(dot);
+    }]), PALETA.find((c) => c.toLowerCase() === String(color).toLowerCase()) || "", (c) => { color = c; paintPreview(); });
+    const grade = radioGroup("Ícone", "icon-grid", ICONES.map(([n, nome]) => [n, nome, (b) => {
+      b.className = "icon-pick";
+      b.append(iconeProjeto(n));
+    }]), iconName, (n) => { iconName = n; paintPreview(); });
+    paintPreview();
+    const err = h("p", { class: "error-text" });
+    const form = h("form", { class: "proj-form" }, h("h2", { text: p ? "Editar projeto" : "Novo projeto" }),
+      h("div", { class: "proj-preview", "aria-hidden": "true" }, prevTile, prevName),
+      field("Nome do projeto ou cliente", name), field("Descrição", desc),
+      h("div", { class: "field" }, h("span", { class: "field-label", text: "Cor" }), swatches),
+      h("div", { class: "field" }, h("span", { class: "field-label", text: "Ícone" }), grade), err,
+      h("div", { class: "dialog-actions" },
+        h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
+        h("button", { type: "submit", class: "btn btn-primary", text: p ? "Salvar" : "Criar projeto" })));
+    form.addEventListener("submit", busy(async () => {
+      const body = { name: name.value.trim(), description: desc.value.trim() || null, color, icon: iconName };
+      try {
+        saved = p ? await api.patch(`/projects/${p.id}`, body) : await api.post("/projects", body);
+        invalidateProjects();
+        dlg.close();
+      } catch (e) { err.textContent = e.message || "Não foi possível salvar."; }
+    }));
+    const dlg = modal(form);
+    dlg.classList.add("proj-dialog");
+    dlg.addEventListener("close", () => resolve(saved));
+    name.focus();
   });
 }

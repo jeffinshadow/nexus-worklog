@@ -26,7 +26,7 @@ from ..labels import PRIO_PT, STATUS_PT
 from ..labels import dur as _dur
 from ..schemas import (AssignIn, ChecklistIn, ChecklistUpdate, FinishIn, NoteIn, ObjectiveIn, ObjectiveUpdate, OrderIn,
                        PauseIn, ProjectIn, ProjectUpdate, RecurringIn, RecurringUpdate, TimeIn, TimerIn, TimerStopIn, ToggleIn, WorklogIn, WorklogUpdate,
-                       parse_hour)
+                       PROJECT_ICONS, parse_hour)
 from . import assign as assign_routes
 from . import history as history_routes
 from . import objectives as objective_routes
@@ -72,6 +72,8 @@ STATUS = list(STATUS_PT)
 STATUS_HELP = "todo = a fazer, in_progress = em andamento, blocked = aguardando (algo de fora: peça, cliente, aprovação), done = concluída"
 PRIO = {nome: n for n, nome in PRIO_PT.items()}  # "alta" -> 1
 DATE = {"type": "string", "format": "date", "description": "Data AAAA-MM-DD"}
+ICON = {"type": ["string", "null"], "enum": [*PROJECT_ICONS, None],
+        "description": "Ícone do projeto (lista fixa do app; null ou pasta = o padrão)"}
 EXTRA_PROJECTS = {"type": "array", "items": {"type": "string"}, "maxItems": 10,
                   "description": "Outros projetos além do principal (a tarefa atende mais de uma frente); a lista substitui a anterior"}
 FORGOTTEN_TIMER_MIN = 8 * 60  # cronômetro rodando há mais que isso: provavelmente esquecido
@@ -449,7 +451,8 @@ def t_log_time(ctx, args):
 
 
 def _project_line(p: dict) -> str:
-    return f"#{p['id']} {p['name']}" + (" [arquivado]" if p["archived"] else "")
+    icone = f" (ícone {p['icon']})" if p.get("icon") not in (None, "pasta") else ""
+    return f"#{p['id']} {p['name']}" + icone + (" [arquivado]" if p["archived"] else "")
 
 
 def t_list_projects(ctx, args):
@@ -468,7 +471,7 @@ def _fields(args: dict, names: tuple) -> dict:
 
 def t_create_project(ctx, args):
     uid = ctx["user_id"]
-    data = _call(ProjectIn, **_fields(args, ("name", "description", "external_ref")))
+    data = _call(ProjectIn, **_fields(args, ("name", "description", "icon", "external_ref")))
     if found := project_routes.by_ref(uid, data.external_ref):
         return "Já existia (external_ref repetido), nada duplicado: " + _project_line(found)
     if found := project_routes.same_name(uid, data.name):
@@ -482,9 +485,9 @@ def t_update_project(ctx, args):
     pid = _resolve_project(ctx["user_id"], args.get("project"))
     if pid is None:
         raise ToolError("informe o projeto (nome ou id; veja list_projects)")
-    data = _call(ProjectUpdate, **_fields(args, ("name", "description", "archived")))
+    data = _call(ProjectUpdate, **_fields(args, ("name", "description", "icon", "archived")))
     if not data.model_fields_set:
-        raise ToolError("nada a mudar: envie name, description ou archived")
+        raise ToolError("nada a mudar: envie name, description, icon ou archived")
     return "Atualizado: " + _project_line(_call(project_routes.update_project, pid, data, user=ctx))
 
 
@@ -1125,19 +1128,23 @@ TOOLS = {
                       {"type": "object", "properties": {}}),
     "create_project": (t_create_project, True,
                        "Cria um projeto/cliente. O nome é único por usuário, sem diferenciar maiúsculas e acentos: "
-                       "se já existir, devolve o existente em vez de duplicar.",
+                       "se já existir, devolve o existente em vez de duplicar. O ícone vem de uma lista fixa "
+                       "(sem ícone = pasta).",
                        {"type": "object", "required": ["name"], "properties": {
                            "name": {"type": "string", "minLength": 1, "maxLength": 60},
                            "description": {"type": ["string", "null"], "maxLength": 500},
+                           "icon": ICON,
                            "external_ref": {"type": "string", "maxLength": 120,
                                             "description": "Chave sua para não duplicar: repetida, devolve o projeto que já existe"}}}),
     "update_project": (t_update_project, True,
-                       "Edita um projeto: nome, descrição (null apaga) ou arquivado. Arquivar tira o projeto dos "
-                       "seletores e mantém tarefas, tempo e histórico (a IA não exclui projetos).",
+                       "Edita um projeto: nome, descrição (null apaga), ícone (null volta à pasta) ou arquivado. "
+                       "Arquivar tira o projeto dos seletores e mantém tarefas, tempo e histórico (a IA não exclui "
+                       "projetos).",
                        {"type": "object", "required": ["project"], "properties": {
                            "project": {"type": "string", "description": "Nome ou id do projeto"},
                            "name": {"type": "string", "minLength": 1, "maxLength": 60},
                            "description": {"type": ["string", "null"], "maxLength": 500},
+                           "icon": ICON,
                            "archived": {"type": "boolean"}}}),
     "list_objectives": (t_list_objectives, False,
                         "Objetivos de um projeto, na ordem de execução, com status, progresso e as tarefas abertas de cada um.",

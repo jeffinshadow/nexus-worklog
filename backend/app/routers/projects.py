@@ -8,44 +8,31 @@ from psycopg.errors import UniqueViolation
 
 from .. import audit, db
 from ..deps import active_user, active_user_csrf
-from ..schemas import ProjectIn, ProjectUpdate
+from ..schemas import ArchiveIn, ProjectIn, ProjectUpdate, WorklogUpdate
+from ..services import project_rows
+from .worklog import finish, update
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
-COLS = "id, name, color, description, archived, external_ref"
+COLS = "id, name, color, COALESCE(icon, 'pasta') AS icon, description, archived, external_ref"
 PALETA = ["#5294E2", "#81C995", "#FDD663", "#C58AF9", "#F28B82", "#78D9EC", "#F6AE6B", "#A1A1A8"]
 
 
 @router.get("")
 def list_projects(include_archived: bool = False, external_ref: Optional[str] = None, user=Depends(active_user)):
-    """Com external_ref: só o projeto com essa chave, arquivado ou não (lista vazia se não houver)."""
-    params = [user["user_id"], user["user_id"], user["user_id"]]
+    """Com external_ref: só o projeto com essa chave, arquivado ou não (lista vazia se não houver).
+    Números: open_tasks/waiting_tasks/done_tasks/total_tasks (principal e extras), minutes_month
+    (tempo apontado no mês corrente), objectives/objectives_done e last_activity."""
+    uid = user["user_id"]
     if external_ref is not None:
-        found = by_ref(user["user_id"], external_ref.strip())
-        params.append(found["id"] if found else 0)
-        include_archived = True
-    return db.query_all(
-        f"""
-        SELECT p.id, p.name, p.color, p.description, p.archived, p.created_at, p.external_ref,
-               count(w.id) FILTER (WHERE w.status <> 'done')::int AS open_tasks,
-               count(w.id)::int AS total_tasks,
-               count(w.id) FILTER (WHERE w.status = 'done')::int AS done_tasks,
-               (SELECT count(*) FROM project_objectives o WHERE o.project_id = p.id)::int AS objectives
-          FROM projects p
-          -- Só as tarefas da pessoa (principal e extras), unidas antes: o OR no
-          -- JOIN fazia o banco varrer as tarefas de todas as contas.
-          LEFT JOIN (SELECT id, project_id AS pid, status FROM worklog_tasks
-                      WHERE user_id = %s AND project_id IS NOT NULL
-                     UNION
-                     SELECT t.id, x.project_id, t.status FROM worklog_task_projects x
-                       JOIN worklog_tasks t ON t.id = x.task_id WHERE t.user_id = %s) w ON w.pid = p.id
-         WHERE p.user_id = %s {'' if include_archived else 'AND NOT p.archived'}
-               {'AND p.id = %s' if external_ref is not None else ''}
-         GROUP BY p.id
-         ORDER BY p.archived, lower(p.name)
-        """,
-        params,
-    )
+        found = by_ref(uid, external_ref.strip())
+        return project_rows(uid, only_id=found["id"]) if found else []
+    return project_rows(uid, include_archived)
+
+
+def _icon(name):
+    """No banco, a pasta (o padrão) fica NULL."""
+    return None if name in (None, "pasta") else name
 
 
 def same_name(uid: int, name: str, other_than=None):
@@ -75,9 +62,10 @@ def create_project(data: ProjectIn, response: Response, user=Depends(active_user
         color = PALETA[n % len(PALETA)]
     try:
         row = db.query_one(
-            f"""INSERT INTO projects (user_id, name, color, description, external_ref) VALUES (%s, %s, %s, %s, %s)
-                RETURNING {COLS}""",
-            (uid, data.name.strip(), color, (data.description or "").strip() or None, data.external_ref),
+            f"""INSERT INTO projects (user_id, name, color, icon, description, external_ref)
+                VALUES (%s, %s, %s, %s, %s, %s) RETURNING {COLS}""",
+            (uid, data.name.strip(), color, _icon(data.icon), (data.description or "").strip() or None,
+             data.external_ref),
         )
     except UniqueViolation:
         if found := by_ref(uid, data.external_ref):  # duas chamadas iguais ao mesmo tempo
@@ -97,6 +85,7 @@ def update_project(project_id: int, data: ProjectUpdate, user=Depends(active_use
     new = {
         "name": data.name.strip() if data.name is not None else before["name"],
         "color": data.color or before["color"],
+        "icon": (data.icon or "pasta") if "icon" in data.model_fields_set else before["icon"],
         "description": ((data.description or "").strip() or None) if "description" in data.model_fields_set
         else before["description"],
         "archived": data.archived if data.archived is not None else before["archived"],
@@ -104,13 +93,46 @@ def update_project(project_id: int, data: ProjectUpdate, user=Depends(active_use
     if same_name(uid, new["name"], other_than=project_id):
         raise HTTPException(status_code=409, detail="já existe um projeto com esse nome")
     try:
-        db.execute("UPDATE projects SET name = %s, color = %s, description = %s, archived = %s WHERE id = %s",
-                   (new["name"], new["color"], new["description"], new["archived"], project_id))
+        db.execute("UPDATE projects SET name = %s, color = %s, icon = %s, description = %s, archived = %s WHERE id = %s",
+                   (new["name"], new["color"], _icon(new["icon"]), new["description"], new["archived"], project_id))
     except UniqueViolation:
         raise HTTPException(status_code=409, detail="já existe um projeto com esse nome") from None
     after = {"id": project_id, **new, "external_ref": before["external_ref"]}
     audit.record(user, "project.update", "project", project_id, before=before, after=after)
     return after
+
+
+@router.post("/{project_id}/archive")
+def archive_project(project_id: int, data: ArchiveIn, user=Depends(active_user_csrf)):
+    """Arquiva o projeto e decide o que acontece com as tarefas em aberto que o
+    têm como principal: keep (continuam como estão), done (concluídas agora) ou
+    move (vão para o projeto move_to, no fim da fila "Sem objetivo"). Cada tarefa
+    mexida entra no histórico como se fosse pela tela (dá para desfazer uma a uma).
+    Onde o projeto é só um dos extras, a tarefa segue no principal dela."""
+    uid = user["user_id"]
+    before = db.query_one(f"SELECT {COLS} FROM projects WHERE id = %s AND user_id = %s", (project_id, uid))
+    if not before:
+        raise HTTPException(status_code=404, detail="projeto não encontrado (pode ter sido excluído); atualize a tela")
+    if data.open_tasks == "move":
+        alvo = db.query_one("SELECT id, archived FROM projects WHERE id = %s AND user_id = %s", (data.move_to, uid))
+        if not alvo or alvo["id"] == project_id:
+            raise HTTPException(status_code=400, detail="escolha outro projeto seu para receber as tarefas")
+        if alvo["archived"]:
+            raise HTTPException(status_code=400, detail="o projeto que recebe as tarefas está arquivado")
+    ids = [r["id"] for r in db.query_all(
+        """SELECT id FROM worklog_tasks WHERE user_id = %s AND project_id = %s AND status <> 'done'
+            ORDER BY objective_id NULLS LAST, exec_position NULLS LAST, created_at""", (uid, project_id))]
+    if data.open_tasks == "done":
+        for tid in ids:
+            finish(tid, None, user=user)
+    elif data.open_tasks == "move":
+        for tid in ids:
+            update(tid, WorklogUpdate(project_id=data.move_to), user=user)
+    if not before["archived"]:
+        update_project(project_id, ProjectUpdate(archived=True), user=user)
+    return {"ok": True, "open_tasks": len(ids), "done": len(ids) if data.open_tasks == "done" else 0,
+            "moved": len(ids) if data.open_tasks == "move" else 0,
+            "kept": len(ids) if data.open_tasks == "keep" else 0}
 
 
 @router.delete("/{project_id}")

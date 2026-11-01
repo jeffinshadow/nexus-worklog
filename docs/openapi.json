@@ -2344,7 +2344,7 @@
           "projects"
         ],
         "summary": "List Projects",
-        "description": "Com external_ref: só o projeto com essa chave, arquivado ou não (lista vazia se não houver).",
+        "description": "Com external_ref: só o projeto com essa chave, arquivado ou não (lista vazia se não houver).\nNúmeros: open_tasks/waiting_tasks/done_tasks/total_tasks (principal e extras), minutes_month\n(tempo apontado no mês corrente), objectives/objectives_done e last_activity.",
         "operationId": "list_projects_api_projects_get",
         "parameters": [
           {
@@ -2500,6 +2500,57 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{project_id}/archive": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Archive Project",
+        "description": "Arquiva o projeto e decide o que acontece com as tarefas em aberto que o\ntêm como principal: keep (continuam como estão), done (concluídas agora) ou\nmove (vão para o projeto move_to, no fim da fila \"Sem objetivo\"). Cada tarefa\nmexida entra no histórico como se fosse pela tela (dá para desfazer uma a uma).\nOnde o projeto é só um dos extras, a tarefa segue no principal dela.",
+        "operationId": "archive_project_api_projects__project_id__archive_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArchiveIn"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -6011,6 +6062,34 @@
         ],
         "title": "AppSettingsIn"
       },
+      "ArchiveIn": {
+        "properties": {
+          "open_tasks": {
+            "type": "string",
+            "enum": [
+              "keep",
+              "done",
+              "move"
+            ],
+            "title": "Open Tasks",
+            "default": "keep"
+          },
+          "move_to": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move To"
+          }
+        },
+        "type": "object",
+        "title": "ArchiveIn",
+        "description": "Arquivar com as tarefas em aberto (as que têm o projeto como principal):\nkeep = continuam como estão; done = concluídas agora; move = vão para move_to."
+      },
       "AssignEditIn": {
         "properties": {
           "title": {
@@ -6919,6 +6998,43 @@
             ],
             "title": "Color"
           },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "pasta",
+                  "predio",
+                  "loja",
+                  "clinica",
+                  "fabrica",
+                  "escola",
+                  "casa",
+                  "escritorio",
+                  "servidor",
+                  "rede",
+                  "wifi",
+                  "seguranca",
+                  "manutencao",
+                  "eletrica",
+                  "hidraulica",
+                  "veiculo",
+                  "pessoa",
+                  "maleta",
+                  "computador",
+                  "celular",
+                  "camera",
+                  "carrinho",
+                  "calendario",
+                  "estrela"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
           "description": {
             "anyOf": [
               {
@@ -6977,6 +7093,43 @@
               }
             ],
             "title": "Color"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "pasta",
+                  "predio",
+                  "loja",
+                  "clinica",
+                  "fabrica",
+                  "escola",
+                  "casa",
+                  "escritorio",
+                  "servidor",
+                  "rede",
+                  "wifi",
+                  "seguranca",
+                  "manutencao",
+                  "eletrica",
+                  "hidraulica",
+                  "veiculo",
+                  "pessoa",
+                  "maleta",
+                  "computador",
+                  "celular",
+                  "camera",
+                  "carrinho",
+                  "calendario",
+                  "estrela"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
           },
           "description": {
             "anyOf": [

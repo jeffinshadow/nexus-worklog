@@ -440,9 +440,18 @@ def _ref(value):
     return (value or "").strip() or None
 
 
+# Ícones de projeto: a biblioteca fixa do app (sprite `#icon-proj-<nome>` em
+# index.html, mesma ordem da grade). Sem ícone escolhido = "pasta".
+PROJECT_ICONS = ("pasta", "predio", "loja", "clinica", "fabrica", "escola", "casa", "escritorio", "servidor", "rede",
+                 "wifi", "seguranca", "manutencao", "eletrica", "hidraulica", "veiculo", "pessoa", "maleta",
+                 "computador", "celular", "camera", "carrinho", "calendario", "estrela")
+ProjectIcon = Literal[PROJECT_ICONS]
+
+
 class ProjectIn(BaseModel):
     name: str = Field(min_length=1, max_length=60)
     color: Optional[str] = Color
+    icon: Optional[ProjectIcon] = None  # ausente ou null = pasta
     description: Optional[str] = Field(default=None, max_length=500)
     external_ref: Optional[str] = Ref
 
@@ -483,8 +492,22 @@ class TaskOrderIn(BaseModel):
 class ProjectUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=60)
     color: Optional[str] = Color
+    icon: Optional[ProjectIcon] = None  # null volta para a pasta
     description: Optional[str] = Field(default=None, max_length=500)  # null apaga
     archived: Optional[bool] = None
+
+
+class ArchiveIn(BaseModel):
+    """Arquivar com as tarefas em aberto (as que têm o projeto como principal):
+    keep = continuam como estão; done = concluídas agora; move = vão para move_to."""
+    open_tasks: Literal["keep", "done", "move"] = "keep"
+    move_to: Optional[int] = None
+
+    @model_validator(mode="after")
+    def _alvo(self):
+        if self.open_tasks == "move" and not self.move_to:
+            raise ValueError("informe move_to: o projeto que recebe as tarefas")
+        return self
 
 
 class NoteIn(BaseModel):

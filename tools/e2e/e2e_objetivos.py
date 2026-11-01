@@ -91,9 +91,13 @@ try:
     ev("document.querySelector('dialog.tour-dialog')?.close()")
     check("menu Projetos", ev("!!document.querySelector('[data-view=projetos]')"))
     check("lista mostra o projeto", wait(f"[...document.querySelectorAll('.proj-card h2')].some(e => e.textContent === {json.dumps(PROJ)})"))
+    card = f"[...document.querySelectorAll('.proj-card')].find(c => c.textContent.includes({json.dumps(PROJ)}))"
+    check("cartão com ícone (pasta) e os três números",
+          ev(f"!!{card}.querySelector('.proj-tile use[href=\"#icon-proj-pasta\"]') && {card}.querySelectorAll('.proj-num').length === 3"))
     shot("o01-lista")
-    ev(f"[...document.querySelectorAll('.proj-card')].find(c => c.textContent.includes({json.dumps(PROJ)})).click()")
+    ev(f"{card}.click()")
     check("abre o projeto (título da página = nome)", wait(f"!!document.querySelector('.proj-bar') && document.getElementById('page-title').textContent === {json.dumps(PROJ)}"))
+    check("cabeçalho com o ícone do projeto", ev("!!document.querySelector('#page-title .proj-tile')"))
 
     # Objetivos pela tela.
     for nome in ("Login", "Pagamentos", "Relatórios"):

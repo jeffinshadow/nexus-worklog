@@ -11,7 +11,7 @@
 import { api } from "./api.js";
 import { h, icon, clear, addDays, localDay } from "./dom.js";
 import { errorToast } from "./ui.js";
-import { projectChip, corProjeto } from "./projects.js";
+import { projectChip, corProjeto, iconeProjeto } from "./projects.js";
 import { duration, openTask } from "./task.js";
 import * as reports from "./reports.js";
 
@@ -469,7 +469,7 @@ const DONUT_MAX = 6; // fatias; o resto vira "outros"
 
 function projectsTile(ov, mes, span) {
   if (!ov.projects.length) return tile(span, "mm-proj", "Tempo por projeto", null, h("p", { class: "mes-ok", text: `Nada apontado em ${mes}.` }));
-  let items = ov.projects.map((p) => ({ name: p.name || "Sem projeto", color: p.color, minutes: p.minutes }));
+  let items = ov.projects.map((p) => ({ name: p.name || "Sem projeto", color: p.color, icon: p.name ? p.icon : null, minutes: p.minutes }));
   if (items.length > DONUT_MAX) {
     const rest = items.slice(DONUT_MAX - 1);
     items = [...items.slice(0, DONUT_MAX - 1), { name: `outros ${rest.length}`, color: null, minutes: rest.reduce((a, p) => a + p.minutes, 0) }];
@@ -494,8 +494,10 @@ function projectsTile(ov, mes, span) {
   l.textContent = "no mês";
   s.append(n, l);
   const legend = h("ul", { class: "mm-proj-list" }, ...items.map((p) => {
-    const dot = h("span", { class: "mm-proj-dot", "aria-hidden": "true" });
-    dot.style.background = corProjeto(p.color);
+    // Projeto: o ícone dele na cor da fatia; "Sem projeto" e "outros", a bolinha.
+    const dot = p.icon ? iconeProjeto(p.icon) : h("span", { class: "mm-proj-dot", "aria-hidden": "true" });
+    if (p.icon) { dot.classList.add("mm-proj-ico"); dot.style.color = corProjeto(p.color); }
+    else dot.style.background = corProjeto(p.color);
     return h("li", {}, dot, h("span", { class: "mm-proj-name", text: p.name }),
       h("span", { class: "mm-proj-h", text: duration(p.minutes) }),
       h("span", { class: "mm-proj-p", text: `${Math.round((100 * p.minutes) / sum)}%` }));
@@ -539,7 +541,7 @@ function deliveriesCard(ov, mes, opts, reload) {
   if (!all.length) return card("O que foi entregue", null, h("p", { class: "mes-ok", text: `Nenhuma tarefa concluída em ${mes}.` }));
   // Título; embaixo, projeto e tempo; e o "como resolveu" curto, quando houver.
   const row = (d) => {
-    const chip = projectChip({ project_name: d.project, project_color: d.project_color });
+    const chip = projectChip({ project_name: d.project, project_color: d.project_color, project_icon: d.project_icon });
     const meta = chip || d.minutes ? h("div", { class: "mes-del-meta" }, chip,
       d.minutes ? h("span", { class: "tag" }, icon("clock"), duration(d.minutes)) : null) : null;
     return h("li", { class: "mes-del" },

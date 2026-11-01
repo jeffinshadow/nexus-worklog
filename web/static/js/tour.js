@@ -6,7 +6,7 @@
 import { api } from "./api.js";
 import { h, icon, clear, field } from "./dom.js";
 import { errorToast } from "./ui.js";
-import { listProjects, corProjeto } from "./projects.js";
+import { listProjects, projectChip } from "./projects.js";
 
 const DAYS = [[1, "Seg"], [2, "Ter"], [3, "Qua"], [4, "Qui"], [5, "Sex"], [6, "Sáb"], [0, "Dom"]];
 // Exemplos de várias áreas de suporte (TI, manutenção, atendimento): ninguém se sente fora.
@@ -151,9 +151,7 @@ function setup(me) {
       const paintChips = () => {
         clear(chips);
         for (const p of list) {
-          const dot = h("span", { class: "dot" });
-          dot.style.background = corProjeto(p.color);
-          chips.append(h("span", { class: "chip project" }, dot, p.name));
+          chips.append(projectChip({ project_name: p.name, project_color: p.color, project_icon: p.icon }));
         }
         for (const s of PROJ_HINTS.filter((s) => !list.some((p) => p.name.toLowerCase() === s.toLowerCase())))
           chips.append(h("button", { type: "button", class: "chip tour-suggest", title: "Criar o projeto " + s, onClick: () => add(s) }, icon("add"), s));

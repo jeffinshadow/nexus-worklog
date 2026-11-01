@@ -27,7 +27,7 @@ function card(title, sub, s, onChange, nav = null) {
     for (const d of s.deliveries.slice(0, 5))
       body.push(h("div", { class: "sum-row" },
         h("button", { type: "button", class: "card-open", text: d.title, onClick: () => openTask(d.id, onChange) }),
-        projectChip({ project_name: d.project, project_color: d.project_color }),
+        projectChip({ project_name: d.project, project_color: d.project_color, project_icon: d.project_icon }),
         d.minutes ? h("span", { class: "tag" }, icon("clock"), duration(d.minutes)) : null));
     if (s.deliveries.length > 5) body.push(h("p", { class: "muted small", text: `+ ${s.deliveries.length - 5} outras` }));
   }
