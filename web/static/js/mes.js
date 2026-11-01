@@ -133,9 +133,11 @@ function screen(a, opts, reload) {
   const mes = nameOf(a.period.month);
   const extras = extrasOf(ov);
   const nodes = [hero(ov, mes, opts, extras)];
-  // Mês sem nenhum registro (rotina, extra, tarefa ou tempo): só a frase, sem gráficos vazios.
-  if (isEmpty(ov.month, extras)) return nodes;
-  nodes.push(panel(ov, a.period.month, mes, !!opts.dashUrl), deliveriesCard(ov, mes, opts, reload));
+  // Mês sem nenhum registro (rotina, extra, tarefa ou tempo): a frase "Nada
+  // registrado" e o MESMO painel, zerado (a geometria do dashboard não muda).
+  const empty = isEmpty(ov.month, extras);
+  nodes.push(panel(ov, a.period.month, mes, !!opts.dashUrl, empty));
+  if (!empty) nodes.push(deliveriesCard(ov, mes, opts, reload));
   return nodes;
 }
 
@@ -187,15 +189,16 @@ function tile(span, cls, title, sub, ...body) {
     ...body);
 }
 
-function panel(ov, month, mes, team) {
+function panel(ov, month, mes, team, empty) {
   // O calendário é das rotinas com rotina no mês (no mês corrente, também se os
-  // meses anteriores tinham); sem rotina, é pintado pelas tarefas concluídas.
+  // meses anteriores tinham); sem rotina, é pintado pelas tarefas concluídas;
+  // mês vazio: o calendário com todas as células neutras.
   const hasRoutines = ov.routines > 0 || ov.days.some((d) => d.due || d.extra || d.paused)
     || (ov.month.now && ov.trend.slice(0, -1).some((t) => t.recurring_total));
   const tiles = [...kpis(ov, month, team)];
-  tiles.push(hasRoutines ? calendarTile(ov, month) : tasksCalendarTile(ov, month));
-  tiles.push(rhythmTile(ov, month), projectsTile(ov, mes, 8));
-  if (hasRoutines) tiles.push(attentionTile(ov, mes, team));
+  tiles.push(empty ? emptyCalendarTile(ov, month) : hasRoutines ? calendarTile(ov, month) : tasksCalendarTile(ov, month));
+  tiles.push(rhythmTile(ov, month, empty), projectsTile(ov, mes, 8));
+  if (hasRoutines || empty) tiles.push(attentionTile(ov, mes, team));
   return h("section", { class: "mm-panel", "aria-label": `Painel de ${mes}` }, ...tiles);
 }
 
@@ -457,6 +460,24 @@ function tasksCalendarTile(ov, month) {
   return tile(8, "mm-cal-tile", "Tarefas no mês, dia a dia", null, sub, table, legend);
 }
 
+// Mês sem nenhum registro: o mesmo calendário, com todas as células neutras
+// (só o número do dia) e a mesma legenda, para o painel não mudar de forma.
+function emptyCalendarTile(ov, month) {
+  const mes = nameOf(month);
+  const cellOf = (d, iso, today) => {
+    const when = `${Number(iso.slice(8))} de ${mes}`;
+    if (!d) return { cls: "fut", label: `${when}: ainda não chegou` };
+    return { cls: "blank", label: `${when}: ${iso === today ? "hoje, nada registrado ainda" : "nada registrado"}` };
+  };
+  const sub = h("p", { class: "mm-sub", id: `mm-cal-${month}`, text: `Nenhuma rotina, tarefa ou tempo registrado em ${mes}.` });
+  const table = calTable(ov, month, `O mês de ${mes} dia a dia`, sub.id, cellOf);
+  const legend = h("div", { class: "mm-legend", "aria-hidden": "true" },
+    h("span", { class: "mm-leg-scale" }, h("span", { text: "menos" }), sw("l0", "nenhuma feita"), sw("l1", "até um terço"),
+      sw("l2", "até dois terços"), sw("l3", "quase todas"), sw("l4", "todas"), h("span", { text: "mais" })),
+    h("span", { class: "mm-leg-item" }, sw("blank", "nada registrado"), h("span", { text: "nada registrado" })));
+  return tile(8, "mm-cal-tile", "O mês, dia a dia", null, sub, table, legend);
+}
+
 // ------------------------------------------------------ 3) ritmo do mês --
 
 // As semanas do mês inteiro (domingo a sábado, cortadas no mês): as que ainda
@@ -472,7 +493,7 @@ function monthWeeks(month) {
   return out;
 }
 
-function weekBars(weeks, key, fmt, title, mes) {
+function weekBars(weeks, key, fmt, title, mes, empty) {
   const W = 300, base = 92, topY = 18, slot = W / weeks.length;
   const vals = weeks.map((w) => (w.data ? w.data[key] : null));
   const top = Math.max(1, ...vals.filter((v) => v != null));
@@ -489,7 +510,7 @@ function weekBars(weeks, key, fmt, title, mes) {
       r.append(ti);
       s.append(r);
     }
-    if (v != null) {
+    if (v != null && !empty) {
       const t = svgEl("text", { x: cx, y: (v ? base - ((base - topY) * v) / top : base) - 5, class: "mm-val" });
       t.textContent = fmt(v);
       s.append(t);
@@ -498,17 +519,20 @@ function weekBars(weeks, key, fmt, title, mes) {
     l.textContent = w.label;
     s.append(l);
   });
+  if (empty) s.setAttribute("aria-label", `${title} por semana em ${mes}: nada registrado.`);
   return h("div", { class: "mm-week-chart" }, h("p", { class: "mm-chart-t", text: title }), s);
 }
 
-function rhythmTile(ov, month) {
+function rhythmTile(ov, month, empty) {
   const mes = nameOf(month);
   const got = Object.fromEntries(ov.weeks.map((w) => [w.start, w]));
   const weeks = monthWeeks(month).map((w) => ({ ...w, data: got[w.start] || null,
     label: `${Number(w.start.slice(8))}–${Number(w.end.slice(8))}` }));
+  // Mês vazio: as mesmas duas linhas de semanas, sem barras, e a frase no quadro.
   return tile(4, "mm-rhythm", "Ritmo do mês", "por semana, de domingo a sábado",
-    weekBars(weeks, "pontual_done", (v) => String(v), "Tarefas concluídas", mes),
-    weekBars(weeks, "minutes", (v) => (v ? duration(v) : "0"), "Horas apontadas", mes));
+    empty ? h("p", { class: "mes-ok mm-empty", text: `Sem tarefas concluídas nem horas em ${mes}.` }) : null,
+    weekBars(weeks, "pontual_done", (v) => String(v), "Tarefas concluídas", mes, empty),
+    weekBars(weeks, "minutes", (v) => (v ? duration(v) : "0"), "Horas apontadas", mes, empty));
 }
 
 // -------------------------------------------------- 4) tempo por projeto --
@@ -516,7 +540,17 @@ function rhythmTile(ov, month) {
 const DONUT_MAX = 6; // fatias; o resto vira "outros"
 
 function projectsTile(ov, mes, span) {
-  if (!ov.projects.length) return tile(span, "mm-proj", "Tempo por projeto", null, h("p", { class: "mes-ok", text: `Nada apontado em ${mes}.` }));
+  if (!ov.projects.length) { // a rosca vazia no lugar (mesma altura) e a frase no lugar da legenda
+    const s = svgEl("svg", { viewBox: "0 0 120 120", class: "mm-donut", "aria-hidden": "true" });
+    const n = svgEl("text", { x: 60, y: 57, class: "mm-donut-n" });
+    n.textContent = "0h";
+    const l = svgEl("text", { x: 60, y: 75, class: "mm-donut-l" });
+    l.textContent = "no mês";
+    s.append(svgEl("circle", { cx: 60, cy: 60, r: 46, class: "mm-donut-track" }), n, l);
+    return tile(span, "mm-proj", "Tempo por projeto", null,
+      h("div", { class: "mm-proj-body" }, h("div", { class: "mm-donut-box" }, s),
+        h("p", { class: "mes-ok mm-empty", text: `Nada apontado em ${mes}.` })));
+  }
   let items = ov.projects.map((p) => ({ name: p.name || "Sem projeto", color: p.color, icon: p.name ? p.icon : null, minutes: p.minutes }));
   if (items.length > DONUT_MAX) {
     const rest = items.slice(DONUT_MAX - 1);
