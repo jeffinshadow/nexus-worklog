@@ -1272,6 +1272,7 @@ dialog.help-dialog > .dialog-actions { position: sticky; bottom: -24px; margin: 
   input:not([type=checkbox]):not([type=radio]):not([type=range]), select, .select-sm, .input-sm { min-height: 44px; }
   .inline-edit.inline-desc { min-height: 44px; }
   label.weekday-option, label.check-line { min-height: 44px; }
+  .requests-decided > summary, .roles-help > summary { min-height: 44px; display: flex; align-items: center; }
   .lockup--bar { min-height: 44px; }
   .chip-x, a.chip.ticket, .link-btn { position: relative; }
   .timer-chip .timer-task { align-self: stretch; min-height: 44px; }  /* o nome da tarefa no cronômetro: a altura toda da barra */
