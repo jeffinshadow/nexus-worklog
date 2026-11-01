@@ -13,6 +13,7 @@ import { quickRegister, lastDone } from "./quick.js";
 import { todayCard } from "./assistant.js";
 import { timerButton } from "./timer.js";
 import { todayRenewals } from "./renewals.js";
+import { packButton } from "./pacotes.js";
 
 const LAST_PROJECT = "nexus.quick.project";
 const OPEN_FILTER = "nexus.today.filter";
@@ -75,7 +76,8 @@ export async function mount(root, ctx, opts = {}) {
     recPanel.append(h("div", { class: "progress", role: "img", "aria-label": `${recDone} de ${due.length} feitas` }, bar));
   }
   if (!b.recurring.length)
-    recPanel.append(h("p", { class: "empty", text: "Nenhuma rotina ainda. Crie o que você confere sempre (rondas, equipamentos, fila de pedidos, e-mail…)." }));
+    recPanel.append(h("p", { class: "empty", text: "Nenhuma rotina ainda. Crie o que você confere sempre (rondas, equipamentos, fila de pedidos, e-mail…) ou comece com um pacote da sua área." }),
+      packButton(refresh));
   else if (!due.length)
     recPanel.append(h("p", { class: "empty", text: "Nada previsto para este dia. Marcar mesmo assim conta como extra." }));
   for (const r of [...due, ...off]) {

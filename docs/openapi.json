@@ -5851,6 +5851,77 @@
         }
       }
     },
+    "/api/routine-packs": {
+      "get": {
+        "tags": [
+          "recurring"
+        ],
+        "summary": "List Packs",
+        "description": "Os pacotes, cada item com a agenda e o horário; `exists` marca as rotinas\nque a pessoa já tem (mesmo nome), que aplicar pula.",
+        "operationId": "list_packs_api_routine_packs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/routine-packs/{pack_id}/apply": {
+      "post": {
+        "tags": [
+          "recurring"
+        ],
+        "summary": "Apply",
+        "description": "Cria o projeto da área (ou reaproveita o de mesmo nome) e as rotinas\nescolhidas; rotina ativa de mesmo nome é pulada (vem em `skipped`).",
+        "operationId": "apply_api_routine_packs__pack_id__apply_post",
+        "parameters": [
+          {
+            "name": "pack_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pack Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PackApplyIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/notes/{note_id}": {
       "delete": {
         "tags": [
@@ -6807,6 +6878,33 @@
           "ids"
         ],
         "title": "OrderIn"
+      },
+      "PackApplyIn": {
+        "properties": {
+          "items": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items"
+          },
+          "project": {
+            "type": "boolean",
+            "title": "Project",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "PackApplyIn",
+        "description": "items: as chaves escolhidas (ausente ou null = todas); project: criar\n(ou reaproveitar) o projeto da área."
       },
       "PauseIn": {
         "properties": {

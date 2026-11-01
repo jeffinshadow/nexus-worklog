@@ -103,6 +103,13 @@ try:
     shot("t05-padrao")
     click(btn("Salvar e seguir")); check("passo rotinas", wait("document.querySelector('#tour-title')?.textContent.includes('confere')"))
     time.sleep(.3); shot("t06-rotinas")
+    # Pacote da área: tocar numa área mostra os itens (agenda e horário); tocar de novo desmarca (nada é criado aqui).
+    check("pacotes no passo de rotinas", wait("document.querySelectorAll('dialog.tour-dialog .pack-area').length >= 5"))
+    click("document.querySelector('dialog.tour-dialog .pack-area')")
+    check("pacote mostra os itens", wait("document.querySelectorAll('dialog.tour-dialog .pack-item').length >= 3"))
+    time.sleep(.3); shot("t06b-rotinas-pacote")
+    click("document.querySelector('dialog.tour-dialog .pack-area[aria-pressed=true]')")
+    check("pacote desmarcado", wait("!document.querySelector('dialog.tour-dialog .pack-item')"))
     click(btn("Criar e seguir")); check("passo pronto", wait("document.querySelector('#tour-title')?.textContent.includes('dia a dia')"))
     shot("t07-pronto")
     me = api("GET", "/auth/me")["j"]
