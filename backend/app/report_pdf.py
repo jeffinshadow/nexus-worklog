@@ -86,6 +86,8 @@ def _schedule(r: dict) -> str:
         return "último dia do mês" if (r.get("month_day") or 0) >= 31 else f"todo dia {r['month_day']}"
     if f == "interval":
         return f"a cada {r['interval_days']} dias"
+    if f == "after":
+        return f"{r['interval_days']} dias após a última vez"
     return "dias úteis"
 
 

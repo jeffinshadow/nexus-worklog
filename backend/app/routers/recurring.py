@@ -1,9 +1,11 @@
+from datetime import timedelta
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from .. import audit, db, push
 from ..deps import active_user, active_user_csrf
-from ..schemas import RecurringIn, RecurringUpdate, SnoozeIn, ToggleIn
-from ..services import app_today, app_tz, is_due, recurring_vigente, rotinas, work_mask
+from ..schemas import PauseIn, RecurringIn, RecurringUpdate, SnoozeIn, ToggleIn
+from ..services import app_today, app_tz, is_pending, recurring_vigente, rotinas, work_mask
 from .board import check_board_day
 
 router = APIRouter(prefix="/api/recurring", tags=["recurring"])
@@ -12,7 +14,7 @@ router = APIRouter(prefix="/api/recurring", tags=["recurring"])
 @router.get("/reminders")
 def reminders(user=Depends(active_user)):
     """Rotinas com horário devidas hoje (para o lembrete da interface tocar
-    perto do horário até a rotina ser marcada)."""
+    perto do horário até a rotina ser marcada). Pausada não lembra."""
     uid, today = user["user_id"], app_today()
     mask = work_mask(uid)
     feitas = {r["task_id"] for r in db.query_all(
@@ -21,7 +23,7 @@ def reminders(user=Depends(active_user)):
         {"id": r["id"], "label": r["label"], "remind_at": r["remind_at"].strftime("%H:%M"),
          "require_note": r["require_note"], "done": r["id"] in feitas}
         for r in rotinas(uid)
-        if r["remind_at"] and r["start_d"] <= today <= r["end_d"] and is_due(r, today, mask)]}
+        if r["remind_at"] and r["start_d"] <= today <= r["end_d"] and is_pending(r, today, mask)]}
 
 
 @router.post("", status_code=201)
@@ -63,6 +65,11 @@ def replace_routine(user: dict, before: dict, new: dict, freeze: dict | None = N
                (row["id"], old_id, uid, app_today()))
     db.execute("UPDATE photos SET recurring_id = %s WHERE recurring_id = %s AND user_id = %s AND day = %s",
                (row["id"], old_id, uid, app_today()))  # as fotos de hoje vão junto com a marcação
+    # A pausa em curso continua na nova (de hoje até o mesmo fim).
+    db.execute("""INSERT INTO recurring_pauses (recurring_id, start_d, end_d)
+                  SELECT %s, %s, end_d FROM recurring_pauses
+                   WHERE recurring_id = %s AND start_d <= %s AND end_d >= %s""",
+               (row["id"], app_today(), old_id, app_today(), app_today()))
     audit.record(user, "recurring.replace", "recurring", row["id"], before=before,
                  after={"replaced": old_id, **audit.recurring_snapshot(row["id"], uid)})
     return row["id"]
@@ -181,3 +188,62 @@ def snooze(task_id: int, data: SnoozeIn, user=Depends(active_user_csrf)):
     if not db.query_one("SELECT 1 FROM recurring_tasks WHERE id = %s AND user_id = %s AND active", (task_id, user["user_id"])):
         raise HTTPException(status_code=404, detail="não encontrado")
     return {"until": push.snooze(user["user_id"], task_id, data.minutes)}
+
+
+# ------------------------------------------------------------------ pausa --
+# Férias, folga, prédio fechado: nos dias pausados a rotina não é devida (não
+# é falta, não lembra, não entra em aviso); marcar conta como extra. A pausa
+# vale de HOJE até `until` (inclusive) e volta sozinha no dia seguinte; nunca
+# começa no passado, então os números já fechados não mudam.
+PAUSE_MAX_DAYS = 366
+
+
+def current_pause(task_id: int, today):
+    """O período que cobre hoje (no máximo um), ou None."""
+    return db.query_one(
+        """SELECT id, start_d, end_d FROM recurring_pauses
+            WHERE recurring_id = %s AND start_d <= %s AND end_d >= %s ORDER BY id DESC LIMIT 1""",
+        (task_id, today, today))
+
+
+def _active_routine(task_id: int, uid: int) -> dict:
+    row = db.query_one("SELECT id, label FROM recurring_tasks WHERE id = %s AND user_id = %s AND active", (task_id, uid))
+    if not row:
+        raise HTTPException(status_code=404, detail="não encontrado")
+    return row
+
+
+@router.post("/{task_id}/pause")
+def pause(task_id: int, data: PauseIn, user=Depends(active_user_csrf)):
+    """Pausa a rotina de hoje até `until` (inclusive). Já pausada: muda o fim."""
+    uid, today = user["user_id"], app_today()
+    r = _active_routine(task_id, uid)
+    if data.until < today:
+        raise HTTPException(status_code=400, detail="a pausa começa hoje: escolha hoje ou um dia depois")
+    if (data.until - today).days > PAUSE_MAX_DAYS:
+        raise HTTPException(status_code=400, detail="pausa de no máximo um ano")
+    cur = current_pause(task_id, today)
+    if cur:
+        db.execute("UPDATE recurring_pauses SET end_d = %s WHERE id = %s", (data.until, cur["id"]))
+        new = {**cur, "end_d": data.until}
+    else:
+        new = db.query_one("""INSERT INTO recurring_pauses (recurring_id, start_d, end_d) VALUES (%s, %s, %s)
+                              RETURNING id, start_d, end_d""", (task_id, today, data.until))
+    audit.record(user, "recurring.pause", "recurring", task_id,
+                 before={"label": r["label"], "pause": cur}, after={"label": r["label"], "pause": new})
+    return {"ok": True, "paused_until": data.until}
+
+
+@router.delete("/{task_id}/pause")
+def resume(task_id: int, user=Depends(active_user_csrf)):
+    """Retomar agora: a pausa termina ontem e hoje a rotina já é devida."""
+    uid, today = user["user_id"], app_today()
+    r = _active_routine(task_id, uid)
+    cur = current_pause(task_id, today)
+    if not cur:
+        raise HTTPException(status_code=400, detail="a rotina não está pausada")
+    db.execute("UPDATE recurring_pauses SET end_d = %s WHERE id = %s", (today - timedelta(days=1), cur["id"]))
+    audit.record(user, "recurring.resume", "recurring", task_id,
+                 before={"label": r["label"], "pause": cur},
+                 after={"label": r["label"], "pause": {**cur, "end_d": today - timedelta(days=1)}})
+    return {"ok": True, "paused_until": None}

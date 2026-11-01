@@ -156,9 +156,11 @@ def build_ics(uid: int, include_recurring: bool, cal_name: str) -> str:
     if include_recurring:
         for r in db.query_all(
             """SELECT id, label, freq, weekdays, month_day, interval_days,
-                      (created_at AT TIME ZONE %s)::date AS start_d
-                 FROM recurring_tasks WHERE user_id = %s AND active ORDER BY position, id""", (config.APP_TZ, uid)):
-            rule = _rrule(r, mask)
+                      (created_at AT TIME ZONE %s)::date AS start_d,
+                      ARRAY(SELECT ARRAY[p.start_d, p.end_d] FROM recurring_pauses p
+                             WHERE p.recurring_id = r.id AND p.start_d <= p.end_d AND p.end_d >= %s) AS pauses
+                 FROM recurring_tasks r WHERE user_id = %s AND active ORDER BY position, id""", (config.APP_TZ, today, uid)):
+            rule = _rrule(r, mask)  # 'after' (conta da última vez) não cabe numa RRULE: fica de fora
             if not rule:
                 continue
             # DTSTART = primeira ocorrência real (a RFC conta o DTSTART como uma).
@@ -166,8 +168,11 @@ def build_ics(uid: int, include_recurring: bool, cal_name: str) -> str:
                           if is_due(r, r["start_d"] + timedelta(days=i), mask)), None)
             if not first:
                 continue
+            # Dias pausados (férias, folga) saem da série.
+            pausa = sorted({s + timedelta(days=i) for s, e in r["pauses"] for i in range(min((e - s).days, 366) + 1)})
+            extra = [f"RRULE:{rule}"] + ([f"EXDATE;VALUE=DATE:{','.join(_d(x) for x in pausa)}"] if pausa else [])
             event(f"recurring-{r['id']}", first, f"Rotina: {r['label']}",
-                  "Recorrente do Nexus Worklog. Marque como feita no app.", [f"RRULE:{rule}"])
+                  "Recorrente do Nexus Worklog. Marque como feita no app.", extra)
 
     lines.append("END:VCALENDAR")
     return "\r\n".join(_fold_line(x) for x in lines) + "\r\n"

@@ -228,6 +228,7 @@
           <option value="weekly">Em dias da semana escolhidos</option>
           <option value="monthly">Uma vez por mês</option>
           <option value="interval">A cada N dias</option>
+          <option value="after">N dias depois da última vez</option>
         </select>
         <p class="dialog-note">Mudar a agenda vale daqui para a frente (o passado fica como estava). Os dias úteis ficam em Configurações > Conta.</p>
       </div>
@@ -237,7 +238,7 @@
         <select id="rec-monthday"></select>
       </div>
       <div class="field hidden" id="rec-interval-wrap">
-        <label for="rec-interval">A cada quantos dias (contando de quando foi criada)</label>
+        <label for="rec-interval" id="rec-interval-label">A cada quantos dias (contando de quando foi criada)</label>
         <input id="rec-interval" type="number" min="2" max="365" value="15">
       </div>
       <div class="field">
@@ -250,6 +251,7 @@
       </div>
       <div class="dialog-actions">
         <button type="button" class="btn btn-danger hidden" id="rec-delete">Excluir</button>
+        <button type="button" class="btn btn-text hidden" id="rec-pause">Pausar</button>
         <div class="spacer"></div>
         <button type="button" class="btn btn-text" id="rec-cancel">Cancelar</button>
         <button type="submit" class="btn btn-primary">Salvar</button>

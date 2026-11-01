@@ -75,14 +75,15 @@ class LinkPasswordIn(BaseModel):
     display_name: Optional[str] = Field(default=None, max_length=60)  # só no convite
 
 
-Freq = Literal["daily", "weekly", "monthly", "interval"]
-_PARAM = {"weekly": "weekdays", "monthly": "month_day", "interval": "interval_days"}
+Freq = Literal["daily", "weekly", "monthly", "interval", "after"]
+_PARAM = {"weekly": "weekdays", "monthly": "month_day", "interval": "interval_days", "after": "interval_days"}
 
 
 class _Agenda(BaseModel):
     """Agenda da recorrente. daily = dias úteis do dono (padrão); weekly exige
     weekdays (máscara, domingo = bit 0); monthly exige month_day (31 = último
-    dia); interval exige interval_days (a cada N dias desde a criação)."""
+    dia); interval exige interval_days (a cada N dias desde a criação); after
+    também (N dias depois da última marcação)."""
     freq: Optional[Freq] = None
     weekdays: Optional[int] = Field(default=None, ge=1, le=127)
     month_day: Optional[int] = Field(default=None, ge=1, le=31)
@@ -102,7 +103,7 @@ class _Agenda(BaseModel):
     def agenda(self) -> dict:
         """Colunas de agenda normalizadas (só o parâmetro da freq escolhida)."""
         need = _PARAM.get(self.freq)
-        return {"freq": self.freq, **{f: (getattr(self, f) if f == need else None) for f in _PARAM.values()}}
+        return {"freq": self.freq, **{f: (getattr(self, f) if f == need else None) for f in set(_PARAM.values())}}
 
 
 class RecurringIn(_Agenda):
@@ -117,6 +118,11 @@ class RecurringUpdate(_Agenda):
     label: Optional[str] = Field(default=None, min_length=1, max_length=200)
     require_note: Optional[bool] = None
     remind_at: Optional[time] = None  # null tira o horário (só se o campo vier)
+
+
+class PauseIn(BaseModel):
+    """Pausar a rotina de hoje até `until` (inclusive; no dia seguinte ela volta)."""
+    until: date
 
 
 class ToggleIn(BaseModel):

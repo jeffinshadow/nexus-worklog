@@ -5,6 +5,7 @@ sao as rotas (proprio usuario, ou alvo validado por require_admin). Assim a
 mesma logica serve tanto o usuario comum quanto a visao de admin.
 """
 
+import bisect
 import calendar
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -54,14 +55,40 @@ def is_work_day(d: date, mask: int) -> bool:
     return bool((mask >> _sun_index(d)) & 1)
 
 
+def pause_end(t: dict, d: date) -> date | None:
+    """Último dia da pausa que cobre `d` (None = não pausada nesse dia)."""
+    for s, e in t.get("pauses") or ():
+        if s <= d <= e:
+            return e
+    return None
+
+
+def _after_cycle(t: dict, d: date) -> tuple[date, bool]:
+    """freq 'after': (data em que o ciclo aberto em `d` venceu, marcada em `d`?).
+    O ciclo conta da última marcação ANTES de `d` (sem marcação: da criação)."""
+    dates = t.get("done_dates") or []
+    i = bisect.bisect_left(dates, d)
+    last = dates[i - 1] if i and dates[i - 1] >= t["start_d"] else t["start_d"]
+    return last + timedelta(days=t.get("interval_days") or 1), i < len(dates) and dates[i] == d
+
+
 def is_due(t: dict, d: date, mask: int) -> bool:
     """A recorrente `t` é devida no dia `d`? Uma regra só para tudo
     (indicadores, gráficos, quadro, PDF). Fora da agenda = extra.
 
     daily: dias úteis do dono | weekly: dias marcados em `weekdays` |
     monthly: `month_day` (31 = último dia; meses curtos usam o último) |
-    interval: a cada `interval_days` dias, contando da criação (start_d).
+    interval: a cada `interval_days` dias, contando da criação (start_d) |
+    after: N = `interval_days` dias depois da última marcação (sem marcação:
+    da criação). O ciclo vence em última + N e fica aberto até ser marcado;
+    cada ciclo conta UMA vez: como feito no dia em que foi marcado, ou como
+    falta no último dia do ciclo (vencimento + N - 1) se ninguém marcou — aí
+    abre o ciclo seguinte. Marcar antes de vencer é extra e move a próxima data.
+    Nos dias pausados (`pauses`) nenhuma é devida. Para "está para fazer hoje?"
+    (quadro, lembretes, avisos) use is_pending.
     """
+    if pause_end(t, d):
+        return False
     freq = t.get("freq") or "daily"
     if freq == "weekly":
         return bool(((t.get("weekdays") or 0) >> _sun_index(d)) & 1)
@@ -71,7 +98,30 @@ def is_due(t: dict, d: date, mask: int) -> bool:
     if freq == "interval":
         n = t.get("interval_days") or 1
         return (d - t["start_d"]).days % n == 0
+    if freq == "after":
+        due_from, done = _after_cycle(t, d)
+        if d < due_from:
+            return False
+        n = t.get("interval_days") or 1
+        return done or (d - due_from).days % n == n - 1
     return is_work_day(d, mask)
+
+
+def is_pending(t: dict, d: date, mask: int) -> bool:
+    """Está para fazer em `d`? Igual a is_due, exceto 'after': do vencimento
+    até ser marcada, todo dia (o quadro mostra, o lembrete toca)."""
+    if (t.get("freq") or "daily") == "after":
+        return not pause_end(t, d) and d >= _after_cycle(t, d)[0]
+    return is_due(t, d, mask)
+
+
+def next_due(t: dict, d: date) -> date | None:
+    """freq 'after': a próxima data vista do dia `d` (marcada em `d`: d + N;
+    senão o vencimento do ciclo aberto, que pode já ter passado)."""
+    if (t.get("freq") or "daily") != "after":
+        return None
+    due_from, done = _after_cycle(t, d)
+    return d + timedelta(days=t.get("interval_days") or 1) if done else due_from
 
 
 def _due_between(t: dict, start: date, end: date, mask: int) -> int:
@@ -164,8 +214,14 @@ def board_day_range(today: date) -> tuple[date, date]:
 # remoção só conta se ela foi feita nele (removeu sem fazer = não era mais para
 # fazer). Inativa sem data (legado anterior à 002) fica de fora. UMA regra para
 # quadro, marcação, indicadores, relatório e resumos: o filtro é em Python.
+# pauses = períodos [início, fim] da pausa; done_dates = marcações (só 'after',
+# que conta da última vez).
 _ROTINAS_SQL = """
     SELECT r.id, r.label, r.position, r.freq, r.weekdays, r.month_day, r.interval_days, r.require_note, r.remind_at,
+           ARRAY(SELECT ARRAY[p.start_d, p.end_d] FROM recurring_pauses p
+                  WHERE p.recurring_id = r.id AND p.start_d <= p.end_d ORDER BY p.start_d) AS pauses,
+           CASE WHEN r.freq = 'after' THEN ARRAY(SELECT x.completed_date FROM recurring_completions x
+                                                  WHERE x.task_id = r.id ORDER BY 1) END AS done_dates,
            (r.created_at AT TIME ZONE %(tz)s)::date AS start_d,
            CASE WHEN r.deactivated_at IS NULL THEN DATE '9999-12-31'  -- ativa: sem fim
                 WHEN EXISTS (SELECT 1 FROM recurring_completions x WHERE x.task_id = r.id
@@ -178,8 +234,12 @@ _ROTINAS_SQL = """
 
 def rotinas(user_id: int, task_id: int | None = None) -> list[dict]:
     extra = " AND r.id = %(id)s" if task_id is not None else ""
-    return db.query_all(_ROTINAS_SQL + extra + " ORDER BY r.position, r.id",
+    rows = db.query_all(_ROTINAS_SQL + extra + " ORDER BY r.position, r.id",
                         {"tz": config.APP_TZ, "uid": user_id, "id": task_id})
+    today = app_today()
+    for r in rows:
+        r["paused_until"] = pause_end(r, today)  # pausada hoje: até quando
+    return rows
 
 
 def recurring_vigente(task_id: int, user_id: int, day: date) -> bool:
@@ -234,7 +294,10 @@ def get_board(user_id: int, day: date | None = None, project: int | None = None)
         tuple(params),
     )
     for r in recurring:
-        r["due"] = is_due(r, day, mask)
+        r["due"] = is_pending(r, day, mask)
+        r["paused_until"] = pause_end(r, day)  # pausada nesse dia: até quando
+        r["next_due"] = next_due(r, day)  # só 'after'
+        r.pop("done_dates", None)  # já usadas; não vão na resposta
     min_day, _ = board_day_range(today)
     return {
         "timer": running_timer(user_id),
@@ -579,7 +642,7 @@ def get_report_range(user_id: int, start: date, end: date, project: dict | None 
             feito = t["id"] in done_ids
             devida = is_due(t, d, mask)
             if d == hoje and not feito:
-                st["marks"] += "P" if devida else "O"
+                st["marks"] += "P" if is_pending(t, d, mask) else "O"
                 continue  # hoje ainda dá tempo: pendente não é falta
             if devida:
                 st["due"] += 1

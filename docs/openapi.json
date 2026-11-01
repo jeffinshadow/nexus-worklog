@@ -411,7 +411,7 @@
           "recurring"
         ],
         "summary": "Reminders",
-        "description": "Rotinas com horário devidas hoje (para o lembrete da interface tocar\nperto do horário até a rotina ser marcada).",
+        "description": "Rotinas com horário devidas hoje (para o lembrete da interface tocar\nperto do horário até a rotina ser marcada). Pausada não lembra.",
         "operationId": "reminders_api_recurring_reminders_get",
         "responses": {
           "200": {
@@ -632,6 +632,96 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recurring/{task_id}/pause": {
+      "post": {
+        "tags": [
+          "recurring"
+        ],
+        "summary": "Pause",
+        "description": "Pausa a rotina de hoje até `until` (inclusive). Já pausada: muda o fim.",
+        "operationId": "pause_api_recurring__task_id__pause_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PauseIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "recurring"
+        ],
+        "summary": "Resume",
+        "description": "Retomar agora: a pausa termina ontem e hoje a rotina já é devida.",
+        "operationId": "resume_api_recurring__task_id__pause_delete",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Task Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -6321,6 +6411,21 @@
         ],
         "title": "OrderIn"
       },
+      "PauseIn": {
+        "properties": {
+          "until": {
+            "type": "string",
+            "format": "date",
+            "title": "Until"
+          }
+        },
+        "type": "object",
+        "required": [
+          "until"
+        ],
+        "title": "PauseIn",
+        "description": "Pausar a rotina de hoje até `until` (inclusive; no dia seguinte ela volta)."
+      },
       "PhotoIn": {
         "properties": {
           "image": {
@@ -6636,7 +6741,8 @@
                   "daily",
                   "weekly",
                   "monthly",
-                  "interval"
+                  "interval",
+                  "after"
                 ]
               },
               {
@@ -6724,7 +6830,8 @@
                   "daily",
                   "weekly",
                   "monthly",
-                  "interval"
+                  "interval",
+                  "after"
                 ]
               },
               {

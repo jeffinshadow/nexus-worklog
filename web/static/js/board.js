@@ -87,16 +87,62 @@ function ticketChip(ticket) {
     : h("span", { class: "chip ticket", title: "Chamado ou OS", text: "#" + ticket });
 }
 
-// Resumo da agenda de uma rotina ("seg, qua", "todo dia 5", "a cada 15 dias").
+// Resumo da agenda de uma rotina ("seg, qua", "todo dia 5", "a cada 15 dias",
+// "30 dias após a última vez · próxima em 12/12"). day: o dia que a tela mostra.
 const WD_ORDER = [1, 2, 3, 4, 5, 6, 0];
-export function scheduleLabel(r) {
+export function scheduleLabel(r, day) {
   if (r.freq === "weekly") {
     const days = WD_ORDER.filter((b) => (r.weekdays >> b) & 1).map((b) => WEEKDAYS_SHORT[b]);
     return days.length === 7 ? "todo dia" : days.join(", ");
   }
   if (r.freq === "monthly") return r.month_day >= 31 ? "último dia do mês" : `todo dia ${r.month_day}`;
   if (r.freq === "interval") return `a cada ${r.interval_days} dias`;
+  if (r.freq === "after") {
+    const base = `${r.interval_days} dias após a última vez`;
+    if (!r.next_due) return base;
+    if (day && r.next_due < day) return `${base} · venceu em ${shortDate(r.next_due)}`;
+    return `${base} · ${day && r.next_due === day ? "vence hoje" : "próxima em " + shortDate(r.next_due)}`;
+  }
   return "";
+}
+
+// Pausar até uma data (férias, folga, prédio fechado) ou retomar agora. Nos
+// dias pausados a rotina não é devida (nem falta, nem lembrete); marcar = extra.
+export function pauseRecurring(r, onDone) {
+  const today = localDay(Date.now());
+  const done = (msg) => {
+    refreshReminders();
+    onDone && onDone();
+    toast(msg, { action: "Desfazer", onAction: () => undoLatest("recurring", r.id, onDone) });
+  };
+  const until = h("input", { type: "date", min: today, max: addDays(today, 366), value: r.paused_until || addDays(today, 7), required: "" });
+  const dlg = modal(
+    h("h2", { text: r.paused_until ? "Rotina pausada" : "Pausar rotina" }),
+    h("p", { text: `“${r.label}” não conta como falta nem lembra até o dia escolhido (inclusive) e volta sozinha no dia seguinte. Marcar durante a pausa conta como extra.` }),
+    field("Pausar até", until),
+    h("div", { class: "dialog-actions" },
+      r.paused_until ? h("button", { type: "button", class: "btn btn-text", text: "Retomar agora", onClick: async () => {
+        dlg.close();
+        try {
+          await api.del(`/recurring/${r.id}/pause`);
+          done(`Rotina retomada: ${r.label}`);
+        } catch (e) {
+          errorToast(e, "Não foi possível retomar.");
+        }
+      } }) : null,
+      h("div", { class: "spacer" }),
+      h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
+      h("button", { type: "button", class: "btn btn-primary", text: r.paused_until ? "Mudar a data" : "Pausar", onClick: async () => {
+        if (!until.value || until.value < today) { toast("Escolha hoje ou um dia depois.", { error: true }); return; }
+        dlg.close();
+        try {
+          await api.post(`/recurring/${r.id}/pause`, { until: until.value });
+          done(`Pausada até ${shortDate(until.value)}: ${r.label}`);
+        } catch (e) {
+          errorToast(e, "Não foi possível pausar.");
+        }
+      } })));
+  until.focus();
 }
 
 const short = (s) => (s.length > 40 ? s.slice(0, 39) + "…" : s);
@@ -414,6 +460,11 @@ export function openRecurring(item, onDone) {
   const time = document.getElementById("rec-time");
   time.value = item && item.remind_at ? item.remind_at.slice(0, 5) : "";
 
+  const pause = document.getElementById("rec-pause");
+  pause.classList.toggle("hidden", !item);
+  pause.textContent = item && item.paused_until ? `Pausada até ${shortDate(item.paused_until)}` : "Pausar";
+  pause.onclick = item ? () => { dlg.close(); pauseRecurring(item, onDone); } : null;
+
   const del = document.getElementById("rec-delete");
   del.classList.toggle("hidden", !item);
   del.onclick = item
@@ -459,7 +510,8 @@ function scheduleForm(item) {
   const wdBox = document.getElementById("rec-weekdays");
   const md = document.getElementById("rec-monthday");
   const iv = document.getElementById("rec-interval");
-  const wraps = { weekly: wdBox, monthly: document.getElementById("rec-monthday-wrap"), interval: document.getElementById("rec-interval-wrap") };
+  const ivWrap = document.getElementById("rec-interval-wrap");
+  const wraps = { weekly: wdBox, monthly: document.getElementById("rec-monthday-wrap") };
 
   if (!md.options.length) {
     for (let d = 1; d <= 30; d++) md.append(h("option", { value: String(d), text: `Dia ${d}` }));
@@ -476,7 +528,13 @@ function scheduleForm(item) {
   freq.value = item ? item.freq || "daily" : "daily";
   md.value = String(item && item.month_day ? item.month_day : 1);
   iv.value = String(item && item.interval_days ? item.interval_days : 15);
-  const sync = () => { for (const [k, el] of Object.entries(wraps)) el.classList.toggle("hidden", freq.value !== k); };
+  const sync = () => {
+    for (const [k, el] of Object.entries(wraps)) el.classList.toggle("hidden", freq.value !== k);
+    // O mesmo campo de dias serve às duas: da criação ou da última vez que foi marcada.
+    ivWrap.classList.toggle("hidden", freq.value !== "interval" && freq.value !== "after");
+    document.getElementById("rec-interval-label").textContent = freq.value === "after"
+      ? "Quantos dias depois da última vez que foi marcada" : "A cada quantos dias (contando de quando foi criada)";
+  };
   freq.onchange = sync;
   sync();
 
@@ -489,7 +547,7 @@ function scheduleForm(item) {
         return { freq: f, weekdays: m };
       }
       if (f === "monthly") return { freq: f, month_day: Number(md.value) };
-      if (f === "interval") {
+      if (f === "interval" || f === "after") {
         const n = Number(iv.value);
         if (!(n >= 2 && n <= 365)) { toast("Intervalo entre 2 e 365 dias.", { error: true }); return null; }
         return { freq: f, interval_days: n };

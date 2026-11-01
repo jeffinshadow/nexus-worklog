@@ -1,11 +1,11 @@
 // Tela inicial "Hoje": o dia em um olhar e as ações mais comuns sem trocar de
 // tela. É o único lugar das rotinas (marcar até 7 dias atrás, editar, achado).
 import { api } from "./api.js";
-import { h, icon, clear, weekdayDate, localDay, addDays } from "./dom.js";
+import { h, icon, clear, weekdayDate, localDay, addDays, shortDate } from "./dom.js";
 import { errorToast, modal, toast, busy, sheet, refocusBy } from "./ui.js";
 import { reminderState, refreshReminders } from "./lembretes.js";
 import { photoGrid } from "./fotos.js";
-import { openRecurring, openWorklog, finishTask, taskChips, isOverdue, scheduleLabel, dayLabel, moreButton, desk, lateBadge, withMenu } from "./board.js";
+import { openRecurring, pauseRecurring, openWorklog, finishTask, taskChips, isOverdue, scheduleLabel, dayLabel, moreButton, desk, lateBadge, withMenu } from "./board.js";
 import { openTask } from "./task.js";
 import { fillProjectSelect } from "./projects.js";
 import { summaryPanel } from "./summary.js";
@@ -78,7 +78,7 @@ export async function mount(root, ctx, opts = {}) {
     recPanel.append(h("p", { class: "empty", text: "Nenhuma rotina ainda. Crie o que você confere sempre (rondas, equipamentos, fila de pedidos, e-mail…)." }));
   else if (!due.length)
     recPanel.append(h("p", { class: "empty", text: "Nada previsto para este dia. Marcar mesmo assim conta como extra." }));
-  else if (off.length) recPanel.append(h("p", { class: "day-note", text: "Esmaecidas: fora da agenda deste dia (se marcar, conta como extra)." }));
+  else if (off.length) recPanel.append(h("p", { class: "day-note", text: `Esmaecidas: fora da agenda deste dia${off.some((r) => r.paused_until) ? " ou pausadas" : ""} (se marcar, conta como extra).` }));
   for (const r of [...due, ...off]) {
     const cb = h("input", { type: "checkbox", "aria-label": r.label });
     cb.checked = r.done_today;
@@ -106,7 +106,7 @@ export async function mount(root, ctx, opts = {}) {
         errorToast(e, "Não foi possível salvar.");
       }
     });
-    const hint = [scheduleLabel(r), r.require_note && !r.done_today ? "exige evidência" : "",
+    const hint = [r.paused_until ? `pausada até ${shortDate(r.paused_until)}` : "", scheduleLabel(r, b.day), r.require_note && !r.done_today ? "exige evidência" : "",
       r.photos ? `${r.photos} foto${r.photos > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ");
     // Horário: perto dele (ou passado, sem marcar) a etiqueta acende, como o aviso.
     const at = r.remind_at ? r.remind_at.slice(0, 5) : null;
@@ -128,6 +128,7 @@ export async function mount(root, ctx, opts = {}) {
         onClick: (ev) => { ev.preventDefault(); sheet(r.label, [
           ["Registrar um achado como tarefa", "alert", () => openWorklog(refresh, { title: `Achado: ${r.label}` })],
           ["Editar rotina", "edit", () => openRecurring(r, refresh)],
+          [r.paused_until ? "Retomar ou mudar a pausa" : "Pausar até…", "bell-off", () => pauseRecurring(r, refresh)],
         ]); } }, icon("more-v"))));
   }
 
