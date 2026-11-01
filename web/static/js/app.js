@@ -280,7 +280,7 @@ function showHelp(focus) {
       ]),
       h("p", { class: "help-example" }, "Ex.: ", h("code", { text: "Troca do switch @Matriz #4821 — 45min" }))) : null,
     user && desk ? sec("key", "Atalhos de teclado", list([
-      ["n", "nova tarefa", true], ["/", "buscar", true], ["h t", "Hoje, Tarefas", true], ["r l", "Meu mês: números, relatórios", true],
+      ["n", "nova tarefa", true], ["q", "registro rápido", true], ["/", "buscar", true], ["h t", "Hoje, Tarefas", true], ["r l", "Meu mês: números, relatórios", true],
       ["s", "parar o cronômetro", true], ["?", "ver todos os atalhos", true],
     ])) : null,
     // Para o admin, o Suporte é ele mesmo: diz onde fica o contato que os outros veem.
@@ -477,6 +477,11 @@ async function boot() {
       else location.hash = "#/busca";
     }],
     n: ["Nova tarefa", () => openWorklog(route)],
+    // O registro rápido fica depois das rotinas na ordem do Tab: uma tecla leva até ele.
+    q: ["Registro rápido (no Hoje)", () => {
+      const el = document.querySelector('#view-hoje [aria-label="Registrar tarefa rápida"]');
+      if (el && el.offsetParent) el.focus(); else go("hoje?acao=rapido");
+    }],
     h: ["Ir para Hoje", () => go("hoje")],
     t: ["Ir para Tarefas", () => go("tarefas")],
     r: ["Ir para Meu mês (números)", () => go("mes?aba=numeros")],

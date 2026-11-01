@@ -26,7 +26,7 @@ export async function mount(root) {
     ...users.map((u) => h("option", { value: u.id }, `${u.display_name ? u.display_name + " · " : ""}${u.email}`)));
 
   let active = "board";
-  const subtabs = h("div", { class: "seg seg-sm", role: "tablist" },
+  const subtabs = h("div", { class: "seg seg-sm", role: "tablist", "aria-label": "Equipe" },
     ...SUBVIEWS.map((s) => h("button", {
       type: "button", class: "chip-btn", role: "tab", text: s.label,
       "aria-selected": s.key === active ? "true" : "false",

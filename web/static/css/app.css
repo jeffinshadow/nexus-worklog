@@ -869,6 +869,8 @@ dialog.sheet .menu-list > :last-child { border-bottom: 0; }
   .lockup--bar { --lock-fs: var(--bar-fs); flex: 1; min-width: 0; text-decoration: none; }
   .lockup--bar .lockup-mark { height: 1.55em; max-width: 2.7em; }
   .lockup--bar .lockup-type { flex-direction: row; align-items: baseline; gap: .28em; line-height: 1.3; white-space: nowrap; min-width: 0; overflow: hidden; }
+  /* Muito estreito (zoom de 400%): só "nexus", em vez do nome cortado no meio. */
+  @media (max-width: 359px) { .lockup--bar .lockup-type span + span { display: none; } }
   .appbar .icon-btn { width: 48px; height: 48px; }
   .appbar-me { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; }
   .appbar-me .avatar { width: 32px; height: 32px; font-size: var(--type-label); }

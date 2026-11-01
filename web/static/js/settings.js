@@ -36,7 +36,7 @@ export async function mount(root, ctx) {
   if (!tabs.some(([k]) => k === active)) active = tabs[0][0];
 
   clear(root);
-  const seg = h("div", { class: "seg", role: "tablist" });
+  const seg = h("div", { class: "seg", role: "tablist", "aria-label": "Configurações" });
   const body = h("div", { class: "settings-grid" });
   for (const [key, label] of tabs) {
     seg.append(h("button", {
