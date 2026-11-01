@@ -7223,6 +7223,17 @@
               }
             ],
             "title": "At"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
           }
         },
         "type": "object",
