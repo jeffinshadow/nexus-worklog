@@ -11,6 +11,7 @@ por usuário e histórico (registrado com actor="mcp" e o nome da chave).
 Chave "read" só enxerga as ferramentas de leitura. A IA não exclui tarefas,
 projetos nem objetivos (arquivar o projeto, sim).
 """
+import unicodedata
 from datetime import date, datetime, timezone
 from urllib.parse import urlsplit
 
@@ -24,7 +25,7 @@ from ..config import config
 from ..labels import PRIO_PT, STATUS_PT
 from ..labels import dur as _dur
 from ..schemas import (AssignIn, ChecklistIn, ChecklistUpdate, FinishIn, NoteIn, ObjectiveIn, ObjectiveUpdate, OrderIn,
-                       ProjectIn, ProjectUpdate, TimeIn, TimerIn, ToggleIn, WorklogIn, WorklogUpdate)
+                       ProjectIn, ProjectUpdate, RecurringIn, TimeIn, TimerIn, ToggleIn, WorklogIn, WorklogUpdate)
 from . import assign as assign_routes
 from . import history as history_routes
 from . import objectives as objective_routes
@@ -493,7 +494,50 @@ def t_list_recurring(ctx, args):
 def _recurring_rows(rows: list) -> list[str]:
     return [f"  [{'x' if r['done_today'] else ' '}] R{r['id']} {r['label']}"
             + (f" às {r['remind_at']:%H:%M}" if r.get("remind_at") else "") + ("" if r["due"] else " (fora da agenda)")
+            + (" (exige evidência)" if r.get("require_note") else "")
             for r in rows]
+
+
+WEEKDAYS = ["dom", "seg", "ter", "qua", "qui", "sex", "sab"]  # bit 0 = domingo
+
+
+def _weekdays_mask(value) -> int:
+    mask = 0
+    for v in value or []:
+        k = unicodedata.normalize("NFKD", str(v)).encode("ascii", "ignore").decode().strip().lower()[:3]
+        if k not in WEEKDAYS:
+            raise ToolError(f"dia da semana “{v}” não reconhecido (use {', '.join(WEEKDAYS)})")
+        mask |= 1 << WEEKDAYS.index(k)
+    return mask
+
+
+def _agenda_text(r: dict) -> str:
+    if r["freq"] == "weekly":
+        return "toda " + ", ".join(d for i, d in enumerate(WEEKDAYS) if r["weekdays"] & (1 << i))
+    if r["freq"] == "monthly":
+        return "todo mês, " + ("no último dia" if r["month_day"] == 31 else f"dia {r['month_day']}")
+    if r["freq"] == "interval":
+        return f"a cada {r['interval_days']} dias"
+    return "nos dias úteis"
+
+
+def t_create_recurring(ctx, args):
+    uid = ctx["user_id"]
+    fields = _fields(args, ("label", "freq", "month_day", "interval_days", "remind_at", "require_note"))
+    if "weekdays" in args:
+        fields["weekdays"] = _weekdays_mask(args["weekdays"]) or None
+    data = _call(RecurringIn, **fields)
+    found = db.query_one("""SELECT id, label, freq, weekdays, month_day, interval_days, require_note, remind_at
+                              FROM recurring_tasks WHERE user_id = %s AND active AND nx_fold(label) = nx_fold(%s)""",
+                         (uid, data.label.strip()))
+    if found:
+        return "Já existia (mesmo nome), nada duplicado: " + _routine_line(found)
+    return "Criada: " + _routine_line(_call(recurring_routes.create, data, user=ctx))
+
+
+def _routine_line(r: dict) -> str:
+    return (f"R{r['id']} {r['label']} ({_agenda_text(r)})" + (f" às {r['remind_at']:%H:%M}" if r.get("remind_at") else "")
+            + (" (exige evidência)" if r.get("require_note") else ""))
 
 
 def t_get_period(ctx, args):
@@ -856,7 +900,8 @@ TOOLS = {
                           "completed_at": {**WHEN, "description": "Quando foi concluída (padrão: agora). " + WHEN["description"]},
                           "resolution": {"type": "string", "maxLength": 1000,
                                          "description": "Como foi resolvido (vira base de conhecimento: entra na busca)"}}}),
-    "list_recurring": (t_list_recurring, False, "Rotinas de um dia (padrão: hoje; até 7 dias atrás) e se foram feitas.",
+    "list_recurring": (t_list_recurring, False, "Rotinas de um dia (padrão: hoje; até 7 dias atrás) e se foram feitas. "
+                       "“(exige evidência)”: ao marcar, mande note.",
                        {"type": "object", "properties": {"day": DATE}}),
     "set_recurring": (t_set_recurring, True, "Marca (done=true) ou desmarca uma rotina num dia (padrão hoje; até 7 dias atrás).",
                       {"type": "object", "required": ["recurring_id"], "properties": {
@@ -864,6 +909,23 @@ TOOLS = {
                           "done": {"type": "boolean", "default": True},
                           "day": DATE,
                           "note": {"type": "string", "maxLength": 200, "description": "Evidência curta da verificação (ex.: backup OK, 2,1 TB)"}}}),
+    "create_recurring": (t_create_recurring, True,
+                         "Cria uma rotina (verificação que se repete: backups, rondas, conferências). Nome repetido "
+                         "devolve a que já existe. Confirme a agenda com a pessoa; a IA não remove rotinas.",
+                         {"type": "object", "required": ["label"], "properties": {
+                             "label": {"type": "string", "minLength": 1, "maxLength": 200},
+                             "freq": {"type": "string", "enum": ["daily", "weekly", "monthly", "interval"], "default": "daily",
+                                      "description": "daily = nos dias úteis da pessoa; weekly exige weekdays; monthly exige "
+                                                     "month_day; interval exige interval_days"},
+                             "weekdays": {"type": "array", "items": {"type": "string", "enum": WEEKDAYS}, "minItems": 1,
+                                          "maxItems": 7, "description": "Com weekly: os dias (dom, seg, ter, qua, qui, sex, sab)"},
+                             "month_day": {"type": "integer", "minimum": 1, "maximum": 31,
+                                           "description": "Com monthly: o dia do mês (31 = último dia)"},
+                             "interval_days": {"type": "integer", "minimum": 2, "maximum": 365,
+                                               "description": "Com interval: a cada quantos dias, contando de hoje"},
+                             "remind_at": {"type": ["string", "null"], "description": "Horário HH:MM (o app lembra perto dele)"},
+                             "require_note": {"type": "boolean", "default": False,
+                                              "description": "Marcar exige evidência (note em set_recurring)"}}}),
     "start_timer": (t_start_timer, True, "Inicia o cronômetro numa tarefa aberta (se outro estiver rodando, ele para e aponta o tempo).",
                     {"type": "object", "required": ["task_id"], "properties": {"task_id": {"type": "integer"}}}),
     "stop_timer": (t_stop_timer, True, "Para o cronômetro e aponta o tempo na tarefa.",
