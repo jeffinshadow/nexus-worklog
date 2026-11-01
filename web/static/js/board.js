@@ -189,7 +189,7 @@ export function withMenu(el, t, onDone) {
       t.status === "done" ? null : running
         ? ["Parar o cronômetro e apontar", "stop", () => stopTimer(onDone)]
         : ["Iniciar o cronômetro", "play", () => startTimer(t, onDone)],
-      t.status === "done" ? null : ["Concluir", "check", () => finishTask(t, onDone)],
+      t.status === "done" ? ["Reabrir", "undo", () => reopenTask(t, onDone)] : ["Concluir", "check", () => finishTask(t, onDone)],
       canBlock(t) ? ["Marcar como aguardando…", "clock", () => blockTask(t, onDone)] : null,
       ["Duplicar tarefa", "add", () => duplicateTask(t, onDone)],
       ["Excluir", "trash", () => deleteTask(t, onDone)],
@@ -657,6 +657,18 @@ export async function finishTask(t, onDone, { fromEdit = false } = {}) {
     ] });
   } catch (e) {
     errorToast(e, "Não foi possível concluir.");
+  }
+}
+
+// "Reabrir" uma concluída (concluiu por engano, ou o problema voltou): volta para
+// "a fazer". Como uma edição da situação: o Desfazer devolve a conclusão como era.
+export async function reopenTask(t, onDone) {
+  try {
+    await api.patch(`/worklog/${t.id}`, { status: "todo" });
+    Promise.resolve(onDone && onDone());
+    toast(`Reaberta: ${t.title}`, { action: "Desfazer", onAction: () => undoLatest("worklog", t.id, onDone) });
+  } catch (e) {
+    errorToast(e, "Não foi possível reabrir.");
   }
 }
 

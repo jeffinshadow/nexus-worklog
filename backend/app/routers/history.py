@@ -151,6 +151,9 @@ def _label(row) -> str:
         papeis = ", ".join(LABELS.get(r, r) for r in row["after"].get("roles", [])) or "nenhum"
         return f"alterou as permissões ({papeis})"
     text = ACTION_LABELS.get(row["action"], row["action"])
+    if (row["action"] == "worklog.update" and (row["before"] or {}).get("status") == "done"
+            and (row["after"] or {}).get("status") not in (None, "done")):
+        text = "reabriu a tarefa"
     if row["action"] == "recurring.pause" and (row["after"] or {}).get("pause"):
         fim = str(row["after"]["pause"]["end_d"])  # AAAA-MM-DD
         text = f"pausou até {fim[8:10]}/{fim[5:7]} a rotina"

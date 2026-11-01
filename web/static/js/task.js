@@ -7,7 +7,7 @@ import { api } from "./api.js";
 import { h, icon, clear, addDays, shortDate, dateTime, field, localDateTime, localDay } from "./dom.js";
 import { overlay } from "./fila.js";
 import { errorToast, modal, toast, undoLatest, busy, sheet, syncRail, growFrom, refocusBy, actionMenu } from "./ui.js";
-import { finishTask, deleteTask, duplicateTask, followUpDay, isOverdue, ticketUrl, taskChips, blockTask, canBlock } from "./board.js";
+import { finishTask, reopenTask, deleteTask, duplicateTask, followUpDay, isOverdue, ticketUrl, taskChips, blockTask, canBlock } from "./board.js";
 import { extraProjectsField, fillObjectiveSelect, fillProjectSelect } from "./projects.js";
 import { session } from "./session.js";
 import { timerButton, timerState, startTimer, stopTimer } from "./timer.js";
@@ -202,7 +202,7 @@ export async function openTask(taskId, onChange, opts = {}) {
         t.status !== "done"
           ? h("button", { type: "button", class: "icon", title: editing ? EDIT_HINT : "Concluir", "aria-label": "Concluir", disabled: editing ? "disabled" : null,
               onClick: () => finishTask(t, after) }, icon("check"))
-          : null,
+          : off ? null : h("button", { type: "button", class: "icon", title: "Reabrir", "aria-label": "Reabrir", onClick: async () => { await pending; reopenTask(cur, after); } }, icon("undo")),
         ...(off ? [] : [
           h("button", { type: "button", class: "icon", title: "Copiar resumo (para o chamado ou o cliente)", "aria-label": "Copiar resumo", onClick: async () => { await pending; copySummary(cur); } }, icon("copy")),
           h("button", { type: "button", class: "icon", title: "Salvar como modelo", "aria-label": "Salvar como modelo", onClick: async () => { await pending; saveAsTemplate(cur); } }, icon("list")),
@@ -221,6 +221,7 @@ export async function openTask(taskId, onChange, opts = {}) {
         onClick: () => expand(!expanded) }, icon(expanded ? "shrink" : "expand")) : null,
       off ? null : h("button", { type: "button", class: "icon", title: "Mais ações", "aria-label": "Mais ações", onClick: (ev) => {
         const items = [
+          t.status === "done" ? ["Reabrir", "undo", async () => { await pending; reopenTask(cur, after); }] : null,
           canBlock(t) ? ["Marcar como aguardando…", "clock", async () => { await pending; blockTask(cur, after); }] : null,
           ["Copiar resumo (para o chamado ou o cliente)", "copy", async () => { await pending; copySummary(cur); }],
           ["Salvar como modelo", "list", async () => { await pending; saveAsTemplate(cur); }],
@@ -231,7 +232,10 @@ export async function openTask(taskId, onChange, opts = {}) {
         if (!side) sheet(t.title, items); else actionMenu(ev.currentTarget, t.title, items);
       } }, icon("more-v")));
     const running = (timerState() || {}).task_id === t.id;
-    const mainActs = t.status === "done" ? null : h("div", { class: "task-main-actions" },
+    // Concluída: o botão grande é o "Reabrir" (o mesmo do menu).
+    const mainActs = t.status === "done" ? (off ? null : h("div", { class: "task-main-actions" },
+      h("button", { type: "button", class: "btn btn-ghost", onClick: async () => { await pending; reopenTask(cur, after); } }, icon("undo"), "Reabrir")))
+      : h("div", { class: "task-main-actions" },
       h("button", { type: "button", class: "btn btn-ghost" + (running ? " timer-on" : ""), onClick: () => (running ? stopTimer(after) : startTimer(t, after)) },
         icon(running ? "stop" : "play"), running ? "Parar cronômetro" : "Cronômetro"),
       h("button", { type: "button", class: "btn btn-primary", title: editing ? EDIT_HINT : null, disabled: editing ? "disabled" : null,
