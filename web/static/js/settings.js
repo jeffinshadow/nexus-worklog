@@ -573,7 +573,7 @@ function showNewToken(res) {
     ["Cursor", "Cole em mcp.json (vale para outros programas que aceitam endereço e cabeçalho):", cfg.cursor],
     ["Gemini CLI", "Cole em settings.json, dentro da pasta .gemini da sua pasta de usuário:", cfg.gemini],
   ];
-  const seg = h("div", { class: "seg seg-sm", role: "tablist", "aria-label": "Sua IA" });
+  const seg = h("div", { class: "seg seg-sm ai-tabs", role: "tablist", "aria-label": "Sua IA" });
   const slot = h("div", { class: "ai-config" });
   const show = (i) => {
     for (const [n, b] of [...seg.children].entries()) b.setAttribute("aria-selected", String(n === i));
@@ -587,7 +587,7 @@ function showNewToken(res) {
     h("h2", { text: "Chave criada" }),
     h("p", { text: `“${res.name}” — copie agora: ela não aparece de novo.` }),
     h("div", { class: "token-box", text: res.token }),
-    h("p", { class: "dialog-note", text: "Configuração pronta, já com a chave. Escolha a sua IA:" }),
+    h("p", { class: "dialog-note ai-tabs-note", text: "Configuração pronta, já com a chave. Escolha a sua IA:" }),
     seg, slot,
     warnBox("Trate como senha: não cole em repositório, print ou chat. Se vazar, revogue aqui."),
     h("div", { class: "dialog-actions" },
@@ -721,7 +721,8 @@ function aiHelp() {
 function privacyPanel(me) {
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Quem vê e quem manda tarefas para você" })),
-    ...assignments(me), ...seenBy(me));
+    h("h3", { class: "sum-h", text: "Receber tarefas" }), ...assignments(me),
+    h("h3", { class: "sum-h", text: "Ver o seu registro" }), ...seenBy(me));
 }
 
 // Consentimento: sem ele, ninguém consegue mandar tarefas para esta pessoa.

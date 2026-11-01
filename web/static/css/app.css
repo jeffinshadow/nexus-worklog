@@ -1234,3 +1234,8 @@ dialog.help-dialog > .dialog-actions { position: sticky; bottom: -24px; margin: 
   .link-btn::after { content: ""; position: absolute; inset: -15px -6px; }
   .card-open { padding-block: 12px; margin-block: -12px; }
 }
+
+/* Chave criada: as quatro IAs em grade 2x2 (numa linha só não cabem no diálogo). */
+.ai-tabs-note { margin-top: 16px; }
+.seg.ai-tabs { display: grid; grid-template-columns: 1fr 1fr; border-radius: var(--radius-m); margin: 8px 0 12px; }
+.seg.ai-tabs button.chip-btn { border-radius: var(--radius-s); text-align: center; }
