@@ -661,17 +661,18 @@ function showNewToken(res) {
 async function webhooksPanel(rerender) {
   const list = await api.get("/webhooks");
   const url = h("input", { type: "url", maxlength: "500", placeholder: "https://exemplo.com/nexus", required: "required" });
-  const events = h("input", { type: "text", maxlength: "300", placeholder: "* (tudo) ou worklog.finish, worklog.*" });
+  const events = eventsPicker(["*"]);
   const err = h("p", { class: "error-text" });
   const create = h("button", { type: "submit", class: "btn btn-primary" }, icon("send"), "Criar webhook");
-  const form = h("form", {}, field("Endereço (https)", url), field("Eventos", events), err, create);
+  const form = h("form", {}, field("Endereço (https)", url), events.el, err, create);
   form.addEventListener("submit", busy(async (ev) => {
     ev.preventDefault();
     err.textContent = "";
+    const evs = events.value();
+    if (!evs) { err.textContent = "Escolha pelo menos um evento."; return; }
     create.disabled = true;
     try {
-      const evs = events.value.split(/[\s,]+/).filter(Boolean);
-      const res = await api.post("/webhooks", { url: url.value.trim(), events: evs.length ? evs : ["*"] });
+      const res = await api.post("/webhooks", { url: url.value.trim(), events: evs });
       showNewSecret(res);
       rerender();
     } catch (e) {
@@ -681,7 +682,7 @@ async function webhooksPanel(rerender) {
   }));
 
   const rows = list.length ? list.map((w) => {
-    const meta = [w.events.join(", "), w.last_delivered_at ? `entregue ${dateTime(w.last_delivered_at)}` : "nada entregue ainda"];
+    const meta = [eventsLabel(w.events), w.last_delivered_at ? `entregue ${dateTime(w.last_delivered_at)}` : "nada entregue ainda"];
     if (w.disabled_at) meta.push(`desligado: ${w.last_error || "falhas seguidas"}`);
     else if (w.failures) meta.push(`${w.failures} falha(s): ${w.last_error}`);
     const actions = h("div", { class: "actions" });
@@ -704,7 +705,8 @@ async function webhooksPanel(rerender) {
         } finally { test.disabled = false; }
       },
     });
-    actions.append(test);
+    actions.append(test, h("button", { type: "button", class: "btn btn-ghost btn-sm", text: "Editar", "aria-label": "Editar o webhook " + w.url,
+      onClick: () => editWebhook(w, rerender) }));
     if (w.disabled_at) {
       actions.append(h("button", {
         type: "button", class: "btn btn-ghost btn-sm", text: "Religar", onClick: async () => {
@@ -733,6 +735,96 @@ async function webhooksPanel(rerender) {
       h("div", { class: "panel-head" }, h("h2", { text: "Meus webhooks" }), h("span", { class: "count", text: String(list.filter((w) => w.active).length) + " ativos" })),
       ...rows),
     recipesPanel());
+}
+
+// Os eventos que dá para marcar (os nomes do histórico). "Tudo" e "… : tudo" cobrem os de dentro.
+const WH_EVENTS = [
+  ["*", "Tudo", "qualquer mudança, inclusive as que o Nexus ganhar depois"],
+  ["worklog.*", "Tarefas: tudo", "criar, editar, concluir, excluir, receber"],
+  ["worklog.create", "Tarefa criada"],
+  ["worklog.finish", "Tarefa concluída"],
+  ["worklog.update", "Tarefa editada", "inclui reabrir e marcar como aguardando"],
+  ["worklog.delete", "Tarefa excluída"],
+  ["worklog.assign", "Tarefa recebida", "atribuída a você por alguém"],
+  ["note.*", "Anotações"],
+  ["checklist.*", "Checklist"],
+  ["time.*", "Tempo apontado"],
+  ["timer.*", "Cronômetro"],
+  ["photo.*", "Fotos"],
+  ["recurring.*", "Rotinas", "marcar, criar, editar, pausar"],
+  ["project.*", "Projetos"],
+  ["objective.*", "Objetivos"],
+  ["renewal.*", "Vencimentos"],
+];
+const WH_NAME = Object.fromEntries(WH_EVENTS.map(([k, l]) => [k, l]));
+const eventsLabel = (evs) => evs.map((e) => WH_NAME[e] || e).join(", ");
+
+// Lista para marcar os eventos (sem digitar nomes). Um evento que veio pela API e
+// não está na lista aparece também, marcado, com o nome técnico.
+function eventsPicker(selected) {
+  const sel = new Set(selected);
+  const items = [...WH_EVENTS, ...selected.filter((e) => !WH_NAME[e]).map((e) => [e, e, "definido pela API"])];
+  const boxes = items.map(([key, label, help]) => {
+    const cb = h("input", { type: "checkbox", value: key });
+    cb.checked = sel.has(key);
+    const line = h("label", { class: "check-line wh-ev" + (key.endsWith(".*") || key === "*" ? " group" : " sub") }, cb,
+      h("span", {}, label, help ? h("small", { text: help }) : null));
+    return { key, cb, line };
+  });
+  // Marcado o grupo, os de dentro já estão incluídos: ficam marcados e travados.
+  const covered = (key) => {
+    const all = boxes.find((b) => b.key === "*").cb.checked;
+    if (key !== "*" && all) return true;
+    const grp = key.includes(".") && !key.endsWith(".*") ? boxes.find((b) => b.key === key.split(".")[0] + ".*") : null;
+    return !!(grp && grp.cb.checked);
+  };
+  const sync = () => {
+    for (const b of boxes) {
+      const c = covered(b.key);
+      b.cb.disabled = c;
+      b.line.classList.toggle("covered", c);
+      if (c) b.cb.setAttribute("aria-description", "já incluído pelo grupo marcado"); else b.cb.removeAttribute("aria-description");
+    }
+  };
+  for (const b of boxes) b.cb.addEventListener("change", sync);
+  sync();
+  const el = h("fieldset", { class: "wh-events" }, h("legend", { class: "field-label", text: "Avisar quando" }),
+    h("div", { class: "wh-events-grid" }, ...boxes.map((b) => b.line)));
+  return {
+    el,
+    value() {
+      const picked = boxes.filter((b) => b.cb.checked && !covered(b.key)).map((b) => b.key);
+      return picked.length ? picked : null;
+    },
+  };
+}
+
+// Editar um webhook (endereço e eventos) sem recriar: o segredo continua o mesmo.
+function editWebhook(w, rerender) {
+  const url = h("input", { type: "url", maxlength: "500", required: "required", value: w.url });
+  const events = eventsPicker(w.events);
+  const err = h("p", { class: "error-text", role: "alert" });
+  const form = h("form", {}, h("h2", { text: "Editar webhook" }),
+    h("p", { class: "dialog-note", text: "O segredo continua o mesmo: o outro sistema não precisa ser configurado de novo." }),
+    field("Endereço (https)", url), events.el, err,
+    h("div", { class: "dialog-actions" },
+      h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
+      h("button", { type: "submit", class: "btn btn-primary", text: "Salvar" })));
+  const dlg = modal(form);
+  dlg.classList.add("wh-dialog");
+  form.addEventListener("submit", busy(async (ev) => {
+    ev.preventDefault();
+    err.textContent = "";
+    const evs = events.value();
+    if (!evs) { err.textContent = "Escolha pelo menos um evento."; return; }
+    try {
+      await api.patch(`/webhooks/${w.id}`, { url: url.value.trim(), events: evs });
+      dlg.close();
+      toast("Webhook salvo. O segredo continua o mesmo.");
+      rerender();
+    } catch (e) { err.textContent = e.message || "Não foi possível salvar."; }
+  }));
+  setTimeout(() => url.focus(), 0);
 }
 
 // Receitas prontas (no site): avisos e planilha usando o webhook e a API, sem conector para produto.

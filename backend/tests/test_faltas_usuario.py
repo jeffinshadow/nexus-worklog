@@ -6,6 +6,7 @@ from datetime import timedelta
 from app import db
 from app.services import app_today
 from conftest import SENHA_PADRAO, Api
+from test_api_aberta import _novo, dns  # noqa: F401 — dns é fixture
 
 
 def _tarefa(u, **extra):
@@ -229,3 +230,29 @@ def test_renovar_chave_vencida(usuario, novo_usuario):
     assert novo_usuario("outra@example.com").post(f"/tokens/{k2['id']}/renew", {}).status_code == 404
     assert Bearer(k2["token"]).post(f"/tokens/{k2['id']}/renew", {}).status_code in (401, 403)
     assert usuario.post(f"/tokens/{k2['id']}/renew", {"expires_in_days": 0}).status_code == 422
+
+
+# ------------------------------------------------------------ editar webhook --
+
+def test_editar_webhook_mantem_o_segredo(usuario, dns, novo_usuario):
+    from app import webhooks
+    w = _novo(usuario, events=["worklog.finish"]).json()
+    salt = db.query_one("SELECT secret_salt FROM webhooks WHERE id = %s", (w["id"],))["secret_salt"]
+    r = usuario.patch(f"/webhooks/{w['id']}", {"events": ["worklog.*", "note.*", "note.*"]})
+    assert r.status_code == 200 and r.json()["events"] == ["note.*", "worklog.*"]
+    r = usuario.patch(f"/webhooks/{w['id']}", {"url": "https://hooks.example.com/outro"})
+    assert r.status_code == 200 and r.json()["url"] == "https://hooks.example.com/outro"
+    row = db.query_one("SELECT secret_salt, events FROM webhooks WHERE id = %s", (w["id"],))
+    assert row["secret_salt"] == salt and webhooks.secret_for(row["secret_salt"]) == w["secret"]
+    assert usuario.get("/history?limit=1&entity=webhook").json()[0]["summary"].startswith("editou o webhook")
+    # a mesma checagem do cadastro: rede interna, http, eventos inválidos
+    for url in ("http://hooks.example.com/x", "https://interno.example.com/x", "https://127.0.0.1/x"):
+        assert usuario.patch(f"/webhooks/{w['id']}", {"url": url}).status_code == 400, url
+    assert usuario.patch(f"/webhooks/{w['id']}", {"events": ["tudo"]}).status_code == 422
+    assert usuario.patch(f"/webhooks/{w['id']}", {"events": []}).status_code == 422
+    assert db.query_one("SELECT url FROM webhooks WHERE id = %s", (w["id"],))["url"] == "https://hooks.example.com/outro"
+    # de outra pessoa não; por chave de API não
+    assert novo_usuario("outra@example.com").patch(f"/webhooks/{w['id']}", {"events": ["*"]}).status_code == 404
+    from conftest import Bearer
+    k = usuario.post("/tokens", {"name": "IA"}).json()
+    assert Bearer(k["token"]).patch(f"/webhooks/{w['id']}", {"events": ["*"]}).status_code in (401, 403)

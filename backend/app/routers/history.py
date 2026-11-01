@@ -100,6 +100,7 @@ ACTION_LABELS = {
     "token.renew": "renovou a validade da chave de API",
     "webhook.create": "criou o webhook para",
     "webhook.enable": "religou o webhook para",
+    "webhook.update": "editou o webhook para",
     "webhook.delete": "excluiu o webhook para",
     "user.invite": "criou a conta (convite)",
     "user.reset_password": "redefiniu a senha",
