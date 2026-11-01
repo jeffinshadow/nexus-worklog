@@ -372,6 +372,7 @@ export async function openTask(taskId, onChange) {
       h("div", { class: "task-sec-head" }, icon("clock"), h("h3", { text: "Tempo" }),
         h("span", { class: "count", text: duration(t.minutes) })));
     const dur = h("input", { type: "text", placeholder: "ex.: 1h30", "aria-label": "Duração", class: "dur" });
+    dur.addEventListener("input", () => dur.setCustomValidity("")); // erro some ao corrigir
     const day = h("input", { type: "date", value: today, max: today, min: addDays(today, -366), "aria-label": "Dia" });
     const note = h("input", { type: "text", maxlength: "200", placeholder: "o que foi feito (opcional)", "aria-label": "Observação" });
     const form = h("form", { class: "time-form" }, dur, day, note,
@@ -379,7 +380,7 @@ export async function openTask(taskId, onChange) {
     form.addEventListener("submit", busy(async (ev) => {
       ev.preventDefault();
       const minutes = parseDuration(dur.value);
-      if (!minutes || minutes > 1440) { toast("Duração inválida. Ex.: 45, 1h30, 2:15.", { error: true }); dur.focus(); return; }
+      if (!minutes || minutes > 1440) { dur.setCustomValidity("Duração inválida. Ex.: 45, 1h30, 2:15."); dur.reportValidity(); return; }
       try {
         await api.post(`/worklog/${t.id}/time`, { minutes, day: day.value || today, note: note.value.trim() || null });
         toast(`Apontado ${duration(minutes)}.`);

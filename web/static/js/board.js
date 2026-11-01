@@ -191,6 +191,8 @@ export function openWorklog(onDone, opts = {}) {
   // Tempo já na criação (técnico em campo: "Loja X, 2h"); depois, pelo detalhe.
   const timeInput = document.getElementById("wl-time");
   timeInput.value = "";
+  timeInput.setCustomValidity("");
+  timeInput.oninput = () => timeInput.setCustomValidity(""); // erro some ao corrigir
   const projSel = document.getElementById("wl-project");
   const pickedProject = () => (projSel.value && projSel.value !== "__new" ? Number(projSel.value) : null);
   const extraBox = document.getElementById("wl-extra");
@@ -326,7 +328,10 @@ export function openWorklog(onDone, opts = {}) {
       payload.follow_up_on = followUpDay(followUp.value || null);
     }
     const minutes = timeInput.value.trim() ? parseDuration(timeInput.value) : null;
-    if (minutes === null && timeInput.value.trim()) { toast("Tempo inválido. Ex.: 45, 1h30, 2:15.", { error: true }); timeInput.focus(); return; }
+    if (minutes === null && timeInput.value.trim()) {
+      // Erro no próprio campo (balão nativo + aria-invalid), como o "Preencha este campo".
+      timeInput.setCustomValidity("Tempo inválido. Ex.: 45, 1h30, 2:15."); timeInput.reportValidity(); return;
+    }
     const btn = ev.submitter;
     if (btn) btn.disabled = true; // duplo clique criava a tarefa duas vezes
     try {

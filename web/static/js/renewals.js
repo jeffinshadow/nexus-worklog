@@ -25,7 +25,7 @@ function row(r, onChange, compact = false) {
     h("div", { class: "t" }, h("span", { text: r.label }),
       !compact && (r.note || r.project_name) ? h("small", { text: [r.project_name, r.note].filter(Boolean).join(" · ") }) : null),
     h("span", { class: "chip " + w.cls, text: w.text }),
-    h("button", { type: "button", class: "btn btn-ghost btn-sm", title: "Criar a tarefa de renovação (prazo = vencimento)", onClick: async (ev) => {
+    h("button", { type: "button", class: "btn btn-ghost btn-sm", title: "Criar a tarefa de renovação (prazo = vencimento)", "aria-label": `Virar tarefa: ${r.label}`, onClick: async (ev) => {
       const btn = ev.currentTarget;
       btn.disabled = true; // clique duplo criaria duas
       const title = `Renovar: ${r.label}`.slice(0, 200);
@@ -35,9 +35,10 @@ function row(r, onChange, compact = false) {
           external_ref: `renewal:${r.id}:${r.expires_on}` });
         toast(res.existing ? "Essa tarefa de renovação já existe em Tarefas." : "Tarefa de renovação criada em Tarefas.");
         btn.textContent = "Tarefa criada";
+        btn.setAttribute("aria-label", `Tarefa criada: ${r.label}`);
       } catch (e) { btn.disabled = false; errorToast(e); }
     } }, "Virar tarefa"),
-    h("button", { type: "button", class: "btn btn-ghost btn-sm", title: "Informar a nova data de vencimento", onClick: () => openRenewal(r, onChange, true) }, "Renovei"),
+    h("button", { type: "button", class: "btn btn-ghost btn-sm", title: "Informar a nova data de vencimento", "aria-label": `Renovei: ${r.label}`, onClick: () => openRenewal(r, onChange, true) }, "Renovei"),
     compact ? null : h("button", { type: "button", class: "icon", title: "Editar", "aria-label": "Editar " + r.label, onClick: () => openRenewal(r, onChange) }, icon("edit")),
     compact ? null : h("button", { type: "button", class: "icon", title: "Excluir", "aria-label": "Excluir " + r.label, onClick: async () => {
       if (!(await confirmDialog({ title: "Excluir vencimento?", text: `“${r.label}” sai da lista. Dá para desfazer pelo histórico.`, confirm: "Excluir", danger: true }))) return;
