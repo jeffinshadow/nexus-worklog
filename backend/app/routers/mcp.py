@@ -581,7 +581,7 @@ def _pause(ctx, rid: int, until) -> str:
         return f" Rotina R{rid} retomada: volta a valer hoje."
     data = _call(PauseIn, until=until)
     _call(recurring_routes.pause, rid, data, user=ctx)
-    return f" Rotina R{rid} pausada até {data.until:%d/%m/%Y} (inclusive): não conta como falta nem lembra; marcar conta como extra."
+    return f" Rotina R{rid} pausada até {data.until:%d/%m/%Y} (inclusive): não conta como falta nem avisa; marcar conta como extra."
 
 
 def _routine_line(r: dict) -> str:
@@ -1059,7 +1059,7 @@ TOOLS = {
                        "“próxima em DD/MM”: rotina que conta da última vez (freq after).",
                        {"type": "object", "properties": {"day": DATE}}),
     "set_recurring": (t_set_recurring, True, "Marca (done=true) ou desmarca uma rotina num dia (padrão hoje; até 7 dias atrás). "
-                      "Com paused_until: pausa de hoje até a data (férias, folga; não conta como falta nem lembra) "
+                      "Com paused_until: pausa de hoje até a data (férias, folga; não conta como falta nem avisa) "
                       "ou, com null, retoma agora — sem done/day/note, só pausa ou retoma.",
                       {"type": "object", "required": ["recurring_id"], "properties": {
                           "recurring_id": {"type": "integer", "description": "id da rotina (R<n> em get_today/list_recurring), não de tarefa"},
@@ -1163,7 +1163,7 @@ PROMPTS = {
     },
     "daily": {
         "title": "Daily",
-        "description": "Texto da daily: ontem, hoje e o que está aguardando.",
+        "description": "Resumo para a equipe: ontem, hoje e o que está aguardando.",
         "arguments": [],
         "text": ("Use get_summary e get_today do Nexus e monte minha daily em três tópicos curtos: Ontem (o que concluí "
                  "desde o último dia útil), Hoje (o que está em andamento, atrasado ou vence hoje) e Aguardando "

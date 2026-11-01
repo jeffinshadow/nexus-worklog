@@ -203,7 +203,7 @@ def _own_sent(task_id: int, uid: int) -> dict:
     return row
 
 
-STARTED_MSG = "a pessoa já começou esta tarefa: agora só ela muda; combine com ela"
+STARTED_MSG = "a pessoa já começou esta tarefa e agora só ela pode alterá-la; combine direto com quem recebeu"
 
 
 def _change_mail(title: str, by_name: str, verb: str, lines: list[str], link: str):
@@ -262,5 +262,5 @@ def cancel_sent(task_id: int, user=Depends(require_assigner_csrf)):
     audit.record(user, "assign.cancel", "assignment", task_id,
                  before={"title": row["title"], "to": people.profile(row["user_id"])["name"]})
     if mailer.configured():
-        _spawn(row["email"], _change_mail(row["title"], by_name, "Cancelou", [row["title"], "Ela saiu das suas tarefas."], "/#/tarefas"))
+        _spawn(row["email"], _change_mail(row["title"], by_name, "Cancelou", [row["title"], "A tarefa saiu da sua lista; não precisa fazer nada."], "/#/tarefas"))
     return {"ok": True}

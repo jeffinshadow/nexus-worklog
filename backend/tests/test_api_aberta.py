@@ -305,7 +305,7 @@ def test_retry_after_no_429_e_503(usuario):
     assert r.status_code == 503 and r.headers["Retry-After"] == "5"
     # Os outros erros seguem sem o header e com o detail de sempre.
     r = usuario.get("/worklog/999999")
-    assert r.status_code == 404 and "Retry-After" not in r.headers and r.json() == {"detail": "não encontrado"}
+    assert r.status_code == 404 and "Retry-After" not in r.headers and r.json() == {"detail": "tarefa não encontrada (pode ter sido excluída); atualize a tela"}
 
 
 def test_webhook_de_grupo_recebe_o_desfazer():

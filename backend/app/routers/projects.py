@@ -93,7 +93,7 @@ def update_project(project_id: int, data: ProjectUpdate, user=Depends(active_use
     uid = user["user_id"]
     before = db.query_one(f"SELECT {COLS} FROM projects WHERE id = %s AND user_id = %s", (project_id, uid))
     if not before:
-        raise HTTPException(status_code=404, detail="não encontrado")
+        raise HTTPException(status_code=404, detail="projeto não encontrado (pode ter sido excluído); atualize a tela")
     new = {
         "name": data.name.strip() if data.name is not None else before["name"],
         "color": data.color or before["color"],
@@ -117,7 +117,7 @@ def update_project(project_id: int, data: ProjectUpdate, user=Depends(active_use
 def delete_project(project_id: int, user=Depends(active_user_csrf)):
     uid = user["user_id"]
     if not db.query_one("SELECT 1 FROM projects WHERE id = %s AND user_id = %s", (project_id, uid)):
-        raise HTTPException(status_code=404, detail="não encontrado")
+        raise HTTPException(status_code=404, detail="projeto não encontrado (pode ter sido excluído); atualize a tela")
     # Os objetivos vão junto (CASCADE); guardamos com as tarefas deles para o desfazer.
     objectives = db.query_all(
         "SELECT id, project_id, title, description, due_date, position, created_at, external_ref FROM project_objectives WHERE project_id = %s",
@@ -142,7 +142,7 @@ def delete_project(project_id: int, user=Depends(active_user_csrf)):
         (project_id, user["user_id"]),
     )
     if not row:
-        raise HTTPException(status_code=404, detail="não encontrado")
+        raise HTTPException(status_code=404, detail="projeto não encontrado (pode ter sido excluído); atualize a tela")
     # As tarefas ficam sem projeto (FK SET NULL); guardamos quais eram para o desfazer.
     row["task_ids"] = [r["id"] for r in db.query_all(
         "SELECT id FROM worklog_tasks WHERE user_id = %s AND project_id IS NULL AND id = ANY(%s)",

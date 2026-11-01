@@ -122,7 +122,7 @@ function editSent(r, done) {
   const form = h("form", {},
     field("Título", title),
     h("div", { class: "field-row" }, field("Prazo (opcional)", due), field("Prioridade", prio)),
-    h("p", { class: "dialog-note", text: `${r.to_name} recebe um e-mail com a mudança. Depois que ela começar, só ela muda a tarefa.` }),
+    h("p", { class: "dialog-note", text: `${r.to_name} recebe um e-mail com a mudança. Depois que a tarefa for começada, só quem recebeu pode mudá-la.` }),
     err,
     h("div", { class: "dialog-actions" },
       h("button", { type: "button", class: "btn btn-text", text: "Voltar", onClick: () => dlg.close() }),
@@ -142,7 +142,7 @@ function editSent(r, done) {
 }
 
 async function cancelSent(r, done) {
-  if (!(await confirmDialog({ title: "Cancelar esta tarefa?", text: `“${r.title}” sai das tarefas de ${r.to_name}, que recebe um e-mail avisando. Ela continua nesta lista como cancelada.`, confirm: "Cancelar tarefa", danger: true }))) return;
+  if (!(await confirmDialog({ title: "Cancelar esta tarefa?", text: `“${r.title}” sai das tarefas de ${r.to_name}, que recebe um e-mail avisando. A tarefa continua nesta lista, marcada como cancelada.`, confirm: "Cancelar tarefa", danger: true, dismiss: "Voltar" }))) return;
   try { await api.post(`/assign/${r.id}/cancel`); toast("Tarefa cancelada."); }
   catch (e) { errorToast(e, "Não foi possível cancelar."); }
   done();

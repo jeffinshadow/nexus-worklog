@@ -80,7 +80,7 @@ def login(data: LoginIn, request: Request, response: Response):
     if not verify_password(user["password_hash"], data.password):
         falhou()
     if user.get("blocked_at"):  # a senha já é uma que ninguém sabe; isto é a segunda tranca
-        raise HTTPException(status_code=403, detail="Acesso bloqueado pelo administrador. Fale com ele para voltar.")
+        raise HTTPException(status_code=403, detail="Seu acesso foi bloqueado por quem administra o Nexus. Para voltar a entrar, peça que libere o acesso.")
 
     if needs_rehash(user["password_hash"]):
         db.execute(
