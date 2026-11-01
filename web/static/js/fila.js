@@ -149,6 +149,7 @@ export async function flush() {
 async function flushHere() {
   if (sending || !sendFn || !navigator.onLine) return;
   sending = true;
+  changed();  // a barra diz "enviando…"
   let sent = 0;
   try {
     outer: for (const op of await all()) {
@@ -261,7 +262,8 @@ async function changed() {
   const hora = staleAt ? new Date(staleAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : null;
   // A contagem vem primeiro: no celular a barra corta o fim.
   const parts = [
-    ops.length ? `${ops.length} ${ops.length > 1 ? "alterações esperando envio" : "alteração esperando envio"}` : null,
+    ops.length ? (sending && navigator.onLine ? `enviando ${ops.length > 1 ? `${ops.length} alterações` : "1 alteração"}…`
+      : `${ops.length} ${ops.length > 1 ? "alterações esperando envio" : "alteração esperando envio"}`) : null,
     offline ? (hora ? `sem conexão desde ${hora}` : "sem conexão") : null,
     bad.length ? `${bad.length} não ${bad.length > 1 ? "puderam" : "pôde"} ser ${bad.length > 1 ? "aplicadas" : "aplicada"}` : null,
   ].filter(Boolean);
@@ -280,11 +282,21 @@ async function showList() {
     ops.length ? h("p", { class: "dialog-note", text: "Vai sozinho, nesta ordem, quando a conexão voltar (com o Nexus aberto)." }) : null,
     ...ops.map((op) => h("div", { class: "token-row" }, h("span", { class: "token-name", text: describe(op) }), h("span", { class: "token-meta", text: when(op.at) }))),
     bad.length ? h("h3", { text: "Não deu para aplicar" }) : null,
-    ...bad.map((op) => h("div", { class: "token-row" }, h("span", { class: "token-name", text: op.what }),
-      h("span", { class: "token-meta", text: op.error }),
-      h("button", { type: "button", class: "icon", title: "Dispensar", "aria-label": "Dispensar", onClick: async () => {
-        await tx(FAILED, "readwrite", (s) => s.delete(op.qid)); dlg.close(); changed();
-      } }, icon("close")))),
+    ...bad.map((op) => {
+      // O texto inteiro (anotação, título) com Copiar: dispensar não pode perder o que foi escrito no campo.
+      const full = op.body && (op.body.body || op.body.note || op.body.title);
+      return h("div", { class: "token-row" }, h("span", { class: "token-name", text: op.what }),
+        h("button", { type: "button", class: "icon dismiss", title: "Dispensar", "aria-label": "Dispensar", onClick: async () => {
+          await tx(FAILED, "readwrite", (s) => s.delete(op.qid)); dlg.close(); changed();
+        } }, icon("close")),
+        h("span", { class: "token-meta", text: op.error }),
+        full ? h("div", { class: "failed-box" }, h("p", { text: full }),
+          h("button", { type: "button", class: "btn btn-text btn-sm", onClick: async () => {
+            const { toast } = await import("./ui.js");
+            try { await navigator.clipboard.writeText(full); toast("Texto copiado."); }
+            catch { toast("Selecione o texto e copie.", { error: true }); }
+          } }, icon("copy"), "Copiar")) : null);
+    }),
     h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-text", text: "Fechar", onClick: () => dlg.close() })));
 }
 
@@ -310,7 +322,13 @@ export function startQueue(refresh) {
   started = true;
   // Rede de volta: envia a fila e relê a tela mesmo sem nada na fila (a leitura
   // nova tira o "sem conexão desde…" e troca os dados guardados pelos de agora).
-  addEventListener("online", async () => { changed(); const sent = await flush(); if (!sent && onSynced) onSynced(); });
+  // A primeira tentativa logo na volta da rede costuma falhar (a rede ainda acordando): tenta de novo em 2 s e 5 s.
+  addEventListener("online", async () => {
+    changed();
+    const sent = await flush();
+    if (!sent && onSynced) onSynced();
+    if (!sent && pending) for (const ms of [2000, 5000]) setTimeout(() => { if (pending) flush(); }, ms);
+  });
   addEventListener("offline", changed);
   setInterval(() => { if (pending) flush(); }, 30000);
   changed();

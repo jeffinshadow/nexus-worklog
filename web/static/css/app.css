@@ -296,6 +296,10 @@ button.column-toggle { display: none; }
 .token-name { font-weight: 600; font-size: var(--type-body); }
 .token-meta { grid-column: 1; font-family: var(--font-label); font-size: var(--type-label); color: var(--dim); }
 .token-row .actions { grid-row: 1 / span 2; grid-column: 2; }
+.token-row .dismiss { grid-row: 1; grid-column: 2; }
+/* Falha da fila (fila.js): o texto inteiro, com Copiar, antes de dispensar. */
+.token-row .failed-box { grid-column: 1 / -1; display: flex; gap: 8px; align-items: flex-start; }
+.token-row .failed-box > p { flex: 1; margin: 0; white-space: pre-wrap; word-break: break-word; font-size: var(--type-body-s); color: var(--on-surface); }
 .token-row.inactive .token-name { color: var(--dim); text-decoration: line-through; }
 .codebox { position: relative; font-family: var(--font-label); font-size: var(--type-caption); line-height: 1.7; background: var(--surface-deep); border: 1px solid var(--line-2); border-radius: var(--radius-m); padding: 12px 44px 12px 14px; color: var(--ink-code); white-space: pre-wrap; word-break: break-all; }
 .codebox .copy { position: absolute; top: 6px; right: 6px; }
