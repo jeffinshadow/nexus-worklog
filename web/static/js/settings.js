@@ -58,7 +58,7 @@ export async function mount(root, ctx) {
       await fill(out);
     } catch (e) {
       clear(out);
-      out.append(h("p", { class: "empty", text: e && e.status === 0 ? e.message : "Erro ao carregar. Tente de novo." }));
+      out.append(h("p", { class: "empty", text: e && e.status === 0 ? e.message : "Não foi possível carregar. Tente de novo." }));
     }
     if (my !== seq) return;
     clear(body);
@@ -125,7 +125,7 @@ function profilePanel(me, rerender) {
       toast(`Combinado: vou chamar você de ${me.name}.`);
       rerender();
     } catch (e) {
-      err.textContent = e.message || "Falha ao salvar.";
+      err.textContent = e.message || "Não foi possível salvar.";
     }
   }));
   return h("section", { class: "panel" },
@@ -174,7 +174,7 @@ function assistantPanel(me) {
     try {
       meChanged(me, { assistant: await api.put("/me/assistant", body) });
       toast("Assistente salvo.");
-    } catch (e) { errorToast(e, "Falha ao salvar."); }
+    } catch (e) { errorToast(e, "Não foi possível salvar."); }
   });
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, icon("spark"), h("h2", { text: "Assistente" })),
@@ -212,7 +212,7 @@ async function templatesPanel(rerender) {
         try { await api.del(`/templates/${t.id}`); toast("Modelo excluído."); rerender(); } catch (e) { errorToast(e); }
       } }, icon("trash"))),
     h("span", { class: "token-meta", text: [t.title, t.checklist.length ? `${t.checklist.length} itens no checklist` : "sem checklist", t.after_hours ? "plantão" : ""].filter(Boolean).join(" · ") })))
-    : [h("p", { class: "empty", text: "Nenhum modelo ainda." })];
+    : [h("p", { class: "empty", text: "Nenhum modelo ainda. Salve como modelo uma tarefa que se repete (com checklist) para criá-la em um toque." })];
   return h("div", { class: "settings-grid" },
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, icon("list"), h("h2", { text: "Modelos de tarefa" }),
@@ -253,7 +253,7 @@ function editTemplate(t, rerender) {
     try {
       if (t) await api.put(`/templates/${t.id}`, body); else await api.post("/templates", body);
       dlg.close(); toast("Modelo salvo."); rerender();
-    } catch (e) { err.textContent = e.message || "Falha ao salvar."; }
+    } catch (e) { err.textContent = e.message || "Não foi possível salvar."; }
   }));
   setTimeout(() => (t ? title : name).focus(), 0);
 }
@@ -315,7 +315,7 @@ function workDays(me) {
       me.work_days = res.work_days;
       toast("Dias úteis salvos.");
     } catch (e) {
-      errorToast(e, "Falha ao salvar.");
+      errorToast(e, "Não foi possível salvar.");
     }
   });
   return h("section", { class: "panel" },
@@ -369,14 +369,14 @@ async function notices() {
     const body = { show_titles: titles.checked, weekly_pdf: pdf.checked, weekly_cc: cc.value.trim() || null };
     for (const r of rows) { body[r.key] = r.on.checked; body[`${r.key}_hour`] = Number(r.hour.value); }
     try { await api.put("/notifications", body); toast("Avisos salvos."); setDirty(false); }
-    catch (e) { errorToast(e, e.status === 422 ? "O e-mail da cópia não parece válido." : "Falha ao salvar."); }
+    catch (e) { if (e.status === 422) toast("O e-mail da cópia não parece válido.", { error: true }); else errorToast(e, "Não foi possível salvar."); }
   });
   const test = h("button", { type: "button", class: "btn btn-ghost" }, icon("mail"), "Mandar um teste");
   test.disabled = !p.mail_configured;
   test.addEventListener("click", async () => {
     test.disabled = true;
     try { const r = await api.post("/notifications/test"); toast(`Teste enviado para ${r.to}.`); }
-    catch (e) { errorToast(e, "Falha no envio."); }
+    catch (e) { errorToast(e, "Não foi possível enviar."); }
     finally { setTimeout(() => { test.disabled = false; }, 4000); }
   });
   // A semana passada como sairia na segunda (só para você; a cópia não recebe). Salve antes.
@@ -386,7 +386,7 @@ async function notices() {
   testWeek.addEventListener("click", async () => {
     testWeek.disabled = true;
     try { const r = await api.post("/notifications/test?kind=weekly"); toast(`Semana enviada para ${r.to}.`); }
-    catch (e) { errorToast(e, "Falha no envio."); }
+    catch (e) { errorToast(e, "Não foi possível enviar."); }
     finally { setTimeout(() => { testWeek.disabled = false; }, 4000); }
   });
   // Os testes saem com o que está salvo: com alteração pendente, esperam o "Salvar avisos".
@@ -464,8 +464,8 @@ function showFeed(res) {
     h("h2", { text: "Link do calendário" }),
     h("p", { text: "Copie agora: ele não aparece de novo. Quem tiver o link vê seus prazos e rotinas." }),
     codeBox(url),
-    h("p", { class: "dialog-note", text: "Google Agenda: Outras agendas › + › Do URL › cole o link." }),
-    h("p", { class: "dialog-note", text: "Outlook: Adicionar calendário › Assinar da Web." }),
+    h("p", { class: "dialog-note", text: "Google Agenda: Outras agendas > + > Do URL > cole o link." }),
+    h("p", { class: "dialog-note", text: "Outlook: Adicionar calendário > Assinar da Web." }),
     h("p", { class: "dialog-note" }, "iPhone/Mac: ", h("a", { href: webcal, text: "abrir no Calendário" }), "."),
     h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Pronto", onClick: () => dlg.close() })));
 }
@@ -502,7 +502,7 @@ async function tokens(rerender) {
       showNewToken(res);
       rerender();
     } catch (e) {
-      err.textContent = e.message || "Falha ao criar.";
+      err.textContent = e.message || "Não foi possível criar.";
       create.disabled = false;
     }
   }));
@@ -578,7 +578,7 @@ async function webhooksPanel(rerender) {
       showNewSecret(res);
       rerender();
     } catch (e) {
-      err.textContent = e.message || "Falha ao criar.";
+      err.textContent = e.message || "Não foi possível criar.";
       create.disabled = false;
     }
   }));
@@ -610,7 +610,7 @@ async function webhooksPanel(rerender) {
   return h("div", { class: "settings-grid" },
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Novo webhook" })),
-      h("p", { class: "help", text: "O Nexus manda um POST assinado para esse endereço a cada mudança (tarefa criada, concluída, rotina marcada...). Serve para fechar o chamado, avisar no chat ou alimentar uma planilha. Até 5; detalhes em docs/API.md." }),
+      h("p", { class: "help", text: "Webhook: o Nexus avisa outro sistema na hora em que algo muda (tarefa criada, concluída, rotina marcada…), enviando os dados para o endereço que você informar. Serve para fechar o chamado, avisar no chat ou alimentar uma planilha. Até 5. Quem configura o outro sistema encontra os detalhes na documentação da API." }),
       form),
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Meus webhooks" }), h("span", { class: "count", text: String(list.filter((w) => w.active).length) + " ativos" })),
@@ -622,7 +622,7 @@ function showNewSecret(res) {
     h("h2", { text: "Webhook criado" }),
     h("p", { text: "Segredo de assinatura — copie agora: ele não aparece de novo." }),
     h("div", { class: "token-box", text: res.secret }),
-    h("p", { class: "dialog-note", text: "Confira o header X-Nexus-Signature com ele (HMAC-SHA256) antes de confiar no aviso." }),
+    h("p", { class: "dialog-note", text: "Entregue este segredo a quem configura o outro sistema: ele confirma que o aviso veio mesmo do Nexus (assinatura HMAC-SHA256 no cabeçalho X-Nexus-Signature)." }),
     h("div", { class: "dialog-actions" },
       h("button", {
         type: "button", class: "btn btn-ghost", onClick: async () => {
@@ -640,7 +640,7 @@ function aiHelp() {
   return [
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, icon("spark"), h("h2", { text: "Use o Nexus pela sua IA" })),
-      h("p", { class: "help", text: "Em vez de registrar à mão, conte para a IA o que você fez (“terminei a migração do Exchange, e fiz os backups”) e ela registra no Nexus. O Nexus fala MCP, a forma padrão de uma IA usar outros programas." }),
+      h("p", { class: "help", text: "Em vez de registrar à mão, conte para a IA o que você fez (“troquei o disjuntor do quadro 3 e fiz a ronda da manhã”) e ela registra no Nexus. O Nexus fala MCP, a forma padrão de uma IA usar outros programas." }),
       h("p", { class: "help", text: "1. Crie uma chave logo abaixo (permissão ler e registrar). 2. Escolha a sua IA e cole a configuração, trocando nxs_SUA_CHAVE pela chave:" }),
       h("p", { class: "dialog-note", text: "Claude Code (terminal):" }),
       codeBox(`claude mcp add --transport http nexus ${url} --header "Authorization: Bearer nxs_SUA_CHAVE"`),
@@ -658,10 +658,10 @@ function aiHelp() {
       codeBox(`curl -H "Authorization: Bearer nxs_SUA_CHAVE" ${location.origin}/api/board`)),
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, icon("spark"), h("h2", { text: "Comandos prontos" })),
-      h("p", { class: "help", text: "O Nexus oferece dois comandos para a IA: o resumo da semana (para o gestor, o time ou um cliente) e o texto da daily. No Claude Code eles aparecem como comandos de barra:" }),
+      h("p", { class: "help", text: "O Nexus oferece dois comandos para a IA: o resumo da semana (para o gestor, o time ou um cliente) e o resumo para a equipe (ontem, hoje e o que está bloqueado). No Claude Code eles aparecem como comandos de barra:" }),
       codeBox("/mcp__nexus__resumo_semanal o cliente\n/mcp__nexus__daily"),
-      h("p", { class: "dialog-note", text: "Em outros clientes, cole o pedido:" }),
-      codeBox("Use o Nexus (get_summary e get_today) e escreva um resumo da minha semana para o meu gestor: o que foi entregue por projeto, o tempo por projeto, o que segue em andamento e os impedimentos. Só com o que está registrado.")),
+      h("p", { class: "dialog-note", text: "Em outras IAs, cole o pedido:" }),
+      codeBox("Use o Nexus (get_summary e get_today) e escreva um resumo da minha semana para o meu gestor: o que foi entregue por projeto, o tempo por projeto, o que segue em andamento e o que está bloqueado. Só com o que está registrado.")),
   ];
 }
 
@@ -782,7 +782,7 @@ function account(me) {
       cur.value = nova.value = nova2.value = "";
       toast("Senha trocada. Outras sessões, chaves de API e o link do calendário foram encerrados; webhooks, desligados.");
     } catch (e) {
-      err.textContent = e.message || "Falha ao trocar.";
+      err.textContent = e.message || "Não foi possível trocar.";
     }
   }));
   return h("section", { class: "panel" },

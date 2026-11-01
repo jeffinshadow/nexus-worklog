@@ -173,7 +173,7 @@ function closing(sum, pendentes) {
   return `Resumo do dia: ${plural(s.pontual_done, "tarefa concluída", "tarefas concluídas", "nenhuma tarefa concluída")}${tempo} hoje${falta}.`;
 }
 
-// Texto da daily: Ontem (desde o último dia útil), Hoje e Impedimentos.
+// Resumo para a equipe: Ontem (desde o último dia útil), Hoje e Bloqueadas.
 export function dailyText(b, sum) {
   const today = b.today;
   const lines = [];
@@ -185,9 +185,9 @@ export function dailyText(b, sum) {
   lines.push("", "Hoje:");
   const hoje = b.in_progress.filter((t) => t.status !== "blocked").slice(0, 6);
   lines.push(...(hoje.length ? hoje.map((t) => `- ${t.title}${t.ticket ? ` (#${t.ticket})` : ""}${t.due_date && t.due_date < today ? " — atrasada" : t.due_date === today ? " — vence hoje" : ""}`) : ["- sem tarefas em aberto"]));
-  lines.push("", "Impedimentos:");
+  lines.push("", "Bloqueadas:");
   const bloq = b.in_progress.filter((t) => t.status === "blocked");
-  lines.push(...(bloq.length ? bloq.map((t) => `- ${t.title}${t.ticket ? ` (#${t.ticket})` : ""}${t.blocked_reason ? ` — aguardando ${t.blocked_reason}` : ""}`) : ["- nenhum"]));
+  lines.push(...(bloq.length ? bloq.map((t) => `- ${t.title}${t.ticket ? ` (#${t.ticket})` : ""}${t.blocked_reason ? ` — aguardando ${t.blocked_reason}` : ""}`) : ["- nenhuma"]));
   return lines.join("\n");
 }
 
@@ -195,12 +195,12 @@ async function copyDaily(b, sum) {
   const text = dailyText(b, sum);
   try {
     await navigator.clipboard.writeText(text);
-    toast("Texto da daily copiado. É só colar no chat da equipe.");
+    toast("Resumo copiado. É só colar no chat da equipe.");
   } catch {
     // Área de transferência bloqueada: mostra o texto selecionado para copiar à mão.
     const area = h("textarea", { class: "daily-text", rows: "12", readonly: "readonly" });
     area.value = text;
-    const dlg = modal(h("h2", { text: "Texto da daily" }),
+    const dlg = modal(h("h2", { text: "Resumo para a equipe" }),
       h("p", { class: "dialog-note", text: "Não consegui copiar sozinho. O texto já está selecionado: use Ctrl+C." }), area,
       h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Fechar", onClick: () => dlg.close() })));
     setTimeout(() => area.select(), 0);
@@ -282,8 +282,8 @@ export function todayCard(b, sum, ctx) {
         const btn = ev.currentTarget;
         btn.disabled = true; // clique duplo gravaria duas anotações
         try {
-          // Com dia combinado, a próxima cobrança vai pra daqui a 2 dias úteis (antes da
-          // anotação: se falhar, nada foi gravado e dá pra tentar de novo).
+          // Com dia combinado, a próxima cobrança vai para daqui a 2 dias úteis (antes da
+          // anotação: se falhar, nada foi gravado e dá para tentar de novo).
           if (n.task.follow_up_on) await api.patch(`/worklog/${n.task.id}`, { follow_up_on: addWorkDays(today, 2, (ME && ME.work_days) || 62) });
           await api.post(`/worklog/${n.task.id}/notes`, { body: n.task.blocked_reason ? `Cobrei: ${n.task.blocked_reason}` : "Cobrei o andamento" });
           toast("Cobrança anotada na tarefa.");
@@ -309,8 +309,8 @@ export function todayCard(b, sum, ctx) {
   // da sexta (com o botão do relatório) é um aviso.
   const r = recap(sum, t, ctx.go);
   if (r.line && r.act) items.push({ key: "hoje:recap", lines: [{ line: r.line, actions: [r.act] }] });
-  if (b.work_day) items.push({ key: "hoje:daily", lines: [{ line: "Posso montar o texto da daily: ontem, hoje e impedimentos, pronto para colar no chat da equipe.",
-    actions: [action("Copiar para a daily", () => copyDaily(b, sum))] }] });
+  if (b.work_day) items.push({ key: "hoje:daily", lines: [{ line: "Posso montar o resumo para a equipe: ontem, hoje e o que está bloqueado, pronto para colar no chat.",
+    actions: [action("Copiar resumo para a equipe", () => copyDaily(b, sum))] }] });
   const ask = invite(me, ctx.onProfile);
   if (ask) items.push({ key: "hoje:nome", lines: [], extra: ask });
 

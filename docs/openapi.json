@@ -1696,7 +1696,7 @@
           "admin"
         ],
         "summary": "Reset Password",
-        "description": "Redefine a senha de um usuario para uma temporaria gerada (mostrada uma\nunica vez ao admin). Forca troca no proximo login e encerra as sessoes do\nalvo. Sem envolvimento de e-mail. Para a propria conta, use a troca normal.",
+        "description": "Redefine a senha de um usuario para uma temporaria gerada (mostrada uma\nunica vez ao admin). Forca troca no proximo login e encerra as sessoes do\nalvo. Sem envolvimento de e-mail. Para a própria conta, use a troca normal.",
         "operationId": "reset_password_api_admin_users__user_id__reset_password_post",
         "parameters": [
           {

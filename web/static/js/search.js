@@ -53,7 +53,7 @@ export async function mount(root, ctx) {
   try {
     r = await api.get("/search?q=" + encodeURIComponent(q));
   } catch (e) {
-    root.append(h("p", { class: "empty", text: e.message || "Erro na busca." }));
+    root.append(h("p", { class: "empty", text: e.message || "Não foi possível buscar." }));
     return;
   }
   const today = localDay(Date.now()); // só para os chips (prazo, atrasada)
@@ -62,7 +62,7 @@ export async function mount(root, ctx) {
   if (!r.tasks.length && !r.recurring.length && !r.projects.length) {
     if (enabled(ctx.me))
       ctx.setAssist(card({ key: "busca", lines: [`Não encontrei nada com “${q}”. Tente uma palavra só ou um termo mais curto; acentos e maiúsculas não importam.`], compact: true }));
-    else root.append(h("p", { class: "empty", text: "Nada encontrado." }));
+    else root.append(h("p", { class: "empty", text: "Nada encontrado. Tente outra palavra ou o número do chamado." }));
     return;
   }
 

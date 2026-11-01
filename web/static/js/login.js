@@ -45,7 +45,7 @@ $("form-login").addEventListener("submit", async (ev) => {
     });
     location.href = destino;
   } catch (e) {
-    err.textContent = e.message || "Falha no login.";
+    err.textContent = e.message || "Não foi possível entrar.";
     invalid(["login-email", "login-password"], "login-error", true);
     if (btn) btn.disabled = false;
   }
@@ -103,7 +103,7 @@ $("form-request").addEventListener("submit", async (ev) => {
       source_note: $("req-note").value.trim() || null, reason: $("req-reason").value.trim(), website: $("req-website").value || null,
     });
     // Mesma frase em qualquer caso: a tela não revela se o e-mail já tem conta.
-    ok.textContent = "Pedido enviado. Se o administrador aprovar, o convite chega no seu e-mail; confira também o spam.";
+    ok.textContent = "Pedido enviado. Com a aprovação, o convite chega no seu e-mail; confira também o spam.";
     ok.classList.remove("hidden");
     $("form-request").querySelectorAll(".field, #request-submit").forEach((el) => el.classList.add("hidden"));
   } catch (e) {

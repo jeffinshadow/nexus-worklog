@@ -70,7 +70,8 @@ def login(data: LoginIn, request: Request, response: Response):
         log.warning("login falhou: ip=%s conta=%s", ip, token_hash(email)[:12])  # sem o e-mail em claro
         login_limiter.allow(fail_keys[0])
         login_email_limiter.allow(fail_keys[1])
-        raise HTTPException(status_code=401, detail="credenciais invalidas")
+        dica = ", ou use Esqueci a senha" if mailer.configured() else ""
+        raise HTTPException(status_code=401, detail=f"E-mail ou senha incorretos. Confira e tente de novo{dica}.")
 
     user = db.query_one("SELECT * FROM users WHERE email = %s", (email,))
     if not user:
@@ -139,7 +140,7 @@ def _passkeys_mail(n: int):
              "A senha desta conta acabou de ser trocada pelo link de \"Esqueci a senha\".")
     m.blocks = [("As suas passkeys continuam valendo", [
         f"{n} passkey{'s' if n > 1 else ''} ainda entra{'m' if n > 1 else ''} nesta conta sem senha.",
-        "Não foi você? Entre, troque a senha e remova as passkeys em Configurações › Conta."])]
+        "Não foi você? Entre, troque a senha e remova as passkeys em Configurações > Conta."])]
     m.reason, m.settings_tab = "Aviso de segurança da sua conta.", None
     return m
 

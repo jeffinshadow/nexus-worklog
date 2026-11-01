@@ -55,7 +55,7 @@ export function openRenewal(r, onChange, renew = false) {
   const label = h("input", { type: "text", maxlength: "120", required: "required", value: r ? r.label : "", placeholder: "ex.: Certificado *.empresa.com.br" });
   const expires = h("input", { type: "date", required: "required", value: r && !renew ? r.expires_on : "" });
   if (renew) {
-    expires.min = addDays(r.expires_on, 1); // renovar é empurrar a data pra frente (ano digitado errado é comum)
+    expires.min = addDays(r.expires_on, 1); // renovar é empurrar a data para frente (ano digitado errado é comum)
     if (r.renew_months) expires.value = addMonths(r.expires_on, r.renew_months); // periódico: já sugere a próxima
   }
   const months = h("input", { type: "number", min: "1", max: "120", value: r && r.renew_months ? String(r.renew_months) : "", placeholder: "ex.: 12" });
@@ -103,7 +103,7 @@ export async function renewalsPanel(rerender) {
   const sec = h("section", { class: "panel" },
     h("div", { class: "panel-head" }, icon("calendar"), h("h2", { text: "Vencimentos" })),
     h("p", { class: "help", text: "Certificados, licenças, domínios, garantias e contratos. Avisam no Hoje, no e-mail da manhã e no calendário a partir dos dias de antecedência de cada um. O Nexus não consulta nada de fora: vale a data informada aqui." }));
-  if (!list.length) sec.append(h("p", { class: "empty", text: "Nenhum vencimento cadastrado ainda." }));
+  if (!list.length) sec.append(h("p", { class: "empty", text: "Nenhum vencimento ainda. Cadastre certificados, licenças, contratos ou garantias e o Nexus avisa antes de vencer." }));
   for (const r of list) sec.append(row(r, rerender));
   return sec;
 }

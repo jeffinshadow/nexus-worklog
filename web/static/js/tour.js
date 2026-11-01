@@ -99,8 +99,8 @@ function setup(me) {
     }
 
     function profile() {
-      const name = h("input", { type: "text", maxlength: "60", value: me.display_name || "", placeholder: "Como você quer ser chamado", autocomplete: "name" });
-      return frame("Como você quer ser chamado?", "Aparece no menu, nas saudações do assistente e para quem atribui tarefas a você. A foto você coloca depois em Configurações > Conta.",
+      const name = h("input", { type: "text", maxlength: "60", value: me.display_name || "", placeholder: "Seu nome", autocomplete: "name" });
+      return frame("Qual nome devemos usar?", "Aparece no menu, nas saudações do assistente e para quem atribui tarefas a você. A foto você coloca depois em Configurações > Conta.",
         [field("Nome", name)],
         async () => {
           const v = name.value.trim() || null;

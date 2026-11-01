@@ -45,7 +45,7 @@ export async function mount(root) {
       h("button", { type: "button", class: "btn btn-ghost", title: "Horas de todos, com pessoa e projeto (some por cliente na planilha)", onClick: async (ev) => {
         const b = ev.currentTarget;
         b.disabled = true;
-        try { await api.download("/viewer/export/apontamentos.csv"); } catch (e) { errorToast(e, "Falha ao exportar."); } finally { b.disabled = false; }
+        try { await api.download("/viewer/export/apontamentos.csv"); } catch (e) { errorToast(e, "Não foi possível exportar."); } finally { b.disabled = false; }
       } }, icon("download"), "Horas da equipe (CSV)")),
     subtabs,
     note,
@@ -64,7 +64,7 @@ export async function mount(root) {
       else await reports.mount(box, { exportBase: `/viewer/users/${uid}/reports/export`, projectsUrl: `/viewer/users/${uid}/projects` });
     } catch (e) {
       clear(box);
-      box.append(h("p", { class: "empty", text: e && e.status === 0 ? e.message : "Erro ao carregar. Tente de novo." }));
+      box.append(h("p", { class: "empty", text: e && e.status === 0 ? e.message : "Não foi possível carregar. Tente de novo." }));
     }
     if (my !== seq) return;
     clear(content);

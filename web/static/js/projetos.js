@@ -45,7 +45,7 @@ async function mountList(root, ctx) {
       const p = await api.post("/projects", { name });
       invalidateProjects();
       location.hash = `#/projetos?id=${p.id}`;
-    } catch (e) { errorToast(e, "Erro ao criar projeto."); }
+    } catch (e) { errorToast(e, "Não foi possível criar o projeto."); }
   };
   ctx.setActions(h("button", { type: "button", class: "btn btn-primary", "data-fab": "", onClick: novo }, icon("add"), "Projeto"));
   clear(root);
@@ -138,7 +138,7 @@ function objectiveBlock(ob, index, o, pid, today, refresh) {
       await api.post("/worklog", oid ? { title: add.value.trim(), objective_id: oid } : { title: add.value.trim(), project_id: pid });
       await refresh(); // e o cursor volta ao campo do mesmo bloco (lote de tarefas seguidas)
       document.querySelector(`.obj-block[data-objective-block="${oid ?? ""}"] .obj-add`)?.focus();
-    } catch (e) { add.disabled = false; errorToast(e, "Erro ao criar a tarefa."); }
+    } catch (e) { add.disabled = false; errorToast(e, "Não foi possível criar a tarefa."); }
   });
 
   const doneList = h("div", { class: "obj-done hidden" }, ...data.done_tasks.map((t) => doneRow(t, oid, o, pid, refresh)));
@@ -389,7 +389,7 @@ async function saveProject(p, patch, msg, refresh) {
     invalidateProjects();
     if (msg) toast(msg);
     refresh();
-  } catch (e) { errorToast(e, "Falha ao salvar."); }
+  } catch (e) { errorToast(e, "Não foi possível salvar."); }
 }
 
 function editProject(p, refresh) {

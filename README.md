@@ -8,7 +8,7 @@ Prioridades: **simples > seguro > funcional > elegante**.
 
 Cada pessoa vê **apenas** os próprios dados. As contas são criadas pelo
 **admin** (convite com senha temporária); não há cadastro público. Papéis
-acumuláveis, dados em **Admin › Permissões**: **Usuário** (o próprio registro),
+acumuláveis, dados em **Admin > Permissões**: **Usuário** (o próprio registro),
 **Admin** (contas, permissões, configurações), **Atribuidor de tarefas** (manda
 tarefas a quem aceitou receber) e **Visualizador de tarefas** (consulta, só
 para leitura, o quadro, a retrospectiva e os relatórios de cada pessoa).
@@ -56,7 +56,7 @@ para leitura, o quadro, a retrospectiva e os relatórios de cada pessoa).
   garantias avisam com antecedência (Hoje, e-mail da manhã, calendário); ao
   concluir, "como resolveu?" vira texto que a busca encontra — e a tarefa nova
   com título parecido já mostra "já resolvido antes".
-- **Atribuição** — quem aceita (Configurações › Conta) recebe tarefas de um
+- **Atribuição** — quem aceita (Configurações > Conta) recebe tarefas de um
   atribuidor pelo app ou pela IA, com aviso por e-mail; a tarefa passa a ser
   dela, e quem atribuiu acompanha o status e recebe um e-mail quando ela é concluída.
 - **Relatórios** — PDF por período, por projeto ou do projeto inteiro, em
@@ -140,7 +140,7 @@ Capturas de uma conta de demonstração, com dados fictícios.
 *Vencimentos — quantos dias faltam; “Virar tarefa” cria a renovação e “Renovei” informa a nova data.*
 
 ![Tela Hoje no tema claro](docs/screenshots/10-claro.webp)
-*Tema claro — segue o tema do aparelho por padrão; em Configurações › Conta › Aparência, a pessoa fixa claro ou escuro. Contraste medido em todo texto (WCAG AA).*
+*Tema claro — segue o tema do aparelho por padrão; em Configurações > Conta > Aparência, a pessoa fixa claro ou escuro. Contraste medido em todo texto (WCAG AA).*
 
 <p>
   <img src="docs/screenshots/06-celular.webp" width="300" alt="Tela Hoje no celular, com a barra do topo com a marca">
@@ -186,7 +186,7 @@ cd nexus-worklog
      STARTTLS), `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM`, `APP_URL`
 2. `docker compose up -d --build` — o nginx fica em `127.0.0.1:${WEB_PORT}`.
 3. Entre com o admin: a troca de senha é obrigatória no primeiro acesso.
-   Depois, **Admin › Novo usuário** cria as contas.
+   Depois, **Admin > Novo usuário** cria as contas.
 
 Desenvolvimento com e-mail falso: `docker-compose.mailpit.yml` (instruções no
 próprio arquivo).
@@ -246,8 +246,8 @@ incidente e outra quando volta. Logs com rotação (10 MB × 5 por serviço).
   calendário não vai para o log. Logo enviado validado pelo conteúdo e servido
   em sandbox.
 - **Seus dados (LGPD)**: cada pessoa exporta tudo em JSON ou CSV (Relatórios) e
-  exclui a própria conta em Configurações › Conta (com a senha); o admin também
-  exclui uma conta (Admin › Usuários, confirmando o e-mail). Tarefas, rotinas,
+  exclui a própria conta em Configurações > Conta (com a senha); o admin também
+  exclui uma conta (Admin > Usuários, confirmando o e-mail). Tarefas, rotinas,
   tempo, anotações, chaves e histórico vão junto; ficam só o e-mail e as contagens
   no histórico de quem excluiu (180 dias). O último admin não sai. O JSON leva
   também perfil, preferências, modelos, projetos com objetivos e as chaves
@@ -261,7 +261,7 @@ incidente e outra quando volta. Logs com rotação (10 MB × 5 por serviço).
   - **Pedidos de convite** (nome, e-mail e motivo de quem ainda não tem conta):
     apagados 30 dias depois de decididos, ou em 180 dias sem resposta.
   - **Quem vê o seu registro**: o visualizador (registros, relatórios e fotos de
-    todos) e o admin (que concede papéis); os nomes aparecem em Configurações › Conta.
+    todos) e o admin (que concede papéis); os nomes aparecem em Configurações > Conta.
 - **Sem rastreamento**: só o cookie de sessão; e-mails sem pixel nem links
   redirecionados; CSV exportado neutraliza fórmulas.
 

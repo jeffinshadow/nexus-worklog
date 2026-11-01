@@ -3,7 +3,7 @@
    Os NOMES das variáveis vêm da versão Material: o dashboard desenha SVG com
    eles, então só os valores mudaram. Escuro por padrão; o claro (Material 3,
    contraste AA ou mais em todo texto) vale quando o aparelho está em claro ou
-   quando a pessoa força em Configurações › Conta (data-theme no <html>). */
+   quando a pessoa força em Configurações > Conta (data-theme no <html>). */
 
 @font-face {
   font-family: "Google Sans Flex";

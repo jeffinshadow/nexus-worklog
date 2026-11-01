@@ -135,7 +135,7 @@ async function route() {
     await view.mount(el, { me, setActions: actions, setEyebrow, setAssist: assist, go });
   } catch (e) {
     clear(el);
-    el.append(h("p", { class: "empty", text: e && e.status === 0 ? e.message : "Erro ao carregar. Tente de novo." }));
+    el.append(h("p", { class: "empty", text: e && e.status === 0 ? e.message : "Não foi possível carregar. Tente de novo." }));
   } finally {
     clearTimeout(loading);
     el.removeAttribute("aria-busy");
@@ -323,7 +323,7 @@ function showChangePassword() {
       });
       location.reload();
     } catch (e) {
-      err.textContent = e.message || "Erro ao trocar a senha.";
+      err.textContent = e.message || "Não foi possível trocar a senha.";
     }
   }));
 }

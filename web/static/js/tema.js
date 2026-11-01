@@ -1,6 +1,6 @@
 // Tema antes da página aparecer (script comum, não módulo: roda já no <head>,
 // sem piscar escuro e depois claro). "auto" segue o aparelho; "light" e "dark"
-// forçam (Configurações › Conta). A conta guarda a escolha; aqui vale a última
+// forçam (Configurações > Conta). A conta guarda a escolha; aqui vale a última
 // conhecida neste aparelho, até o app confirmar com a do servidor.
 (function () {
   var KEY = "nexus.tema";

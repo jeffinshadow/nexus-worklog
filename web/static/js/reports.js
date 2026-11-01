@@ -124,7 +124,7 @@ export async function mount(root, opts = {}) {
     const dl = (path, label, help) => {
       const b = h("button", { type: "button", class: "export-item", onClick: async () => {
         b.disabled = true;
-        try { await api.download(typeof path === "function" ? path() : path); } catch (e) { errorToast(e, "Falha ao exportar."); } finally { b.disabled = false; }
+        try { await api.download(typeof path === "function" ? path() : path); } catch (e) { errorToast(e, "Não foi possível exportar."); } finally { b.disabled = false; }
       } }, h("span", { class: "export-ico" }, icon(label.includes("JSON") ? "folder" : label.includes("ZIP") ? "image" : "list")),
         h("span", { class: "export-text" }, h("span", { class: "export-title", text: label }), h("span", { class: "export-help", text: help })),
         icon("download"));
@@ -136,7 +136,7 @@ export async function mount(root, opts = {}) {
       dl("/export/apontamentos.csv", "Apontamentos (CSV)", "um registro por apontamento de tempo: dia, horas, tarefa, projeto e observação"),
       dl("/export/tarefas.csv", "Tarefas (CSV)", "todas as tarefas com status, prioridade, projeto, prazo, checklist e horas"),
       dl(() => "/export/plantao.csv?" + new URLSearchParams(Object.entries({ start: startInput.value, end: endInput.value }).filter(([, v]) => v)),
-        "Plantão do período (CSV)", "os apontamentos das tarefas marcadas como plantão, de todos os projetos, com as horas e o total — pra fechar sobreaviso ou banco de horas (usa o período escolhido acima)"),
+        "Plantão do período (CSV)", "os apontamentos das tarefas marcadas como plantão, de todos os projetos, com as horas e o total — para fechar sobreaviso ou banco de horas (usa o período escolhido acima)"),
       dl(() => "/export/rotinas.csv?" + new URLSearchParams(Object.entries({ start: startInput.value, end: endInput.value }).filter(([, v]) => v)),
         "Rotinas e evidências (CSV)", "trilha de auditoria: cada rotina em cada dia, se foi feita e o que foi conferido (usa o período escolhido acima)"),
       dl("/export/tudo.json", "Tudo (JSON)", "tarefas com anotações, checklist, tempo e como foram resolvidas; rotinas com dias feitos e evidências; vencimentos; projetos"),
@@ -155,7 +155,7 @@ export async function mount(root, opts = {}) {
       const q = [useDates ? `start=${start}&end=${end}` : "", proj].filter(Boolean).join("&");
       await api.download(`${base}?${q}`);
     } catch (e) {
-      err.textContent = e.message || "Falha ao exportar.";
+      err.textContent = e.message || "Não foi possível exportar.";
     } finally {
       btn.disabled = false;
     }

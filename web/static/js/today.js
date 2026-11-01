@@ -103,7 +103,7 @@ export async function mount(root, ctx, opts = {}) {
         refocusBy(root, r.label); // a lista foi redesenhada: o foco volta para a mesma rotina
       } catch (e) {
         cb.checked = !cb.checked;
-        errorToast(e, "Erro ao salvar.");
+        errorToast(e, "Não foi possível salvar.");
       }
     });
     const hint = [scheduleLabel(r), r.require_note && !r.done_today ? "exige evidência" : "",
@@ -115,7 +115,7 @@ export async function mount(root, ctx, opts = {}) {
     recPanel.append(h("label", { class: "check-row" + (r.done_today ? " done" : "") + (r.due === false ? " off" : "") }, cb,
       h("span", { class: "label" }, h("span", { class: "rec-title" }, r.label, time), hint ? h("small", { text: hint }) : null,
         r.note ? h("small", { class: "evidence", text: "evidência: " + r.note }) : null),
-      // Marcada: anota o que foi conferido (vai pro relatório, pra auditoria).
+      // Marcada: anota o que foi conferido (vai para o relatório, para comprovar depois).
       r.done_today ? h("button", { type: "button", class: "icon", title: r.note ? "Editar a evidência" : "Anotar a evidência (o que foi conferido)",
         "aria-label": "Evidência de " + r.label, onClick: (ev) => { ev.preventDefault(); editEvidence(r, b.day, refresh); } }, icon("note")) : null,
       // Achou algo na verificação? Vira tarefa (com anotações e tempo).
@@ -175,7 +175,7 @@ export async function mount(root, ctx, opts = {}) {
       toast(msg, { action: "Ver", onAction: () => document.querySelector(/conclu/i.test(msg) ? ".t-done" : ".t-open")?.scrollIntoView({ behavior: "smooth", block: "start" }) });
     } catch (e) {
       quick.disabled = false;
-      errorToast(e, "Erro ao registrar.");
+      errorToast(e, "Não foi possível registrar.");
       return;
     }
     mount(root, ctx, { day, focusQuick: true, summary: sum });
@@ -290,7 +290,7 @@ function editEvidence(r, day, refresh) {
   input.focus();
 }
 
-// Passagem de turno/plantão: texto pronto (calculado no servidor) pra colar no chat.
+// Passagem de turno/plantão: texto pronto (calculado no servidor) para colar no chat.
 async function showHandoff() {
   let text;
   try { text = (await api.get("/summary/handoff")).text; } catch (e) { errorToast(e); return; }

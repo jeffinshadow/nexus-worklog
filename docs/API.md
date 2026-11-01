@@ -13,7 +13,7 @@ modelos Pydantic em `backend/app/schemas.py`. Corpos e respostas em JSON; datas
 
 ### Chave de API — para IA, scripts e automações
 
-Crie em **Configurações › IA e API**. A chave (`nxs_…`) aparece **uma vez**; o
+Crie em **Configurações > IA e API**. A chave (`nxs_…`) aparece **uma vez**; o
 servidor guarda só o HMAC.
 
 ```
@@ -164,7 +164,7 @@ Agenda: `daily` (dias úteis do dono) · `weekly` + `weekdays` (máscara) ·
 
 | Rota | | Corpo |
 | --- | --- | --- |
-| `POST /api/worklog/{id}/photos` | S W | `{image, thumb, width?, height?}` em base64 — PNG, JPEG ou WebP pelo conteúdo; foto até 1 MB (o app já reduz a 1600 px e regrava, sem EXIF/GPS), miniatura até 96 KB; até 10 por tarefa; cota por pessoa em Admin › Geral |
+| `POST /api/worklog/{id}/photos` | S W | `{image, thumb, width?, height?}` em base64 — PNG, JPEG ou WebP pelo conteúdo; foto até 1 MB (o app já reduz a 1600 px e regrava, sem EXIF/GPS), miniatura até 96 KB; até 10 por tarefa; cota por pessoa em Admin > Geral |
 | `POST /api/recurring/{id}/photos?day=` · `GET` | S W | o mesmo, como evidência da rotina no dia (até 7 dias atrás) |
 | `GET /api/photos/{id}?thumb=` | S | a imagem (dona ou visualizador); cache privado e imutável |
 | `DELETE /api/photos/{id}` | S W | some na hora; volta pelo histórico em até 7 dias, depois sai de vez |
@@ -365,7 +365,7 @@ Nesses casos, use um dos clientes acima ou a API REST.
 ## Integração passo a passo
 
 Receitas com `curl` (em qualquer ferramenta — n8n, Make, Power Automate, script — é a mesma chamada
-HTTP). `NEXUS` = o endereço do seu Nexus; `KEY` = uma chave `write` criada em Configurações › IA e API.
+HTTP). `NEXUS` = o endereço do seu Nexus; `KEY` = uma chave `write` criada em Configurações > IA e API.
 
 ```bash
 NEXUS=https://SEU-HOST; KEY=nxs_SUA_CHAVE

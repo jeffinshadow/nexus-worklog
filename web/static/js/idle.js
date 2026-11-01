@@ -80,7 +80,7 @@ function show(idleMs) {
       if (onChange) onChange();
     } catch (e) {
       input.disabled = false;
-      errorToast(e, "Erro ao registrar.");
+      errorToast(e, "Não foi possível registrar.");
     }
   };
   input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); send(); } });
