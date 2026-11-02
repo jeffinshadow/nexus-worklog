@@ -46,7 +46,7 @@ const accessLine = (u) => u.invite_pending ? `Convidada em ${dmy(u.created_at)}`
 
 // Situação das contas (os chips acima da lista; o número já é o resumo).
 const STATUS = [
-  ["all", "Todas", () => true],
+  ["all", "Todas as situações", () => true],
   ["active", "Ativas", (u) => !u.invite_pending && !u.blocked_at],
   ["pending", "Convite pendente", (u) => u.invite_pending],
   ["blocked", "Bloqueadas", (u) => !!u.blocked_at],
@@ -638,7 +638,7 @@ async function mountOrg(root, me) {
         text: "Cada pessoa volta ao que tinha escolhido em Configurações > Conta. Quem não tinha permitido some da tela Equipe na hora.",
         confirm: "Voltar ao padrão",
       });
-      if (!ok) { for (const x of radios) x[0].checked = x[0].value === cfg.team_visibility; r.focus(); return; }
+      if (!ok) { for (const x of radios) x[0].checked = x[0].value === cfg.team_visibility; (radios.find((x) => x[0].checked) || [r])[0].focus(); return; }
       try { await save({ team_visibility: v }, toManagers ? "Pronto: quem gerencia a equipe vê o registro de todos." : "Pronto: cada pessoa escolhe de novo."); }
       catch (e) { errorToast(e); for (const x of radios) x[0].checked = x[0].value === cfg.team_visibility; }
     });

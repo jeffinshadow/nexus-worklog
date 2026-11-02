@@ -1723,8 +1723,8 @@ input:disabled { cursor: not-allowed; }
 .admin-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 0 0 10px; }
 .admin-filters .field { margin: 0; }
 .admin-filters .admin-search { flex: 1 1 220px; margin: 0; }
-@media (max-width: 560px) { .admin-filters .admin-role { flex: 1 1 calc(50% - 5px); } }
 .admin-filters .admin-role { flex: 0 1 190px; }
+@media (max-width: 560px) { .admin-filters .admin-role { flex: 1 1 calc(50% - 5px); } }
 .admin-filters .admin-role select { width: 100%; min-height: 44px; }
 .admin-users .list-row .t small.account-seen { color: var(--on-surface-variant); margin-top: 2px; }
 /* Bloquear/Excluir: passar as tarefas abertas para outra pessoa. */
