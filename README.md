@@ -188,8 +188,9 @@ troca os seus na Conta, e o e-mail novo só vale depois de confirmado por link) 
   (com posição), `update_objective` e `reorder_objectives` (a lista inteira; a
   ordem anterior fica no histórico, com desfazer). Nome ou título repetido
   devolve o que já existe; o status do objetivo continua automático. Cria
-  rotinas (`create_recurring`) e aplica pacotes por área (`list_routine_packs`,
-  `apply_routine_pack`). A IA não exclui tarefa, rotina, projeto nem
+  rotinas (`create_recurring`, com passos) e aplica pacotes por área (`list_routine_packs`,
+  `apply_routine_pack`); "me lembra às 15h de ligar pra Ana" vira lembrete com hora
+  (`remind_at` em `create_task`/`update_task`). A IA não exclui tarefa, rotina, projeto nem
   objetivo. Liga no Claude Code, Cursor, Claude Desktop e Gemini CLI
   (docs/API.md); ChatGPT e claude.ai na web ainda não (exigem OAuth).
 - **Integração** — API REST aberta, sem conector para produto específico:

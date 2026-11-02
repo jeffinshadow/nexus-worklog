@@ -119,6 +119,7 @@ export async function quickRegister(text, project_id = null) {
   const { payload, minutes, durText, marks, extras } = await parseLine(text, project_id);
   if (!marks.title) throw Object.assign(new Error("Escreva o que foi feito antes dos marcadores."), { status: 400 });
   const created = await api.post("/worklog", payload);
+  if (payload.remind_at) import("./lembretes.js").then((m) => m.refreshReminders());  // o aviso já conta com ele
   const com = extras.length ? ` (${extras.join(", ")})` : "";
   if (created && created.queued) {  // sem sinal: o tempo vai junto quando a tarefa for criada
     if (minutes) await api.after(created.qid, "POST", "/worklog/{id}/time", { minutes });
@@ -225,6 +226,7 @@ async function openListPreview(lines, opts) {
       }
     }
     dlg.close();
+    if (chosen.some((p) => p.payload.remind_at)) import("./lembretes.js").then((m) => m.refreshReminders());
     if (opts.onDone) await opts.onDone();
     const n = made.length;
     if (!n) { toast(failed ? "Nenhuma tarefa criada: confira as linhas." : "Nada criado.", { error: !!failed }); return; }

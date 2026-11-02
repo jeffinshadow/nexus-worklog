@@ -485,6 +485,7 @@ export function openWorklog(onDone, opts = {}) {
     if (btn) btn.disabled = true; // duplo clique criava a tarefa duas vezes
     try {
       const created = await api.post("/worklog", payload);
+      if (payload.remind_at) refreshReminders();  // o aviso da tela já conta com o lembrete
       if (created && created.queued) {
         // Sem sinal: o resto (checklist, tempo, anotação, fotos) vai junto quando a tarefa for criada.
         for (const label of checklist) await api.after(created.qid, "POST", "/worklog/{id}/checklist", { label });

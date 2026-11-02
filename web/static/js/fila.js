@@ -279,6 +279,11 @@ export async function prepareOffline(onStep) {
   if (!sendFn) throw new Error("O app ainda está abrindo. Tente de novo.");
   // Pede ao navegador para não apagar estes dados quando faltar espaço (quando ele deixa).
   try { await navigator.storage?.persist?.(); } catch { /* opcional */ }
+  // 60 detalhes são poucos centenas de KB; sem nem 5 MB livres, o navegador apagaria o que já está guardado.
+  try {
+    const est = await navigator.storage?.estimate?.();
+    if (est && est.quota && est.quota - (est.usage || 0) < 5e6) throw Object.assign(new Error("Pouco espaço livre no aparelho para guardar as tarefas. Libere espaço e tente de novo."), { status: 507 });
+  } catch (e) { if (e.status === 507) throw e; /* sem estimativa: segue */ }
   const board = await sendFn("GET", "/board");
   await Promise.all(["/recurring/reminders", "/projects", "/timer", "/summary"].map((p) => sendFn("GET", p).catch(() => null)));
   const open = (board.in_progress || []).slice(0, READY_MAX);
