@@ -3,7 +3,7 @@
 // "devolvida" com o motivo em Equipe > Tarefas que atribuí, até atribuir de
 // novo ou encerrar. Fica fora de task.js: o detalhe só chama.
 import { api } from "./api.js";
-import { h, icon, field } from "./dom.js";
+import { h, icon, field, markInvalid } from "./dom.js";
 import { busy, focusAfterRemoval, modal, toast, undoLatest } from "./ui.js";
 
 // t: a tarefa (com assigned_by_name). onDone: depois de devolver ou desfazer.
@@ -23,9 +23,9 @@ export function returnTask(t, onDone) {
         h("button", { type: "button", class: "btn btn-text", text: "Voltar", onClick: () => dlg.close() }),
         h("button", { type: "submit", class: "btn btn-primary" }, icon("undo"), "Devolver")));
     form.addEventListener("submit", busy(async () => {
-      err.textContent = "";
+      err.textContent = ""; markInvalid([reason], err, false);
       const why = reason.value.trim();
-      if (why.length < 3) { err.textContent = "Diga em poucas palavras por que está devolvendo."; reason.focus(); return; }
+      if (why.length < 3) { err.textContent = "Diga em poucas palavras por que está devolvendo."; markInvalid([reason], err); reason.focus(); return; }
       const refocus = focusAfterRemoval();
       try {
         const res = await api.post(`/worklog/${t.id}/return`, { reason: why });
@@ -33,7 +33,7 @@ export function returnTask(t, onDone) {
         dlg.close();
         Promise.resolve(onDone && onDone()).then(refocus);
         toast(`Devolvida a ${res.to}.`, { action: "Desfazer", onAction: () => undoLatest("worklog", t.id, onDone) });
-      } catch (e) { err.textContent = e.message || "Não foi possível devolver."; }
+      } catch (e) { err.textContent = e.message || "Não foi possível devolver."; markInvalid([reason], err); }
     }));
     const dlg = modal(h("h2", { text: "Devolver a tarefa" }), form);
     dlg.addEventListener("close", () => resolve(ok));

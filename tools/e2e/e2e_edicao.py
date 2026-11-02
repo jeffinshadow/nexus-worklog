@@ -55,17 +55,15 @@ try:
     ev("document.querySelector('.task-dialog .edit-toggle').click()"); time.sleep(1)
     ev("(()=>{const s=document.querySelector('.task-dialog select[aria-label=Situação]');s.value='done';s.dispatchEvent(new Event('change'))})()"); time.sleep(2)
     check("status Concluída dentro da edição conclui", api("GET", f"/worklog/{tid2}")["b"]["status"] == "done")
-    # avisos: testar espera salvar
+    # avisos (Configurações numa página só): cada escolha salva sozinha, sem botão Salvar
     cmd("Page.navigate", url=B + "/#/config?aba=avisos"); time.sleep(3.5)
     ev("document.querySelectorAll('dialog[open]').forEach(d=>d.close())")
-    livre = ev("(()=>{const b=[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Mandar um teste'));return b && !b.disabled})()")
-    ev("document.querySelector('input[aria-label=\"Seu dia\"]').click()"); time.sleep(.3)
-    check("avisos: com alteração, testar esmaece", ev("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Mandar um teste')).disabled") and
-          ev("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Testar a semana')).title") == "Salve os avisos antes de testar")
-    ev("[...document.querySelectorAll('button')].find(b=>b.textContent==='Salvar avisos').click()"); time.sleep(1.5)
-    check("avisos: depois de salvar, testar volta", ev("!([...document.querySelectorAll('button')].find(b=>b.textContent.includes('Mandar um teste')).disabled)") == bool(livre))
-    ev("document.querySelector('input[aria-label=\"Seu dia\"]').click()"); time.sleep(.3)
-    ev("[...document.querySelectorAll('button')].find(b=>b.textContent==='Salvar avisos').click()"); time.sleep(1)
+    check("avisos: sem botão Salvar", not ev("[...document.querySelectorAll('#view-config button')].some(b=>/^Salvar/.test(b.textContent.trim()))"))
+    antes = api("GET", "/notifications")["b"]["morning"]
+    ev("document.querySelector('input[aria-label=\"Seu dia\"]').click()"); time.sleep(1.5)
+    check("avisos: a escolha salvou sozinha", api("GET", "/notifications")["b"]["morning"] == (not antes))
+    ev("document.querySelector('input[aria-label=\"Seu dia\"]').click()"); time.sleep(1.5)
+    check("avisos: voltou", api("GET", "/notifications")["b"]["morning"] == antes)
     # evidência: Salvar espera a foto
     rid = api("POST", "/recurring", {"label": f"Evid {marca}", "freq": "weekly", "weekdays": 127})["b"]["id"]
     api("POST", f"/recurring/{rid}/toggle", {"done": True})

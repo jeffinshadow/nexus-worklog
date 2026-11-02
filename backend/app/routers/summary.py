@@ -61,7 +61,7 @@ def handoff_text(user_id: int) -> str:
         if t.get("project_name"):
             extra.append(t["project_name"])
         if t.get("due_date") and t["due_date"] <= amanha:
-            extra.append("ATRASADA" if t["due_date"] < hoje else ("vence hoje" if t["due_date"] == hoje
+            extra.append("atrasada" if t["due_date"] < hoje else ("vence hoje" if t["due_date"] == hoje
                          else f"vence {t['due_date'].strftime('%d/%m')}"))
         return f"- {_titulo(t)}" + (f" ({', '.join(extra)})" if extra else "")
 

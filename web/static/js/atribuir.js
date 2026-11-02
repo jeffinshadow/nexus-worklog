@@ -9,7 +9,7 @@
 // "devolvida" até você atribuir de novo (o mesmo diálogo, já preenchido, para a
 // mesma pessoa ou outra) ou encerrar.
 import { api } from "./api.js";
-import { h, icon, clear, field, shortDate, localDay, dateTime } from "./dom.js";
+import { h, icon, clear, field, shortDate, localDay, dateTime, markInvalid } from "./dom.js";
 import { busy, confirmDialog, errorToast, hashPage, modal, pager, pageSlice, setHashPage, toast } from "./ui.js";
 import { STATUS_LABELS } from "./board.js";
 import { session } from "./session.js";
@@ -95,7 +95,7 @@ export async function assignDialog({ fromReturn = null, edit = null, onDone } = 
       h("button", { type: "submit", class: "btn btn-primary" }, icon(edit ? "check" : "send"), edit ? "Salvar" : "Atribuir")));
 
   form.addEventListener("submit", busy(async () => {
-    err.textContent = "";
+    err.textContent = ""; if (who) markInvalid([who], err, false);
     try {
       if (edit) {
         // Só o que mudou: um campo que a pessoa já mexeu não é regravado por cima.
@@ -109,7 +109,7 @@ export async function assignDialog({ fromReturn = null, edit = null, onDone } = 
         dlg.close();
         toast("Tarefa alterada.");
       } else {
-        if (!who.value) { err.textContent = "Escolha quem recebe."; who.focus(); return; }
+        if (!who.value) { err.textContent = "Escolha quem recebe."; markInvalid([who], err); who.focus(); return; }
         const res = await api.post("/assign", {
           user_id: Number(who.value), title: title.value.trim(), description: desc.value.trim() || null,
           due_date: due.value || null, priority: Number(prio.value), ticket: ticket.value.trim() || null, after_hours: after.checked,
@@ -155,7 +155,8 @@ export function sentPanel({ onChange = null } = {}) {
     // Filtro simples (não é aba): botões que marcam, com quantas há em cada um.
     sec.append(h("div", { class: "seg seg-sm eq-sent-filter", role: "group", "aria-label": "Mostrar" },
       ...FILTERS.map(([key, label, test]) => {
-        const c = key === "all" ? rows.length : rows.filter(test).length;
+        // Devolvidas: o número conta só as que esperam decisão (as resolvidas aparecem na lista, sem número).
+        const c = key === "all" ? rows.length : rows.filter(key === "returned" ? openReturn : test).length;
         return h("button", { type: "button", class: "chip-btn", "aria-pressed": String(filter === key),
           text: c && key !== "all" ? `${label} · ${c}` : label,
           onClick: () => { if (filter === key) return; filter = key; page = 1; paint(); sec.querySelector(`[aria-pressed="true"]`).focus(); } });

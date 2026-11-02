@@ -171,6 +171,9 @@ input::placeholder { color: var(--dim); }
 }
 .panel-head { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
 .panel-head h2 { font-size: var(--type-title); font-weight: var(--weight-title); letter-spacing: -.01em; flex: 1; }
+/* "Em aberto" no Hoje: o título não quebra em duas linhas; a contagem ao lado é que encolhe ou quebra. */
+.t-open > .panel-head h2 { white-space: nowrap; flex: none; }
+.t-open > .panel-head .count { flex: 1; min-width: 0; text-align: right; }
 .panel-head .count { font-family: var(--font-label); font-size: var(--type-label); color: var(--dim); }
 .empty { color: var(--dim); font-size: var(--type-body); padding: 6px 0; }
 
@@ -240,7 +243,7 @@ button.column-toggle { display: none; }
 /* Páginas (ui.js pager): "Anterior · Página N de M · Próxima" embaixo da lista,
    sem flutuar. Botões de 44 px; nos extremos, esmaecidos com aria-disabled (o foco
    continua neles). Compacto (dentro de cartões e blocos): 36 px de desenho e 44 de alvo. */
-.pager { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--outline-variant); }
+.pager { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--outline-variant); container-type: inline-size; }
 .pager-btn { min-height: 44px; min-width: 44px; padding: 0 16px; flex: none; }
 .pager-btn .ico { width: 18px; height: 18px; }
 .pager-prev { padding-left: 10px; }
@@ -255,10 +258,11 @@ button.column-toggle { display: none; }
 .pager-compact .pager-prev { padding-left: 8px; }
 .pager-compact .pager-next { padding-right: 8px; }
 .pager-compact .pager-info { font-size: var(--type-caption); }
-/* Celular estreito: o intervalo desce para baixo do "Página N de M"; abaixo de 360 px, só os ícones. */
-.pager-range::before { content: " · "; }
-@media (max-width: 520px) { .pager-range { display: block; } .pager-range::before { content: none; } }
-@media (max-width: 359px) { .pager-word { display: none; } .pager-btn { padding: 0; width: 44px; } }
+/* "Página N de M" e "1–20 de 21" nunca quebram: o intervalo fica numa segunda linha fixa, e, com a
+   lista estreita (celular, painel ao lado), os botões ficam só com a seta (o nome vai no aria-label). */
+.pager-n, .pager-range { white-space: nowrap; }
+.pager-range { display: block; }
+@container (max-width: 420px) { .pager-word { display: none; } .pager-btn, .pager-compact .pager-btn { padding: 0; width: 44px; justify-content: center; } }
 /* Link para a lista inteira em outra tela (Hoje → Tarefas, revisão → Tarefas). */
 .see-all { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin-top: 4px; color: var(--primary-hi); font-weight: var(--weight-label); font-size: var(--type-body-s); text-decoration: none; }
 .see-all:hover { text-decoration: underline; }
@@ -309,7 +313,7 @@ button.column-toggle { display: none; }
   border-radius: 12px; background: var(--primary-container); color: var(--on-primary-container); }
 .hist-filter > span { flex: 1 1 200px; font-weight: 500; }
 .hist-filter .btn { color: inherit; }
-.hist-row { display: grid; grid-template-columns: 92px 1fr auto; gap: 14px; align-items: center; padding: 12px 4px; border-bottom: 1px solid var(--outline-variant); }
+.hist-row { display: grid; grid-template-columns: 92px 1fr auto; gap: 14px; align-items: center; padding: 12px 4px; border-bottom: 1px solid var(--outline-variant); min-height: 53px; }  /* com ou sem Desfazer, a mesma altura */
 .hist-row:last-child { border-bottom: 0; }
 .hist-when { font-family: var(--font-label); font-size: var(--type-label); color: var(--dim); line-height: 1.35; }
 .hist-what { min-width: 0; font-size: var(--type-body); }
@@ -327,6 +331,16 @@ button.column-toggle { display: none; }
   transition: background-color var(--dur-short) var(--ease-standard), color var(--dur-short) var(--ease-standard); }
 .seg button.chip-btn[aria-selected="true"], .seg button.chip-btn[aria-checked="true"] { background-color: var(--primary-container); color: var(--on-primary-container); }
 .settings-grid { display: grid; gap: var(--gap); grid-template-columns: minmax(0, 1fr); }  /* nada passa da tela no celular */
+/* Configurações numa página só: atalhos para as seções no topo; cada seção com o seu título. */
+.settings-index { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 4px; }
+.settings-index a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border-radius: var(--radius-full); border: 1px solid var(--outline-variant);
+  background: var(--surface-card); color: var(--on-surface); font-family: var(--font-label); font-size: var(--type-body-s); font-weight: var(--weight-label); text-decoration: none; }
+.settings-index a:hover { background-image: linear-gradient(var(--hover), var(--hover)); }
+.settings-group-title { font-size: var(--type-headline); font-weight: var(--weight-title); letter-spacing: -.02em; margin: 28px 0 12px; scroll-margin-top: 16px; outline: none; }
+.settings-group-title:focus-visible { outline: 2px solid var(--primary); outline-offset: 4px; border-radius: 4px; }
+.settings-danger { margin-top: 28px; }
+.panel-head h3 { font-size: var(--type-title); font-weight: var(--weight-title); letter-spacing: -.01em; flex: 1; }
+@media (max-width: 860px) { .settings-group-title { scroll-margin-top: 72px; } }  /* a barra do topo do celular não cobre o título */
 /* Saúde do Nexus (Admin > Geral): título à esquerda, situação à direita; no celular, um embaixo do outro. */
 .health-list { display: grid; grid-template-columns: minmax(120px, max-content) minmax(0, 1fr); gap: 10px 18px; margin: 4px 0 8px; }
 .health-list dt { display: flex; align-items: flex-start; gap: 6px; font-weight: var(--weight-title); color: var(--on-surface); }
@@ -414,6 +428,8 @@ dialog p { color: var(--on-surface-variant); font-size: var(--type-body); }
 /* left/right fixos (não left: 50% + translate): o toast pode usar a largura toda, não só metade. */
 .toasts { position: fixed; left: 16px; right: 16px; bottom: 24px; z-index: 100; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; }
 @media (max-width: 860px) { .toasts { bottom: calc(86px + env(safe-area-inset-bottom)); } }
+/* Dentro de um diálogo aberto (o resto da página fica atrás do véu): sem a barra de baixo para desviar. */
+@media (max-width: 860px) { .toasts.toasts-dialog { bottom: calc(24px + env(safe-area-inset-bottom)); } }
 /* Aviso no estilo snackbar do Material 3: no escuro o contêiner mais alto (como no desktop), no claro a superfície invertida. */
 .toast { pointer-events: auto; display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 6px 8px 6px 16px; border-radius: var(--radius-s);
   background: var(--snackbar-bg); color: var(--snackbar-fg); box-shadow: var(--elev-2); font-size: var(--type-body);
@@ -579,6 +595,7 @@ textarea.inline-desc { resize: none; overflow: hidden; line-height: 1.45; }
 .search-big { position: relative; display: flex; gap: 8px; align-items: center; margin-bottom: var(--gap); }
 .search-big .ico { position: absolute; left: 14px; color: var(--dim); pointer-events: none; }
 .search-big input { padding-left: 42px; height: 46px; border-radius: var(--radius-full); }
+.search-big .btn { height: 46px; padding: 0 20px; }  /* Buscar com a altura do campo */
 .search-row { padding: 12px 2px; border-bottom: 1px solid var(--outline-variant); }
 .search-row:last-child { border-bottom: 0; }
 .search-row .card-open { font-weight: var(--weight-title); font-size: var(--type-body); display: inline-block; margin-bottom: 6px; }
@@ -595,6 +612,7 @@ mark { background: var(--primary-container); color: var(--on-primary-container);
 .today-grid > .t-sum { grid-column: 1 / -1; }
 .sum-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
 @media (max-width: 900px) { .sum-grid { grid-template-columns: 1fr; } }
+.sum-one .sum-grid { grid-template-columns: 1fr; }  /* só a semana (o último dia útil sem nada): uma coluna */
 .sum-title { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
 .sum-title h3 { font-size: var(--type-title); font-weight: var(--weight-title); }
 .sum-title .mono { font-size: var(--type-label); }
@@ -688,6 +706,8 @@ mark { background: var(--primary-container); color: var(--on-primary-container);
 .idle-head p strong { color: var(--on-surface); }
 .idle-card .assist-actions { margin-top: 10px; }
 @media (max-width: 860px) { .idle-card { right: 16px; bottom: calc(86px + env(safe-area-inset-bottom)); } }
+/* Avisos de lembrete e de rotina (e o de tempo sem registro): botões de 44 px no toque. */
+@media (pointer: coarse), (max-width: 860px) { .idle-card .btn-sm { height: 44px; } }
 /* Convite para instalar o app (instalar.js): mesmo cartão do lembrete; some se um lembrete tocar. */
 /* Sem conexão (fila.js): barra fina no topo, com a fila e quando os dados são de antes. */
 .offline-bar { position: fixed; top: 0; left: 50%; transform: translateX(-50%); z-index: 95; display: flex; align-items: center; gap: 8px;
@@ -702,6 +722,8 @@ mark { background: var(--primary-container); color: var(--on-primary-container);
   background: var(--warning-container); color: var(--on-warning-container); font-size: var(--type-body-s); }
 .offline-note > .ico { width: 18px; height: 18px; color: var(--on-warning-container); flex: none; margin-top: 1px; }
 @media (max-width: 860px) { .offline-bar { top: calc(var(--bar-h, 56px) + env(safe-area-inset-top)); font-size: var(--type-caption); } }
+/* Com a barra à vista, a página desce o mesmo tanto: ela não cobre o assistente nem o título. */
+body.has-offline-bar .main::before { content: ""; display: block; height: 44px; }
 
 /* Tarefa em edição no detalhe: o concluir dela (cartão, linha, detalhe) esmaece até o "Pronto". */
 .editing button[aria-label^="Concluir"] { opacity: .38; pointer-events: none; }
@@ -769,6 +791,10 @@ body:has(.rem-card) .idle-card:not(.rem-card) { display: none; }
 .timer-prev { font-size: var(--type-label); font-weight: var(--weight-body); }  /* interrompeu «…»: a que ficou parada */
 .timer-time { font-variant-numeric: tabular-nums; font-weight: var(--weight-title); color: inherit; }
 .timer-chip button.icon { width: 32px; height: 32px; }
+/* Pista da interrompida (o cronômetro parado): "Voltar para «X»", num tom mais calmo que o rodando. */
+.timer-chip.timer-resume { background: var(--surface-container-high); color: var(--on-surface); }
+.timer-resume .timer-task { flex-direction: row; align-items: center; gap: 8px; }
+.timer-resume .timer-task .ico { width: 18px; height: 18px; flex: none; color: var(--primary-hi); }
 .timer-mobile { display: none; }
 @media (max-width: 860px) {
   .timer-mobile:not(.hidden) { display: flex; position: fixed; left: 16px; right: 16px; bottom: calc(80px + env(safe-area-inset-bottom)); z-index: 40;
@@ -786,7 +812,6 @@ a.chip.ticket:hover { background-image: linear-gradient(var(--hover), var(--hove
 .shortcuts dd { margin: 0; color: var(--on-surface-variant); font-size: var(--type-body); }
 .shortcuts kbd { display: inline-grid; place-items: center; min-width: 26px; height: 26px; padding: 0 6px; border-radius: var(--radius-s);
   border: 1px solid var(--line-2); background: var(--surface); font: 600 var(--type-body-s) var(--font-label); color: var(--on-surface); }
-.daily-text { width: 100%; font: var(--type-body-s)/1.5 var(--font-label); font-variant-numeric: tabular-nums; resize: vertical; }
 
 /* Admin > Permissões: uma linha por conta, papéis como caixas. */
 .roles-legend { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0 0 14px; font-size: var(--type-body-s); }
@@ -1149,16 +1174,12 @@ dialog .tour-intro { margin: 0 0 14px; line-height: 1.5; }
 
 /* ----------------------------------------------------- ajustes do celular -- */
 @media (max-width: 860px) {
-  /* Botão segmentado que quebra linha (abas de Configurações, períodos do
-     relatório): vira um bloco arredondado e as opções dividem a largura. */
-  .seg { display: flex; border-radius: var(--radius-xl); }
-  .seg button.chip-btn { flex: 1 1 auto; text-align: center; }
-  /* Abas (Configurações, Admin, Meu mês): uma linha só, que rola de lado
-     (Material 3, abas roláveis); a ativa é trazida para a vista ao abrir. */
-  .seg[role="tablist"] { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; border-radius: var(--radius-full); max-width: 100%;
-    overscroll-behavior-x: contain; scroll-padding-inline: 12px; }
-  .seg[role="tablist"]::-webkit-scrollbar { display: none; }
-  .seg[role="tablist"] button.chip-btn { flex: 0 0 auto; white-space: nowrap; }
+  /* Botão segmentado (filtros, abas do Admin, períodos): as opções dividem a largura
+     por igual, numa linha até 3; com 4 ou mais, uma grade de 2 colunas. Nada fica
+     sozinho numa linha nem escondido numa rolagem lateral sem aviso. */
+  .seg { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); border-radius: var(--radius-xl); }
+  .seg:has(> :nth-child(4)) { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .seg button.chip-btn { text-align: center; white-space: normal; }
   /* Vencimento: o prazo embaixo do nome (sem sobrepor), os botões à direita. */
   .venc-row { display: grid; grid-template-columns: minmax(0, 1fr); grid-auto-columns: auto; column-gap: 6px; row-gap: 4px; align-items: center; }
   .venc-row > .t { grid-column: 1; grid-row: 1; }
@@ -1568,8 +1589,11 @@ dialog.proj-dialog { max-width: 480px; width: min(480px, calc(100vw / var(--ui-z
 
 /* Chave criada: as quatro IAs em grade 2x2 (numa linha só não cabem no diálogo). */
 .ai-tabs-note { margin-top: 16px; }
-.seg.ai-tabs { display: grid; grid-template-columns: 1fr 1fr; border-radius: var(--radius-m); margin: 8px 0 12px; }
-.seg.ai-tabs button.chip-btn { border-radius: var(--radius-s); text-align: center; }
+.ai-config { border: 1px solid var(--outline-variant); border-radius: var(--radius-m); padding: 0 12px; margin: 8px 0 0; }
+.ai-config > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; color: var(--on-surface); font-weight: var(--weight-label); }
+.ai-config[open] { padding-bottom: 12px; }
+.ai-config[open] > summary { color: var(--primary-hi); }
+.ai-config + .warnbox { margin-top: 12px; }
 
 /* ---------------------------------------------------- revisão da semana -- */
 /* Três passos num diálogo só (como a Ajuda): cabeçalho e botões fixos, a lista rola. */
@@ -1593,9 +1617,14 @@ dialog .review-intro { margin: 0 0 12px; line-height: 1.5; }
 dialog .review-count { margin: 0 0 4px; font-family: var(--font-label); font-size: max(var(--type-label), calc(12px / var(--ui-zoom))); color: var(--on-surface-variant); }
 .review-dialog .btn[aria-pressed="true"] { background: var(--primary-container); color: var(--on-primary-container); border-color: transparent; }
 .review-dialog .dialog-actions { flex-wrap: wrap; margin-top: 16px; }
-dialog.review-dialog { position: relative; }
 .review-close { position: absolute; top: 12px; right: 12px; }
 .review-dialog .tour-step { padding-right: 40px; }
+/* Janela baixa (zoom 400%, celular deitado): o diálogo inteiro rola, e não só a lista (que ficaria com 0 px). */
+@media (max-height: 600px) {
+  dialog.review-dialog[open] { display: block; overflow-y: auto; }
+  .review-dialog > form.review-form, .review-dialog > .review-form { display: block; }
+  .review-body { overflow: visible; }
+}
 .sum-review { margin-top: 12px; }
 /* Primeiro amanhã e Antes do PDF: o mesmo diálogo, com um formulário em volta. */
 .review-dialog > form.review-form, .review-dialog > .review-form { display: flex; flex-direction: column; flex: 1; min-height: 0; }
@@ -1605,6 +1634,7 @@ dialog.review-dialog { position: relative; }
 .pdf-mins { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .pdf-mins input[type=number] { width: 96px; min-height: 44px; }
 .pdf-fill input[type=text] { min-height: 44px; }
+.pdf-fill .btn { height: 44px; }  /* 15/30/60 min e Salvar: alvos de 44 px (celular) */
 .pdf-fill .field-label { font-size: var(--type-body-s); color: var(--on-surface-variant); }
 .pdf-done { color: var(--on-success-container); background: var(--success-container); }
 .handoff-first { margin-top: 12px; }
@@ -1729,3 +1759,13 @@ input:disabled { cursor: not-allowed; }
 .paste-title { overflow-wrap: anywhere; }
 .paste-row small { font-size: var(--type-label); color: var(--dim); }
 .steps-list .check-line { min-height: 44px; }
+/* Painel da tarefa (celular e ao lado): Cronômetro, Aguardando e Concluir lado a lado, do mesmo tamanho. */
+.task-dialog .task-main-actions.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.task-dialog.side.expanded .task-main-actions.three { grid-template-columns: repeat(3, minmax(0, 200px)); }
+.task-main-actions.three .btn { padding: 0 8px; gap: 6px; line-height: 1.15; text-align: center; }
+@media (max-width: 380px) { .task-main-actions.three .btn .ico { display: none; } }  /* tela estreita: só o texto, sem cortar */
+/* Hoje: as rotinas fora da agenda do dia ficam recolhidas numa linha só, no fim da lista. */
+.rec-off-toggle { margin-top: 6px; min-height: 44px; }
+/* Tour: o painel alto (Rotinas) rola até o começo, sem ficar sob a barra do topo do celular. */
+.t-rec { scroll-margin-top: 16px; }
+@media (max-width: 860px) { .t-rec { scroll-margin-top: 72px; } }

@@ -213,6 +213,9 @@ export async function openTask(taskId, onChange, opts = {}) {
           ? h("button", { type: "button", class: "icon", title: editing ? EDIT_HINT : "Concluir", "aria-label": "Concluir", disabled: editing ? "disabled" : null,
               onClick: () => finishTask(t, after) }, icon("check"))
           : off ? null : h("button", { type: "button", class: "icon", title: "Reabrir", "aria-label": "Reabrir", onClick: async () => { await pending; reopenTask(cur, after); } }, icon("undo")),
+        // Aguardando à vista (decisão do dono, 02/11): o mesmo diálogo do menu do cartão.
+        !off && canBlock(t) ? h("button", { type: "button", class: "icon", title: "Marcar como aguardando", "aria-label": "Marcar como aguardando",
+          onClick: async () => { await pending; blockTask(cur, after); } }, icon("clock")) : null,
         ...(off ? [] : [
           h("button", { type: "button", class: "icon", title: "Copiar resumo (para o chamado ou o cliente)", "aria-label": "Copiar resumo", onClick: async () => { await pending; copySummary(cur); } }, icon("copy")),
           h("button", { type: "button", class: "icon", title: "Salvar como modelo", "aria-label": "Salvar como modelo", onClick: async () => { await pending; saveAsTemplate(cur); } }, icon("list")),
@@ -232,7 +235,6 @@ export async function openTask(taskId, onChange, opts = {}) {
       off ? null : h("button", { type: "button", class: "icon", title: "Mais ações", "aria-label": "Mais ações", onClick: (ev) => {
         const items = [
           t.status === "done" ? ["Reabrir", "undo", async () => { await pending; reopenTask(cur, after); }] : null,
-          canBlock(t) ? ["Marcar como aguardando…", "clock", async () => { await pending; blockTask(cur, after); }] : null,
           ["Copiar resumo (para o chamado ou o cliente)", "copy", async () => { await pending; copySummary(cur); }],
           ["Salvar como modelo", "list", async () => { await pending; saveAsTemplate(cur); }],
           ["Duplicar tarefa", "add", dup],
@@ -249,8 +251,11 @@ export async function openTask(taskId, onChange, opts = {}) {
       : h("div", { class: "task-main-actions" },
       h("button", { type: "button", class: "btn btn-ghost" + (running ? " timer-on" : ""), onClick: () => (running ? stopTimer(after) : startTimer(t, after)) },
         icon(running ? "stop" : "play"), running ? "Parar cronômetro" : "Cronômetro"),
+      !off && canBlock(t) ? h("button", { type: "button", class: "btn btn-ghost", onClick: async () => { await pending; blockTask(cur, after); } },
+        icon("clock"), "Aguardando") : null,
       h("button", { type: "button", class: "btn btn-primary", title: editing ? EDIT_HINT : null, disabled: editing ? "disabled" : null,
         onClick: () => finishTask(t, after) }, icon("check"), "Concluir"));
+    if (mainActs && mainActs.children.length === 3) mainActs.classList.add("three");
 
     const offNote = off ? h("p", { class: "offline-note", role: "status" }, icon("alert"),
       h("span", { text: "Sem conexão: os detalhes desta tarefa aparecem quando a conexão voltar. Anotação, foto, concluir e cronômetro ficam guardados e vão sozinhos." })) : null;
@@ -329,7 +334,7 @@ export async function openTask(taskId, onChange, opts = {}) {
     });
 
     // Lembrar em: data e hora do aviso (na tela e no aparelho). Vazio tira.
-    const remind = h("input", { type: "datetime-local", "aria-label": "Lembrar em" });
+    const remind = h("input", { type: "datetime-local", "aria-label": "Lembrete com hora" });
     const nowLocal = localDateTime(Date.now());
     remind.value = t.remind_at ? localDateTime(t.remind_at) : "";
     remind.min = remind.value && remind.value < nowLocal ? remind.value : nowLocal;  // um lembrete já passado fica como está
@@ -373,7 +378,7 @@ export async function openTask(taskId, onChange, opts = {}) {
     afterHours.addEventListener("change", () => save({ after_hours: afterHours.checked }));
 
     grid.append(field("Situação", status), field("Prazo", due),
-      ...(t.status !== "done" ? [field("Lembrar em", remind)] : []), field("Prioridade", prio), field("Projeto", proj, t.status !== "done" ? "wide" : ""),
+      ...(t.status !== "done" ? [field("Lembrete com hora", remind)] : []), field("Prioridade", prio), field("Projeto", proj, t.status !== "done" ? "wide" : ""),
       objField,
       h("div", { class: "field wide" }, h("span", { class: "field-label", text: "Outros projetos" }), extras.el),
       h("div", { class: "field" }, h("label", { for: ticket.id, text: "Nº do chamado ou OS" }),
@@ -387,7 +392,7 @@ export async function openTask(taskId, onChange, opts = {}) {
       const reason = h("input", { type: "text", maxlength: "120", placeholder: "ex.: retorno do fornecedor", "aria-label": "Aguardando o quê?" });
       reason.value = t.blocked_reason || "";
       inline(reason, () => cur.blocked_reason || "", (v) => ({ blocked_reason: v || null }));
-      const follow = h("input", { type: "date", "aria-label": "Lembrar de cobrar em" });
+      const follow = h("input", { type: "date", "aria-label": "Dia para cobrar" });
       follow.value = t.follow_up_on || "";
       // Hoje ou depois — mas uma cobrança já atrasada pode ficar como está.
       follow.min = t.follow_up_on && t.follow_up_on < today ? t.follow_up_on : today;
@@ -396,7 +401,7 @@ export async function openTask(taskId, onChange, opts = {}) {
         follow.value = day || "";
         save({ follow_up_on: day });
       });
-      grid.append(field("Aguardando o quê?", reason), field("Lembrar de cobrar em", follow));
+      grid.append(field("Aguardando o quê?", reason), field("Dia para cobrar", follow));
     }
     if (t.status === "done") {
       const now = localDateTime(Date.now());

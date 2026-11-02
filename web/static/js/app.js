@@ -86,6 +86,8 @@ async function route() {
   if (MOVED[name]) { window.history.replaceState(null, "", "#/" + MOVED[name]); name = MOVED[name].split("?")[0]; }
   if (!allowed(name)) name = home();
   const view = VIEWS[name];
+  const sameHash = lastHash === location.hash;
+  lastHash = location.hash;
 
   for (const key of Object.keys(VIEWS)) {
     document.getElementById("view-" + key).classList.toggle("hidden", key !== name);
@@ -155,7 +157,8 @@ async function route() {
       if (!acted) setActions();
     }
   }
-  window.scrollTo(0, 0);
+  // A mesma tela redesenhada (parar o cronômetro, voltar à interrompida, lembrete): fica onde estava.
+  if (!sameHash) window.scrollTo(0, 0);
   if (wantFocus && seq === routeSeq) document.getElementById("page-title").focus({ preventScroll: true });
   // Link direto para uma tarefa (#/tarefas?id=N: e-mail de atribuição, calendário).
   const taskId = Number(new URLSearchParams(location.hash.split("?")[1] || "").get("id"));
@@ -175,6 +178,7 @@ function enter(el) {
 }
 
 let routeSeq = 0;
+let lastHash = null; // o endereço do último desenho: igual, é só atualizar a tela
 let shownView = null;
 const kept = {};
 function setAssist(node) {
@@ -238,6 +242,8 @@ function mountMore(el) {
       ...items.map(([v, ic, label]) => h("a", { href: "#/" + v, "data-view": v }, icon(ic), h("span", { text: label }))),
       // A revisão guiada da semana (também no card "Esta semana" do Hoje).
       has("user") ? h("button", { type: "button", class: "nav-btn", onClick: () => openReview() }, icon("check"), h("span", { text: "Revisão da semana" })) : null,
+      // Quem vai para o campo: com texto e à vista (no Hoje é só um ícone, lá embaixo).
+      has("user") ? h("button", { type: "button", class: "nav-btn", onClick: () => prepareButton().click() }, icon("download"), h("span", { text: "Deixar pronto para sem sinal" })) : null,
       h("button", { type: "button", class: "nav-btn", onClick: showHelp }, icon("help"), h("span", { text: "Ajuda" })),
       h("button", { type: "button", class: "nav-btn logout", onClick: logout }, icon("logout"), h("span", { text: "Sair" }))
     )

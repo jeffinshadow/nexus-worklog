@@ -1,9 +1,6 @@
 // Resumos do Hoje: o último dia útil e a semana até agora, só com os totais.
-// Dados de /api/summary. As setas do card da semana voltam às semanas
-// anteriores (/api/summary/week?back=N).
-import { api } from "./api.js";
-import { h, icon, clear, longDate, shortDate, addDays } from "./dom.js";
-import { errorToast } from "./ui.js";
+// Dados de /api/summary. (O passado fica em Meu mês e na revisão da semana.)
+import { h, icon, longDate, shortDate, addDays } from "./dom.js";
 import { projectChip, corProjeto } from "./projects.js";
 import { duration, openTask } from "./task.js";
 import { openReview } from "./review.js";
@@ -21,8 +18,10 @@ function figures(s) {
     fig(s.minutes ? duration(s.minutes) : "—", "tempo apontado"));
 }
 
-function card(title, sub, s, onChange, nav = null) {
-  const body = [nav, figures(s)].filter(Boolean);
+// opts.missed: a lista "Rotinas que ficaram para trás" (só no cartão da semana; no
+// do último dia útil, o número basta, sem repetir a mesma lista duas vezes).
+function card(title, sub, s, onChange, opts = {}) {
+  const body = [figures(s)];
   if (s.deliveries.length) {
     body.push(h("p", { class: "sum-h", text: "Concluído" }));
     for (const d of s.deliveries.slice(0, 5))
@@ -34,11 +33,11 @@ function card(title, sub, s, onChange, nav = null) {
   }
   if (s.projects.some((p) => p.minutes))
     body.push(h("p", { class: "sum-h", text: "Tempo por projeto" }), ...projectBars(s.projects));
-  if (s.missed.length) {
+  if (opts.missed && s.missed.length) {
     body.push(h("p", { class: "sum-h", text: "Rotinas que ficaram para trás" }),
       h("p", { class: "missed" }, ...s.missed.map((m) => h("span", { class: "chip late", text: m }))));
   }
-  if (!s.deliveries.length && !s.minutes && !s.recurring_done && !s.missed.length)
+  if (!s.deliveries.length && !s.minutes && !s.recurring_done && !(opts.missed && s.missed.length))
     body.push(h("p", { class: "empty", text: "Nada registrado." }));
   return h("div", { class: "sum-card" }, h("div", { class: "sum-title" }, h("h3", { text: title }), h("span", { class: "mono muted", text: sub })), ...body);
 }
@@ -56,45 +55,15 @@ function projectBars(items) {
   });
 }
 
-// A semana com setas para as anteriores (só os totais, sem cara de cobrança).
+// A semana até agora (só os totais, sem cara de cobrança) e a revisão guiada. As semanas
+// anteriores ficam em Meu mês (ritmo por semana) e na revisão: aqui, sem setas.
 function weekSlot(data, onChange) {
-  const slot = h("div", { class: "sum-week" });
-  let back = 0, oldest = null, seq = 0;
-  const weeks = { 0: data.week };
-  function paint() {
-    const w = weeks[back];
-    const atual = back === 0;
-    const label = atual ? "Esta semana" : back === 1 ? "Semana passada" : `${shortDate(w.start)} a ${shortDate(w.end)}`;
-    const prev = h("button", { type: "button", class: "icon", title: "Semana anterior", "aria-label": "Semana anterior", onClick: () => go(back + 1) }, icon("left"));
-    const next = h("button", { type: "button", class: "icon", title: "Próxima semana", "aria-label": "Próxima semana", onClick: () => go(back - 1) }, icon("right"));
-    prev.disabled = oldest !== null && back >= oldest;
-    next.disabled = atual;
-    const nav = h("div", { class: "day-nav" }, prev, h("span", { class: "day-nav-label", "aria-live": "polite", text: label }), next);
-    const sub = atual ? `desde ${longDate(w.start).split(",")[0]}` : `${shortDate(w.start)} a ${shortDate(w.end)}`;
-    clear(slot);
-    slot.append(card(atual ? "Esta semana" : "Semana", sub, w, onChange, nav));
-    // Revisão guiada (o que fechou, o que ficou, o que vem): em qualquer dia, daqui.
-    if (atual) slot.querySelector(".sum-card").append(h("button", { type: "button", class: "btn btn-ghost btn-sm sum-review",
-      onClick: () => openReview(onChange) }, icon("check"), data.review && data.review.reviewed ? "Revisar a semana de novo" : "Revisar a semana"));
-  }
-  async function go(n) {
-    if (n < 0) return;
-    const my = ++seq;
-    if (!weeks[n]) {
-      slot.classList.add("refreshing");
-      try {
-        const r = await api.get(`/summary/week?back=${n}`);
-        weeks[n] = r.week;
-        oldest = r.oldest;
-      } catch (e) { errorToast(e); return; }
-      finally { slot.classList.remove("refreshing"); }
-    }
-    if (my !== seq) return; // cliques rápidos: vale o último
-    back = n;
-    paint();
-  }
-  paint();
-  return slot;
+  const w = data.week;
+  const c = card("Esta semana", `desde ${longDate(w.start).split(",")[0]}`, w, onChange, { missed: true });
+  // Revisão guiada (o que fechou, o que ficou, o que vem): em qualquer dia, daqui.
+  c.append(h("button", { type: "button", class: "btn btn-ghost btn-sm sum-review",
+    onClick: () => openReview(onChange) }, icon("check"), data.review && data.review.reviewed ? "Revisar a semana de novo" : "Revisar a semana"));
+  return h("div", { class: "sum-week" }, c);
 }
 
 // Hoje: o último dia útil e a semana até agora, só com os totais.
@@ -104,6 +73,8 @@ export function summaryPanel(data, onChange) {
   const ontem = last.start === addDays(data.today, -1);
   const lastTitle = ontem ? "Ontem" : "Desde o último dia útil";
   const lastSub = ontem ? longDate(last.start) : `${shortDate(last.start)} a ${shortDate(last.end)}`;
-  return h("section", { class: "panel t-sum" },
-    h("div", { class: "sum-grid" }, card(lastTitle, lastSub, last, onChange), weekSlot(data, onChange)));
+  // Nada previsto nem feito no último dia útil (a conta nova, por exemplo): sem um cartão vazio.
+  const vazio = !last.recurring_total && !last.recurring_done && !last.pontual_done && !last.minutes && !last.deliveries.length;
+  return h("section", { class: "panel t-sum" + (vazio ? " sum-one" : "") },
+    h("div", { class: "sum-grid" }, vazio ? null : card(lastTitle, lastSub, last, onChange), weekSlot(data, onChange)));
 }

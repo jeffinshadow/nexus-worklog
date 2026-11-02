@@ -249,7 +249,9 @@ def _lede(data: dict) -> str:
         frases.append(("Foram " if s["pontual_done"] != 1 or s["minutes"] else "Foi ") + " e ".join(feito) + ".")
     if s["recurring_total"] and not by_project:
         pct = round(100 * s["recurring_done"] / s["recurring_total"])
-        r = f"As rotinas ficaram em {pct}%: {s['recurring_done']} de {s['recurring_total']} verificações previstas"
+        # "rotinas", como no app (não "verificações"); sem nenhuma, uma frase em vez de um 0% frio.
+        r = (f"Foram feitas {s['recurring_done']} de {s['recurring_total']} rotinas previstas ({pct}%)" if s["recurring_done"]
+             else f"Nenhuma das {s['recurring_total']} rotinas previstas foi marcada")
         r += f", mais {_plural(s['recurring_extra'], 'extra', 'extras')}." if s["recurring_extra"] else "."
         frases.append(r)
     if s["open"]:
@@ -526,7 +528,7 @@ def _recurring_list(pdf: _Report, data: dict) -> None:
         pdf.font("sans", 8.4, INK)
         pdf.text_at(M, y, 70, 4.2, pdf.fit(r["label"], 68))
         pdf.font("label", 6.2, DIM)
-        pdf.text_at(M, y + 4.2, 70, 3, _schedule(r) + (f" · +{r['extra']} extra" if r["extra"] else ""))
+        pdf.text_at(M, y + 4.2, 70, 3, _schedule(r) + (f" · +{_plural(r['extra'], 'extra', 'extras')}" if r["extra"] else ""))
         bx, bw = M + 74, pdf.cw - 74 - 30
         pdf.box(bx, y + 2.4, bw, 1.2, HAIR, r=0.6)
         if pct:
@@ -794,7 +796,7 @@ def _diary(pdf: _Report, data: dict) -> None:
         if day["recurring_total"]:
             bits.append(f"rotinas {day['recurring_done']}/{day['recurring_total']}")
         if day["recurring_extra"]:
-            bits.append(f"+{day['recurring_extra']} extra")
+            bits.append(f"+{_plural(day['recurring_extra'], 'extra', 'extras')}")
         if day["pontual"]:
             bits.append(_plural(len(day["pontual"]), "concluída", "concluídas"))
         if day["minutes"]:

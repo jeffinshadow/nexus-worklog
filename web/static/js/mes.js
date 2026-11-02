@@ -102,6 +102,12 @@ export async function view(root, opts) {
       if (my === seq) content.classList.remove("refreshing");
     }
   }
+  // Começo do mês: o atalho para o PDF do mês que fechou (já abre o Antes do PDF, se faltar algo).
+  opts.prevPdf = async () => {
+    await pick(prevOf(st.month));
+    const b = content.querySelector(".mes-actions .btn-primary");
+    if (b) { b.focus(); b.click(); }
+  };
   async function pick(m) {
     st.month = m;
     paintNav();
@@ -162,10 +168,13 @@ function hero(ov, mes, opts, extras, reload) {
   const m = ov.month;
   const empty = isEmpty(m, extras);
   const base = opts.exportBase || "/reports/export";
+  // Enquanto gera, aria-disabled (e não disabled): o foco continua no botão.
+  let baixando = false;
   const download = async () => {
-    btn.disabled = true;
+    if (baixando) return;
+    baixando = true; btn.setAttribute("aria-disabled", "true");
     try { await api.download(`${base}?start=${m.start}&end=${m.end}`); }
-    catch (e) { errorToast(e, "Não foi possível gerar o PDF."); } finally { btn.disabled = false; }
+    catch (e) { errorToast(e, "Não foi possível gerar o PDF."); } finally { baixando = false; btn.removeAttribute("aria-disabled"); }
   };
   // "Antes do PDF" (só da própria pessoa): com concluídas sem tempo ou sem
   // "como resolveu", o botão abre antes a lista para completar (dá para pular).
@@ -175,11 +184,18 @@ function hero(ov, mes, opts, extras, reload) {
   const hint = falta ? h("p", { class: "mes-incomplete" },
     h("span", { text: `${plural(falta, "concluída", "concluídas")} sem tempo ou sem “como resolveu”.` }),
     h("button", { type: "button", class: "btn btn-text btn-sm", text: "Completar", onClick: () => beforePdf(ov, mes, download, reload) })) : null;
+  // Nos 5 primeiros dias do mês, quem vem tirar o PDF quase sempre quer o mês que fechou.
+  const comeco = m.now && !opts.dashUrl && opts.prevPdf && Number(localDay(Date.now()).slice(8)) <= 5;
+  const prevMes = comeco ? nameOf(prevOf(m.start.slice(0, 7))) : "";
+  const prevLink = comeco ? h("p", { class: "mes-incomplete mes-prevpdf" },
+    h("span", { text: `O mês de ${prevMes} fechou.` }),
+    h("button", { type: "button", class: "btn btn-text btn-sm", onClick: () => opts.prevPdf() }, icon("reports"), `Baixar o PDF de ${prevMes}`)) : null;
   return h("section", { class: "mes-hero" },
     h("p", { class: "mes-sentence", text: sentence(m, mes, opts.who, extras) }),
     // O convite a registrar só no mês corrente da própria pessoa.
     empty ? (opts.dashUrl || !m.now ? null : h("p", { class: "mes-prev", text: "O que você registrar no Hoje (rotinas, tarefas e tempo) aparece aqui." }))
-      : h("div", { class: "mes-actions" }, btn, hint));
+      : h("div", { class: "mes-actions" }, btn, hint),
+    prevLink);
 }
 
 // ------------------------------------------------------- antes do PDF --
@@ -207,7 +223,7 @@ function beforePdf(ov, mes, download, reload) {
     onClick: () => dlg.close() }, icon("close"));
   const paintCount = () => {
     const left = items.filter(missing).length + Math.max(0, extra);
-    count.textContent = left ? `Faltam ${plural(left, "tarefa", "tarefas")}` : "Tudo completo";
+    count.textContent = left === 1 ? "Falta 1 tarefa" : left ? `Faltam ${left} tarefas` : "Tudo completo";
     goText.textContent = left ? "Baixar assim mesmo" : "Baixar o PDF";
   };
 
@@ -230,7 +246,7 @@ function beforePdf(ov, mes, download, reload) {
       if (!x.minutes) {
         mins = h("input", { type: "number", min: "1", max: "1440", inputmode: "numeric", placeholder: "min",
           "aria-label": `Minutos em ${x.title}` });
-        const quick = MINS.map((n) => h("button", { type: "button", class: "btn btn-sm btn-ghost", "aria-pressed": "false",
+        const quick = MINS.map((n) => h("button", { type: "button", class: "btn btn-ghost pdf-quick", "aria-pressed": "false",
           text: `${n} min`, onClick: (ev) => {
             mins.value = String(n);
             for (const b of quick) b.setAttribute("aria-pressed", String(b === ev.currentTarget));
@@ -244,11 +260,14 @@ function beforePdf(ov, mes, download, reload) {
           "aria-label": `Como resolveu: ${x.title}` });
         res.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); save.click(); } });
       }
-      const save = h("button", { type: "button", class: "btn btn-sm btn-primary", text: "Salvar", onClick: async () => {
+      const err = h("p", { class: "error-text", role: "alert" });
+      const say = (text, el) => { err.textContent = text; for (const i of [mins, res]) if (i) i.removeAttribute("aria-invalid"); if (el) { el.setAttribute("aria-invalid", "true"); el.focus(); } };
+      const save = h("button", { type: "button", class: "btn btn-primary pdf-save", text: "Salvar", "aria-label": `Salvar: ${x.title}`, onClick: async () => {
         const n = mins && mins.value ? Number(mins.value) : null;
         const text = res ? res.value.trim() : "";
-        if (!n && !text) { (mins || res).focus(); return; }
-        if (n !== null && !(n >= 1 && n <= 1440)) { toast("Tempo de 1 a 1440 minutos.", { error: true }); mins.focus(); return; }
+        if (!n && !text) { say(mins && res ? "Escreva o tempo ou como resolveu." : mins ? "Escreva o tempo." : "Escreva como resolveu.", mins || res); return; }
+        if (n !== null && !(n >= 1 && n <= 1440)) { say("Tempo de 1 a 1440 minutos.", mins); return; }
+        say("");
         save.disabled = true;
         try {
           // O tempo vai no dia da conclusão (conta no mesmo mês do PDF).
@@ -264,6 +283,7 @@ function beforePdf(ov, mes, download, reload) {
       // O Salvar fica na linha do como resolveu (ou, sem ele, ao lado do tempo).
       if (res) fill.append(h("div", { class: "review-inline" }, res, save));
       else fill.querySelector(".pdf-mins").append(save);
+      fill.append(err);
       el.append(h("div", { class: "review-acts" }, fill));
     };
     paint();
@@ -287,13 +307,14 @@ function beforePdf(ov, mes, download, reload) {
     h("p", { class: "review-intro", text: "O PDF mostra o tempo e o como resolveu de cada tarefa. Estas concluídas do mês estão sem um deles: complete o que lembrar, ou baixe assim mesmo." }),
     count,
     h("div", { class: "review-body" }, box),
-    h("div", { class: "dialog-actions" },
-      h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }), go)));
+    h("div", { class: "dialog-actions" }, go)));
   dlg.classList.add("review-dialog", "pdf-dialog");
   dlg.addEventListener("close", () => { if (changed) reload().catch(() => {}); });
   paintCount();
   paintPage();
-  (box.querySelector("input") || title).focus();
+  // Celular: o foco no título (o teclado não sobe sozinho por cima do "Baixar assim mesmo").
+  const touch = matchMedia("(pointer: coarse)").matches;
+  ((touch ? null : box.querySelector("input")) || title).focus();
 }
 
 const shortDay = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
@@ -350,7 +371,8 @@ function kpis(ov, month, team) {
   const m = ov.month, avg = ov.average;
   const slots = monthsBack(month, 6);
   const byMonth = Object.fromEntries(ov.trend.map((t) => [t.month, t]));
-  const trend = !team && ov.trend.length > 1;
+  // O eixo dos 6 meses fica sempre (meses sem registro ficam vazios): trocar de mês não muda a altura dos blocos.
+  const trend = !team;
   const days = ov.days;
   const taskDays = days.filter((d) => d.pontual_done).length;
   const timeDays = days.filter((d) => d.minutes).length;
@@ -454,7 +476,7 @@ function barChart(slots, byMonth, key, avg, month, fmt, what) {
   const y = (v) => BASEY - ((BASEY - TOPY) * v) / top;
   const desc = slots.map((k, i) => (vals[i] == null ? null : `${MONTHS[Number(k.slice(5)) - 1]} ${fmt(vals[i])}`)).filter(Boolean).join(", ");
   const s = svgEl("svg", { viewBox: `0 0 ${MW} 74`, class: "mm-spark", role: "img",
-    "aria-label": `${what[0].toUpperCase() + what.slice(1)} nos últimos meses: ${desc}${avg ? `; sua média ${fmt(key === "minutes" ? Math.round(avg) : fmtAvg(avg))}` : ""}.` });
+    "aria-label": `${what[0].toUpperCase() + what.slice(1)} nos últimos meses: ${desc || "nada registrado"}${avg ? `; sua média ${fmt(key === "minutes" ? Math.round(avg) : fmtAvg(avg))}` : ""}.` });
   s.append(svgEl("line", { x1: 2, x2: MW - 2, y1: BASEY, y2: BASEY, class: "mm-base" }));
   slots.forEach((k, i) => {
     const v = vals[i];
@@ -494,6 +516,7 @@ function dayInfo(d, iso, mes, today) {
   const n = Number(iso.slice(8));
   const when = `${n} de ${mes}`;
   if (!d) return { cls: "fut", label: `${when}: ainda não chegou` };
+  if (iso === today && d.due) return { cls: "none", label: `${when}: hoje, ${plural(d.done, "rotina marcada", "rotinas marcadas")} até agora; o dia ainda não terminou` };
   const extra = d.extra ? `, mais ${plural(d.extra, "extra", "extras")}` : "";
   if (d.due) return { cls: "l" + level(d), label: `${when}: ${d.done} de ${plural(d.due, "rotina", "rotinas")}${extra}` };
   if (d.extra) return { cls: "extra", label: `${when}: nenhuma prevista, ${plural(d.extra, "extra feita", "extras feitas")}` };
@@ -525,14 +548,17 @@ function calTable(ov, month, caption, describedBy, cellOf) {
         h("span", { class: "sr-only", text: info.label }));
     })));
   }
-  return h("table", { class: "mm-cal", "aria-describedby": describedBy },
+  // No toque não existe a dica do mouse: tocar no dia mostra o detalhe num aviso curto.
+  return h("table", { class: "mm-cal", "aria-describedby": describedBy,
+    onClick: (ev) => { const td = ev.target.closest && ev.target.closest("td[title]"); if (td) toast(td.title); } },
     h("caption", { class: "sr-only", text: caption }), h("thead", {}, head), h("tbody", {}, ...rows));
 }
 
 function calendarTile(ov, month) {
   const mes = nameOf(month);
   // O resumo do mês em texto (para todo mundo, e é o que o leitor ouve primeiro).
-  const due = ov.days.filter((d) => d.due);
+  const hoje = localDay(Date.now());
+  const due = ov.days.filter((d) => d.due && d.date !== hoje); // hoje ainda não terminou: fica fora da conta
   const all = due.filter((d) => d.done >= d.due).length, none = due.filter((d) => !d.done).length;
   const partes = [];
   if (all) partes.push(`${all} com todas feitas`);
@@ -622,6 +648,7 @@ function weekBars(weeks, key, fmt, title, mes, empty) {
   const W = 300, base = 92, topY = 18, slot = W / weeks.length;
   const vals = weeks.map((w) => (w.data ? w.data[key] : null));
   const top = Math.max(1, ...vals.filter((v) => v != null));
+  const none = !vals.some((v) => v); // tudo zero: sem um "0" solto no gráfico; a frase vai no título
   const desc = weeks.map((w, i) => `${w.label}: ${vals[i] == null ? "ainda não chegou" : fmt(vals[i])}`).join("; ");
   const s = svgEl("svg", { viewBox: `0 0 ${W} 114`, class: "mm-weeks", role: "img", "aria-label": `${title} por semana em ${mes}: ${desc}.` });
   s.append(svgEl("line", { x1: 2, x2: W - 2, y1: base, y2: base, class: "mm-base" }));
@@ -635,7 +662,7 @@ function weekBars(weeks, key, fmt, title, mes, empty) {
       r.append(ti);
       s.append(r);
     }
-    if (v != null && !empty) {
+    if (v != null && !empty && !none) {
       const t = svgEl("text", { x: cx, y: (v ? base - ((base - topY) * v) / top : base) - 5, class: "mm-val" });
       t.textContent = fmt(v);
       s.append(t);
@@ -645,7 +672,7 @@ function weekBars(weeks, key, fmt, title, mes, empty) {
     s.append(l);
   });
   if (empty) s.setAttribute("aria-label", `${title} por semana em ${mes}: nada registrado.`);
-  return h("div", { class: "mm-week-chart" }, h("p", { class: "mm-chart-t", text: title }), s);
+  return h("div", { class: "mm-week-chart" }, h("p", { class: "mm-chart-t", text: none && !empty ? `${title} · nada ainda` : title }), s);
 }
 
 function rhythmTile(ov, month, empty) {

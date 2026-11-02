@@ -30,11 +30,13 @@ function setPrev(p) {
 const shortTitle = (t) => (t.length > 24 ? t.slice(0, 23) + "…" : t);  // cabe no aviso do celular
 
 // A interrupção terminou (parou ou concluiu a tarefa `taskId`): a ação "Voltar para «X»"
-// para o aviso, ou null. Usa uma vez só.
+// para o aviso, ou null. Quem perdeu o aviso ainda acha a pista: enquanto valer (2 h),
+// a barra do cronômetro mostra "Voltar para «X»" (com X para dispensar).
 export function backAction(taskId, after = onChange) {
   const p = getPrev();
   if (!p || p.by !== taskId) return null;
-  setPrev(null);
+  setPrev({ ...p, ended: true });
+  queueMicrotask(() => setTimer(state));
   return [`Voltar para «${shortTitle(p.title)}»`, () => startTimer({ id: p.task_id, title: p.title }, after)];
 }
 
@@ -61,11 +63,24 @@ function elapsed(ms) {
 function setTimer(t) {
   state = t || null;
   clearInterval(tick);
+  // Parado, com uma interrompida para retomar: a pista fica na barra (até ser usada ou dispensada).
+  const left = !state ? getPrev() : null;
+  const resume = left && left.ended ? left : null;
   for (const id of ["timer-side", "timer-mobile"]) {
     const box = document.getElementById(id);
     if (!box) continue;
     clear(box);
-    box.classList.toggle("hidden", !state);
+    box.classList.toggle("hidden", !state && !resume);
+    box.classList.toggle("timer-resume", !!resume);
+    if (resume) {
+      box.append(
+        h("button", { type: "button", class: "timer-task", title: `Voltar o cronômetro para «${resume.title}»`,
+          onClick: () => startTimer({ id: resume.task_id, title: resume.title }) },
+        icon("play"), h("span", { class: "timer-title", text: `Voltar para «${resume.title}»` })),
+        h("button", { type: "button", class: "icon", title: "Dispensar", "aria-label": `Dispensar: voltar para «${resume.title}»`,
+          onClick: () => { setPrev(null); setTimer(null); } }, icon("close")));
+      continue;
+    }
     if (!state) continue;
     // Rodando numa interrupção: uma linha pequena lembra a tarefa que ficou parada.
     const prev = getPrev();

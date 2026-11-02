@@ -235,7 +235,7 @@ Cada um traz o projeto da área (nome e ícone) e as rotinas com agenda e horár
 | `PATCH /api/time/{id}` | W | `{minutes?, day?, note?}` — corrige um apontamento, com as mesmas regras do lançamento (o próprio apontamento não conta duas vezes no limite de 24 h); `note` `null` ou vazio tira. Histórico `time.update`, com desfazer |
 | `DELETE /api/time/{id}` | W | |
 
-**Lembrar em** (`remind_at`): data e hora `AAAA-MM-DDTHH:MM` (sem fuso = fuso da app) ou como se fala —
+**Lembrete com hora** (`remind_at`): data e hora `AAAA-MM-DDTHH:MM` (sem fuso = fuso da app) ou como se fala —
 `15h`, `7h30`, `15:30` (a próxima vez que der essa hora: hoje, ou amanhã se já passou), `amanhã 8h`, `hoje 15h`.
 Não é o prazo (`due_date`, só o dia). No passado (mais de 2 min) ou a mais de um ano → 400; criada sem sinal
 (com `created_at` do aparelho) aceita o horário que passou na fila e avisa logo. Na hora, o app avisa na tela

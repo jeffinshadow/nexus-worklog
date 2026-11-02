@@ -36,13 +36,13 @@ try:
     ev("""fetch('/api/auth/me').then(r=>r.json()).then(async me=>{const l=await (await fetch('/api/auth/passkeys')).json();
       for(const x of l) await fetch('/api/auth/passkeys/'+x.id,{method:'DELETE',headers:{'X-CSRF-Token':me.csrf_token}})})""")
     cmd("Page.navigate", url=B + "/#/config?aba=conta"); time.sleep(3)
-    check("painel Passkeys", ev("[...document.querySelectorAll('.panel h2')].some(h=>h.textContent==='Entrar com digital ou rosto')"))
+    check("painel Passkeys", ev("[...document.querySelectorAll('.panel h2, .panel h3')].some(h=>h.textContent==='Entrar com digital ou rosto')"))
     ev("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('digital ou o rosto neste aparelho')).click()"); time.sleep(3)
     lista = ev("fetch('/api/auth/passkeys').then(r=>r.json())")
     check("cadastrou 1 passkey", len(lista or []) == 1, lista)
     creds = cmd("WebAuthn.getCredentials", authenticatorId=aut)["credentials"]
     check("autenticador guardou a passkey (residente)", len(creds) == 1 and creds[0]["isResidentCredential"], creds)
-    ev("[...document.querySelectorAll('.panel')].find(p=>p.querySelector('h2')?.textContent==='Entrar com digital ou rosto')?.scrollIntoView()"); time.sleep(.5)
+    ev("[...document.querySelectorAll('.panel')].find(p=>p.querySelector('h2, h3')?.textContent==='Entrar com digital ou rosto')?.scrollIntoView()"); time.sleep(.5)
     shot("e3-painel")
     # sair e entrar com o botão
     ev("fetch('/api/auth/me').then(r=>r.json()).then(me=>fetch('/api/auth/logout',{method:'POST',headers:{'X-CSRF-Token':me.csrf_token}}))")

@@ -47,11 +47,12 @@ export async function openReview(onDone) {
   const decided = new Map(); // id -> texto do estado (passo 2), mantido ao voltar
   const notes = new Map();   // id -> como resolveu salvo agora (passo 1)
 
-  const stepLabel = h("span", { class: "tour-step" });
-  const title = h("h2", {});
+  const stepLabel = h("span", { class: "tour-step", id: "review-step" });
+  const title = h("h2", { "aria-describedby": "review-step" });
   const intro = h("p", { class: "review-intro" });
   const body = h("div", { class: "review-body" });
-  const back = btn("Voltar", () => go(step - 1), "btn-text");
+  // "Passo anterior/Próximo passo": não se confunde com "Anterior/Próxima" das páginas da lista.
+  const back = btn("Passo anterior", () => go(step - 1), "btn-text");
   const fwd = h("button", { type: "button", class: "btn btn-primary" });
   // Fechar a qualquer hora (o que já foi tocado está salvo): o X no canto.
   const close = h("button", { type: "button", class: "icon review-close", title: "Fechar a revisão", "aria-label": "Fechar a revisão",
@@ -119,7 +120,7 @@ export async function openReview(onDone) {
     const lista = [...r.open, ...r.waiting];
     title.textContent = "O que ficou";
     intro.textContent = lista.length
-      ? `${plural(lista.length, "tarefa segue aberta", "tarefas seguem abertas")}. Para cada uma, um toque: manter, mudar o prazo, marcar como aguardando ou concluir.`
+      ? `${plural(lista.length, "tarefa segue aberta", "tarefas seguem abertas")}. Mude só o que precisar (prazo, aguardando ou concluir): o resto fica como está.`
       : "Nada ficou em aberto. Semana fechada.";
     paged(1, lista, "tarefas em aberto", (t) => {
       const { el, state, acts } = row(t, [prazo(t), esperando(t)]);
@@ -142,7 +143,6 @@ export async function openReview(onDone) {
           } catch (e) { errorToast(e, "Não foi possível mudar o prazo."); }
         });
         acts.append(
-          btn("Manter", () => done("mantida")),
           btn("Reagendar", (ev) => { ev.currentTarget.classList.add("hidden"); date.classList.remove("hidden"); date.focus(); try { date.showPicker(); } catch { /* sem seletor: digita */ } }),
           date,
           t.status === "blocked"
@@ -166,13 +166,13 @@ export async function openReview(onDone) {
 
   // ---- passo 3: o que vem
   function vem() {
-    title.textContent = "O que vem";
+    title.textContent = "Primeiro amanhã";
     const abertas = r.open.filter((t) => t.status !== "done" && t.status !== "blocked");
     const sug = new Set(r.suggestions);
     const ordem = [...abertas.filter((t) => sug.has(t.id)), ...abertas.filter((t) => !sug.has(t.id))];
     intro.textContent = ordem.length
-      ? `Escolha até ${NEXT_MAX} prioridades para a próxima semana. Elas também abrem o Hoje do próximo dia útil (o “Primeiro amanhã”). Se quiser, marque prioridade alta ou um prazo.`
-      : "Nada em aberto para a próxima semana. Se já sabe de algo, escreva abaixo.";
+      ? `Escolha até ${NEXT_MAX} tarefas para começar: elas abrem o Hoje do próximo dia útil (o Primeiro amanhã). Se quiser, marque também prioridade alta ou um prazo.`
+      : "Nada em aberto para começar. Se já sabe de algo, escreva abaixo.";
     const count = h("p", { class: "review-count", "aria-live": "polite" });
     const paintCount = () => { count.textContent = `${chosen.size} de ${NEXT_MAX} escolhidas`; };
     body.append(count);
@@ -187,7 +187,7 @@ export async function openReview(onDone) {
       pick.addEventListener("click", () => {
         if (chosen.has(t.id)) chosen.delete(t.id);
         else if (chosen.size < NEXT_MAX) chosen.add(t.id);
-        else { toast(`Até ${NEXT_MAX} prioridades. Desmarque uma para trocar.`); return; }
+        else { toast(`Até ${NEXT_MAX} no Primeiro amanhã. Desmarque uma para trocar.`); return; }
         sync();
       });
       const high = h("button", { type: "button", class: "btn btn-sm btn-ghost", "aria-pressed": "false", text: "Prioridade alta" });
@@ -219,11 +219,11 @@ export async function openReview(onDone) {
     };
     for (const t of ordem.slice(0, 15)) add(t);
     // Algo que ainda não está no Nexus: vira tarefa de prioridade alta, já escolhida.
-    const nova = h("input", { type: "text", maxlength: "200", placeholder: "Outra prioridade (vira tarefa)", "aria-label": "Nova prioridade para a próxima semana" });
+    const nova = h("input", { type: "text", maxlength: "200", placeholder: "Outra coisa para começar (vira tarefa)", "aria-label": "Nova tarefa para o Primeiro amanhã" });
     const criar = btn("Adicionar", async () => {
       const titulo = nova.value.trim();
       if (!titulo) { nova.focus(); return; }
-      if (chosen.size >= NEXT_MAX) { toast(`Até ${NEXT_MAX} prioridades. Desmarque uma para trocar.`); return; }
+      if (chosen.size >= NEXT_MAX) { toast(`Até ${NEXT_MAX} no Primeiro amanhã. Desmarque uma para trocar.`); return; }
       criar.disabled = true;
       try {
         const c = await api.post("/worklog", { title: titulo, priority: 1 });
@@ -254,7 +254,7 @@ export async function openReview(onDone) {
     stepLabel.textContent = "Pronto";
     title.textContent = "Sua semana";
     intro.textContent = "Revisão feita. O texto abaixo está pronto para colar no chat da equipe ou guardar." +
-      (res.first && res.first.length ? ` ${res.first.length === 1 ? "A prioridade escolhida abre" : "As prioridades escolhidas abrem"} o Hoje de ${shortDate(res.first_day)}.` : "");
+      (res.first && res.first.length ? ` O Primeiro amanhã (${plural(res.first.length, "tarefa", "tarefas")}) abre o Hoje de ${shortDate(res.first_day)}.` : "");
     clear(body);
     const area = h("textarea", { rows: "12", readonly: "readonly", class: "handoff-text", "aria-label": "Texto da semana" });
     area.value = res.text;
@@ -279,7 +279,7 @@ export async function openReview(onDone) {
     [fechou, ficou, vem][step]();
     back.classList.toggle("hidden", step === 0);
     fwd.disabled = false;
-    fwd.textContent = step === 2 ? "Concluir a revisão" : "Próximo";
+    fwd.textContent = step === 2 ? "Concluir a revisão" : "Próximo passo";
     fwd.onclick = step === 2 ? fim : () => go(step + 1);
     title.focus({ preventScroll: true });
   }

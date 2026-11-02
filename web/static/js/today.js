@@ -9,7 +9,7 @@ import { openRecurring, pauseRecurring, openWorklog, finishTask, askResolution, 
 import { openTask } from "./task.js";
 import { fillProjectSelect } from "./projects.js";
 import { summaryPanel } from "./summary.js";
-import { quickRegister, lastDone, pasteHandler } from "./quick.js";
+import { quickRegister, lastDone, lastUnknown, projectOffer, pasteHandler } from "./quick.js";
 import { todayCard } from "./assistant.js";
 import { timerButton } from "./timer.js";
 import { todayRenewals } from "./renewals.js";
@@ -24,8 +24,8 @@ const OPEN_MAX = 10; // em aberto no Hoje; o resto, em Tarefas
 // Filtro das abertas: todas, as que vencem até hoje (atrasadas inclusas) ou só as de prioridade alta.
 const FILTERS = [
   ["all", "Todas", () => true, "Nada em aberto."],
-  ["due", "Vence hoje", (t, today) => !!t.due_date && t.due_date <= today, "Nada vencendo hoje nem atrasado."],
-  ["prio", "Prioritárias", (t) => t.priority === 1, "Nenhuma tarefa de prioridade alta em aberto."],
+  ["due", "Até hoje", (t, today) => !!t.due_date && t.due_date <= today, "Nada vencendo hoje nem atrasado."],
+  ["prio", "Prioridade alta", (t) => t.priority === 1, "Nenhuma tarefa de prioridade alta em aberto."],
 ];
 
 // opts.day: dia das rotinas (padrão hoje); opts.focusQuick: volta o cursor ao
@@ -55,7 +55,7 @@ export async function mount(root, ctx, opts = {}) {
   const off = b.recurring.filter((r) => r.due === false);
   const extras = off.filter((r) => r.done_today).length;
   const recDone = due.filter((r) => r.done_today).length;
-  const extraTxt = extras ? ` +${extras} extra` : "";
+  const extraTxt = extras ? ` +${extras} extra${extras > 1 ? "s" : ""}` : "";
   const open = b.in_progress; // já vem na ordem: atrasadas, vencem hoje, prioridade, prazo
   const late = open.filter((t) => isOverdue(t, today));
   const blocked = open.filter((t) => t.status === "blocked");
@@ -86,6 +86,10 @@ export async function mount(root, ctx, opts = {}) {
       packButton(refresh));
   else if (!due.length)
     recPanel.append(h("p", { class: "empty", text: "Nada previsto para este dia. Marcar mesmo assim conta como extra." }));
+  // Fora da agenda e não marcadas: recolhidas numa linha só no fim ("+N fora da agenda"),
+  // para o Hoje mostrar o dia; a extra já marcada continua à vista.
+  const offBox = h("div", { class: "rec-off", id: "rec-off-" + b.day });
+  const OFF_OPEN = "nexus.today.offOpen";
   for (const r of [...due, ...off]) {
     const cb = h("input", { type: "checkbox", "aria-label": r.label });
     cb.checked = r.done_today;
@@ -132,7 +136,7 @@ export async function mount(root, ctx, opts = {}) {
     // O aria-label da caixa troca o texto do <label>: horário, estado e evidência vão pela descrição.
     cb.setAttribute("aria-describedby", [at && `rec-at-${r.id}`, hint && `rec-hint-${r.id}`, r.note && `rec-ev-${r.id}`].filter(Boolean).join(" "));
     if (!cb.getAttribute("aria-describedby")) cb.removeAttribute("aria-describedby");
-    recPanel.append(h("label", { class: "check-row" + (r.done_today ? " done" : "") + (r.due === false ? " off" : "") }, cb,
+    (r.due === false && !r.done_today ? offBox : recPanel).append(h("label", { class: "check-row" + (r.done_today ? " done" : "") + (r.due === false ? " off" : "") }, cb,
       h("span", { class: "label" }, h("span", { class: "rec-title" }, r.label, time), hint ? h("small", { id: `rec-hint-${r.id}`, text: hint }) : null,
         r.note ? h("small", { class: "evidence", id: `rec-ev-${r.id}`, text: "evidência: " + r.note }) : null),
       // Marcada: anota o que foi conferido (vai para o relatório, para comprovar depois).
@@ -147,6 +151,22 @@ export async function mount(root, ctx, opts = {}) {
           ["Editar rotina", "edit", () => openRecurring(r, refresh)],
           [r.paused_until ? "Retomar ou mudar a pausa" : "Pausar até…", "bell-off", () => pauseRecurring(r, refresh)],
         ]); } }, icon("more-v"))));
+  }
+  if (offBox.childElementCount) {
+    const n = offBox.childElementCount;
+    let isOpen = false;
+    try { isOpen = sessionStorage.getItem(OFF_OPEN) === "1"; } catch { /* sem armazenamento */ }
+    const toggle = h("button", { type: "button", class: "btn btn-text btn-sm rec-off-toggle", "aria-controls": offBox.id });
+    const set = (on) => {
+      isOpen = on;
+      offBox.classList.toggle("hidden", !on);
+      toggle.setAttribute("aria-expanded", String(on));
+      toggle.textContent = on ? "Esconder as fora da agenda de hoje" : `+${n} fora da agenda de hoje`;
+      try { sessionStorage.setItem(OFF_OPEN, on ? "1" : "0"); } catch { /* idem */ }
+    };
+    toggle.addEventListener("click", () => set(!isOpen));
+    set(isOpen);
+    recPanel.append(toggle, offBox);
   }
 
   // ---- abertas + registro rápido (com projeto; com "— 15min" já sai concluída)
@@ -192,10 +212,11 @@ export async function mount(root, ctx, opts = {}) {
     try {
       // "Ver": a linha nova fica abaixo da dobra no celular (concluídas ou abertas).
       const msg = await quickRegister(quick.value, project_id);
-      const done = lastDone; // registrada já concluída ("— 30min"): pergunta como resolveu, como o Concluir
+      const done = lastDone, unknown = lastUnknown; // registrada já concluída ("— 30min"): pergunta como resolveu, como o Concluir
       toast(msg, { actions: [
         ["Ver", () => document.querySelector(/conclu/i.test(msg) ? ".t-done" : ".t-open")?.scrollIntoView({ behavior: calmMotion() ? "auto" : "smooth", block: "start" })],
         done ? ["Como resolveu?", () => askResolution(done, refresh)] : null,
+        unknown ? projectOffer(unknown, refresh) : null,  // "@Manutenção" que não é projeto: cria e põe a tarefa nele
       ].filter(Boolean) });
     } catch (e) {
       quick.disabled = false;
@@ -344,6 +365,8 @@ async function showHandoff(b, refresh) {
         catch { area.select(); toast("Selecione e copie (Ctrl+C).", { error: true }); }
       } }, icon("copy"), "Copiar")));
   area.focus();
+  area.setSelectionRange(0, 0); // abre no começo (o que fica aberto), não rolado até o fim
+  area.scrollTop = 0;
 }
 
 // Ordem das rotinas (a sequência do dia: abrir a loja → ar → câmeras). Arrastar

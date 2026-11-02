@@ -16,7 +16,27 @@ export function modal(...children) {
   document.body.appendChild(dlg);
   dlg.addEventListener("close", () => dlg.remove());
   dlg.showModal();
+  layerBox(dlg); // os avisos já têm onde aparecer (e ser lidos) dentro dele
   return dlg;
+}
+
+// Com um diálogo modal aberto, o resto da página fica inerte: avisos e a
+// região viva que ficam no <body> não são vistos (ficam atrás do véu) nem
+// lidos. Eles vão para dentro do diálogo de cima.
+function topDialog() {
+  const open = [...document.querySelectorAll("dialog[open]")].filter((d) => d.matches(":modal"));
+  return open[open.length - 1] || null;
+}
+// A caixa dos avisos e a região viva de um diálogo; `fresh`: acabou de ser
+// criada (uma região viva nova só fala da próxima mudança em diante).
+function layerBox(dlg) {
+  let toasts = dlg.querySelector(":scope > .toasts"), fresh = false;
+  if (!toasts) {
+    fresh = true;
+    toasts = h("div", { class: "toasts toasts-dialog", "aria-live": "polite" });
+    dlg.append(toasts, h("div", { class: "sr-only dlg-live", role: "status", "aria-live": "polite" }));
+  }
+  return { toasts, live: dlg.querySelector(":scope > .dlg-live"), fresh };
 }
 
 // Celular: menu que sobe de baixo (bottom sheet). items: [rótulo, ícone, fn];
@@ -45,8 +65,12 @@ export function popupMenu(x, y, items, anchorTop = null) {
   const menu = h("div", { class: "pop-menu", role: "menu" }, ...items.filter(Boolean).map(([label, ic, fn]) =>
     h("button", { type: "button", role: "menuitem", onClick: () => { close(); if (back && back.isConnected && back.focus) back.focus(); fn(); } }, icon(ic), h("span", { text: label }))));
   document.documentElement.append(menu);
+  // Mede no canto (largura inteira, sem ser espremido pela borda) e limita pela
+  // área visível sem a barra de rolagem (clientWidth, não innerWidth).
+  menu.style.left = "0px"; menu.style.top = "0px";
   const r = menu.getBoundingClientRect();
-  menu.style.left = Math.max(8, Math.min(x, innerWidth - r.width - 8)) + "px";
+  const vw = document.documentElement.clientWidth || innerWidth;
+  menu.style.left = Math.max(8, Math.min(x, vw - r.width - 8)) + "px";
   const top = anchorTop !== null && y + r.height + 8 > innerHeight ? anchorTop - r.height - 4 : y;
   menu.style.top = Math.max(8, Math.min(top, innerHeight - r.height - 8)) + "px";
   const btns = [...menu.querySelectorAll("button")];
@@ -249,7 +273,9 @@ export function confirmDialog({ title, text, confirm = "Confirmar", danger = fal
 // depois que o foco sai). Não puxa o foco: "Desfazer" também vai pelo Ctrl+Z.
 let undoAction = null;
 export function toast(message, opts = {}) {
-  const box = document.getElementById("toasts");
+  const dlg = topDialog();
+  const layer = dlg ? layerBox(dlg) : null;
+  const box = layer ? layer.toasts : document.getElementById("toasts");
   if (!box) return;
   // Uma ação (action/onAction) ou várias (actions: [[rótulo, fn], ...]).
   const actions = opts.actions || (opts.action ? [[opts.action, opts.onAction]] : []);
@@ -273,7 +299,8 @@ export function toast(message, opts = {}) {
     }));
   }
   if (undo) { undoAction = undo; el.append(h("span", { class: "sr-only", text: "Ctrl+Z desfaz." })); }
-  box.append(el);
+  // Caixa recém-criada dentro de um diálogo: o aviso entra um instante depois, para ser lido.
+  if (layer && layer.fresh) setTimeout(() => box.append(el), 80); else box.append(el);
   const ms = actions.length ? 12000 : 3500;
   let timer = setTimeout(remove, ms), hover = false;
   const hold = () => { clearTimeout(timer); timer = null; };
@@ -323,8 +350,11 @@ export function setSingleKeys(on) {
 let liveRegion = null;
 export function announce(text) {
   if (!liveRegion) { liveRegion = h("div", { class: "sr-only", role: "status", "aria-live": "polite" }); document.body.append(liveRegion); }
-  liveRegion.textContent = "";
-  setTimeout(() => { liveRegion.textContent = text; }, 60);
+  // Diálogo aberto: o <body> está inerte; a região viva é a de dentro dele.
+  const dlg = topDialog(), layer = dlg ? layerBox(dlg) : null;
+  const region = layer ? layer.live : liveRegion;
+  region.textContent = "";
+  setTimeout(() => { region.textContent = text; }, layer && layer.fresh ? 150 : 60);
 }
 
 // Setas de período (dia no Hoje, semana, mês, Equipe): a tela se redesenha e o
@@ -416,10 +446,14 @@ export function busy(fn) {
       form.dataset.busy = "1";
     }
     const btns = form && form.querySelectorAll ? [...form.querySelectorAll("[type=submit]")] : [];
+    const had = btns.includes(document.activeElement) ? document.activeElement : null;
     btns.forEach((b) => { b.disabled = true; });
     try { return await fn(ev); } finally {
       if (form && form.dataset) delete form.dataset.busy;
       btns.forEach((b) => { b.disabled = false; });
+      // O botão desabilitado perdeu o foco (foi para o <body>): volta para ele (ex.: o envio falhou).
+      const a = document.activeElement;
+      if (had && had.isConnected && (!a || a === document.body)) had.focus({ preventScroll: true });
     }
   };
 }
@@ -468,7 +502,7 @@ export function warnBox(text) {
 // 44 px de alvo). page começa em 1.
 export function pager({ page, total, size, label, onPage, focus = null, compact = false }) {
   const pages = Math.max(1, Math.ceil(total / size));
-  if (pages <= 1) return null;
+  if (pages <= 1) return ""; // uma página só: nada (vazio, não null: append(null) escreveria "null")
   const cur = Math.min(Math.max(1, page), pages);
   const from = (cur - 1) * size + 1, to = Math.min(total, cur * size);
   let going = false;

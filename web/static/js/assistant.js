@@ -4,10 +4,9 @@
 import { api } from "./api.js";
 import { h, icon, nowInTz, localDay, daysBetween, shortDate, addDays, addWorkDays } from "./dom.js";
 import { duration } from "./task.js";
-import { errorToast, modal, toast } from "./ui.js";
+import { errorToast, toast } from "./ui.js";
 import { followUpTask } from "./board.js";
 import { openReview } from "./review.js";
-import { pickFirst, firstLabel } from "./primeiro.js";
 
 export const enabled = (me) => !!(me && me.assistant && me.assistant.enabled);
 
@@ -98,13 +97,13 @@ function stack(key, mainParts, items) {
   // (o Hoje se redesenha a cada ação).
   const shown = notices.filter((n) => !n.classList.contains("hidden")).length;
   if (shown) {
-    const label = shown === 1 ? "Ver 1 aviso" : `Ver ${shown} avisos`;
+    const label = shown === 1 ? "Ver 1 sugestão" : `Ver ${shown} sugestões`; // "Avisos" é o nome dos e-mails e notificações (Configurações)
     const memo = "nexus.assist.open." + key;
     const btn = h("button", { type: "button", class: "btn btn-ghost btn-sm assist-more", "aria-expanded": "false", text: label });
     const set = (open) => {
       el.classList.toggle("open", open);
       btn.setAttribute("aria-expanded", String(open));
-      btn.textContent = open ? "Ocultar avisos" : label;
+      btn.textContent = open ? "Ocultar sugestões" : label;
     };
     let wasOpen = false;
     try { wasOpen = sessionStorage.getItem(memo) === "1"; } catch { /* sem storage: começa recolhido */ }
@@ -174,40 +173,6 @@ function closing(sum, pendentes) {
     ? `; ainda ${pendentes.length === 1 ? "falta" : "faltam"} ${pendentes.length <= 3 ? pendentes.map((r) => r.label).join(", ") : plural(pendentes.length, "rotina", "rotinas")}`
     : "";
   return `Resumo do dia: ${plural(s.pontual_done, "tarefa concluída", "tarefas concluídas", "nenhuma tarefa concluída")}${tempo} hoje${falta}.`;
-}
-
-// Resumo para a equipe: Ontem (desde o último dia útil), Hoje e Aguardando.
-function dailyText(b, sum) {
-  const today = b.today;
-  const lines = [];
-  const last = sum && sum.last_day;
-  const quando = last ? (last.start === addDays(today, -1) ? "Ontem" : `Desde ${shortDate(last.start)}`) : "Ontem";
-  lines.push(`${quando}:`);
-  const feitas = last ? last.deliveries.slice(0, 10) : [];
-  lines.push(...(feitas.length ? feitas.map((d) => `- ${d.title}${d.project ? ` [${d.project}]` : ""}${d.minutes ? ` (${duration(d.minutes)})` : ""}`) : ["- nada registrado"]));
-  lines.push("", "Hoje:");
-  const hoje = b.in_progress.filter((t) => t.status !== "blocked").slice(0, 6);
-  lines.push(...(hoje.length ? hoje.map((t) => `- ${t.title}${t.ticket ? ` (#${t.ticket})` : ""}${t.due_date && t.due_date < today ? " — atrasada" : t.due_date === today ? " — vence hoje" : ""}`) : ["- sem tarefas em aberto"]));
-  lines.push("", "Aguardando:");
-  const bloq = b.in_progress.filter((t) => t.status === "blocked");
-  lines.push(...(bloq.length ? bloq.map((t) => `- ${t.title}${t.ticket ? ` (#${t.ticket})` : ""}${t.blocked_reason ? ` — ${t.blocked_reason}` : ""}`) : ["- nada"]));
-  return lines.join("\n");
-}
-
-async function copyDaily(b, sum) {
-  const text = dailyText(b, sum);
-  try {
-    await navigator.clipboard.writeText(text);
-    toast("Resumo copiado. É só colar no chat da equipe.");
-  } catch {
-    // Área de transferência bloqueada: mostra o texto selecionado para copiar à mão.
-    const area = h("textarea", { class: "daily-text", rows: "12", readonly: "readonly" });
-    area.value = text;
-    const dlg = modal(h("h2", { text: "Resumo para a equipe" }),
-      h("p", { class: "dialog-note", text: "Não consegui copiar sozinho. O texto já está selecionado: use Ctrl+C." }), area,
-      h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-text", text: "Fechar", onClick: () => dlg.close() })));
-    setTimeout(() => area.select(), 0);
-  }
 }
 
 // O que aconteceu desde o último dia útil (manhã) e o fechamento da sexta (tarde).
@@ -348,15 +313,12 @@ export function todayCard(b, sum, ctx) {
   // da sexta (com o botão do relatório) é um aviso.
   const r = recap(sum, t, ctx.go);
   if (r.line && r.act && !(rv && rv.invite)) items.push({ key: "hoje:recap", lines: [{ line: r.line, actions: [r.act] }] });
-  if (b.work_day) items.push({ key: "hoje:daily", lines: [{ line: "Posso montar o resumo para a equipe: ontem, hoje e o que está aguardando, pronto para colar no chat.",
-    actions: [action("Copiar resumo para a equipe", () => copyDaily(b, sum))] }] });
   const ask = invite(me, ctx.onProfile);
   if (ask) items.push({ key: "hoje:nome", lines: [], extra: ask });
 
-  // No resumo do dia (o fechamento), a escolha do "Primeiro amanhã" (até 3, some sozinho depois do dia).
-  const podeEscolher = fechamento && b.day === today && open.some((x) => x.status !== "blocked") && b.first_day;
-  const fecha = podeEscolher ? { line: fechamento, actions: [action(firstLabel(b), () => pickFirst(ctx.onChanged, b))] } : fechamento;
-  return stack("hoje", { hello: greeting(me.name), lines: [resumo, r.line && !r.act ? r.line : null, fecha] }, items);
+  // O "Primeiro amanhã" se escolhe só na Passagem de turno e na revisão da semana (decisão do dono, 02/11):
+  // o texto do dia é a Passagem; o resumo para a equipe saiu daqui.
+  return stack("hoje", { hello: greeting(me.name), lines: [resumo, r.line && !r.act ? r.line : null, fechamento] }, items);
 }
 
 // ---------------------------------------------------------------- Tarefas --
