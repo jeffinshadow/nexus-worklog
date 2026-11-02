@@ -11588,7 +11588,7 @@
           "reason"
         ],
         "title": "ReturnIn",
-        "description": "Quem recebeu devolve a tarefa atribuída, com o porquê (vai para quem mandou)."
+        "description": "Quem recebeu devolve a tarefa atribuída, com o porquê (vai para quem atribuiu)."
       },
       "RolesIn": {
         "properties": {
