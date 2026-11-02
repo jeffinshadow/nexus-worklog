@@ -24,7 +24,7 @@ import { session } from "./session.js";
 import { initTimer, stopTimer, timerState } from "./timer.js";
 import { openWorklog } from "./board.js";
 import { openTask, closeSidePanel } from "./task.js";
-import { startTour, visibilityNotice, assignNotice, roleNotice } from "./tour.js";
+import { startTour, changesNotice } from "./tour.js";
 import { openReview } from "./review.js";
 import { modal, busy, initTooltips, initRailPeek, syncRail, calmMotion, toast, singleKeysOn, repaintBadges } from "./ui.js";
 
@@ -550,16 +550,8 @@ async function boot() {
   startQueue(route);  // sem sinal: a fila do aparelho vai quando a conexão voltar
   // Primeiro acesso: o tour guiado abre sozinho (uma vez; a Ajuda reabre).
   if (has("user") && !me.tour_done_at) setTimeout(() => startTour(me), 700);
-  // Avisos únicos, um depois do outro (o próximo abre quando o anterior fecha):
-  // quem já usava quando a administração ligou "Visível para quem gerencia" ou
-  // "Todos recebem de quem atribui", e papel ganho ou retirado (Admin › Contas › Papéis).
-  else setTimeout(async () => {
-    for (const [on, show] of [[me.visibility_notice, visibilityNotice], [me.assign_notice, assignNotice], [me.role_notice, roleNotice]]) {
-      if (!on) continue;
-      const dlg = await show(me);
-      if (dlg) await new Promise((ok) => dlg.addEventListener("close", ok, { once: true }));
-    }
-  }, 700);
+  // Avisos únicos (visibilidade, receber tarefas, papéis): um só diálogo, "O que mudou para você".
+  else if (me.visibility_notice || me.assign_notice || me.role_notice) setTimeout(() => changesNotice(me), 700);
 }
 
 boot();

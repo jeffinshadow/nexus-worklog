@@ -1738,7 +1738,7 @@ input:disabled { cursor: not-allowed; }
 .role-notice-list { margin: 8px 0 0; padding: 0; list-style: none; }
 .role-notice-list li { margin: 0 0 10px; }
 .role-notice-list strong { display: block; color: var(--on-surface); }
-.role-notice-list span { color: var(--on-surface-variant); font-size: var(--type-body-s); }
+.role-notice-list span { display: block; margin-top: 2px; color: var(--on-surface-variant); font-size: var(--type-body-s); }
 /* Detalhe da tarefa: chamado sem endereço configurado (o número fica só texto). */
 .ticket-hint { display: block; margin-top: 4px; color: var(--on-surface-variant); font-size: var(--type-caption); }
 .ticket-hint a, #tickets-locked a { text-decoration: underline; }

@@ -30,47 +30,8 @@ const assignText = (me) => me.teams_on && (me.teams || []).length
   ? `Nesta instância do Nexus, quem está na mesma equipe recebe tarefas de quem atribui (definido pela administração). Você está em: ${teamsOf(me)}. Quem tem o papel “Manda tarefas” nessas equipes pode mandar tarefas para você; cada uma chega por e-mail e aparece em Tarefas com “de” e o nome de quem mandou.`
   : ASSIGN_TEXT;
 
-// Aviso único (fora do tour) para quem já usava o Nexus quando a administração
-// ligou "Visível para quem gerencia". Só "Entendi" grava; Esc mostra de novo depois.
-export async function visibilityNotice(me) {
-  const list = await api.get("/me/visibility").catch(() => []);
-  const viewers = list.filter((p) => p.roles.includes("viewer")).map((p) => p.name);
-  const ok = h("button", { type: "button", class: "btn btn-primary", text: "Entendi", onClick: async () => {
-    try { await api.put("/me/visibility-notice"); me.visibility_notice = false; dlg.close(); }
-    catch (e) { errorToast(e); }
-  } });
-  const dlg = modal(
-    h("h2", { text: "Quem gerencia a equipe vê o seu registro" }),
-    h("p", { id: "vis-notice-text", text: VIS_TEXT(me) }),
-    h("p", { class: "dialog-note", text: viewers.length ? `Hoje, com esse papel: ${viewers.join(", ")}.` : "Hoje, ninguém tem esse papel." }),
-    h("p", { class: "dialog-note", text: me.teams_on ? "A sua escolha em Configurações > Conta fica guardada e volta a valer se a administração mudar isso ou se você sair das equipes."
-      : "A sua escolha em Configurações > Conta fica guardada e volta a valer se a administração mudar isso." }),
-    h("div", { class: "dialog-actions" }, ok));
-  dlg.setAttribute("aria-describedby", "vis-notice-text"); // o leitor lê o porquê, não só o título e o "Entendi"
-  ok.focus();
-  return dlg;
-}
-
-// Aviso único (fora do tour) para quem já usava o Nexus quando a administração
-// ligou "Todos recebem de quem atribui". Só "Entendi" grava; Esc mostra de novo depois.
 const ASSIGN_TEXT = "Nesta instância do Nexus, todos recebem tarefas de quem atribui (definido pela administração). Quem tem o papel “Manda tarefas” pode mandar tarefas para você; cada uma chega por e-mail e aparece em Tarefas com “de” e o nome de quem mandou.";
 const ASSIGN_OWN = "A tarefa recebida é sua: você edita, conclui ou devolve com o motivo.";
-export function assignNotice(me) {
-  const ok = h("button", { type: "button", class: "btn btn-primary", text: "Entendi", onClick: async () => {
-    try { await api.put("/me/assign-notice"); me.assign_notice = false; dlg.close(); }
-    catch (e) { errorToast(e); }
-  } });
-  const dlg = modal(
-    h("h2", { text: "Você pode receber tarefas de quem atribui" }),
-    h("p", { id: "assign-notice-text", text: assignText(me) }),
-    h("p", { class: "dialog-note", text: ASSIGN_OWN }),
-    h("p", { class: "dialog-note", text: "A sua escolha em Configurações > Conta fica guardada e volta a valer se a administração mudar isso." }),
-    h("div", { class: "dialog-actions" }, ok));
-  dlg.setAttribute("aria-describedby", "assign-notice-text");
-  ok.focus();
-  return dlg;
-}
-
 // Aviso único de papel ganho ou retirado pela administração (o menu já mudou;
 // isto explica o porquê). Só "Entendi" grava; Esc mostra de novo depois.
 const ROLE_INFO = {
@@ -90,26 +51,35 @@ function roleText(k, me) {
   if (k === "viewer" && org.team_visibility === "managers") return "Você vê, sem editar, o registro de toda a equipe na tela Equipe, no menu (nesta instância, visível para quem gerencia).";
   return ROLE_INFO[k][1];
 }
-export function roleNotice(me) {
+// "O que mudou para você": UM diálogo para todos os avisos únicos (visibilidade, receber tarefas,
+// papéis ganhos ou retirados, inclusive master e equipe). Um "Entendi" dá todos como vistos;
+// Esc mostra de novo depois. Devolve o diálogo (ou null, sem nada a avisar).
+export async function changesNotice(me) {
+  const items = [];
+  if (me.visibility_notice) {
+    const list = await api.get("/me/visibility").catch(() => []);
+    const viewers = list.filter((p) => p.roles.includes("viewer")).map((p) => p.name);
+    items.push(["Quem gerencia a equipe vê o seu registro", [VIS_TEXT(me),
+      viewers.length ? `Hoje, com esse papel: ${viewers.join(", ")}.` : "Hoje, ninguém tem esse papel.",
+      "A sua escolha em Configurações > Conta fica guardada e volta a valer se a administração mudar isso" + (me.teams_on ? " ou se você sair das equipes." : ".")]]);
+  }
+  if (me.assign_notice) items.push(["Você pode receber tarefas de quem atribui", [assignText(me), ASSIGN_OWN,
+    "A sua escolha em Configurações > Conta fica guardada e volta a valer se a administração mudar isso."]]);
   const n = me.role_notice || {};
-  const added = (n.added || []).filter((k) => ROLE_INFO[k]), removed = (n.removed || []).filter((k) => ROLE_INFO[k]);
-  if (!added.length && !removed.length) return null;
+  for (const k of (n.added || []).filter((x) => ROLE_INFO[x])) items.push([`Papel novo: ${ROLE_INFO[k][0]}`, [roleText(k, me)]]);
+  for (const k of (n.removed || []).filter((x) => ROLE_INFO[x]))
+    items.push([`Papel retirado: ${ROLE_INFO[k][0]}`, ["O que vinha com esse papel saiu do menu. Os seus dados continuam guardados."]]);
+  if (!items.length) return null;
   const ok = h("button", { type: "button", class: "btn btn-primary", text: "Entendi", onClick: async () => {
-    try { await api.put("/me/role-notice"); me.role_notice = null; dlg.close(); }
-    catch (e) { errorToast(e); }
+    try {
+      await api.put("/me/notices-seen");
+      Object.assign(me, { visibility_notice: false, assign_notice: false, role_notice: null });
+      dlg.close();
+    } catch (e) { errorToast(e); }
   } });
-  const title = !removed.length ? (added.length > 1 ? "Você ganhou papéis novos" : "Você ganhou um papel novo")
-    : !added.length ? (removed.length > 1 ? "Alguns papéis seus foram retirados" : "Um papel seu foi retirado") : "Os seus papéis mudaram";
-  const dlg = modal(
-    h("h2", { text: title }),
-    h("p", { class: "dialog-note intro", text: "Quem administra o Nexus mudou os seus papéis." }),
-    h("ul", { class: "role-notice-list" },
-      ...added.map((k) => h("li", {}, h("strong", { text: `Novo: ${ROLE_INFO[k][0]}` }), h("span", { text: roleText(k, me) }))),
-      ...removed.map((k) => h("li", {}, h("strong", { text: `Retirado: ${ROLE_INFO[k][0]}` }),
-        h("span", { text: "O que vinha com esse papel saiu do menu. Os seus dados continuam guardados." })))),
-    h("div", { class: "dialog-actions" }, ok));
-  const list = dlg.querySelector(".role-notice-list");
-  list.id = "role-notice-list";
+  const list = h("ul", { class: "role-notice-list", id: "changes-notice-list" },
+    ...items.map(([title, lines]) => h("li", {}, h("strong", { text: title }), ...lines.map((t) => h("span", { text: t })))));
+  const dlg = modal(h("h2", { text: "O que mudou para você" }), list, h("div", { class: "dialog-actions" }, ok));
   dlg.setAttribute("aria-describedby", list.id);
   ok.focus();
   return dlg;

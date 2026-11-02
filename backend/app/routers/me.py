@@ -272,6 +272,15 @@ def put_tour(data: TourIn, user=Depends(web_active_csrf)):
                                                    if k in ("tour_required", "visibility_notice", "assign_notice")}}
 
 
+@router.put("/notices-seen")
+def seen_notices(user=Depends(web_active_csrf)):
+    """"Entendi" em "O que mudou para você": dá como vistos, de uma vez, os avisos únicos de visibilidade,
+    de receber tarefas e de papéis."""
+    db.execute("""UPDATE users SET visibility_notice_at = now(), assign_notice_at = now(), role_notice = NULL
+                   WHERE id = %s""", (user["user_id"],))
+    return {"visibility_notice": False, "assign_notice": False, "role_notice": None}
+
+
 @router.put("/visibility-notice")
 def seen_visibility_notice(user=Depends(web_active_csrf)):
     """"Entendi" no aviso único de que quem gerencia a equipe vê o registro de todos."""
