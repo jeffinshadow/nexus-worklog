@@ -100,7 +100,7 @@
           "auth"
         ],
         "summary": "Options",
-        "description": "O que a tela de login oferece (público): \"Esqueci a senha\" só com e-mail.",
+        "description": "O que a tela de login oferece (público): \"Esqueci a senha\" só com e-mail;\n\"Solicitar convite\" só com e-mail e se o admin não o desligou (Para empresas).",
         "operationId": "options_api_auth_options_get",
         "responses": {
           "200": {
@@ -1733,6 +1733,7 @@
           "admin"
         ],
         "summary": "List Users",
+        "description": "Contas em ordem de nome (o que a linha mostra), com o último acesso\n(`last_seen_at`: entrar ou usar o app; nulo = nunca entrou), a criação e\nquantas tarefas abertas cada uma tem (`open_tasks`, para transferir).",
         "operationId": "list_users_api_admin_users_get",
         "responses": {
           "200": {
@@ -1872,7 +1873,7 @@
           "admin"
         ],
         "summary": "Block User",
-        "description": "Corta o acesso agora, sem apagar nada (celular perdido, pessoa de férias\nou que saiu): senha trocada por uma que ninguém sabe, sessões, chaves de\nAPI, calendário, notificações e passkeys desligados, links de e-mail sem\nvalor e \"Esqueci a senha\" sem efeito. Redefinir senha libera de novo.",
+        "description": "Corta o acesso agora, sem apagar nada (celular perdido, pessoa de férias\nou que saiu): senha trocada por uma que ninguém sabe, sessões, chaves de\nAPI, calendário, notificações e passkeys desligados, links de e-mail sem\nvalor e \"Esqueci a senha\" sem efeito. Redefinir senha libera de novo.\n`transfer_to`: as tarefas abertas passam para essa pessoa (papel Usuário).",
         "operationId": "block_user_api_admin_users__user_id__block_post",
         "parameters": [
           {
@@ -1885,6 +1886,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/BlockUserIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Data"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -2015,7 +2033,7 @@
           "admin"
         ],
         "summary": "Delete User",
-        "description": "Exclui a conta e TODOS os dados dela (tarefas, rotinas, tempo, chaves,\nhistórico: ON DELETE CASCADE). Sem volta: o admin confirma digitando o\ne-mail. Tarefas que essa pessoa atribuiu ficam com quem recebeu.",
+        "description": "Exclui a conta e TODOS os dados dela (tarefas, rotinas, tempo, chaves,\nhistórico: ON DELETE CASCADE). Sem volta: o admin confirma digitando o\ne-mail. Tarefas que essa pessoa atribuiu ficam com quem recebeu.\n`transfer_to`: antes de excluir, as tarefas abertas passam para essa pessoa.",
         "operationId": "delete_user_api_admin_users__user_id__delete_post",
         "parameters": [
           {
@@ -2122,7 +2140,7 @@
           "admin"
         ],
         "summary": "Get Org",
-        "description": "Para empresas e instituições: as opções globais (todas desligadas por padrão).",
+        "description": "Para empresas e instituições: as opções globais (todas desligadas por padrão).\n`mail_configured`: sem e-mail, o pedido de convite nunca aparece (a opção só explica).",
         "operationId": "get_org_api_admin_org_get",
         "responses": {
           "200": {
@@ -2180,7 +2198,7 @@
           "admin"
         ],
         "summary": "Reset Password",
-        "description": "Redefine a senha de um usuario para uma temporaria gerada (mostrada uma\nunica vez ao admin). Forca troca no proximo login e encerra as sessoes do\nalvo. Sem envolvimento de e-mail. Para a própria conta, use a troca normal.",
+        "description": "Redefine a senha de outra conta (e libera uma conta bloqueada). A senha\natual deixa de valer, e as sessões, chaves de API, calendário e passkeys\ndo alvo são cortados. Duas formas:\n\n- `temp` (padrão): senha temporária mostrada uma única vez ao admin; a\n  pessoa troca no próximo login.\n- `link` (só com e-mail configurado): o link de nova senha do \"Esqueci a\n  senha\" vai para o e-mail da pessoa (vale 24 horas, uso único); o admin\n  também recebe o link, para mandar por outro canal se o e-mail falhar.\n\nPara a própria conta, use a troca normal.",
         "operationId": "reset_password_api_admin_users__user_id__reset_password_post",
         "parameters": [
           {
@@ -2193,6 +2211,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ResetPasswordIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Data"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -4138,7 +4173,7 @@
           "me"
         ],
         "summary": "Put Ticket Url",
-        "description": "Endereço do sistema de chamados; {id} vira o número (sem {id}, o número vai no fim).",
+        "description": "Endereço do sistema de chamados; {id} vira o número (sem {id}, o número vai no fim).\nCom o endereço definido pela administração (Admin › Para empresas), 409: o\nda instância vale para todos; o da pessoa fica guardado e volta a valer se\no admin esvaziar o global.",
         "operationId": "put_ticket_url_api_me_tickets_put",
         "requestBody": {
           "content": {
@@ -4300,6 +4335,26 @@
         "summary": "Seen Visibility Notice",
         "description": "\"Entendi\" no aviso único de que quem gerencia a equipe vê o registro de todos.",
         "operationId": "seen_visibility_notice_api_me_visibility_notice_put",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/me/role-notice": {
+      "put": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Seen Role Notice",
+        "description": "\"Entendi\" no aviso único de papel ganho ou retirado pelo admin.",
+        "operationId": "seen_role_notice_api_me_role_notice_put",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -7321,6 +7376,23 @@
         "type": "object",
         "title": "AssistantIn"
       },
+      "BlockUserIn": {
+        "properties": {
+          "transfer_to": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transfer To"
+          }
+        },
+        "type": "object",
+        "title": "BlockUserIn"
+      },
       "BrandingIn": {
         "properties": {
           "line1": {
@@ -7477,6 +7549,17 @@
             "type": "string",
             "maxLength": 320,
             "title": "Confirm Email"
+          },
+          "transfer_to": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transfer To"
           }
         },
         "type": "object",
@@ -7682,8 +7765,8 @@
             "type": "string",
             "enum": [
               "colega",
-              "site",
-              "github",
+              "empresa",
+              "internet",
               "outro"
             ],
             "title": "Source"
@@ -8011,7 +8094,7 @@
             ],
             "title": "Identity Managed"
           },
-          "tour_required": {
+          "invite_request_off": {
             "anyOf": [
               {
                 "type": "boolean"
@@ -8020,7 +8103,20 @@
                 "type": "null"
               }
             ],
-            "title": "Tour Required"
+            "title": "Invite Request Off"
+          },
+          "ticket_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300,
+                "pattern": "^(https?://\\S+)?$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticket Url"
           }
         },
         "type": "object",
@@ -8839,6 +8935,21 @@
         },
         "type": "object",
         "title": "RenewalUpdate"
+      },
+      "ResetPasswordIn": {
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "temp",
+              "link"
+            ],
+            "title": "Method",
+            "default": "temp"
+          }
+        },
+        "type": "object",
+        "title": "ResetPasswordIn"
       },
       "RolesIn": {
         "properties": {

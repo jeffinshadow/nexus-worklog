@@ -25,6 +25,18 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 log = logging.getLogger("uvicorn.error")
 
 
+def _send_quiet(to: str, mail) -> None:
+    try:
+        mailer.send(to, mail.subject, mail.text(), mail.html())
+    except Exception as e:  # noqa: BLE001 — a ação já foi feita; o e-mail é aviso
+        log.warning("aviso por e-mail para %s falhou: %s", to, e)
+
+
+def _spawn(to: str, mail) -> None:
+    """Envio fora da requisição (o SMTP pode levar segundos), como na atribuição."""
+    threading.Thread(target=_send_quiet, args=(to, mail), daemon=True).start()
+
+
 def _ensure_user(user_id: int) -> dict:
     row = db.query_one("SELECT id, email FROM users WHERE id = %s", (user_id,))
     if not row:
@@ -242,7 +254,6 @@ def transfer_open_tasks(src: dict, dest: dict, admin: dict) -> dict:
                         "tasks": [r["id"] for r in rows]})
     titles = [r["title"] for r in rows]
     if mailer.configured():
-        from .assign import _spawn  # o mesmo envio em segundo plano da atribuição
         _spawn(dest["email"], _transfer_mail(titles, from_name, by_name))
         out["emailed"] = True
     threading.Thread(target=_push_transfer, args=(dest["id"], rows, from_name), daemon=True).start()
@@ -320,7 +331,6 @@ def role_notice(uid: int, email: str, added: set, removed: set, admin: dict) -> 
     db.execute("UPDATE users SET role_notice = %s WHERE id = %s",
                (Jsonb(notice) if (add or rem) else None, uid))
     if mailer.configured():
-        from .assign import _spawn  # o mesmo envio em segundo plano da atribuição
         _spawn(email, _roles_mail(added, removed, people.profile(admin["user_id"])["name"]))
     return True
 
