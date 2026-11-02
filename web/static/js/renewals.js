@@ -53,7 +53,7 @@ function row(r, onChange, compact = false) {
 }
 
 // Cadastro e edição; renew = só a nova data ("Renovei").
-export function openRenewal(r, onChange, renew = false) {
+function openRenewal(r, onChange, renew = false) {
   const label = h("input", { type: "text", maxlength: "120", required: "required", value: r ? r.label : "", placeholder: "ex.: Certificado *.empresa.com.br" });
   const expires = h("input", { type: "date", required: "required", value: r && !renew ? r.expires_on : "" });
   if (renew) {

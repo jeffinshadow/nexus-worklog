@@ -13,7 +13,7 @@ const DIAS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 const ORDEM = [1, 2, 3, 4, 5, 6, 0];
 
 // "Dias úteis · 08:00", "Toda seg, qui · 09:00", "Todo mês, dia 1 · 10:00".
-export function packAgenda(i) {
+function packAgenda(i) {
   let txt = "Dias úteis";
   if (i.freq === "weekly") txt = "Toda " + ORDEM.filter((b) => (i.weekdays >> b) & 1).map((b) => DIAS[b]).join(", ");
   else if (i.freq === "monthly") txt = i.month_day >= 31 ? "Todo mês, no último dia" : `Todo mês, dia ${i.month_day}`;

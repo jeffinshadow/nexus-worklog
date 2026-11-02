@@ -9,7 +9,7 @@ import { busy, modal, toast } from "./ui.js";
 const NOTE_MAX = 200;
 
 // A evidência: o que não foi feito (ou "todos os N passos") e o texto da pessoa.
-export function stepsNote(steps, done, text = "") {
+function stepsNote(steps, done, text = "") {
   const missing = steps.filter((_, i) => !done[i]);
   const extra = text.trim();
   let head = missing.length ? `feita, exceto: ${missing.join(", ")}` : `todos os ${steps.length} passos`;
