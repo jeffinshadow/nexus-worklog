@@ -491,7 +491,7 @@
           "recurring"
         ],
         "summary": "Reminders",
-        "description": "Rotinas com horário devidas hoje (para o lembrete da interface tocar\nperto do horário até a rotina ser marcada). Pausada não lembra.",
+        "description": "Rotinas com horário devidas hoje (para o lembrete da interface tocar\nperto do horário até a rotina ser marcada). Pausada não lembra. `tasks`:\nos lembretes com hora das tarefas abertas (de 24 h atrás a 12 h à frente,\nsem os já vistos), com até quando estão adiados.",
         "operationId": "reminders_api_recurring_reminders_get",
         "responses": {
           "200": {
@@ -1204,6 +1204,98 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/worklog/{task_id}/snooze": {
+      "post": {
+        "tags": [
+          "worklog"
+        ],
+        "summary": "Snooze",
+        "description": "Adia o lembrete da tarefa (o aviso e as notificações dos aparelhos esperam).",
+        "operationId": "snooze_api_worklog__task_id__snooze_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SnoozeIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/worklog/{task_id}/reminder-seen": {
+      "post": {
+        "tags": [
+          "worklog"
+        ],
+        "summary": "Reminder Seen",
+        "description": "\"Ok\" no aviso: o lembrete foi visto e não toca mais (o horário fica na tarefa).",
+        "operationId": "reminder_seen_api_worklog__task_id__reminder_seen_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Task Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -8554,6 +8646,21 @@
               }
             ],
             "title": "Remind At"
+          },
+          "steps": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steps"
           }
         },
         "type": "object",
@@ -8656,6 +8763,21 @@
               }
             ],
             "title": "Remind At"
+          },
+          "steps": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steps"
           }
         },
         "type": "object",
@@ -9568,6 +9690,18 @@
               }
             ],
             "title": "Resolution"
+          },
+          "remind_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remind At"
           }
         },
         "type": "object",
@@ -9753,6 +9887,18 @@
               }
             ],
             "title": "Follow Up On"
+          },
+          "remind_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remind At"
           }
         },
         "type": "object",
