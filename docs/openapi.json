@@ -5347,6 +5347,67 @@
         }
       }
     },
+    "/api/assign/{task_id}/close": {
+      "post": {
+        "tags": [
+          "assign"
+        ],
+        "summary": "Close Return",
+        "description": "Encerra uma tarefa devolvida sem atribuir de novo: sai de \"Precisa de\natenção\" e fica na lista como \"devolvida · encerrada\".",
+        "operationId": "close_return_api_assign__task_id__close_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assign/news/seen": {
+      "post": {
+        "tags": [
+          "assign"
+        ],
+        "summary": "News Seen",
+        "description": "O aviso do Hoje foi visto (\"Entendi\", \"Ver\" ou o X): o próximo conta daqui.",
+        "operationId": "news_seen_api_assign_news_seen_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/renewals": {
       "get": {
         "tags": [
@@ -7085,6 +7146,57 @@
           }
         }
       }
+    },
+    "/api/worklog/{task_id}/return": {
+      "post": {
+        "tags": [
+          "assign"
+        ],
+        "summary": "Return Task",
+        "description": "Quem recebeu devolve a tarefa atribuída, com o motivo (até 120). Ela sai\ndas tarefas dela como uma exclusão (desfazível no Histórico enquanto quem\natribuiu não decidir) e quem atribuiu é avisado (e-mail, push, Hoje, Equipe).",
+        "operationId": "return_task_api_worklog__task_id__return_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReturnIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -7304,6 +7416,17 @@
             "type": "boolean",
             "title": "After Hours",
             "default": false
+          },
+          "from_return": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Return"
           }
         },
         "type": "object",
@@ -8950,6 +9073,22 @@
         },
         "type": "object",
         "title": "ResetPasswordIn"
+      },
+      "ReturnIn": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "ReturnIn",
+        "description": "Quem recebeu devolve a tarefa atribuída, com o porquê (vai para quem mandou)."
       },
       "RolesIn": {
         "properties": {
