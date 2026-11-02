@@ -1,5 +1,5 @@
 """Concluir espera o fim da edição (detalhe, cartão, menu); avisos esperam salvar; evidência espera a foto."""
-import base64, json, os, subprocess, sys, tempfile, time, urllib.request
+import json, os, subprocess, sys, tempfile, time, urllib.request
 import websocket
 B = os.environ.get("NEXUS_E2E_URL", "http://localhost:8090"); EMAIL, PW = os.environ["NEXUS_E2E_USER"].split(":", 1); OUT = sys.argv[1]
 ok, falhas, erros = [], [], []
