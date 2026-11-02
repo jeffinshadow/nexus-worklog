@@ -228,7 +228,7 @@ def master_roles(data: MasterRolesIn, admin=Depends(require_admin_csrf)):
 
 def _code_mail(code: str, to_name: str):
     from ..notify import Mail  # import tardio: notify importa rotas
-    m = Mail(f"Código para transferir o papel de admin master: {code}", "Confirme a transferência do papel de master",
+    m = Mail("Código para transferir o papel de admin master", "Confirme a transferência do papel de master",
              f"Você pediu para passar o papel de admin master do Nexus para {to_name}. Digite o código abaixo no Nexus "
              f"para confirmar. Ele vale por {int(CODE_TTL.total_seconds() // 60)} minutos e funciona uma vez só.")
     m.blocks = [("Código", [code]), ("Não foi você?", ["Não digite o código e troque a sua senha agora."])]

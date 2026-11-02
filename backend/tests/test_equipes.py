@@ -313,7 +313,7 @@ def test_convite_com_equipe(admin, caixa):
 # ------------------------------------------------------------- transferir master --
 
 def _codigo(caixa):
-    return re.search(r"\b(\d{6})\b", caixa[-1][1]).group(1)
+    return re.search(r"\b(\d{6})\b", caixa[-1][1] + " " + (caixa[-1][2] or "")).group(1)
 
 
 def test_transferir_master(admin, novo_usuario, caixa):
@@ -418,3 +418,12 @@ def test_master_sempre_existe(admin):
     db.execute("UPDATE app_settings SET master_user_id = NULL")
     teams.ensure_master()
     assert teams.master_id() == admin.me["id"]
+
+
+def test_outro_admin_nao_redefine_senha_nem_edita_o_master(admin, novo_usuario):
+    outro = novo_usuario("outro2@example.com")
+    _papeis(admin, outro, ["user", "admin"])
+    mid = admin.me["id"]
+    assert outro.post(f"/admin/users/{mid}/reset-password", {}).status_code == 400
+    assert outro.put(f"/admin/users/{mid}/profile", {"email": "tomado@example.com"}).status_code == 400
+    assert teams.master_id() == mid
