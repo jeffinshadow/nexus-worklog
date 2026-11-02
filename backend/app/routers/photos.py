@@ -134,7 +134,7 @@ def list_routine(recurring_id: int, day: date, user=Depends(web_active)):
 def get_photo(photo_id: int, thumb: bool = False, user=Depends(web_active)):
     # Foto de outra pessoa: só o visualizador, e só se ela aceitou (como em routers/viewer.py).
     row = db.query_one(f"""SELECT f.user_id, f.mime, f.{'thumb' if thumb else 'image'} AS data,
-                                  {visible_sql('u')} AS viewable
+                                  {visible_sql('u', int(user['user_id']))} AS viewable
                              FROM photos f JOIN users u ON u.id = f.user_id
                             WHERE f.id = %s AND f.deleted_at IS NULL""", (photo_id,))
     if not row or (row["user_id"] != user["user_id"]

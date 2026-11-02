@@ -72,6 +72,18 @@ ACTION_LABELS = {
     "email.change_request": "pediu para trocar o e-mail da conta",
     "email.change": "trocou o e-mail da conta",
     "user.profile": "alterou nome e e-mail de uma conta",
+    "team.create": "criou a equipe",
+    "team.update": "renomeou a equipe",
+    "team.archive": "arquivou a equipe",
+    "team.unarchive": "desarquivou a equipe",
+    "team.delete": "excluiu a equipe",
+    "team.members": "mudou os membros da equipe",
+    "user.teams": "mudou as equipes de uma conta",
+    "master.view": "viu, como admin master, o registro de",
+    "master.transfer_code": "pediu o código para transferir o papel de admin master",
+    "master.transfer_fail": "errou o código da transferência do papel de admin master",
+    "master.transfer": "transferiu o papel de admin master",
+    "master.received": "recebeu o papel de admin master",
     "recurring.create": "criou a rotina",
     "recurring.update": "editou a rotina",
     "recurring.deactivate": "excluiu a rotina",
@@ -221,6 +233,28 @@ def _label(row) -> str:
         if "display_name" in a and a["display_name"] != b.get("display_name"):
             partes.append(f"nome para “{a['display_name']}”" if a["display_name"] else "nome (volta ao do e-mail)")
         return f"alterou {' e '.join(partes) or 'o perfil'} da conta {quem}"
+    if row["action"].startswith("team.") or row["action"] == "user.teams":
+        a, b = row["after"] or {}, row["before"] or {}
+        if row["action"] == "team.update":
+            return f"renomeou a equipe “{b.get('name', '')}” para “{a.get('name', '')}”"
+        if row["action"] == "team.members":
+            return (f"mudou os membros da equipe “{a.get('name', '')}” "
+                    f"(+{a.get('added', 0)}, -{a.get('removed', 0)})")
+        if row["action"] == "user.teams":
+            return f"mudou as equipes de {a.get('email', '')} ({', '.join(a.get('teams') or []) or 'sem equipe'})"
+        return f"{ACTION_LABELS[row['action']]} “{a.get('name') or b.get('name', '')}”"
+    if row["action"].startswith("master.") and row["after"]:
+        a = row["after"]
+        if row["action"] == "master.view":
+            o_que = {"quadro": "o quadro", "mês": "o mês", "pdf": "o relatório em PDF", "projetos": "os projetos",
+                     "horas": "as horas da equipe (CSV)", "painel": "o painel da Equipe"}.get(a.get("what"), a.get("what"))
+            if a.get("email"):
+                return f"viu, como admin master, {o_que} de {a['email']}"
+            return f"viu, como admin master, {o_que} ({a.get('people', 0)} pessoas)"
+        if row["action"] in ("master.transfer", "master.transfer_code"):
+            return f"{ACTION_LABELS[row['action']]} para {a.get('to_email') or a.get('to', '')}"
+        if row["action"] == "master.received":
+            return f"recebeu de {a.get('from_email') or a.get('from', '')} o papel de admin master"
     if row["action"] == "user.roles" and row["after"]:
         from ..roles import LABELS
         papeis = ", ".join(LABELS.get(r, r) for r in row["after"].get("roles", [])) or "nenhum"

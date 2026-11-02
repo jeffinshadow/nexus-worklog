@@ -27,6 +27,15 @@ exclui a conta de vez; ao bloquear ou excluir, pode **passar as tarefas abertas*
 outra pessoa. No convite, o admin já informa o nome e escolhe os papéis; quem ganha
 ou perde um papel depois é avisado no app (e por e-mail).
 
+**Equipes** (Admin > Equipes): uma pessoa pode estar em várias. Sem nenhuma equipe, o
+Nexus funciona como organizador pessoal; com equipes, "Vê a equipe" e "Manda tarefas"
+valem só entre quem está na mesma equipe (no app, na API, no MCP, no CSV e no PDF), e as
+opções de Para empresas, só para quem está em alguma. A Equipe ganha um seletor de equipe,
+o Atribuir agrupa por equipe, Contas mostra e filtra por equipe, o convite já vincula
+equipes e a Conta mostra as da pessoa. O **admin master** (o primeiro admin) vê e atribui
+para todos quando liga os próprios papéis, com o que abre no log de admin; só ele passa
+o papel adiante, com senha e código mandado ao e-mail.
+
 **Para empresas e instituições** (Admin > Para empresas; tudo desligado por padrão,
 porque o padrão é o organizador pessoal): **visibilidade da equipe** ("Cada pessoa
 escolhe" ou "Visível para quem gerencia", em que quem tem o papel Vê a equipe vê todos e

@@ -204,7 +204,7 @@ def _link_info(kind: str, token: str, request: Request) -> dict:
     if not row:
         raise HTTPException(status_code=404, detail="link inválido, vencido ou já usado")
     # name_locked: nome definido pela administração (a tela de convite só mostra).
-    return {"email": row["email"], "display_name": row["display_name"], "name_locked": org.identity_managed()}
+    return {"email": row["email"], "display_name": row["display_name"], "name_locked": org.identity_managed(row["id"])}
 
 
 def _set_password(uid: int, password: str) -> None:
@@ -222,7 +222,7 @@ def accept_invite(data: LinkPasswordIn, request: Request, response: Response):
         raise HTTPException(status_code=400, detail="convite inválido, vencido ou já usado: peça um novo ao administrador")
     _set_password(uid, data.password)
     nome = " ".join((data.display_name or "").split()) or None
-    if nome and not org.identity_managed():  # nome definido pela administração: fica o do convite
+    if nome and not org.identity_managed(uid):  # nome definido pela administração: fica o do convite
         db.execute("UPDATE users SET display_name = %s WHERE id = %s", (nome, uid))
     audit.record({"user_id": uid, "actor": "web"}, "user.invite_accept", "user", uid)
     return _start_session(db.query_one("SELECT * FROM users WHERE id = %s", (uid,)), response)
@@ -278,7 +278,7 @@ def confirm_email(data: EmailConfirmIn, request: Request):
     row = links.consume_email(data.token)
     if not row:
         raise HTTPException(status_code=400, detail="link inválido, vencido ou já usado: peça a troca de novo em Configurações > Conta")
-    if org.identity_managed():  # a administração passou a definir os e-mails depois do pedido
+    if org.identity_managed(row["user_id"]):  # a administração passou a definir os e-mails depois do pedido
         raise HTTPException(status_code=403, detail=org.IDENTITY_LOCKED)
     new = row["new_email"].lower()
     user = db.query_one("SELECT id, email FROM users WHERE id = %s AND blocked_at IS NULL", (row["user_id"],))

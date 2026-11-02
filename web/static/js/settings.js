@@ -1042,20 +1042,33 @@ function aiHelp() {
 
 // Os dois aceites num painel só: sem eles, ninguém manda tarefas nem vê o registro.
 function privacyPanel(me) {
+  const who = api.get("/me/visibility").catch(() => null); // uma leitura para as duas partes
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Quem vê o seu registro e quem atribui tarefas a você" })),
-    h("h3", { class: "sum-h", text: "Receber tarefas" }), ...assignments(me),
-    h("h3", { class: "sum-h", text: "Ver o seu registro" }), ...seenBy(me),
+    ...teamsLine(me),
+    h("h3", { class: "sum-h", text: "Receber tarefas" }), ...assignments(me, who),
+    h("h3", { class: "sum-h", text: "Ver o seu registro" }), ...seenBy(me, who),
     // Política de privacidade da instância (Admin › Para empresas), quando definida.
     me.privacy_url && /^https:\/\//.test(me.privacy_url)
       ? h("p", { class: "dialog-note" }, h("a", { class: "privacy-link", href: me.privacy_url, target: "_blank", rel: "noopener", text: "Política de privacidade desta instância" }))
       : null);
 }
 
+// Equipes da pessoa (só leitura; quem define é a administração, Admin › Equipes).
+// Só aparece quando a instância tem equipes.
+function teamsLine(me) {
+  if (!me.teams_on) return [];
+  const mine = me.teams || [];
+  return [h("h3", { class: "sum-h", text: "Suas equipes" }),
+    h("p", { class: "help account-teams-line" }, mine.length
+      ? [h("strong", { text: mine.join(", ") }), " (definido pela administração). Só quem está numa equipe com você pode ver o seu registro ou mandar tarefas para você."]
+      : ["Você ainda não está em nenhuma equipe (quem define é a administração). Assim, só o admin master pode ver o seu registro ou mandar tarefas para você, e só se você permitir aqui. As opções da empresa não valem para você: tudo depende das suas escolhas abaixo."])];
+}
+
 // Consentimento: sem ele, ninguém consegue mandar tarefas para esta pessoa.
 // "Todos recebem de quem atribui" (Admin › Para empresas): a chave fica
 // bloqueada, à vista, com o motivo; a escolha fica guardada para quando voltar.
-function assignments(me) {
+function assignments(me, who) {
   const managed = !!(me.org && me.org.assign_receive === "all");
   const cb = h("input", { type: "checkbox" });
   cb.checked = managed || !!me.accepts_assignments_at;
@@ -1079,14 +1092,22 @@ function assignments(me) {
     } catch (e) { cb.checked = !cb.checked; errorToast(e); }
   }));
   const lock = managed ? h("p", { class: "dialog-note lock-note", id: "assign-locked" }, icon("lock"),
-    "Nesta instância do Nexus, todos recebem tarefas de quem atribui (definido pela administração). " +
-    `A sua escolha (${me.accepts_assignments_at ? "permitir" : "não permitir"}) fica guardada e volta a valer se isso mudar.`) : null;
+    (me.teams_on ? "Nesta instância do Nexus, quem está numa equipe recebe tarefas de quem atribui nela (definido pela administração). "
+      : "Nesta instância do Nexus, todos recebem tarefas de quem atribui (definido pela administração). ") +
+    `A sua escolha (${me.accepts_assignments_at ? "permitir" : "não permitir"}) fica guardada e volta a valer se isso mudar${me.teams_on ? " ou se você sair das equipes" : ""}.`) : null;
+  // Transparência: quem pode mandar tarefas para você agora (o servidor aplica a regra).
+  const now = h("p", { class: "dialog-note" });
+  if (who) who.then((list) => {
+    if (!list) { now.remove(); return; }
+    const names = list.filter((p) => p.assigns).map((p) => p.name);
+    now.textContent = `Quem pode mandar tarefas para você agora: ${names.length ? names.join(", ") : "ninguém"}.`;
+  });
   return [
     h("p", { class: "help", text: (managed ? "Quem tem o papel “Manda tarefas” (tela Equipe) pode mandar tarefas para você."
       : "Quem tem o papel “Manda tarefas” (tela Equipe) pode mandar tarefas para você, mas só se você permitir aqui.") +
       " A tarefa recebida é sua: você edita, conclui, exclui ou devolve com o motivo. Quem mandou só corrige ou cancela enquanto ela está a fazer e você não registrou nada nela." }),
     h("label", { class: "check-line" + (managed ? " is-locked" : "") }, cb, h("span", { text: "Permitir que me atribuam tarefas" })),
-    lock, since];
+    lock, since, now];
 }
 
 // --------------------------------------------------------- excluir a conta --
@@ -1208,7 +1229,8 @@ function account(me) {
   }));
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Conta" })),
-    h("p", { class: "help mono", text: [me.email, ...(me.roles || []).filter((r) => r !== "user").map((r) => `${ROLE_SHORT[r]} (${ROLE_SCREEN[r]})`)].join(" · ") }),
+    h("p", { class: "help mono", text: [me.email, ...(me.roles || []).filter((r) => r !== "user").map((r) => `${ROLE_SHORT[r]} (${ROLE_SCREEN[r]})`),
+      ...(me.is_master ? ["Admin master (Admin › Equipes)"] : [])].join(" · ") }),
     emailBlock(me),
     h("h3", { class: "sum-h", text: "Senha" }),
     form);
@@ -1265,7 +1287,7 @@ function emailBlock(me) {
 
 // Aceite do visualizador + transparência: quem tem papel que alcança o seu
 // registro (visualizador e admin). Desligado, só você vê.
-function seenBy(me) {
+function seenBy(me, who) {
   // "Visível para quem gerencia" (Admin › Para empresas): a chave fica bloqueada,
   // à vista, com o motivo; a escolha da pessoa fica guardada para quando voltar.
   const managed = !!(me.org && me.org.team_visibility === "managers");
@@ -1276,15 +1298,18 @@ function seenBy(me) {
   const line = h("p", { class: "dialog-note" });
   let list = [];
   const paint = () => {
+    // O servidor já manda só quem está no escopo (com equipes: na mesma equipe, ou o admin master).
     const viewers = list.filter((p) => p.roles.includes("viewer")).map((p) => p.name);
-    help.textContent = `Quem tem o papel “Vê a equipe” (${viewers.length ? viewers.join(", ") : "hoje, ninguém"}) vê na tela Equipe, sem editar, seu quadro, seus números, seus relatórios em PDF, suas horas e suas fotos.` + (managed ? "" : " Só se você permitir.");
-    const names = list.map((p) => `${p.name} (${p.roles.map((r) => ROLE_SHORT[r]).join(", ")})`);
+    const quem = me.teams_on ? "Quem tem o papel “Vê a equipe” nas suas equipes" : "Quem tem o papel “Vê a equipe”";
+    help.textContent = `${quem} (${viewers.length ? viewers.join(", ") : "hoje, ninguém"}) vê na tela Equipe, sem editar, seu quadro, seus números, seus relatórios em PDF, suas horas e suas fotos.` + (managed ? "" : " Só se você permitir.");
+    const names = list.filter((p) => p.sees || (p.roles.includes("admin") && !p.roles.includes("viewer")))
+      .map((p) => `${p.name} (${p.roles.map((r) => ROLE_SHORT[r]).join(", ")})`);
     line.textContent = managed || cb.checked
       ? `Quem pode ver seu registro: ${names.length ? names.join(", ") : "só você"}.`
       : "Quem pode ver seu registro: só você.";
   };
   paint();
-  api.get("/me/visibility").then((res) => { list = res; paint(); }).catch(() => line.remove());
+  (who || Promise.resolve(null)).then((res) => { if (!res) { line.remove(); return; } list = res; paint(); });
   const guard = lockWhileSaving(cb); // gravando: aria-disabled (o foco fica na chave)
   cb.addEventListener("change", () => guard(async () => {
     try {
@@ -1295,7 +1320,8 @@ function seenBy(me) {
     } catch (e) { cb.checked = !cb.checked; errorToast(e); }
   }));
   const lock = managed ? h("p", { class: "dialog-note lock-note", id: "seen-locked" }, icon("lock"),
-    "Nesta instância do Nexus, quem gerencia a equipe vê as tarefas de todos (definido pela administração). " +
-    `A sua escolha (${me.viewers_allowed ? "permitir" : "não permitir"}) fica guardada e volta a valer se isso mudar.`) : null;
+    (me.teams_on ? "Nesta instância do Nexus, quem gerencia vê as tarefas de quem está na mesma equipe (definido pela administração). "
+      : "Nesta instância do Nexus, quem gerencia a equipe vê as tarefas de todos (definido pela administração). ") +
+    `A sua escolha (${me.viewers_allowed ? "permitir" : "não permitir"}) fica guardada e volta a valer se isso mudar${me.teams_on ? " ou se você sair das equipes" : ""}.`) : null;
   return [help, h("label", { class: "check-line" + (managed ? " is-locked" : "") }, cb, h("span", { text: "Permitir que quem tem o papel “Vê a equipe” veja meu registro" })), lock, line];
 }

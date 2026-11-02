@@ -1769,3 +1769,30 @@ input:disabled { cursor: not-allowed; }
 /* Tour: o painel alto (Rotinas) rola até o começo, sem ficar sob a barra do topo do celular. */
 .t-rec { scroll-margin-top: 16px; }
 @media (max-width: 860px) { .t-rec { scroll-margin-top: 72px; } }
+/* ------------------------------------------- Equipes (sql/043) -- */
+/* Admin › Equipes: linha da equipe (ícone, nome, quem está) e o diálogo com os membros em lote. */
+.team-row .team-ico { display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 50%;
+  background: var(--surface-container-high); color: var(--on-surface-variant); flex: none; }
+.team-row.is-archived .t > span { color: var(--on-surface-variant); }
+.team-members { border: 0; padding: 0; margin: 12px 0 0; min-width: 0; }
+.team-members legend { padding: 0; margin: 0 0 6px; font-weight: var(--weight-title); }
+.team-pick { max-height: min(42vh, 360px); overflow: auto; border: 1px solid var(--outline-variant); border-radius: 12px; padding: 2px 12px; }
+.team-pick .team-pick-line { min-height: 44px; align-items: center; }
+.team-pick .team-pick-line + .team-pick-line { border-top: 1px solid var(--outline-variant); }
+.team-pick .team-pick-line span { display: flex; flex-direction: column; min-width: 0; }
+.team-pick .team-pick-line strong, .team-pick .team-pick-line small { overflow-wrap: anywhere; }
+.team-pick .team-pick-line small { color: var(--on-surface-variant); font-size: var(--type-caption); }
+.admin-users .list-row .t small.account-teams { color: var(--on-surface-variant); margin-top: 2px; }
+.admin-users .list-row .t small.account-teams.no-team { font-style: italic; }
+.master-chip { font-weight: var(--weight-title); }
+/* Equipe: o seletor de equipe ao lado do mês (no celular, embaixo, largura toda). */
+.eq-nav-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 0 0 16px; }
+.eq-nav-row .mes-nav { margin: 0; }
+.eq-team-pick { margin: 0; flex: 0 1 260px; }
+.eq-team-pick select { width: 100%; min-height: 44px; }
+@media (max-width: 560px) { .eq-team-pick { flex: 1 1 100%; } }
+.account-teams-line strong { color: var(--on-surface); }
+/* Contas com equipes: quatro filtros; a busca ganha a linha dela e os três seletores dividem a de baixo. */
+.admin-filters.has-teams .admin-search { flex-basis: 100%; }
+.admin-filters.has-teams .admin-role { flex: 1 1 180px; }
+@media (max-width: 560px) { .admin-filters.has-teams .admin-role { flex: 1 1 calc(50% - 5px); } }

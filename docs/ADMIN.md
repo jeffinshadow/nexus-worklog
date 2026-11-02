@@ -89,9 +89,37 @@ demais pessoas. Não há cadastro público. Os papéis são acumuláveis (Admin 
 Todo sistema precisa de ao menos um admin; o último não sai (nem por exclusão). Quem ganha ou perde um papel é
 avisado no app (e por e-mail, se configurado).
 
+### Equipes e admin master
+
+**Admin > Equipes** cadastra as equipes (criar, renomear, arquivar, excluir; membros em lote no diálogo da equipe)
+e mostra o admin master. Uma pessoa pode estar em **várias** equipes; todo mundo começa **sem equipe** e só o admin
+define (no diálogo da equipe, em Contas > ⋮ > **Equipes…** ou já no convite). Contas mostra a coluna "Equipes" e
+filtra por equipe (ou "Sem equipe").
+
+- **Sem nenhuma equipe ativa** (uso pessoal): tudo funciona como antes; o escopo só passa a valer quando a primeira
+  equipe é criada (o diálogo avisa). Equipe arquivada não conta para nada.
+- **Com equipes**, "Vê a equipe" e "Manda tarefas" alcançam só quem compartilha **pelo menos uma equipe** com quem vê
+  ou atribui, somado às regras de sempre (o aceite da pessoa ou as opções de Para empresas). Vale no app, na API, no
+  MCP, no CSV e no PDF, no painel da Equipe e em "Precisa de atenção". Quem está **sem equipe** não é visto nem recebe
+  tarefas de ninguém, exceto do admin master. A tela Equipe ganha um seletor de equipe para quem está em mais de uma;
+  o Atribuir agrupa as pessoas pela equipe em comum. Tarefas atribuídas antes, entre quem não compartilha mais
+  equipe, continuam na lista de quem mandou, mas não se alteram nem se cancelam.
+- **Para empresas** passa a valer só para quem está em alguma equipe: sem equipe, a pessoa volta às próprias
+  escolhas (guardadas). Exceções globais: "Solicitar convite" na tela de login e a política de privacidade.
+- **Admin master:** o primeiro admin da instância (a migração 043 marca o admin mais antigo); sempre existe
+  exatamente um. Com os próprios papéis "Vê a equipe" e "Manda tarefas" ligados (um toque em Admin > Equipes), vê e
+  manda tarefas para **todos**, com ou sem equipe (ainda respeitando o aceite de cada pessoa ou Para empresas);
+  desligados, nada disso aparece para ele. O que ele abre do registro de outras pessoas vai para o log de admin
+  (o Histórico dele). Não pode ser bloqueado, excluído nem perder o papel Admin enquanto for o master.
+- **Transferir o master:** só o próprio master, em Admin > Equipes > "Transferir o papel de master…": escolhe outro
+  admin (que já entrou e está com acesso), confirma com a **senha** e digita o **código de 6 dígitos** mandado ao
+  e-mail dele (vale 10 minutos, uso único, 5 tentativas). Exige e-mail configurado. Quem recebe é avisado no app e
+  por e-mail; tudo fica no log de admin. Se o servidor ficar sem master (ex.: banco restaurado), ao subir o admin
+  mais antigo assume.
+
 ## 6. Convites
 
-Em **Admin > Contas > Convidar pessoa**: e-mail, **nome** e **papéis** já no convite.
+Em **Admin > Contas > Convidar pessoa**: e-mail, **nome**, **papéis** e, havendo equipes, as **equipes** já no convite (também ao convidar a partir de um pedido).
 - Com e-mail configurado: a pessoa recebe um **link** (7 dias, uso único), cria a senha e já entra. Sem e-mail:
   o app mostra uma **senha temporária** (troca obrigatória no primeiro acesso).
 - Convite pendente pode ser reenviado ou **cancelado** (a conta sem dados sai e o link deixa de valer).
@@ -127,6 +155,8 @@ vai ao histórico do admin.
 | **"Solicitar convite" na tela de login** | Ligado (exige e-mail no servidor), a tela de login oferece o pedido; desligado, só entra quem o admin convidou |
 
 Visibilidade e recebimento são duas coisas independentes: nada disso dá ao admin acesso ao registro de alguém.
+Com equipes cadastradas, estas opções valem só para quem está em alguma equipe, exceto o pedido de convite e a
+política de privacidade, que valem para a instância toda (ver *Equipes e admin master*).
 
 ## 8. Saúde do Nexus
 

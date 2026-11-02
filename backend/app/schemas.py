@@ -21,12 +21,53 @@ class InviteIn(BaseModel):
     display_name: Optional[str] = Field(default=None, max_length=60)
     # Papéis já no convite (mudam depois em Papéis…). Padrão: só Usuário.
     roles: list[RoleName] = Field(default_factory=lambda: ["user"], min_length=1, max_length=4)
+    # Equipes já no convite (Admin › Equipes; mudam depois em Equipes…). Padrão: nenhuma.
+    team_ids: list[int] = Field(default_factory=list, max_length=50)
 
 
 class InviteChoiceIn(BaseModel):
-    """Convidar a partir de um pedido: nome (padrão: o do pedido) e papéis (padrão: só Usuário)."""
+    """Convidar a partir de um pedido: nome (padrão: o do pedido), papéis (padrão: só Usuário) e equipes."""
     display_name: Optional[str] = Field(default=None, max_length=60)
     roles: list[RoleName] = Field(default_factory=lambda: ["user"], min_length=1, max_length=4)
+    team_ids: list[int] = Field(default_factory=list, max_length=50)
+
+
+TeamName = Field(min_length=1, max_length=60)
+
+
+class TeamIn(BaseModel):
+    """Admin › Equipes › Nova equipe: nome (único, sem diferença de maiúsculas) e quem entra."""
+    name: str = TeamName
+    member_ids: list[int] = Field(default_factory=list, max_length=2000)
+
+
+class TeamEditIn(BaseModel):
+    """Admin › Equipes › editar. Campo ausente = mantém. member_ids = a lista inteira de membros (em lote)."""
+    name: Optional[str] = Field(default=None, min_length=1, max_length=60)
+    archived: Optional[bool] = None
+    member_ids: Optional[list[int]] = Field(default=None, max_length=2000)
+
+
+class UserTeamsIn(BaseModel):
+    """Admin › Contas › pessoa › Equipes…: a lista inteira de equipes da pessoa."""
+    team_ids: list[int] = Field(default_factory=list, max_length=50)
+
+
+class MasterRolesIn(BaseModel):
+    """O admin master liga/desliga os próprios papéis "Vê a equipe" e "Manda tarefas". Ausente = mantém."""
+    viewer: Optional[bool] = None
+    assigner: Optional[bool] = None
+
+
+class MasterTransferIn(BaseModel):
+    """Transferir o papel de master: para quem (outro admin) e a senha do master."""
+    to_user_id: int
+    password: str = Field(min_length=1, max_length=config.MAX_PASSWORD_LEN)
+
+
+class MasterConfirmIn(BaseModel):
+    """O código de 6 dígitos mandado ao e-mail do master."""
+    code: str = Field(pattern=r"^\s*\d{6}\s*$")
 
 
 class OrgIn(BaseModel):

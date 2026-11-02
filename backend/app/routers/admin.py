@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from psycopg.errors import UniqueViolation
 from psycopg.types.json import Jsonb
 
-from .. import audit, db, links, mailer, org, people, push, roles
+from .. import audit, db, links, mailer, org, people, push, roles, teams
 from ..deps import require_admin, require_admin_csrf
 from ..schemas import (AdminProfileIn, AppSettingsIn, BlockUserIn, DeleteUserIn, InviteIn, OrgIn, ResetPasswordIn,
                        RolesIn)
@@ -62,7 +62,12 @@ def list_users(admin=Depends(require_admin)):
                    (u.invite_pending AND NOT EXISTS (
                        SELECT 1 FROM auth_links l WHERE l.user_id = u.id AND l.kind = 'invite'
                           AND l.used_at IS NULL AND l.expires_at > now())) AS invite_expired,
-                   {roles.ROLES_SQL}
+                   {roles.ROLES_SQL},
+                   -- equipes ativas (sql/043): coluna e filtro em Admin › Contas
+                   COALESCE((SELECT json_agg(json_build_object('id', t.id, 'name', t.name) ORDER BY lower(t.name))
+                               FROM teams t JOIN team_members m ON m.team_id = t.id
+                              WHERE m.user_id = u.id AND t.archived_at IS NULL), '[]'::json) AS teams,
+                   (u.id IS NOT DISTINCT FROM (SELECT s.master_user_id FROM app_settings s WHERE s.id = 1)) AS is_master
               FROM users u""")
     out = [{**r, **people.profile(r["id"])} for r in rows]
     out.sort(key=lambda r: (_sort_key(r["name"] or r["email"]), r["email"]))
@@ -86,6 +91,8 @@ def invite_user(data: InviteIn, admin=Depends(require_admin_csrf)):
     temp = generate_temp_password()
     nome = " ".join((data.display_name or "").split()) or None
     papeis = sorted(set(data.roles))
+    from .equipes import check_teams, set_user_teams  # import tardio: equipes importa admin.role_notice
+    equipes = check_teams(data.team_ids)
     db.execute(
         """INSERT INTO users (email, password_hash, role, must_change_password, invite_pending, display_name)
            VALUES (%s, %s, 'user', %s, %s, %s)""",
@@ -94,12 +101,16 @@ def invite_user(data: InviteIn, admin=Depends(require_admin_csrf)):
     )
     novo = db.query_one("SELECT id FROM users WHERE email = %s", (email,))
     roles.grant(novo["id"], papeis)
+    if equipes:
+        set_user_teams(novo["id"], equipes)
+    nomes_eq = [t["name"] for t in teams.of_user(novo["id"])]
     audit.record({**admin, "actor": "admin"}, "user.invite", "user", novo["id"],
-                 after={"email": email, "by": admin["email"], "link": by_link, "display_name": nome, "roles": papeis},
+                 after={"email": email, "by": admin["email"], "link": by_link, "display_name": nome, "roles": papeis,
+                        **({"teams": nomes_eq} if nomes_eq else {})},
                  user_id=novo["id"])
     if not by_link:
-        return {"email": email, "temp_password": temp, "display_name": nome, "roles": papeis}
-    return {**_send_invite(novo["id"], email, admin), "display_name": nome, "roles": papeis}
+        return {"email": email, "temp_password": temp, "display_name": nome, "roles": papeis, "teams": nomes_eq}
+    return {**_send_invite(novo["id"], email, admin), "display_name": nome, "roles": papeis, "teams": nomes_eq}
 
 
 def _invite_mail(email: str, by_name: str, link: str):
@@ -180,6 +191,8 @@ def block_user(user_id: int, data: BlockUserIn | None = None, admin=Depends(requ
     if user_id == admin["user_id"]:
         raise HTTPException(status_code=400, detail="você não pode bloquear a sua própria conta")
     target = _ensure_user(user_id)
+    if teams.is_master(user_id):
+        raise HTTPException(status_code=400, detail=MASTER_LOCKED)
     if db.query_one("SELECT 1 FROM users WHERE id = %s AND invite_pending", (user_id,)):
         raise HTTPException(status_code=400, detail="o convite ainda não foi aceito: use Cancelar convite")
     dest = _receiver(user_id, data.transfer_to if data else None)
@@ -303,6 +316,8 @@ def set_roles(user_id: int, data: RolesIn, admin=Depends(require_admin_csrf)):
     novos = sorted(set(data.roles))
     if user_id == admin["user_id"] and "admin" not in novos:
         raise HTTPException(status_code=400, detail="você não pode tirar o seu próprio papel de admin")
+    if "admin" not in novos and teams.is_master(user_id):
+        raise HTTPException(status_code=400, detail=MASTER_LOCKED)
     if "admin" in before and "admin" not in novos and roles.admins_count() <= 1:
         raise HTTPException(status_code=400, detail="o sistema precisa de pelo menos um admin")
     roles.replace(user_id, novos)
@@ -316,16 +331,22 @@ def set_roles(user_id: int, data: RolesIn, admin=Depends(require_admin_csrf)):
     return {"id": user_id, "roles": novos, "notified": notified}
 
 
+MASTER_LOCKED = ("essa conta é a do admin master: só ela mesma passa o papel para outro admin "
+                 "(Admin › Equipes › Transferir), e depois disso dá para mudar")
+
 # O que cada papel muda para a pessoa (aviso no app e no e-mail; mesma ordem do Admin).
 ROLE_GAIN = {
     "user": ("Usuário", "Você passa a ter o seu próprio registro: Hoje, Tarefas, Rotinas e relatórios."),
     "admin": ("Admin", "Você administra o Nexus: convites, contas, papéis e configurações gerais (Admin, no menu)."),
     "assigner": ("Manda tarefas", "Você pode mandar tarefas para quem aceitou receber e acompanhar o que mandou."),
     "viewer": ("Vê a equipe", "Você vê, sem editar, o registro da equipe na tela Equipe."),
+    # Não é um papel de user_roles: o aviso da transferência do master (routers/equipes.py) usa o mesmo aviso único.
+    "master": ("Admin master", "Você é o admin master: com “Vê a equipe” e “Manda tarefas” ligados, vê e atribui para "
+                               "todos, com ou sem equipe; as suas visualizações ficam no log de admin."),
 }
 
 
-def role_notice(uid: int, email: str, added: set, removed: set, admin: dict) -> bool:
+def role_notice(uid: int, email: str, added: set, removed: set, admin: dict, mail: bool = True) -> bool:
     """Guarda o aviso único (o app mostra no próximo acesso, até "Entendi") e,
     com e-mail configurado, avisa por e-mail. Ganhou e perdeu de novo antes de
     ver = nada a dizer. Convite ainda não aceito ou conta bloqueada: nada (o
@@ -340,7 +361,7 @@ def role_notice(uid: int, email: str, added: set, removed: set, admin: dict) -> 
     notice = {"added": [k for k in ROLE_GAIN if k in add], "removed": [k for k in ROLE_GAIN if k in rem]}
     db.execute("UPDATE users SET role_notice = %s WHERE id = %s",
                (Jsonb(notice) if (add or rem) else None, uid))
-    if mailer.configured():
+    if mail and mailer.configured():
         _spawn(email, _roles_mail(added, removed, people.profile(admin["user_id"])["name"]))
     return True
 
@@ -417,6 +438,8 @@ def delete_user(user_id: int, data: DeleteUserIn, admin=Depends(require_admin_cs
     target = _ensure_user(user_id)
     if data.confirm_email.strip().lower() != target["email"]:
         raise HTTPException(status_code=400, detail="confirme digitando o e-mail da conta")
+    if teams.is_master(user_id):
+        raise HTTPException(status_code=400, detail=MASTER_LOCKED)
     if "admin" in roles.of(user_id) and roles.admins_count() <= 1:
         raise HTTPException(status_code=400, detail="o sistema precisa de pelo menos um admin")
     dest = _receiver(user_id, data.transfer_to)

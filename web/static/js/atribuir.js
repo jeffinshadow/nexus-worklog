@@ -44,7 +44,10 @@ export async function assignDialog({ fromReturn = null, edit = null, onDone } = 
 
   if (!edit && !accepting.length) {
     const dlg = modal(heading,
-      h("p", { text: everyone ? "Ainda não há ninguém com o papel Usuário (e acesso liberado) para receber tarefas."
+      h("p", { text: session.me.teams_on && !session.me.is_master && !(session.me.teams || []).length
+        ? "Você ainda não está em nenhuma equipe. Nesta instância, só dá para mandar tarefas para quem está numa equipe com você; quem define as equipes é a administração (Admin › Equipes)."
+        : everyone ? "Ainda não há ninguém com o papel Usuário (e acesso liberado) para receber tarefas."
+        : session.me.teams_on ? "Ninguém das suas equipes aceitou receber tarefas ainda. Cada pessoa liga isso em Configurações > Conta, em “Permitir que me atribuam tarefas”."
         : "Ninguém aceitou receber tarefas ainda. Cada pessoa liga isso em Configurações > Conta, em “Permitir que me atribuam tarefas”." }),
       h("div", { class: "dialog-actions" }, h("div", { class: "spacer" }), h("button", { type: "button", class: "btn btn-primary", text: "Entendi", onClick: () => dlg.close() })));
     return;
@@ -54,9 +57,20 @@ export async function assignDialog({ fromReturn = null, edit = null, onDone } = 
   let who = null;
   if (!edit) {
     // Uma pessoa só: já vem marcada. Mais de uma: escolhe (nada de mandar para a primeira da lista sem querer).
+    // Com mais de uma equipe, as pessoas vêm agrupadas pela equipe em comum (a
+    // primeira, por nome; o master vê também "Sem equipe"). Uma equipe só: lista simples.
+    const opt = (p) => h("option", { value: p.id, text: p.display_name ? `${p.display_name} · ${p.email}` : p.email });
+    const groups = new Map();
+    for (const p of accepting) {
+      const g = (p.teams || [])[0] || "";
+      if (!groups.has(g)) groups.set(g, []);
+      groups.get(g).push(p);
+    }
+    const grouped = session.me.teams_on && groups.size > 1;
+    const keys = [...groups.keys()].sort((a, b) => (a === "") - (b === "") || a.localeCompare(b, "pt-BR"));
     who = h("select", { required: "required" },
       accepting.length > 1 ? h("option", { value: "", text: "Escolha quem recebe" }) : null,
-      ...accepting.map((p) => h("option", { value: p.id, text: p.display_name ? `${p.display_name} · ${p.email}` : p.email })));
+      ...(grouped ? keys.map((k) => h("optgroup", { label: k || "Sem equipe" }, ...groups.get(k).map(opt))) : accepting.map(opt)));
   }
   const title = h("input", { type: "text", maxlength: "200", required: "required", value: pre.title || "" });
   const desc = h("textarea", { rows: "3", maxlength: "300", placeholder: "O que fazer, onde, o que levar…" });
@@ -71,7 +85,9 @@ export async function assignDialog({ fromReturn = null, edit = null, onDone } = 
   after.checked = !!pre.after_hours;
   const err = h("p", { class: "error-text", role: "alert" });
 
-  const quemAceita = everyone
+  const quemAceita = session.me.teams_on && !session.me.is_master
+    ? (accepting.length === 1 ? "Aparece só quem está numa equipe com você e pode receber (1 pessoa)." : `Aparecem as ${accepting.length} pessoas das suas equipes que podem receber.`)
+    : everyone
     ? "Nesta instância, todos recebem tarefas de quem atribui (definido pela administração)."
     : accepting.length === 1 ? "Aparece só quem aceita receber tarefas (1 pessoa)." : `Aparecem as ${accepting.length} pessoas que aceitam receber tarefas.`;
   const outras = !others ? "" : everyone
@@ -232,6 +248,8 @@ function row(r, reload) {
       r.cancelable
         ? h("button", { type: "button", class: "btn btn-text btn-sm", text: "Cancelar", onClick: () => cancelSent(r, reload) })
         : h("small", { class: "muted", text: `${r.to_name} já mexeu nela: cancelar, só ela` }));
+    else if (r.same_team === false && r.status !== "done")
+      acts = h("small", { class: "muted", text: "Vocês não estão mais na mesma equipe: só quem recebeu muda esta tarefa" });
   }
   const dim = r.status === "removed" && !openReturn(r);
   return h("div", { class: "list-row" + (dim ? " is-removed" : ""), "data-id": r.id },

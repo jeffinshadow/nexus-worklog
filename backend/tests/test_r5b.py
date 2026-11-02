@@ -158,7 +158,7 @@ def test_receber_cada_pessoa_escolhe_e_todos_recebem(admin, cena, novo_usuario):
 
     # Padrão: cada pessoa escolhe. Bia fora da lista, do envio, da foto e do MCP.
     assert {"ana@example.com"} <= aceita() and "bia@example.com" not in aceita()
-    assert assignable.can_receive(ua) and not assignable.can_receive(ub)
+    assert assignable.can_receive(uid_de(chefe), ua) and not assignable.can_receive(uid_de(chefe), ub)
     assert _manda(chefe, bia).status_code == 403
     assert chefe.get(f"/me/avatar/{ub}").status_code == 404
     assert "bia@example.com" not in texto(ia.tool("list_assignable"))
@@ -169,7 +169,7 @@ def test_receber_cada_pessoa_escolhe_e_todos_recebem(admin, cena, novo_usuario):
     assert out["assign_receive"] == "all" and out["assign_receive_since"]
     assert {"ana@example.com", "bia@example.com"} <= aceita()
     assert all(p["everyone"] for p in chefe.get("/assign/people").json())
-    assert assignable.can_receive(ub)
+    assert assignable.can_receive(uid_de(chefe), ub)
     r = _manda(chefe, bia)
     assert r.status_code == 201, r.text
     assert "todos recebem tarefas de quem atribui" in caixa[-1][2]
@@ -178,14 +178,14 @@ def test_receber_cada_pessoa_escolhe_e_todos_recebem(admin, cena, novo_usuario):
     assert db.query_one("SELECT accepts_assignments_at FROM users WHERE id = %s", (ub,))["accepts_assignments_at"] is None
     # Conta bloqueada e convite ainda não aceito continuam sem receber.
     assert admin.post(f"/admin/users/{uid_de(ana)}/block").status_code in (200, 204)
-    assert not assignable.can_receive(ua) and _manda(chefe, ana).status_code == 404
+    assert not assignable.can_receive(uid_de(chefe), ua) and _manda(chefe, ana).status_code == 404
     pend = admin.post("/admin/users", {"email": "novo@example.com"}).json()
     pend_id = db.query_one("SELECT id FROM users WHERE email = 'novo@example.com'")["id"]
-    assert pend and not assignable.can_receive(pend_id)
+    assert pend and not assignable.can_receive(uid_de(chefe), pend_id)
     # Quem não tem o papel Usuário (só admin) não recebe.
     so_vis = novo_usuario("vis@example.com")
     admin.put(f"/admin/users/{uid_de(so_vis)}/roles", {"roles": ["viewer"]})
-    assert not assignable.can_receive(uid_de(so_vis))
+    assert not assignable.can_receive(uid_de(chefe), uid_de(so_vis))
 
     # Volta para "Cada pessoa escolhe": cada um com o que tinha (Bia sai de novo).
     _org(admin, assign_receive="self")

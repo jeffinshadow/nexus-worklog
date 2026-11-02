@@ -22,7 +22,7 @@ import * as board from "./board.js";
 import * as mes from "./mes.js";
 
 // O mês escolhido vale para o painel e para o mês de cada pessoa (fica entre visitas).
-const monthState = { month: null, months: null };
+const monthState = { month: null, months: null, team: "" };
 const SETTING = "Permitir que quem tem o papel “Vê a equipe” veja meu registro";
 const PEOPLE_PAGE = 12; // cartões de pessoas por página
 let peoplePage = 1;
@@ -79,14 +79,36 @@ async function panelView(root, ctx) {
     else if (focused === next && next.disabled && !prev.disabled) prev.focus();
   };
   const content = h("div", { class: "mes-content" });
+  // Seletor de equipe (sql/043): quem está em mais de uma equipe (padrão: todas
+  // as suas) e o master com "Vê a equipe" ("Todas" + "Sem equipe").
+  const teamPick = h("select", { "aria-label": "Equipe", class: "eq-team-select" });
+  const teamBox = h("div", { class: "field eq-team-pick", hidden: true }, teamPick);
+  teamPick.addEventListener("change", () => { st.team = teamPick.value; peoplePage = 1; load().catch(errorToast); });
+  const paintTeams = (sel) => {
+    const show = !!sel && sel.on && (sel.teams.length > 1 || sel.master);
+    teamBox.hidden = !show;
+    if (!show) { if (st.team && !(sel && sel.teams.some((t) => String(t.id) === st.team))) st.team = ""; return; }
+    teamPick.replaceChildren(
+      h("option", { value: "", text: sel.master ? "Todas as pessoas" : "Todas as minhas equipes" }),
+      ...sel.teams.map((t) => h("option", { value: String(t.id), text: t.name })),
+      sel.none ? h("option", { value: "none", text: "Sem equipe" }) : null);
+    teamPick.value = st.team || "";
+  };
 
   let seq = 0;
   async function load() {
     const my = ++seq;
     content.classList.add("refreshing");
     try {
-      const a = await api.get(`/viewer/team?month=${st.month}`);
+      let a;
+      try { a = await api.get(`/viewer/team?month=${st.month}${st.team ? `&team=${encodeURIComponent(st.team)}` : ""}`); }
+      catch (e) {
+        if (!st.team || e.status !== 404) throw e;
+        st.team = ""; // a equipe saiu (arquivada, ou você saiu dela): volta para todas
+        a = await api.get(`/viewer/team?month=${st.month}`);
+      }
       if (my !== seq) return;
+      paintTeams(a.teams);
       data = a;
       st.months = a.months || [];
       pdfBtn.disabled = !a.people.length;
@@ -110,7 +132,8 @@ async function panelView(root, ctx) {
   await load();
   if (sent) await sent.load(await sentReady);
   clear(root); // só depois da resposta: na volta à tela, a visita anterior fica até chegar
-  root.append(h("div", { class: "day-nav dash-period mes-nav" }, prev, label, next), content, sent ? sent.el : null);
+  root.append(h("div", { class: "eq-nav-row" }, h("div", { class: "day-nav dash-period mes-nav" }, prev, label, next), teamBox),
+    content, sent ? sent.el : null);
 }
 
 function screen(a, ctx, sent) {
@@ -219,6 +242,13 @@ function initial(p) {
 }
 
 function peopleTile(a, ctx) {
+  const sel = a.teams || {};
+  if (!a.people.length && sel.on && !sel.master && !(sel.teams || []).length) {
+    return mes.tile(12, "eq-people-tile", "Pessoas", null,
+      h("p", { class: "eq-empty-t", text: "Você ainda não está em nenhuma equipe. Nesta instância, quem vê a equipe acompanha só quem está numa equipe com ele; quem define as equipes é a administração (Admin › Equipes)." }),
+      roles().includes("admin") ? h("div", { class: "eq-empty-actions" },
+        h("button", { type: "button", class: "btn btn-tonal", onClick: () => { location.hash = "#/admin?aba=equipes"; } }, icon("team"), "Abrir Admin › Equipes")) : null);
+  }
   if (!a.people.length) {
     const pedido = `Para eu acompanhar a equipe no Nexus, você pode ligar “${SETTING}” em Configurações > Conta. Só quem tem esse papel vê, sem editar, e você pode desligar quando quiser.`;
     return mes.tile(12, "eq-people-tile", "Pessoas", null,
@@ -289,7 +319,8 @@ function csvDialog(a) {
     ev.preventDefault();
     err.textContent = "";
     if (end.value < start.value) { err.textContent = "O fim vem antes do começo."; return; }
-    try { await api.download(`/viewer/export/apontamentos.csv?start=${start.value}&end=${end.value}`); dlg.close(); }
+    const team = monthState.team ? `&team=${encodeURIComponent(monthState.team)}` : "";
+    try { await api.download(`/viewer/export/apontamentos.csv?start=${start.value}&end=${end.value}${team}`); dlg.close(); }
     catch (x) { err.textContent = x.message || "Não foi possível exportar."; }
   }));
   const dlg = modal(h("h2", { text: "Horas da equipe (CSV)" }), form);

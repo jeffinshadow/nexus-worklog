@@ -1416,7 +1416,7 @@ TOOLS = {
                     "Passagem de turno/plantão: em aberto, aguardando (o quê e há quantos dias), concluídas nas "
                     "últimas 12 h, rotinas pendentes e vencimentos no aviso, em texto pronto pra colar no chat da equipe.",
                     {"type": "object", "properties": {}}),
-    "list_assignable": (t_list_assignable, False, "Atribuidor: pessoas que podem receber tarefas atribuídas (aceitaram, ou a instância diz que todos recebem).",
+    "list_assignable": (t_list_assignable, False, "Atribuidor: pessoas que podem receber tarefas atribuídas (aceitaram, ou a instância diz que todos recebem; com equipes, só quem está numa equipe com você).",
                         {"type": "object", "properties": {}}),
     "assign_task": (t_assign_task, True,
                     "Atribuidor: manda uma tarefa para outra pessoa (que aceitou receber). Ela vira dona da "

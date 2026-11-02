@@ -93,7 +93,7 @@ def test_visivel_para_quem_gerencia_e_volta_ao_que_cada_um_escolheu(admin, novo_
     assert vis.get(f"/viewer/users/{ub}/board").status_code == 404
     assert vis.get(f"/photos/{foto}").status_code == 404
     assert "bia@example.com" not in csv()
-    assert visibility.can_see(ua) and not visibility.can_see(ub)
+    assert visibility.can_see(uid_de(vis), ua) and not visibility.can_see(uid_de(vis), ub)
 
     # Visível para quem gerencia: todos com o papel Usuário, sem mexer no aceite guardado.
     out = _org(admin, team_visibility="managers")
@@ -104,7 +104,7 @@ def test_visivel_para_quem_gerencia_e_volta_ao_que_cada_um_escolheu(admin, novo_
     assert vis.get(f"/photos/{foto}").status_code == 200
     assert vis.get(f"/me/avatar/{ub}").status_code == 404  # sem foto, mas não por falta de permissão
     assert "bia@example.com" in csv()
-    assert visibility.can_see(ub)
+    assert visibility.can_see(uid_de(vis), ub)
     team = vis.get("/viewer/team").json()  # painel da Equipe: o mesmo ponto único
     assert "bia@example.com" in {p.get("email") for p in team["people"]} or ub in {p.get("id") for p in team["people"]}
     # Quem não tem o papel continua sem ver.

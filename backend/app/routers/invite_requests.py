@@ -125,7 +125,7 @@ def invite(rid: int, data: InviteChoiceIn | None = None, admin=Depends(require_a
         raise HTTPException(status_code=404, detail="pedido não encontrado ou já decidido")
     data = data or InviteChoiceIn()
     nome = data.display_name if "display_name" in data.model_fields_set else (req["name"] or "")[:60]
-    out = invite_user(InviteIn(email=req["email"], display_name=nome or None, roles=data.roles), admin=admin)  # 409 se já tiver conta
+    out = invite_user(InviteIn(email=req["email"], display_name=nome or None, roles=data.roles, team_ids=data.team_ids), admin=admin)  # 409 se já tiver conta
     _decide(rid, "invited", admin)
     return out
 
