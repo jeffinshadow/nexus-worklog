@@ -5265,6 +5265,34 @@
         "security": []
       }
     },
+    "/api/me/notices-seen": {
+      "put": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Seen Notices",
+        "description": "\"Entendi\" em \"O que mudou para você\": dá como vistos, de uma vez, os avisos únicos de visibilidade,\nde receber tarefas e de papéis.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
+        "operationId": "seen_notices_api_me_notices_seen_put",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
+          }
+        },
+        "x-session-only": true,
+        "security": []
+      }
+    },
     "/api/me/visibility-notice": {
       "put": {
         "tags": [
@@ -5644,6 +5672,7 @@
           "templates"
         ],
         "summary": "List Templates",
+        "description": "OBSOLETO (sai na 3.0): modelos de tarefa.",
         "operationId": "list_templates_api_templates_get",
         "responses": {
           "200": {
@@ -5667,6 +5696,7 @@
           "templates"
         ],
         "summary": "Create Template",
+        "description": "OBSOLETO (sai na 3.0): modelos de tarefa.",
         "operationId": "create_template_api_templates_post",
         "requestBody": {
           "content": {
@@ -5712,6 +5742,7 @@
           "templates"
         ],
         "summary": "Update Template",
+        "description": "OBSOLETO (sai na 3.0): modelos de tarefa.",
         "operationId": "update_template_api_templates__tid__put",
         "parameters": [
           {
@@ -5766,6 +5797,7 @@
           "templates"
         ],
         "summary": "Delete Template",
+        "description": "OBSOLETO (sai na 3.0): modelos de tarefa.",
         "operationId": "delete_template_api_templates__tid__delete",
         "parameters": [
           {
@@ -5812,7 +5844,7 @@
           "templates"
         ],
         "summary": "Use Template",
-        "description": "Cria a tarefa do modelo (e o checklist). Modelo sem projeto (ou com um\narquivado/excluído): a tarefa vai para o projeto padrão, se houver.",
+        "description": "OBSOLETO (sai na 3.0). Cria a tarefa do modelo (e o checklist). Modelo sem projeto (ou com um\narquivado/excluído): a tarefa vai para o projeto padrão, se houver.",
         "operationId": "use_template_api_templates__tid__use_post",
         "parameters": [
           {
@@ -7825,6 +7857,33 @@
         "security": []
       }
     },
+    "/api/auth/invite-request/form": {
+      "get": {
+        "tags": [
+          "invite-requests"
+        ],
+        "summary": "Request Form",
+        "description": "Carimbo de quando o formulário foi mostrado (assinado); volta no envio como `form_t`.",
+        "operationId": "request_form_api_auth_invite_request_form_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
+          }
+        },
+        "security": []
+      }
+    },
     "/api/auth/invite-request": {
       "post": {
         "tags": [
@@ -8292,7 +8351,7 @@
           "review"
         ],
         "summary": "Week",
-        "description": "O que fechou, o que ficou (aberto e aguardando), sugestões para a próxima\nsemana, tarefas paradas e se a revisão desta semana já foi feita.",
+        "description": "O que fechou, o que ficou (aberto e aguardando), sugestões para a próxima\nsemana e se a revisão desta semana já foi feita.",
         "operationId": "week_api_review_week_get",
         "responses": {
           "200": {
@@ -9308,12 +9367,6 @@
       },
       "AppSettingsIn": {
         "properties": {
-          "retro_days": {
-            "type": "integer",
-            "maximum": 366.0,
-            "minimum": 1.0,
-            "title": "Retro Days"
-          },
           "support_contact": {
             "anyOf": [
               {
@@ -9326,12 +9379,21 @@
             ],
             "title": "Support Contact"
           },
+          "retro_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retro Days"
+          },
           "photo_quota_mb": {
             "anyOf": [
               {
-                "type": "integer",
-                "maximum": 100000.0,
-                "minimum": 0.0
+                "type": "integer"
               },
               {
                 "type": "null"
@@ -9341,9 +9403,6 @@
           }
         },
         "type": "object",
-        "required": [
-          "retro_days"
-        ],
         "title": "AppSettingsIn"
       },
       "ArchiveIn": {
@@ -9518,56 +9577,92 @@
             "default": true
           },
           "idle_on": {
-            "type": "boolean",
-            "title": "Idle On",
-            "default": true
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idle On"
           },
           "idle_minutes": {
-            "type": "integer",
-            "maximum": 480.0,
-            "minimum": 5.0,
-            "title": "Idle Minutes",
-            "default": 30
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idle Minutes"
           },
           "idle_start": {
-            "type": "integer",
-            "maximum": 1439.0,
-            "minimum": 0.0,
-            "title": "Idle Start",
-            "default": 480
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idle Start"
           },
           "idle_end": {
-            "type": "integer",
-            "maximum": 1440.0,
-            "minimum": 1.0,
-            "title": "Idle End",
-            "default": 1080
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idle End"
           },
           "reopen_on": {
-            "type": "boolean",
-            "title": "Reopen On",
-            "default": true
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reopen On"
           },
           "reopen_minutes": {
-            "type": "integer",
-            "maximum": 240.0,
-            "minimum": 1.0,
-            "title": "Reopen Minutes",
-            "default": 10
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reopen Minutes"
           },
           "summary_from": {
-            "type": "integer",
-            "maximum": 1439.0,
-            "minimum": 0.0,
-            "title": "Summary From",
-            "default": 840
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary From"
           },
           "stale_days": {
-            "type": "integer",
-            "maximum": 60.0,
-            "minimum": 1.0,
-            "title": "Stale Days",
-            "default": 5
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stale Days"
           }
         },
         "type": "object",
@@ -10039,6 +10134,18 @@
               }
             ],
             "title": "Website"
+          },
+          "form_t": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Form T"
           }
         },
         "type": "object",
@@ -10597,41 +10704,16 @@
       },
       "PrefsIn": {
         "properties": {
-          "morning": {
-            "type": "boolean",
-            "title": "Morning",
-            "default": false
-          },
-          "morning_hour": {
-            "type": "integer",
-            "maximum": 23.0,
-            "minimum": 0.0,
-            "title": "Morning Hour",
-            "default": 8
-          },
-          "evening": {
-            "type": "boolean",
-            "title": "Evening",
-            "default": false
-          },
-          "evening_hour": {
-            "type": "integer",
-            "maximum": 23.0,
-            "minimum": 0.0,
-            "title": "Evening Hour",
-            "default": 17
-          },
-          "weekly": {
-            "type": "boolean",
-            "title": "Weekly",
-            "default": false
-          },
-          "weekly_hour": {
-            "type": "integer",
-            "maximum": 23.0,
-            "minimum": 0.0,
-            "title": "Weekly Hour",
-            "default": 8
+          "email_on": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email On"
           },
           "show_titles": {
             "type": "boolean",
@@ -10654,6 +10736,72 @@
               }
             ],
             "title": "Weekly Cc"
+          },
+          "morning": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Morning"
+          },
+          "morning_hour": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Morning Hour"
+          },
+          "evening": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evening"
+          },
+          "evening_hour": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evening Hour"
+          },
+          "weekly": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weekly"
+          },
+          "weekly_hour": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weekly Hour"
           }
         },
         "type": "object",
@@ -10890,41 +11038,81 @@
       },
       "PushPrefsIn": {
         "properties": {
-          "routine": {
-            "type": "boolean",
-            "title": "Routine",
-            "default": true
-          },
-          "follow_up": {
-            "type": "boolean",
-            "title": "Follow Up",
-            "default": true
-          },
-          "deadline": {
-            "type": "boolean",
-            "title": "Deadline",
-            "default": true
-          },
-          "assigned": {
-            "type": "boolean",
-            "title": "Assigned",
-            "default": true
-          },
-          "morning_hour": {
-            "type": "integer",
-            "maximum": 23.0,
-            "minimum": 0.0,
-            "title": "Morning Hour",
-            "default": 8
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
           },
           "hide_content": {
             "type": "boolean",
             "title": "Hide Content",
             "default": false
+          },
+          "routine": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Routine"
+          },
+          "follow_up": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Follow Up"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline"
+          },
+          "assigned": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned"
+          },
+          "morning_hour": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Morning Hour"
           }
         },
         "type": "object",
-        "title": "PushPrefsIn"
+        "title": "PushPrefsIn",
+        "description": "Notificações nos aparelhos: um só interruptor (`enabled`) liga ou desliga tudo (rotina e lembrete\nna hora, cobrar, prazos, atribuídas). Os campos por tipo e morning_hour são obsoletos (até a 3.0):\naceitos; sem `enabled`, vale \"ligado se algum tipo estava ligado\"."
       },
       "RecurringIn": {
         "properties": {

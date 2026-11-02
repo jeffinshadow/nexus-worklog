@@ -1,5 +1,5 @@
 """Revisão semanal guiada (último dia útil, revisão feita/dispensada, texto da
-semana, MCP) e tarefa aguardando parada (N dias, configuração, avisos da manhã)."""
+semana, MCP). A "tarefa parada" não é mais um aviso próprio: o Aguardando sugere o dia de cobrar."""
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -27,19 +27,6 @@ def test_ultimo_dia_util_da_semana():
     assert review.review_day(qua, 1 | 2) == date(2026, 11, 2)   # dom e seg: a segunda
     assert review.review_day(date(2026, 11, 1), 62) == date(2026, 11, 6)  # domingo já é a semana nova
     assert review.review_day(qua, 0) is None
-
-
-def test_parada_conta_dias_e_ignora_quem_tem_data():
-    hoje = date(2026, 11, 10)
-    tz = ZoneInfo(config.APP_TZ)
-    def t(i, dias, follow=None, status="blocked"):
-        return {"id": i, "title": f"T{i}", "status": status, "blocked_reason": None, "follow_up_on": follow,
-                "blocked_at": datetime.combine(hoje - timedelta(days=dias), time(23, 30), tz).astimezone(timezone.utc)}
-    abertas = [t(1, 4), t(2, 5), t(3, 12), t(4, 9, follow=hoje), t(5, 30, status="todo")]
-    assert [(x["id"], x["days"]) for x in review.stale_waiting(abertas, hoje, 5)] == [(3, 12), (2, 5)]
-    assert [x["id"] for x in review.stale_to_remind(abertas, hoje, 5)] == [3, 2]   # dia 5 e dia 12 (5 + 7)
-    assert [x["id"] for x in review.stale_to_remind(abertas, hoje, 4)] == [1]      # 4 sim; 5 e 12 não
-    assert review.stale_line({"title": "Peça", "days": 6}) == "«Peça» está aguardando há 6 dias. Quer marcar quando cobrar?"
 
 
 # ---------------------------------------------------------------- revisão --
@@ -113,52 +100,31 @@ def test_mcp_get_week_review(usuario):
     out = texto(ia.tool("get_week_review"))
     assert "Backup restaurado (sem \"como resolveu\")" in out
     assert "Sugestões para a próxima semana:" in out and "Trocar crachá" in out
-    assert "Peça do switch (há 9 dias)" in out
+    assert "Aguardando há" not in out      # sem aviso de tarefa parada
 
 
-# ---------------------------------------------------------- tarefa parada --
+# ------------------------------------------- aguardando: cobrar em 5 dias úteis --
 
-def test_parada_no_hoje_e_configuracao(usuario):
-    tid = usuario.post("/worklog", {"title": "Peça do switch", "status": "blocked", "blocked_reason": "fornecedor"}).json()["id"]
-    assert usuario.get("/summary").json()["review"]["stale"] == []
-    _aguardando_ha(tid, 6)
-    rv = usuario.get("/summary").json()["review"]
-    assert rv["stale_days"] == 5 and rv["stale"] == [{"id": tid, "title": "Peça do switch", "blocked_reason": "fornecedor", "days": 6}]
-    # Configurações > Conta: avisar com 7 dias.
-    prefs = usuario.get("/auth/me").json()["assistant"]
-    assert prefs["stale_days"] == 5
-    assert usuario.put("/me/assistant", {**prefs, "stale_days": 7}).json()["stale_days"] == 7
-    assert usuario.get("/summary").json()["review"]["stale"] == []
-    assert usuario.put("/me/assistant", {**prefs, "stale_days": 0}).status_code == 422
-    assert usuario.put("/me/assistant", {**prefs, "stale_days": 61}).status_code == 422
-    usuario.put("/me/assistant", {**prefs, "stale_days": 5})
-    # Com dia para cobrar, sai do aviso (a cobrança tem aviso próprio).
-    usuario.patch(f"/worklog/{tid}", {"follow_up_on": (dia_hoje(usuario) + timedelta(days=2)).isoformat()})
-    assert usuario.get("/summary").json()["review"]["stale"] == []
-
-
-def test_parada_no_email_da_manha_so_no_dia_n(usuario):
-    hoje, uid = dia_hoje(usuario), uid_de(usuario)
-    tid = usuario.post("/worklog", {"title": "Peça do switch", "status": "blocked"}).json()["id"]
-    def bloco():
-        return [i for h, itens in notify.build_morning(uid, hoje, True).blocks if h == "Aguardando faz tempo" for i in itens]
-    _aguardando_ha(tid, 5)
-    assert bloco() == ["«Peça do switch» está aguardando há 5 dias. Quer marcar quando cobrar?"]
-    _aguardando_ha(tid, 6)
-    assert bloco() == []                     # não repete todo dia
-    _aguardando_ha(tid, 12)
-    assert len(bloco()) == 1                 # uma semana depois, de novo
-
-
-def test_parada_no_push_da_manha(usuario, monkeypatch):
-    enviados = []
-    monkeypatch.setattr(push, "send", lambda uid, msg: enviados.append(msg))
+def test_aguardando_sem_aviso_de_parada_e_com_dia_sugerido(usuario):
     hoje = dia_hoje(usuario)
-    usuario.post("/auth/settings", {"work_days": 127})
-    tid = usuario.post("/worklog", {"title": "Peça do switch", "status": "blocked"}).json()["id"]
-    _aguardando_ha(tid, 5)
-    p = push.prefs(uid_de(usuario))
-    agora = datetime.combine(hoje, time(8, 0), tzinfo=ZoneInfo(config.APP_TZ))
-    assert push._morning(uid_de(usuario), p, agora, 127) == ["parada"]
-    assert enviados[0]["title"] == "Aguardando faz tempo" and "há 5 dias" in enviados[0]["body"]
-    assert push._morning(uid_de(usuario), p, agora, 127) == []   # uma vez por dia
+    tid = usuario.post("/worklog", {"title": "Peça do switch", "status": "blocked", "blocked_reason": "fornecedor"}).json()["id"]
+    _aguardando_ha(tid, 12)
+    rv = usuario.get("/summary").json()["review"]
+    assert "stale" not in rv and "stale_days" not in rv and "invite" in rv     # nada de "tarefa parada"
+    assert "stale" not in usuario.get("/review/week").json()
+    # O diálogo Aguardando já traz o dia para cobrar: 5 dias úteis à frente (a interface soma; o servidor aceita).
+    d = hoje
+    for _ in range(5):
+        d += timedelta(days=1)
+        while d.weekday() >= 5:
+            d += timedelta(days=1)
+    novo = usuario.post("/worklog", {"title": "Aprovação", "status": "blocked", "blocked_reason": "gestor", "follow_up_on": d.isoformat()})
+    assert novo.status_code == 201
+    nid = novo.json()["id"]
+    assert usuario.get(f"/worklog/{nid}").json()["follow_up_on"] == d.isoformat()
+    # O dia é editável e pode ser limpo.
+    assert usuario.patch(f"/worklog/{nid}", {"follow_up_on": None}).status_code == 200
+    assert usuario.get(f"/worklog/{nid}").json()["follow_up_on"] is None
+    # Os avisos da manhã (e-mail e push) não têm mais o bloco de tarefa parada.
+    assert "Aguardando faz tempo" not in [h for h, _ in notify.build_morning(uid_de(usuario), hoje, True).blocks]
+    assert not hasattr(review, "stale_waiting") and not hasattr(push, "stale_to_remind")

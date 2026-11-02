@@ -192,7 +192,7 @@ def link_info(data: LinkPeekIn, request: Request):
 
 @router.get("/link", include_in_schema=False)
 def link_info_get(kind: Literal["invite", "reset"], token: str, request: Request):
-    """Forma antiga (app em cache de antes da troca para POST). O nginx não grava
+    """OBSOLETA, removida na 3.0 (use POST). Forma antiga (app em cache de antes da troca para POST). O nginx não grava
     esta rota no log de acesso."""
     return _link_info(kind, token, request)
 

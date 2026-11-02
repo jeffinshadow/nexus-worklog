@@ -5,7 +5,7 @@ desligadas por padrão (o padrão é o organizador pessoal). sql/036.
   assign_receive    'self' (cada pessoa escolhe) | 'all' (todos recebem de quem atribui; assignable.py, sql/041)
   identity_managed  nome e e-mail definidos pela administração (a Conta só mostra)
   invite_request_on  oferece "Solicitar convite" na tela de login (opt-in, sql/042; a
-                    antiga invite_request_off, sql/037, ficou sem uso)
+                    antiga invite_request_off, sql/037, ficou sem uso: OBSOLETA, a coluna sai numa major; nunca foi apagada)
   privacy_url       endereço da política de privacidade (login, Conta, convite; sql/042)
   ticket_url        endereço do sistema de chamados da instância ({id} = o número; sql/037);
                     vazio = cada pessoa usa o seu (users.ticket_url)

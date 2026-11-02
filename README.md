@@ -56,8 +56,8 @@ mudança fica no histórico do admin. Toda conta nova faz o tour guiado no prime
 ## O que faz
 
 - **Hoje** — o dia em um olhar, com um **assistente**: saudação, o que está
-  pra hoje, o que saiu ontem, o resumo do dia e por onde começar. Avisa tarefa
-  aguardando há dias, prazo de amanhã e tempo esquecido (as sugestões). Cada
+  pra hoje, o que saiu ontem e por onde começar. Avisa cobrança do dia, prazo de amanhã e tempo
+  esquecido (as sugestões); um só interruptor liga ou desliga as falas (Configurações). Cada
   aviso tem o próprio X; tudo é calculado a partir dos registros da
   pessoa, sem IA chamada a cada tela. As abertas filtram por "até hoje"
   (o que vence hoje e as atrasadas) ou "prioridade alta"; as rotinas fora da
@@ -110,18 +110,17 @@ mudança fica no histórico do admin. Toda conta nova faz o tour guiado no prime
   ("Lembrete com hora": na hora, aviso na tela e notificação do aparelho com Concluir e
   Adiar 10 min; também pela IA e no calendário); **número do chamado** (GLPI, TomTicket, Jira…) que vira
   link; **plantão** fora do horário, com o tempo separado no relatório; e
-  **modelos** de tarefa com checklist pronto. Lançamento **retroativo** (criada e
-  concluída em datas passadas, até um limite configurável pelo admin; padrão 60
-  dias). Apontamento, anotação e item do checklist se **corrigem** no lugar
+  **Duplicar tarefa** e pacotes de rotina para repetir trabalho. Lançamento **retroativo** (criada e
+  concluída em datas passadas, até 60 dias). Apontamento, anotação e item do checklist se **corrigem** no lugar
   (com desfazer; a anotação mantém a hora); concluída por engano, **Reabrir**;
   com o quadro filtrado por um projeto, a tarefa nova já vem nele.
 - **Passagem de turno e espera** — tarefa marcada como aguardando guarda o
   quê (peça, cliente, aprovação) e há quantos dias; um clique monta o texto da passagem de turno
   (aberto, aguardando e por quê, concluído nas últimas 12 h, plantão). Rotina marcada aceita uma
   **evidência** curta ("backup OK, 2,1 TB"), que vai para o PDF — e pode ser
-  exigida por rotina. Tarefa aguardando há dias (5, ajustável na Conta) sem dia
-  para cobrar ganha uma pergunta: "quer marcar quando cobrar?"; com o dia
-  combinado, o lembrete aparece no Hoje (com "Cobrei"), no calendário e no aviso da manhã.
+  exigida por rotina. Ao marcar uma tarefa como Aguardando, o "Dia para cobrar" já vem
+  sugerido para 5 dias úteis à frente (muda ou limpa); no dia, o lembrete aparece no Hoje (com
+  "Cobrei"), no calendário e no aviso da manhã.
   CSV de plantão (horas do mês) e CSV de rotinas e evidências (auditoria). Registro rápido
   entende `@projeto #chamado !plantão !alta ^amanhã ^15h !aguarda motivo — 45min` (dois `@`, dois projetos;
   `^15h`, `^amanhã 8h` = lembrete com hora); **colar uma lista** (uma por linha, do bloco de notas, WhatsApp ou planilha)
@@ -261,8 +260,6 @@ Capturas de uma conta de demonstração, com dados fictícios.
 ![Meu mês: a frase do mês e o painel com indicadores, calendário, ritmo e tempo por projeto](docs/screenshots/04-retrospectiva.webp)
 *Meu mês — o mês numa frase e o PDF num botão; o painel com rotinas, tarefas e horas dos últimos 6 meses, o calendário do mês pintado pelas rotinas feitas, o ritmo por semana, o tempo por projeto e o que foi entregue.*
 
-![Nova tarefa preenchida a partir de um modelo](docs/screenshots/05-modelo.webp)
-*Modelos — escolhe o modelo no “+ Tarefa” e o checklist vem junto.*
 
 ![Passagem de turno com o que fica aberto, o que está aguardando e por quê, o concluído nas últimas 12 h e os vencimentos](docs/screenshots/09-passagem.webp)
 *Passagem de turno — um clique monta o texto pra quem assume.*
