@@ -119,3 +119,4 @@ for module in (auth, recurring, worklog, board, dashboard, reports, admin, histo
                objectives, push, passkeys, invite_requests, webhooks, review, packs):
     app.include_router(module.router)
 app.include_router(worklog.items)  # /api/notes, /api/checklist, /api/time
+app.include_router(assign.received)  # /api/worklog/{id}/return (quem recebeu devolve)

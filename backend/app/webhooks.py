@@ -151,6 +151,9 @@ def payload(row: dict) -> dict:
     item = feed_item(row)
     deleted = row["action"].endswith(".delete")
     item["data"] = row["after"] if row["entity"] in DATA_ENTITIES and not deleted else None
+    if row["action"] == "assign.returned" and row["after"]:
+        # Tarefa que a pessoa atribuiu foi devolvida: o quê, por quem e o porquê (texto de quem devolveu).
+        item["data"] = {k: row["after"].get(k) for k in ("title", "to", "to_id", "reason")}
     return audit._jsonable(item)
 
 

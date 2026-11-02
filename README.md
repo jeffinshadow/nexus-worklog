@@ -9,8 +9,8 @@ Prioridades: **simples > seguro > funcional > elegante**.
 Cada pessoa vê **apenas** os próprios dados. As contas são criadas pelo
 **admin** (convite com senha temporária); não há cadastro público. Papéis
 acumuláveis, dados em **Admin > Contas > ⋮ > Papéis…**: **Usuário** (o próprio registro),
-**Admin** (convites, contas, papéis, configurações), **Manda tarefas** (libera a tela Atribuir:
-manda tarefas a quem aceitou receber) e **Vê a equipe** (libera a tela Equipe: consulta, só
+**Admin** (convites, contas, papéis, configurações), **Manda tarefas** (libera a tela Equipe com
+o botão Atribuir tarefa e a lista Tarefas que atribuí: manda tarefas a quem aceitou receber) e **Vê a equipe** (libera a tela Equipe: consulta, só
 para leitura, o quadro, a retrospectiva, os relatórios, as horas e as fotos de
 quem **aceitou** em Configurações > Conta; contas novas começam sem o aceite, e
 os Papéis… de cada conta mostram quem liberou). O admin também tem o próprio registro;
@@ -101,7 +101,11 @@ troca os seus na Conta, e o e-mail novo só vale depois de confirmado por link) 
   A descrição aceita várias linhas. Enquanto está "a fazer" e sem nada registrado,
   quem atribuiu ainda corrige título, descrição, prazo e prioridade (só o que a pessoa não mudou) ou cancela (engano;
   só se ela não mexeu em nada); excluída ou cancelada, a linha continua em
-  Atribuir com quem tirou e quando. Conta com acesso bloqueado não recebe.
+  Tarefas que atribuí (na Equipe) com quem tirou e quando. Conta com acesso bloqueado não recebe.
+  Quem recebeu pode **devolver** a tarefa com o motivo (no detalhe dela): sai da lista dela
+  (desfazível pelo Histórico), e quem atribuiu é avisado (e-mail, push, Hoje e "Precisa de
+  atenção") e atribui de novo — à mesma pessoa ou a outra, com o diálogo já preenchido — ou encerra.
+  No Hoje de quem atribui, uma linha dispensável: "Das que você atribuiu: 2 concluídas, 1 devolvida".
 - **Meu mês** — o mês num olhar, com um seletor só (‹ mês ›, o corrente por
   padrão): uma frase ("Em outubro você fez 50 das 81 rotinas previstas (62%),
   concluiu 20 tarefas e apontou 31h43") e o PDF; depois um **painel** num
@@ -126,14 +130,16 @@ troca os seus na Conta, e o e-mail novo só vale depois de confirmado por link) 
   **matriz de rotinas** (um ponto por dia) e o diário. Pode ir toda segunda
   anexado ao resumo semanal por e-mail, com cópia opcional para quem acompanha o trabalho.
   Exportação em CSV (planilha, pelo período escolhido) e JSON (backup).
-- **Equipe** (papel Vê a equipe): um painel para coordenar, não para comparar.
+- **Equipe** (papéis Vê a equipe e Manda tarefas, numa tela só, sem abas): um painel para coordenar, não para comparar.
   Os números da equipe somados (rotinas em dia, tarefas concluídas, horas,
   aguardando) com os últimos 6 meses da equipe, "Precisa de atenção" (o que
-  você atribuiu e parou, o que aguarda há mais tempo, os prazos próximos), o
-  tempo por projeto e as pessoas em ordem alfabética; tocar numa pessoa abre o
+  você atribuiu e foi devolvido ou parou, o que aguarda há mais tempo, os prazos próximos), o
+  tempo por projeto e as pessoas em ordem alfabética (12 por página); tocar numa pessoa abre o
   mês e o quadro dela, só leitura. Sem ranking, média ou tendência de outra
   pessoa; só entra quem aceitou ser visto (`GET /api/viewer/team`). No topo:
-  Atribuir tarefa, Horas da equipe (CSV do período) e PDF de uma pessoa ou projeto.
+  Atribuir tarefa (diálogo por cima da tela), Horas da equipe (CSV do período) e PDF de uma pessoa ou projeto.
+  Logo abaixo do painel, Tarefas que atribuí (filtro Em aberto / Devolvidas / Concluídas, 15 por página).
+  Quem só manda tarefas vê só essa lista e o botão, sem números nem pessoas.
 - **Histórico com desfazer**, **busca** sem acento (inclusive por `#chamado`),
   **feed de calendário (ICS)**, **avisos por e-mail** (opt-in), **lembrete** no
   app depois de X minutos sem registro, **atalhos de teclado** (`n`, `q`, `/`, `s`,

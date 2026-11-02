@@ -37,7 +37,7 @@ Authorization: Bearer nxs_...
   header `X-CSRF-Token` (senão 403).
 
 **Papéis** (acumuláveis, em `roles` no `/api/auth/me`): `user` (o próprio registro),
-`admin` (contas, permissões, configurações), `assigner` ("Manda tarefas", tela Atribuir) e `viewer` ("Vê a equipe", tela Equipe:
+`admin` (contas, permissões, configurações), `assigner` ("Manda tarefas", na tela Equipe: botão Atribuir tarefa e Tarefas que atribuí) e `viewer` ("Vê a equipe", tela Equipe:
 registros e relatórios de quem aceitou, `PUT /api/me/viewers`). Todo dado é filtrado por `user_id`; `/api/admin/*`
 e `/api/viewer/*` exigem o papel com sessão do app.
 
@@ -142,7 +142,7 @@ apaga as passkeys da conta; "Esqueci a senha" mantém e avisa por e-mail.
 | Rota | | Observação |
 | --- | --- | --- |
 | `GET /api/board?day=&project=&done_offset=&done_limit=` | | `day` até 7 dias atrás (padrão hoje); `project` filtra as tarefas (`0` = sem projeto). Devolve `recurring` (com `due`, `done_today`, `note` = evidência do dia, `require_note`, agenda), `in_progress` (tarefas abertas: a fazer, em andamento, aguardando (`blocked`); com `touched_at`, o último movimento, e `blocked_reason`/`blocked_at`/`follow_up_on`), `timer`, `done` (as concluídas mais recentes: `done_limit`, padrão e máximo 200, a partir de `done_offset`), `done_total` (todas as concluídas, com o mesmo filtro), `day`, `today`, `min_day`, `work_day` |
-| `GET /api/summary` | | `last_day` (do último dia útil até ontem), `week` (com `previous` = mesmos dias da semana passada) e `today_stats` (o dia de hoje): rotinas, tarefas concluídas, minutos, por projeto, rotinas não feitas; `review` (para o assistente): `invite` (hoje é o último dia útil da semana e a revisão não foi feita nem dispensada), `reviewed`, `stale_days` e `stale` (aguardando há `stale_days` dias ou mais sem `follow_up_on`: `id`, `title`, `blocked_reason`, `days`) |
+| `GET /api/summary` | | `last_day` (do último dia útil até ontem), `week` (com `previous` = mesmos dias da semana passada) e `today_stats` (o dia de hoje): rotinas, tarefas concluídas, minutos, por projeto, rotinas não feitas; `review` (para o assistente): `invite` (hoje é o último dia útil da semana e a revisão não foi feita nem dispensada), `reviewed`, `stale_days` e `stale` (aguardando há `stale_days` dias ou mais sem `follow_up_on`: `id`, `title`, `blocked_reason`, `days`); só para quem tem o papel de atribuidor, `assigned_news` (`null` sem novidade, ou `{since, done, returned}`: das que atribuiu, quantas foram concluídas e quantas devolvidas — ainda sem decisão — desde o último aviso visto; na primeira vez, os últimos 7 dias) |
 | `GET /api/review/week` | | revisão da semana atual (domingo a sábado): `done` (concluídas na semana, com `resolution`), `open` e `waiting` (abertas e aguardando, com `waiting_days` e `follow_up_on`), `suggestions` (até 3 ids para a próxima semana, na ordem do Hoje), `review_day` (último dia útil da semana) e `is_review_day`, `done_at`/`dismissed_at` (revisão feita / convite dispensado), `stale_days` e `stale` |
 | `POST /api/review/week/done` | W | `{next: [até 3 ids]}` (opcional, as prioridades da próxima semana) — registra a revisão (o assistente para de convidar) e devolve `{done_at, text}`: o texto da semana pronto para copiar |
 | `POST /api/review/week/dismiss` | W | "Agora não" no convite do assistente: não volta nesta semana |
@@ -275,7 +275,7 @@ projeto principal vem em `project_icon` (nulo sem projeto) e o de cada extra em 
 `note.create`, `time.create`, `recurring.toggle`, `project.update`, `undo`...); `external_ref` vem quando o item tem um.
 Exclusão é uma **lápide** (`*.delete`, o id do item que sumiu). Tarefa atribuída: `worklog.assign` = chegou
 (criação); `worklog.assign_update` = quem atribuiu mudou título, descrição, prazo ou prioridade (trate como `worklog.update`);
-cancelamento por quem atribuiu = `worklog.delete` (lápide comum). Registros antigos podem trazer
+cancelamento por quem atribuiu ou devolução por quem recebeu = `worklog.delete` (lápide comum). Registros antigos podem trazer
 `worklog.assign_cancel`, que também é exclusão. Para buscar o estado atual, leia o item pela
 rota dele (`GET /api/worklog/{entity_id}`). Guarde o último `id` e peça `after=<ele>` de novo; lista vazia =
 em dia. `after=0` começa do mais velho guardado. O histórico guarda 180 dias: um cursor mais velho que isso
@@ -371,7 +371,7 @@ Vale para todas as rotas abaixo, para as fotos e para a foto de perfil.
 
 | Rota | | Observação |
 | --- | --- | --- |
-| `GET /team?month=AAAA-MM` | | o painel da Equipe (padrão: o mês corrente, até hoje), tudo SOMADO de quem pode ser visto e está com a conta em uso: `month {recurring_done, recurring_total, pontual_done, minutes, now}` (a soma do PDF/Meu mês de cada pessoa; as horas são as do CSV do mesmo período), `trend` (até 6 meses da equipe, terminando no escolhido), `waiting`/`open` (agora), `attention` (até 6: `kind` `assigned` = atribuída por você e aguardando ou a fazer sem nada registrado há 5 dias, `waiting` = aguardando há mais tempo, `due` = prazo até 7 dias ou já passado; com `task_id`, `user_id`, `name`, `days`), `projects` (tempo por nome de projeto), `people` (ordem alfabética: `open`, `waiting`, `last_activity`, `avatar`), `people_count`, `hidden_count` (contas com registro que não compartilham, sem nomes; você não conta), `months` (para o seletor) e `can_assign`. Sem média, tendência ou ranking por pessoa |
+| `GET /team?month=AAAA-MM` | | o painel da Equipe (padrão: o mês corrente, até hoje), tudo SOMADO de quem pode ser visto e está com a conta em uso: `month {recurring_done, recurring_total, pontual_done, minutes, now}` (a soma do PDF/Meu mês de cada pessoa; as horas são as do CSV do mesmo período), `trend` (até 6 meses da equipe, terminando no escolhido), `waiting`/`open` (agora), `attention` (até 6: `kind` `returned` = atribuída por você e devolvida, ainda sem decisão — vem com `reason` e entra mesmo de quem não compartilha, porque está na sua lista de atribuídas —, `assigned` = atribuída por você e aguardando ou a fazer sem nada registrado há 5 dias, `waiting` = aguardando há mais tempo, `due` = prazo até 7 dias ou já passado; com `task_id`, `user_id`, `name`, `days`), `projects` (tempo por nome de projeto), `people` (ordem alfabética: `open`, `waiting`, `last_activity`, `avatar`), `people_count`, `hidden_count` (contas com registro que não compartilham, sem nomes; você não conta), `months` (para o seletor) e `can_assign`. Sem média, tendência ou ranking por pessoa |
 | `GET /users` | | contas com registro próprio (papel `user`) visíveis (aceite ou "Visível para quem gerencia") e com a conta em uso |
 | `GET /users/{id}/board` · `/dashboard` · `/projects` · `/reports/export` | | visão só leitura da pessoa; sem o aceite, 404. No `/dashboard?month=`, o `overview` vem sem `behind`, `trend`, `average` e `compare` (sem placar nem comparação) |
 | `GET /export/apontamentos.csv?start=&end=` | | horas de quem aceitou, com coluna `usuario`, do período (`AAAA-MM-DD`; padrão: o mês corrente; até 1 ano) |
@@ -381,10 +381,20 @@ Vale para todas as rotas abaixo, para as fotos e para a foto de perfil.
 | Rota | | Observação |
 | --- | --- | --- |
 | `GET /people` | | admin (app) ou atribuidor: contas com registro e se aceitam (`accepts`, desde quando); conta com acesso bloqueado vem com `blocked: true` e `accepts: false` (não recebe atribuição: 404). Foto (`avatar`) só de quem aceita, salvo para o admin |
-| `POST /` | W | atribuidor: `{user_id, title, description?, due_date?, priority?, ticket?, after_hours?}` → a tarefa nasce na conta de quem aceitou, com e-mail; não a si mesmo |
-| `GET /sent` | | atribuidor: tarefas que atribuiu, com status atual, `editable` (ainda dá para alterar) e `cancelable` (ainda dá para cancelar); as que saíram da conta de quem recebeu nos últimos 60 dias vêm com `status: "removed"` e `ended: {kind: deleted\|canceled\|removed, at}` |
+| `POST /` | W | atribuidor: `{user_id, title, description?, due_date?, priority?, ticket?, after_hours?, from_return?}` → a tarefa nasce na conta de quem aceitou, com e-mail; não a si mesmo. `from_return` = id de uma tarefa sua que foi devolvida e ainda espera decisão (atribuir de novo, à mesma pessoa ou a outra; já resolvida → 409) |
+| `GET /sent` | | atribuidor: tarefas que atribuiu, com status atual, `editable` (ainda dá para alterar) e `cancelable` (ainda dá para cancelar); as que saíram da conta de quem recebeu nos últimos 60 dias vêm com `status: "removed"` e `ended: {kind: deleted\|canceled\|returned\|removed, at}`; devolvida: também `reason`, `resolved` (`null`, `{kind: "closed", at}` ou `{kind: "reassigned", at, to}`) e `prefill` (título, descrição, prazo, prioridade, chamado e plantão como saiu, para atribuir de novo) |
+| `POST /{id}/close` | W | atribuidor: encerra uma devolvida sem atribuir de novo (sai de "Precisa de atenção"; em `/sent`, `resolved.kind = "closed"`). Sem devolução em aberto com esse id → 404 |
+| `POST /news/seen` | W | atribuidor: o aviso do Hoje (`assigned_news`) foi visto; o próximo conta a partir de agora |
 | `PATCH /{id}` | W | atribuidor que mandou: `{title?, description?, due_date?, priority?}` (`description` até 300, com quebras de linha; `null` tira) enquanto a tarefa está `todo` e sem tempo, anotação, checklist, foto ou cronômetro (senão 409). Só o que muda de fato (nada diferente → 400); campo que quem recebeu já mudou → 409 e nada muda. E-mail para quem recebeu, que pode desfazer pelo histórico |
 | `POST /{id}/cancel` | W | idem, e só se quem recebeu não mudou nada na tarefa (senão 409): ela sai da conta de quem recebeu (e-mail avisando; no histórico/feed dela, `worklog.delete`, desfazível) e fica em `/sent` como cancelada, com o título mais recente |
+
+**Devolver (quem recebeu)** — `POST /api/worklog/{id}/return` `{reason}` (W; motivo de 3 a 120 caracteres):
+só numa tarefa que outra pessoa atribuiu a você e que não está concluída (senão 400/409). Ela sai da sua conta como
+uma exclusão (no seu histórico/feed, `worklog.delete` com o motivo; o desfazer devolve tudo, com anotações, checklist e
+tempo, enquanto quem atribuiu não decidir — depois, 409) e ninguém fica com ela até quem atribuiu decidir. Quem atribuiu
+recebe e-mail (com SMTP) e push (o mesmo aviso "Tarefas atribuídas"), ganha `assign.returned` no próprio histórico
+(e nos webhooks, com `data: {title, to, to_id, reason}`; `to` é quem devolveu) e vê a linha "devolvida" em `/sent` e
+em "Precisa de atenção" até atribuir de novo (`from_return`) ou encerrar (`/close`). Devolve `{ok, to}`.
 
 ## Operação
 
@@ -404,7 +414,7 @@ Escrita (chave `write`): `create_task` (com `minutes` = tempo gasto, já apontad
 `add_note`, `add_checklist_item`, `set_checklist_item`, `log_time`, `start_timer` (`at` = hora em que começou), `stop_timer` (`at` = hora em que parou; os dois em HH:MM, "9h" ou data e hora, até 24 h atrás),
 `create_from_template`, `set_recurring` (`recurring_id`, `note` = evidência; `paused_until` = pausa até a data, `null` = retoma; com `paused_until` só marca se vier `done: true` explícito — `note` sozinha não marca nem é gravada), `create_recurring` (`label`, `freq` — inclui `after`, N dias depois da última vez —, `weekdays` em nomes seg/ter..., `month_day`, `interval_days`, `remind_at`, `require_note`, `paused_until`; nome repetido devolve a existente), `apply_routine_pack` (`pack`, `items` = as chaves escolhidas, ausente = todas; `project`, padrão `true`: cria o projeto da área com ícone ou reaproveita o de mesmo nome; rotina de mesmo nome não se repete), `update_recurring` (`recurring_id` e só o que muda: `label`, `freq` com o parâmetro, `remind_at`, `null` tira, `require_note`; usa o `PATCH /api/recurring/{id}`), `undo` (só ações da própria chave; `get_history` marca `[pode desfazer]` só nelas).
 Projetos e objetivos: `create_project` / `create_objective` (nome ou título repetido, sem diferenciar maiúsculas e acentos, ou `external_ref` repetido devolvem o existente; `position` 1 = primeiro), `update_project` (`archived` em vez de excluir; `icon` de uma lista fixa, enum no esquema, em `create_project` também), `update_objective` (com `position`), `reorder_objectives` (a lista completa; a ordem anterior vai pro histórico, com desfazer). O status do objetivo é automático (pelas tarefas). Pelo MCP a IA não exclui nada (tarefas, rotinas, projetos, objetivos). A mesma chave `write`, porém, vale para a API REST, que exclui (com desfazer no Histórico): uma IA com terminal (Claude Code, Gemini CLI) consegue chamá-la. Para quem só quer consultas, use uma chave `read`.
-Só com o papel de atribuidor: `list_assignable`, `list_assigned` e `assign_task` (`to` = U<id>, e-mail ou nome).
+Só com o papel de atribuidor: `list_assignable`, `list_assigned` (as devolvidas aparecem com o motivo entre « », texto de quem devolveu) e `assign_task` (`to` = U<id>, e-mail ou nome). Devolver uma tarefa não tem ferramenta: pelo MCP a IA não tira tarefas da conta (é como excluir); a pessoa devolve pelo app ou pela API.
 
 Páginas no MCP: `list_tasks`, `search` e `get_history` aceitam `offset` (pula os N primeiros; padrão 0).
 Quando há mais, a resposta termina com a linha “(… chame de novo com offset=N)”, já com o próximo valor.

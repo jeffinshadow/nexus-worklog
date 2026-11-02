@@ -8,6 +8,14 @@ cancelar o envio (engano; só se ela não mexeu em nada). Depois disso é só de
 quem recebeu. Excluída ou cancelada, a linha continua na lista com o
 que aconteceu (vem do histórico, 60 dias). Cada atribuição manda um e-mail.
 Pelo app ou por chave de API/MCP (escopo de escrita), só com o papel.
+
+Devolver (quem recebeu, POST /api/worklog/{id}/return): a tarefa sai da conta
+dela como uma exclusão (lápide worklog.delete, com o motivo; desfazível no
+Histórico) e ninguém fica com ela até quem atribuiu decidir. Quem atribuiu
+ganha "assign.returned" no próprio histórico (e-mail e push com o motivo) e vê
+a linha "devolvida" em Tarefas que atribuí e em "Precisa de atenção", até
+atribuir de novo (`from_return`, a mesma pessoa ou outra, com os campos
+ajustáveis) ou encerrar (POST /api/assign/{id}/close).
 """
 import logging
 import threading
@@ -16,12 +24,14 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from .. import audit, db, mailer, people, push
 from ..config import config
-from ..deps import require_assigner, require_assigner_csrf, require_people_list
+from ..deps import active_user_csrf, require_assigner, require_assigner_csrf, require_people_list
 from ..labels import PRIO_PT
-from ..schemas import AssignEditIn, AssignIn
+from ..schemas import AssignEditIn, AssignIn, ReturnIn
 from ..services import app_today, app_tz, default_project
 
 router = APIRouter(prefix="/api/assign", tags=["assign"])
+# Devolver é de quem recebeu (a tarefa é dela): fica junto das rotas da tarefa.
+received = APIRouter(prefix="/api/worklog", tags=["assign"])
 log = logging.getLogger("uvicorn.error")
 
 
@@ -91,6 +101,8 @@ def assign(data: AssignIn, user=Depends(require_assigner_csrf)):
         raise HTTPException(status_code=404, detail="usuário não encontrado")
     if target["accepts_assignments_at"] is None:
         raise HTTPException(status_code=403, detail="essa pessoa não aceitou receber tarefas atribuídas")
+    if data.from_return is not None and not any(r["id"] == data.from_return for r in open_returns(user["user_id"])):
+        raise HTTPException(status_code=409, detail=RESOLVED_MSG)
     row = db.query_one(
         """INSERT INTO worklog_tasks (user_id, title, description, due_date, priority, ticket, after_hours,
                                       assigned_by, assigned_at, project_id)
@@ -104,7 +116,8 @@ def assign(data: AssignIn, user=Depends(require_assigner_csrf)):
     snap = audit.worklog_snapshot(tid, target["id"])
     audit.record(user, "worklog.assign", "worklog", tid, after={**snap, "by": by_name}, user_id=target["id"])
     audit.record(user, "assign.send", "assignment", tid,
-                 after={"title": data.title, "to": to_name, "to_email": target["email"], "to_id": target["id"]})
+                 after={"title": data.title, "to": to_name, "to_email": target["email"], "to_id": target["id"],
+                        **({"from_return": data.from_return} if data.from_return is not None else {})})
     emailed = mailer.configured()
     if emailed:
         _spawn(target["email"], _assignment_mail({**snap, "due_date": data.due_date}, by_name))
@@ -129,10 +142,10 @@ def notify_assigner(task_id: int) -> None:
     from ..notify import Mail
     quem = people.profile(row["user_id"])["name"]
     m = Mail(f"Concluída: {row['title']}", f"{quem} concluiu a tarefa que você atribuiu",
-             "Ela aparece como concluída em Atribuir tarefas, no Nexus.")
+             "Ela aparece como concluída em Equipe, em Tarefas que atribuí, no Nexus.")
     m.reason = "Você recebe este e-mail porque atribuiu esta tarefa pelo Nexus (um aviso por tarefa)."
     m.settings_tab = None
-    m.link = "/#/atribuir"
+    m.link = "/#/equipe"
     m.blocks = [("Tarefa", [row["title"], f"Concluída em {row['completed_at'].astimezone(app_tz()).strftime('%d/%m/%Y %H:%M')}"])]
     _spawn(to["email"], m)
 
@@ -176,7 +189,8 @@ _STARTED = """SELECT 1 FROM time_entries WHERE task_id = {t} UNION ALL
 
 def _removed(uid: int) -> list[dict]:
     """Atribuições (histórico de quem atribuiu, 60 dias) cuja tarefa não existe
-    mais, com o que houve: excluída no histórico de quem recebeu, ou cancelada
+    mais, com o que houve: excluída no histórico de quem recebeu, cancelada ou
+    devolvida (com o motivo e, se já resolvida, atribuída de novo ou encerrada)
     no de quem atribuiu. Sem registro (desfez o recebimento, conta excluída):
     "removed" sem data."""
     rows = db.query_all(
@@ -187,28 +201,82 @@ def _removed(uid: int) -> list[dict]:
                                         AND u.action = 'assign.update' ORDER BY u.id DESC LIMIT 1),
                            a.after->>'title') AS title,
                   a.after->>'to' AS to_name,
-                  a.after->>'to_email' AS to_email, a.created_at AS assigned_at, f.action AS end_action, f.at AS ended_at
+                  a.after->>'to_email' AS to_email, a.created_at AS assigned_at, f.action AS end_action, f.at AS ended_at,
+                  f.snap AS end_snap, z.action AS res_action, z.at AS res_at, z.to_name AS res_to
              FROM audit_log a
              LEFT JOIN LATERAL (
-                  SELECT d.action, d.created_at AS at, d.id, d.before->>'title' AS title FROM audit_log d
+                  SELECT d.action, d.created_at AS at, d.id, d.before->>'title' AS title, NULL::jsonb AS snap FROM audit_log d
                    WHERE d.user_id = COALESCE((a.after->>'to_id')::bigint,
                                               (SELECT x.id FROM users x WHERE x.email = a.after->>'to_email'))
                      AND d.entity = 'worklog' AND d.entity_id = a.entity_id AND d.action = 'worklog.delete'
                   UNION ALL
-                  SELECT d.action, d.created_at, d.id, d.before->>'title' FROM audit_log d
+                  SELECT d.action, d.created_at, d.id, d.before->>'title', NULL FROM audit_log d
                    WHERE d.user_id = a.user_id AND d.entity = 'assignment' AND d.entity_id = a.entity_id
                      AND d.action = 'assign.cancel'
+                  UNION ALL  -- a devolução (gravada logo depois da lápide de quem recebeu)
+                  SELECT d.action, d.created_at, d.id, d.after->>'title', d.after FROM audit_log d
+                   WHERE d.user_id = a.user_id AND d.entity = 'assignment' AND d.entity_id = a.entity_id
+                     AND d.action = 'assign.returned'
                   ORDER BY id DESC LIMIT 1) f ON true
+             LEFT JOIN LATERAL (
+                  SELECT r.action, r.created_at AS at, r.after->>'to' AS to_name FROM audit_log r
+                   WHERE f.action = 'assign.returned' AND r.user_id = a.user_id AND r.id > f.id
+                     AND ((r.entity = 'assignment' AND r.entity_id = a.entity_id AND r.action = 'assign.close')
+                          OR (r.action = 'assign.send' AND r.after->>'from_return' = a.entity_id::text))
+                   ORDER BY r.id DESC LIMIT 1) z ON true
             WHERE a.user_id = %s AND a.action = 'assign.send' AND a.created_at > now() - interval '60 days'
               AND NOT EXISTS (SELECT 1 FROM worklog_tasks w WHERE w.id = a.entity_id)
             ORDER BY a.id DESC LIMIT 100""",
         (uid,),
     )
-    kinds = {"worklog.delete": "deleted", "assign.cancel": "canceled"}
-    return [{**r, "status": "removed", "description": None, "due_date": None, "completed_at": None, "priority": 2,
-             "blocked_reason": None, "late": False, "editable": False, "cancelable": False,
-             "ended": {"kind": kinds.get(r.pop("end_action"), "removed"), "at": r.pop("ended_at")}}
-            for r in rows]
+    kinds = {"worklog.delete": "deleted", "assign.cancel": "canceled", "assign.returned": "returned"}
+    out = []
+    for r in rows:
+        snap, kind = r.pop("end_snap") or {}, kinds.get(r.pop("end_action"), "removed")
+        res_action, res_at, res_to = r.pop("res_action"), r.pop("res_at"), r.pop("res_to")
+        ended = {"kind": kind, "at": r.pop("ended_at")}
+        if kind == "returned":
+            ended["reason"] = snap.get("reason")
+            ended["resolved"] = None if not res_action else (
+                {"kind": "closed", "at": res_at} if res_action == "assign.close"
+                else {"kind": "reassigned", "at": res_at, "to": res_to})
+            # Para "Atribuir de novo": os campos como a tarefa saiu (quem atribuiu ajusta no diálogo).
+            ended["prefill"] = {k: snap.get(k) for k in ("title", "description", "due_date", "priority", "ticket", "after_hours")}
+        out.append({**r, "status": "removed", "description": None, "due_date": None, "completed_at": None, "priority": 2,
+                    "blocked_reason": None, "late": False, "editable": False, "cancelable": False, "ended": ended})
+    return out
+
+
+RESOLVED_MSG = "essa devolução já foi resolvida (atribuída de novo ou encerrada); atualize a tela"
+
+# Devolução ainda sem decisão de quem atribuiu: a tarefa não voltou (desfazer
+# de quem recebeu), não saiu de novo da conta dela e não foi atribuída de novo
+# nem encerrada.
+_OPEN_RETURNS = """
+    SELECT a.id AS hist_id, a.entity_id AS id, a.after->>'title' AS title, a.after->>'to' AS to_name,
+           (a.after->>'to_id')::bigint AS to_id, a.after->>'reason' AS reason, a.created_at AS at
+      FROM audit_log a
+     WHERE a.user_id = %(u)s AND a.action = 'assign.returned' AND a.created_at > now() - interval '60 days'
+       AND NOT EXISTS (SELECT 1 FROM worklog_tasks w WHERE w.id = a.entity_id)
+       AND NOT EXISTS (SELECT 1 FROM audit_log d WHERE d.user_id = (a.after->>'to_id')::bigint AND d.entity = 'worklog'
+                         AND d.entity_id = a.entity_id AND d.action = 'worklog.delete' AND d.id > a.id)
+       AND NOT EXISTS (SELECT 1 FROM audit_log r WHERE r.user_id = a.user_id AND r.id > a.id
+                         AND ((r.entity = 'assignment' AND r.entity_id = a.entity_id AND r.action = 'assign.close')
+                              OR (r.action = 'assign.send' AND r.after->>'from_return' = a.entity_id::text)))"""
+
+
+def open_returns(uid: int) -> list[dict]:
+    """Devoluções que esperam quem atribuiu (a mais recente antes)."""
+    return db.query_all(_OPEN_RETURNS + " ORDER BY a.id DESC LIMIT 50", {"u": uid})
+
+
+def return_resolved(task_id: int, assigner_id: int, since_id: int) -> bool:
+    """Quem atribuiu já decidiu (atribuiu de novo ou encerrou) depois da devolução since_id?"""
+    return bool(db.query_one(
+        """SELECT 1 FROM audit_log r WHERE r.user_id = %(a)s AND r.id > %(s)s
+              AND ((r.entity = 'assignment' AND r.entity_id = %(t)s AND r.action = 'assign.close')
+                   OR (r.action = 'assign.send' AND r.after->>'from_return' = %(t)s::text)) LIMIT 1""",
+        {"a": assigner_id, "s": since_id, "t": task_id}))
 
 
 def _own_sent(task_id: int, uid: int) -> dict:
@@ -331,4 +399,109 @@ def cancel_sent(task_id: int, user=Depends(require_assigner_csrf)):
                  before={"title": row["title"], "to": people.profile(row["user_id"])["name"]})
     if mailer.configured() and not row["blocked"]:
         _spawn(row["email"], _change_mail(row["title"], by_name, "Cancelou", [row["title"], "A tarefa saiu da sua lista; não precisa fazer nada."], "/#/tarefas"))
+    return {"ok": True}
+
+@router.post("/{task_id}/close")
+def close_return(task_id: int, user=Depends(require_assigner_csrf)):
+    """Encerra uma tarefa devolvida sem atribuir de novo: sai de "Precisa de
+    atenção" e fica na lista como "devolvida · encerrada"."""
+    r = next((x for x in open_returns(user["user_id"]) if x["id"] == task_id), None)
+    if not r:
+        raise HTTPException(status_code=404, detail="não há devolução em aberto com esse número; atualize a tela")
+    audit.record(user, "assign.close", "assignment", task_id,
+                 before={"title": r["title"], "to": r["to_name"], "reason": r["reason"]})
+    return {"ok": True}
+
+
+# ------------------------------------------------------------ devolver --
+
+def _return_mail(title: str, quem: str, reason: str):
+    from ..notify import Mail  # import tardio: notify importa rotas
+    m = Mail(f"Devolvida: {title}", f"{quem} devolveu a tarefa que você atribuiu",
+             f"Ela saiu das tarefas de {quem}. Em Equipe, em Tarefas que atribuí, você atribui de novo "
+             "(à mesma pessoa ou a outra) ou encerra.")
+    m.reason = "Você recebe este e-mail porque atribuiu esta tarefa pelo Nexus."
+    m.settings_tab = None
+    m.link = "/#/equipe"
+    m.blocks = [("Tarefa", [title]), ("Motivo", [reason])]
+    return m
+
+
+def _push_return(uid: int, tid: int, title: str, quem: str, reason: str) -> None:
+    try:
+        p = push.prefs(uid)
+        if p["assigned"]:
+            push.send(uid, push._msg(f"Devolvida por {quem}", f"{title}: {reason}", "/#/equipe", f"devolvida-{tid}",
+                                     "devolvida", p["hide_content"], "Tarefa devolvida"), ttl=24 * 3600)
+    except Exception:  # noqa: BLE001 — aviso; a devolução já foi gravada
+        log.exception("push de devolução da tarefa %s falhou", tid)
+
+
+@received.post("/{task_id}/return")
+def return_task(task_id: int, data: ReturnIn, user=Depends(active_user_csrf)):
+    """Quem recebeu devolve a tarefa atribuída, com o motivo (até 120). Ela sai
+    das tarefas dela como uma exclusão (desfazível no Histórico enquanto quem
+    atribuiu não decidir) e quem atribuiu é avisado (e-mail, push, Hoje, Equipe)."""
+    uid = user["user_id"]
+    before = audit.worklog_snapshot(task_id, uid)
+    if not before:
+        raise HTTPException(status_code=404, detail="tarefa não encontrada (pode ter sido excluída); atualize a tela")
+    if not before["assigned_by"] or before["assigned_by"] == uid:
+        raise HTTPException(status_code=400, detail="só dá para devolver uma tarefa que alguém atribuiu a você")
+    if before["status"] == "done":
+        raise HTTPException(status_code=409, detail="a tarefa já está concluída; para devolver, reabra antes")
+    assigner = db.query_one("SELECT id, email, blocked_at IS NOT NULL AS blocked FROM users WHERE id = %s",
+                            (before["assigned_by"],))
+    # Anotações, checklist e tempo saem junto (como na exclusão): ficam na lápide para o desfazer.
+    before["children"] = {
+        "notes": db.query_all("SELECT id, body, actor, token_name, created_at, external_ref FROM task_notes WHERE task_id = %s", (task_id,)),
+        "checklist": db.query_all("SELECT id, label, done, position FROM task_checklist WHERE task_id = %s", (task_id,)),
+        "time": db.query_all("SELECT id, minutes, day, note, actor, token_name, created_at, external_ref, started_at, ended_at"
+                              " FROM time_entries WHERE task_id = %s", (task_id,)),
+    }
+    if not db.execute("DELETE FROM worklog_tasks WHERE id = %s AND user_id = %s AND status <> 'done'", (task_id, uid)):
+        raise HTTPException(status_code=409, detail="a tarefa mudou enquanto você devolvia; atualize a tela")
+    quem = people.profile(uid)["name"]
+    by_name = people.profile(assigner["id"])["name"] if assigner else "quem atribuiu"
+    # Lápide comum (*.delete) para o feed/webhook de quem recebeu, com o motivo.
+    audit.record(user, "worklog.delete", "worklog", task_id,
+                 before={**before, "returned_to": by_name, "return_reason": data.reason})
+    if assigner:
+        audit.record(user, "assign.returned", "assignment", task_id, user_id=assigner["id"], after={
+            **{k: before[k] for k in ("title", "description", "due_date", "priority", "ticket", "after_hours")},
+            "to": quem, "to_id": uid, "reason": data.reason})
+        if not assigner["blocked"]:
+            if mailer.configured():
+                _spawn(assigner["email"], _return_mail(before["title"], quem, data.reason))
+            threading.Thread(target=_push_return, args=(assigner["id"], task_id, before["title"], quem, data.reason),
+                             daemon=True).start()
+    return {"ok": True, "to": by_name}
+
+
+# ------------------------------------------------- aviso do Hoje (E7) --
+
+NEWS_FIRST_DAYS = 7  # sem aviso visto ainda: o que chegou nos últimos 7 dias
+
+
+def news(uid: int) -> dict | None:
+    """Das que esta pessoa atribuiu, desde o último aviso visto: quantas foram
+    concluídas e quantas devolvidas (ainda sem decisão). Só retorno, nada de
+    atraso de terceiros."""
+    row = db.query_one(
+        f"""WITH s AS (SELECT COALESCE(assign_news_seen_at, now() - make_interval(days => %(d)s)) AS since
+                         FROM users WHERE id = %(u)s)
+            SELECT s.since,
+                   (SELECT count(*)::int FROM worklog_tasks w
+                     WHERE w.assigned_by = %(u)s AND w.status = 'done' AND w.assigner_notified_at > s.since) AS done,
+                   (SELECT count(*)::int FROM ({_OPEN_RETURNS} AND a.created_at > s.since) x) AS returned
+              FROM s""", {"u": uid, "d": NEWS_FIRST_DAYS})
+    if not row or not (row["done"] or row["returned"]):
+        return None
+    return row
+
+
+@router.post("/news/seen")
+def news_seen(user=Depends(require_assigner_csrf)):
+    """O aviso do Hoje foi visto ("Entendi", "Ver" ou o X): o próximo conta daqui."""
+    db.execute("UPDATE users SET assign_news_seen_at = now() WHERE id = %s", (user["user_id"],))
     return {"ok": True}

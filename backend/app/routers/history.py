@@ -44,6 +44,8 @@ ACTION_LABELS = {
     "assign.send": "atribuiu a tarefa",
     "assign.update": "alterou a tarefa atribuída",
     "assign.cancel": "cancelou a tarefa atribuída",
+    "assign.returned": "teve devolvida a tarefa que atribuiu",
+    "assign.close": "encerrou a tarefa devolvida",
     "worklog.assign_update": "teve alterada por quem atribuiu a tarefa",
     "worklog.assign_cancel": "teve cancelada por quem atribuiu a tarefa",
     "user.block": "bloqueou o acesso",
@@ -141,6 +143,12 @@ def _label(row) -> str:
         de, para = row["before"].get("minutes"), row["after"].get("minutes")
         quanto = f"{dur(de)} → {dur(para)}" if de != para else dur(para)
         return f"{ACTION_LABELS['time.update']} “{snap.get('title', '')}” ({quanto})"
+    if row["action"] == "worklog.delete" and snap.get("return_reason"):
+        return f"devolveu a tarefa “{name}” a {snap.get('returned_to') or 'quem atribuiu'}: «{snap['return_reason']}»"
+    if row["action"] == "assign.returned":
+        return f"{snap.get('to', '')} devolveu a tarefa “{name}”: «{snap.get('reason', '')}»"
+    if row["action"] == "assign.close":
+        return f"encerrou a tarefa “{name}”, devolvida por {snap.get('to', '')}"
     if row["action"] == "worklog.delete" and snap.get("canceled_by"):
         return f"{snap['canceled_by']} cancelou a tarefa “{name}”, que tinha atribuído a você"
     if row["action"] == "worklog.assign" and snap.get("by"):
@@ -504,6 +512,12 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
     elif a == "worklog.delete":
         if audit.worklog_snapshot(eid, uid) or db.query_one("SELECT 1 FROM worklog_tasks WHERE id = %s", (eid,)):
             raise HTTPException(status_code=409, detail="a tarefa já existe")
+        # Devolvida: volta enquanto quem atribuiu não decidiu (atribuir de novo ou encerrar).
+        if before.get("return_reason") and before.get("assigned_by"):
+            from .assign import return_resolved
+            if return_resolved(eid, before["assigned_by"], history_id):
+                raise HTTPException(status_code=409, detail=(
+                    "quem atribuiu já resolveu a devolução (atribuiu de novo ou encerrou); combine direto com essa pessoa"))
         kids = before.get("children") or {}
         por_dia: dict[str, int] = {}
         for e in kids.get("time", []):
