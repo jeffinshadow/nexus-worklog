@@ -6,11 +6,15 @@ do relatório deles. O foco é ajudar cada pessoa a organizar a própria rotina.
 Multiusuário, auto-hospedado, sem frameworks JS nem passo de build.
 Prioridades: **simples > seguro > funcional > elegante**.
 
+**Versão 2.0.0** (SemVer; o número fica em `backend/app/version.py`). O que mudou em cada versão:
+[`CHANGELOG.md`](CHANGELOG.md). Para quem hospeda e administra:
+[`docs/ADMIN.md`](docs/ADMIN.md) (instalação, variáveis, e-mail e push, backup e restauração, atualização, opções do Admin).
+
 Cada pessoa vê **apenas** os próprios dados. As contas são criadas pelo
-**admin** (convite com senha temporária); não há cadastro público. Papéis
+**admin** (convite por link, ou senha temporária sem e-mail); não há cadastro público. Papéis
 acumuláveis, dados em **Admin > Contas > ⋮ > Papéis…**: **Usuário** (o próprio registro),
-**Admin** (convites, contas, papéis, configurações), **Manda tarefas** (libera a tela Equipe com
-o botão Atribuir tarefa e a lista Tarefas que atribuí: manda tarefas a quem aceitou receber) e **Vê a equipe** (libera a tela Equipe: consulta, só
+**Admin** (convites, contas, papéis, configurações; não vê o registro de ninguém), **Manda tarefas** (libera, na tela Equipe, o
+botão Atribuir tarefa e a lista Tarefas que atribuí: manda tarefas a quem aceitou receber) e **Vê a equipe** (libera a tela Equipe: consulta, só
 para leitura, o quadro, a retrospectiva, os relatórios, as horas e as fotos de
 quem **aceitou** em Configurações > Conta; contas novas começam sem o aceite, e
 os Papéis… de cada conta mostram quem liberou). O admin também tem o próprio registro;
@@ -302,7 +306,8 @@ cd nexus-worklog
      STARTTLS), `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM`, `APP_URL`
 2. `docker compose up -d --build` — o nginx fica em `127.0.0.1:${WEB_PORT}`.
 3. Entre com o admin: a troca de senha é obrigatória no primeiro acesso.
-   Depois, **Admin > Convidar pessoa** cria as contas.
+   Depois, **Admin > Contas > Convidar pessoa** cria as contas (nome e papéis já no convite). Guia completo de
+   administração, variáveis e operação: [`docs/ADMIN.md`](docs/ADMIN.md).
 
 Desenvolvimento com e-mail falso: `docker-compose.mailpit.yml` (instruções no
 próprio arquivo).
@@ -320,6 +325,7 @@ contra a homologação: veja [`tools/e2e/README.md`](tools/e2e/README.md).
 
 ## Deploy
 
+Passo a passo de instalação, atualização e **como restaurar um backup**: [`docs/ADMIN.md`](docs/ADMIN.md).
 `./deploy.sh` na VM: confere o `.env`, faz `pg_dump` verificado do banco, `git
 pull --ff-only`, rebuild e smoke test (`--install` prepara uma VM Debian/Ubuntu
 limpa). Ele grava em `estado/` (montada só leitura no backend) a data, o tamanho e
@@ -396,7 +402,9 @@ backend/app/       rotas (routers/), regras (services.py), PDF, e-mail, MCP
 backend/sql/       migrações numeradas (o modelo de dados está aqui)
 backend/tests/     suíte (pytest + Postgres real)
 web/static/        index.html, login.html, js/ (um módulo por tela), css/
-docs/API.md        referência da API e do MCP (o Swagger fica desligado)
+CHANGELOG.md       histórico de versões (SemVer; etiquetas vX.Y.Z)
+docs/ADMIN.md      guia de administração e operação (para quem hospeda)
+docs/API.md        referência da API e do MCP, com a política de compatibilidade (o Swagger fica desligado)
 docs/openapi.json  contrato da API, gerado por tools/openapi.py (o teste confere)
 ```
 
