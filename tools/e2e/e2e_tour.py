@@ -213,7 +213,9 @@ try:
     org0 = api("GET", "/admin/org")["j"]
     api("PUT", "/admin/org", {"team_visibility": "managers", "assign_receive": "all", "identity_managed": False})  # o tour é sempre obrigatório para conta nova
     nova = f"e2e.tour.{int(time.time())}@example.com"
-    r = api("POST", "/admin/users", {"email": nova, "display_name": "Pessoa E2E", "roles": ["user"]})
+    # Com equipes na instância (sql/043), Para empresas só vale para quem está em alguma: a convidada entra numa.
+    equipes = [t["id"] for t in (api("GET", "/admin/teams")["j"] or []) if not t.get("archived_at")][:1]
+    r = api("POST", "/admin/users", {"email": nova, "display_name": "Pessoa E2E", "roles": ["user"], "team_ids": equipes})
     check("convite com nome e papel", r["s"] == 201 and r["j"]["display_name"] == "Pessoa E2E")
     senha_nova = "Senha-E2E-Tour-Obrigatorio-1"
     cmd("Network.clearBrowserCookies")
