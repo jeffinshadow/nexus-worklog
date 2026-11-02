@@ -34,13 +34,14 @@ router = APIRouter(prefix="/api/viewer", tags=["viewer"])
 TeamQ = Annotated[Optional[str], Query(max_length=20, description="Seletor de equipe: id da equipe, ou none (só o master)")]
 
 
-def _ensure_user(user_id: int, viewer: dict, what: str) -> dict:
+def _ensure_user(user_id: int, viewer: dict, what: str | None) -> dict:
     row = db.query_one(f"""SELECT u.id, u.email FROM users u
                             WHERE u.id = %s AND {visible_sql('u', viewer['user_id'])} AND {active_sql('u')}""",
                        (user_id,))  # a mesma regra da lista: pendente ou bloqueada não abre por id
     if not row:
         raise HTTPException(status_code=404, detail="usuário não encontrado")
-    log_master_view(viewer, user_id, what)
+    if what:
+        log_master_view(viewer, user_id, what)
     return row
 
 
@@ -94,8 +95,10 @@ def user_report_export(
     project: int | None = Query(None),
     viewer=Depends(require_viewer),
 ):
-    target = _ensure_user(user_id, viewer, "pdf")
-    return build_pdf_response(target["email"], user_id, start, end, project)
+    target = _ensure_user(user_id, viewer, None)
+    resp = build_pdf_response(target["email"], user_id, start, end, project)
+    log_master_view(viewer, user_id, "pdf")  # só depois de o PDF sair (falha não conta como visto)
+    return resp
 
 
 @router.get("/export/apontamentos.csv")

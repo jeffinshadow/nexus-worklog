@@ -213,8 +213,7 @@ async function mountUsers(root, me) {
     return h("div", { class: "list-row" }, avatar(u, "sm"),
       h("div", { class: "t" }, u.display_name ? h("span", { class: "dot-list" }, h("span", { text: u.display_name }), h("span", { text: u.email })) : h("span", { text: u.email }),
         h("small", {}, roleNames(u.roles), ...chips),
-        teamsOn ? h("small", { class: "account-teams" + ((u.teams || []).length ? "" : " no-team"), text: (u.teams || []).length
-          ? `Equipes: ${u.teams.map((t) => t.name).join(", ")}` : "Sem equipe" }) : null,
+        teamsOn && (u.teams || []).length ? h("small", { class: "account-teams", text: `Equipes: ${u.teams.map((t) => t.name).join(", ")}` }) : null,
         h("small", { class: "account-seen", text: accessLine(u) })),
       main, more);
   }
