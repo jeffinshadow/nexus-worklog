@@ -6754,6 +6754,32 @@
         }
       }
     },
+    "/api/renewals/teams": {
+      "get": {
+        "tags": [
+          "renewals"
+        ],
+        "summary": "Team Options",
+        "description": "As equipes com que ele pode compartilhar um vencimento (vazio = o campo nem aparece).",
+        "operationId": "team_options_api_renewals_teams_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
+          }
+        }
+      }
+    },
     "/api/renewals": {
       "get": {
         "tags": [
@@ -6828,7 +6854,7 @@
           "renewals"
         ],
         "summary": "Update",
-        "description": "Editar ou renovar (nova data de vencimento).",
+        "description": "Editar ou renovar (nova data de vencimento). Outro membro da equipe só renova (expires_on).",
         "operationId": "update_api_renewals__rid__patch",
         "parameters": [
           {
@@ -11421,6 +11447,17 @@
               }
             ],
             "title": "Renew Months"
+          },
+          "team_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Id"
           }
         },
         "type": "object",
@@ -11506,6 +11543,17 @@
               }
             ],
             "title": "Renew Months"
+          },
+          "team_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Id"
           }
         },
         "type": "object",

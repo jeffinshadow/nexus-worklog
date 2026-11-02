@@ -28,12 +28,23 @@ e lotes de correção).
   quem compartilha uma equipe (app, API, MCP, CSV, PDF, painel e "Precisa de atenção"), e as opções de Para
   empresas só para quem está em alguma equipe (exceto pedido de convite e política de privacidade). Sem equipes,
   nada muda. `GET /api/me/visibility` passa a trazer só quem está no escopo, com `sees`/`assigns`.
+- **Vencimentos compartilhados com uma equipe** (sql/044, `renewals.team_id`, opcional): todo membro vê, renova e
+  vira tarefa na própria conta; só quem criou edita ou exclui; o aviso vai a cada membro uma vez; sem equipe nada
+  muda. `GET /api/renewals` ganha `team_id`, `team_name`, `mine`, `owner_name`; novo `GET /api/renewals/teams`;
+  `list_renewals` (MCP) inclui os da equipe, só leitura.
 - **MCP**: as instruções que o servidor entrega ao conectar variam com o escopo da chave (só registrar
   × completa), trazem a versão do Nexus, e sessão antiga com ferramenta ou argumento velho recebe erro
   em português ("use /mcp, reconectar"); `listChanged` ligado em ferramentas e comandos.
 
 ### Simplificações
 Menos opções e menos avisos; o que saiu continua aceito pela API até a 3.0 (marcado como obsoleto).
+- **Sem sinal sem botão**: "Deixar pronto para sem sinal" deixou de ser botão (Hoje, Mais e Ajuda). O app guarda
+  sozinho o detalhe das tarefas abertas ao abrir com rede e, no máximo, a cada 30 min (até 60, com a checagem de
+  5 MB livres); a barra de sem conexão continua dizendo "N tarefas guardadas às HH:MM".
+- **Configurações > Avisos**: sai o painel "Últimos envios"; fica uma linha de alerta só quando o último e-mail
+  falhou (o detalhe segue em Saúde do Nexus; `GET /api/notifications` continua trazendo `recent`).
+- **Configurações > IA e API**: "Receitas prontas" vira uma linha com o link para a página da API;
+  "O que a IA pode fazer" encolhe para três linhas e o link da documentação.
 - **Assistente**: sem a frase "resumo do dia" (só avisos acionáveis) e **sem aviso de tarefa parada**. Ao
   marcar **Aguardando**, o "Dia para cobrar" já vem sugerido para 5 dias úteis à frente (editável, pode limpar).
   Um só interruptor em Configurações; os demais valores são fixos.
@@ -89,7 +100,7 @@ Menos opções e menos avisos; o que saiu continua aceito pela API até a 3.0 (m
 - Limpeza de código morto (CSS, JS e Python) sem mudar comportamento; 544 testes.
 
 ### Banco
-- Migrações `sql/027` a `sql/043`, todas aditivas e idempotentes (nada a fazer além do `./deploy.sh`).
+- Migrações `sql/027` a `sql/044`, todas aditivas e idempotentes (nada a fazer além do `./deploy.sh`).
 
 ## 1.12.1 — 2026-11-01
 Relatórios: só um período marcado quando dois coincidem.

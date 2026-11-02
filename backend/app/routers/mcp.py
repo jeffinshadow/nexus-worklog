@@ -1027,7 +1027,10 @@ def t_list_renewals(ctx, args):
     out = []
     for r in rows:
         quando = "VENCIDO" if r["days_left"] < 0 else ("vence hoje" if r["days_left"] == 0 else f"vence em {r['days_left']} d")
-        out.append(f"V{r['id']} {r['label']} — {r['expires_on'].isoformat()} ({quando})" + (" [AVISO]" if r["warning"] else ""))
+        equipe = ""
+        if r["team_name"]:
+            equipe = f" [equipe {r['team_name']}" + ("" if r["mine"] else f", de {r['owner_name']}; só leitura aqui") + "]"
+        out.append(f"V{r['id']} {r['label']} — {r['expires_on'].isoformat()} ({quando})" + (" [AVISO]" if r["warning"] else "") + equipe)
     return "\n".join(out) or "(nenhum vencimento cadastrado)"
 
 
@@ -1399,7 +1402,7 @@ TOOLS = {
                              {"type": "object", "required": ["template"], "properties": {
                                  "template": {"type": "string", "description": "Nome do modelo ou M<id> (veja list_templates)"}}}),
     "list_renewals": (t_list_renewals, False,
-                      "Vencimentos cadastrados (certificados, licenças, domínios, garantias), do mais próximo ao mais longe; [AVISO] = dentro da antecedência.",
+                      "Vencimentos cadastrados (certificados, licenças, domínios, garantias), do mais próximo ao mais longe; [AVISO] = dentro da antecedência. Inclui os compartilhados com as equipes dele ([equipe X]; os de outra pessoa são só leitura).",
                       {"type": "object", "properties": {}}),
     "find_similar": (t_find_similar, False,
                      "Já resolvi isso antes? Tarefas concluídas com título parecido e como foram resolvidas. "

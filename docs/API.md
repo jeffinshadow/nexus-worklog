@@ -400,12 +400,18 @@ O Nexus avisa outro sistema a cada mudança: o mesmo evento do feed, empurrado p
 
 | Rota | | Corpo / observação |
 | --- | --- | --- |
-| `GET /` | | lista do que vence primeiro ao último, com `days_left`, `warn_from` (início do aviso; em dia não útil, antecipa para o último dia útil) e `warning` |
-| `POST /` | W | `{label, expires_on, warn_days? (padrão 30), project_id?, note?, renew_months?}` — `renew_months` = repete a cada N meses (o app sugere a próxima data ao renovar) |
-| `PATCH /{id}` | W | campos a mudar; nova `expires_on` = renovação (no histórico como "renovou"; desfaz) |
-| `DELETE /{id}` | W | desfaz pelo histórico |
+| `GET /` | | lista do que vence primeiro ao último, com `days_left`, `warn_from` (início do aviso; em dia não útil, antecipa para o último dia útil) e `warning`; inclui os compartilhados com as equipes da pessoa (sql/044): `team_id`, `team_name`, `mine` (falso = criado por outro membro; vem sem `project_id` e com `owner_name`) |
+| `GET /teams` | | `{teams: [{id, name}]}` — as equipes com que a pessoa pode compartilhar (as ativas dela; o admin master, todas). Vazio = o app esconde o campo |
+| `POST /` | W | `{label, expires_on, warn_days? (padrão 30), project_id?, note?, renew_months?, team_id?}` — `renew_months` = repete a cada N meses (o app sugere a próxima data ao renovar); `team_id` = compartilha com UMA equipe dele (senão 400) |
+| `PATCH /{id}` | W | campos a mudar; nova `expires_on` = renovação (no histórico como "renovou"; desfaz). Num vencimento da equipe, outro membro só pode mandar `expires_on` (qualquer outro campo = 403) e o histórico de quem criou registra o nome de quem renovou; quem criou (ou um admin que o enxerga) muda tudo, inclusive `team_id` (`null` = deixa de compartilhar) |
+| `DELETE /{id}` | W | só quem criou (ou um admin que o enxerga; outro membro = 403); desfaz pelo histórico |
 
-Aparecem no Hoje (só os no aviso), no e-mail da manhã e no calendário (dia de vencer e dia de começar a avisar). MCP: `list_renewals`.
+**Vencimento compartilhado com uma equipe (sql/044):** todo membro atual da equipe o vê (Vencimentos, Hoje, e-mail da manhã,
+calendário, `renewal.warning`: o aviso vai a cada membro **uma vez**), pode renovar e virar tarefa na própria conta
+(`POST /api/worklog` com `external_ref` `renewal:<id>:<data>`). Quem sai da equipe (ou a equipe é arquivada ou excluída)
+deixa de ver; quem não é membro recebe 404 em qualquer id. Sem equipe (o padrão) nada muda.
+
+Aparecem no Hoje (só os no aviso), no e-mail da manhã e no calendário (dia de vencer e dia de começar a avisar). MCP: `list_renewals` (inclui os da equipe, marcados `[equipe X, de Fulano; só leitura aqui]` quando são de outra pessoa; não há ferramenta que altere vencimentos).
 
 ## Admin — `/api/admin` (só pelo app, papel admin)
 

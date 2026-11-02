@@ -126,7 +126,9 @@ mudança fica no histórico do admin. Toda conta nova faz o tour guiado no prime
   `^15h`, `^amanhã 8h` = lembrete com hora); **colar uma lista** (uma por linha, do bloco de notas, WhatsApp ou planilha)
   vira várias tarefas, com prévia e um Desfazer para o lote; o detalhe da tarefa copia um resumo pronto para o chamado ou o cliente.
 - **Vencimentos e base de conhecimento** — certificados, licenças, domínios e
-  garantias avisam com antecedência (Hoje, e-mail da manhã, calendário); ao
+  garantias avisam com antecedência (Hoje, e-mail da manhã, calendário) e podem
+  ser compartilhados com uma equipe (todos os membros veem, renovam e viram
+  tarefa na própria conta; só quem cadastrou edita); ao
   concluir, "como resolveu?" vira texto que a busca encontra — e a tarefa nova
   com título parecido já mostra "já resolvido antes".
 - **Atribuição** — quem aceita (Configurações > Conta) recebe tarefas de um
@@ -194,9 +196,10 @@ mudança fica no histórico do admin. Toda conta nova faz o tour guiado no prime
   desfazer, cota por pessoa e exportação em .zip.
 - **Sem sinal** — o app abre com as telas da última visita (avisando de que
   hora são) e guarda no aparelho o que for feito: registrar, concluir, anotar,
-  marcar rotina, fotos e o cronômetro, com a hora em que aconteceu. Antes de
-  sair, **Deixar pronto para sem sinal** (no Hoje e na Ajuda) guarda no aparelho
-  o detalhe das tarefas em aberto (checklist e anotações, até 60); uma tarefa
+  marcar rotina, fotos e o cronômetro, com a hora em que aconteceu. Com sinal, o
+  app já deixa tudo pronto sozinho (ao abrir e, no máximo, a cada 30 min, se
+  houver espaço): guarda o detalhe das tarefas em aberto (checklist e
+  anotações, até 60), e a barra de sem conexão diz de que hora; uma tarefa
   nunca aberta com sinal abre com o que havia nas listas e aceita anotação, foto
   e conclusão. Na volta da conexão, vai sozinho e na ordem, sem duplicar (nem
   as fotos); o que for recusado fica com o texto inteiro para copiar. Sair limpa

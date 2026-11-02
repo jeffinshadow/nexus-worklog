@@ -25,7 +25,8 @@ function row(r, onChange, compact = false) {
   const w = when(r);
   return h("div", { class: "list-row venc-row" + (compact ? "" : " venc-full") },
     h("div", { class: "t" }, h("span", { text: r.label }),
-      !compact && (r.note || r.project_name) ? h("small", { text: [r.project_name, r.note].filter(Boolean).join(" · ") }) : null),
+      !compact && (r.note || r.project_name) ? h("small", { text: [r.project_name, r.note].filter(Boolean).join(" · ") }) : null,
+      r.team_name ? h("small", { class: "venc-team", text: `Equipe ${r.team_name}` + (r.mine ? "" : ` · de ${r.owner_name}`) }) : null),
     h("span", { class: "chip " + w.cls, text: w.text }),
     h("button", { type: "button", class: "btn btn-ghost btn-sm", title: "Criar a tarefa de renovação (prazo = vencimento)", "aria-label": `Virar tarefa: ${r.label}`, onClick: async (ev) => {
       const btn = ev.currentTarget;
@@ -41,8 +42,8 @@ function row(r, onChange, compact = false) {
       } catch (e) { btn.disabled = false; errorToast(e); }
     } }, "Virar tarefa"),
     h("button", { type: "button", class: "btn btn-ghost btn-sm", title: "Informar a nova data de vencimento", "aria-label": `Renovei: ${r.label}`, onClick: () => openRenewal(r, onChange, true) }, "Renovei"),
-    compact ? null : h("button", { type: "button", class: "icon", title: "Editar", "aria-label": "Editar " + r.label, onClick: () => openRenewal(r, onChange) }, icon("edit")),
-    compact ? null : h("button", { type: "button", class: "icon", title: "Excluir", "aria-label": "Excluir " + r.label, onClick: async () => {
+    compact || !r.mine ? null : h("button", { type: "button", class: "icon", title: "Editar", "aria-label": "Editar " + r.label, onClick: () => openRenewal(r, onChange) }, icon("edit")),
+    compact || !r.mine ? null : h("button", { type: "button", class: "icon", title: "Excluir", "aria-label": "Excluir " + r.label, onClick: async () => {
       if (!(await confirmDialog({ title: "Excluir vencimento?", text: `“${r.label}” sai da lista. Dá para desfazer pelo histórico.`, confirm: "Excluir", danger: true }))) return;
       try {
         await api.del(`/renewals/${r.id}`);
@@ -65,12 +66,25 @@ function openRenewal(r, onChange, renew = false) {
   const note = h("input", { type: "text", maxlength: "200", value: r && r.note ? r.note : "", placeholder: "onde renovar, contrato, fornecedor (opcional)" });
   const proj = h("select", {});
   fillProjectSelect(proj, r ? r.project_id : null).catch(() => {});
+  // Equipe (opcional): só aparece quando a instância tem equipes; compartilha com todos os membros.
+  const team = h("select", {}, h("option", { value: "", text: "Só eu" }));
+  const teamField = field("Compartilhar com a equipe", team);
+  teamField.classList.add("hidden");
+  api.get("/renewals/teams").then(({ teams }) => {
+    const cur = r && r.team_id;
+    const list = teams.slice();
+    if (cur && !list.some((t) => t.id === cur)) list.push({ id: cur, name: r.team_name || "Equipe atual" });  // a de antes continua à vista
+    if (!list.length) return;
+    for (const t of list) team.append(h("option", { value: String(t.id), text: t.name }));
+    team.value = cur ? String(cur) : "";
+    teamField.classList.remove("hidden");
+  }).catch(() => {});
   const err = h("p", { class: "error-text" });
   const fields = renew
     ? [h("p", { class: "dialog-note", text: `${r.label}: qual a nova data de vencimento? A anterior era ${shortDate(r.expires_on)}.` }), field("Vence em", expires)]
     : [field("O que vence", label), h("div", { class: "field-row" }, field("Vence em", expires), field("Avisar com quantos dias", warn)),
       h("div", { class: "field-row" }, field("Projeto", proj), field("Repete a cada (meses, opcional)", months)),
-      field("Observação", note)];
+      field("Observação", note), teamField];
   const form = h("form", {}, h("h2", { text: renew ? "Renovado" : r ? "Editar vencimento" : "Novo vencimento" }), ...fields, err,
     h("div", { class: "dialog-actions" },
       h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
@@ -82,6 +96,7 @@ function openRenewal(r, onChange, renew = false) {
       label: label.value.trim(), expires_on: expires.value, warn_days: Number(warn.value) || 30,
       project_id: proj.value && proj.value !== "__new" ? Number(proj.value) : null, note: note.value.trim() || null,
       renew_months: Number(months.value) || null,
+      team_id: team.value ? Number(team.value) : null,
     };
     try {
       if (r) await api.patch(`/renewals/${r.id}`, body); else await api.post("/renewals", body);
@@ -104,7 +119,7 @@ export async function renewalsPanel(rerender) {
   const list = await api.get("/renewals");
   // A página já se chama Vencimentos: o cartão começa direto pela explicação.
   const sec = h("section", { class: "panel" },
-    h("p", { class: "help", text: "Certificados, licenças, domínios, garantias e contratos. Avisam no Hoje, no e-mail da manhã e no calendário a partir dos dias de antecedência de cada um. O Nexus não consulta nada de fora: vale a data informada aqui." }));
+    h("p", { class: "help", text: "Certificados, licenças, domínios, garantias e contratos. Avisam no Hoje, no e-mail da manhã e no calendário a partir dos dias de antecedência de cada um. O Nexus não consulta nada de fora: vale a data informada aqui. Os marcados com uma equipe aparecem para todos os membros, que podem renovar; só quem cadastrou edita ou exclui." }));
   if (!list.length) sec.append(h("p", { class: "empty", text: "Nenhum vencimento ainda. Cadastre certificados, licenças, contratos ou garantias e o Nexus avisa antes de vencer." }));
   // Em ordem de data: os vencidos e os já no aviso ficam na frente (página 1).
   const box = h("div");

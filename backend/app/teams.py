@@ -49,6 +49,18 @@ def shares_sql(a, b) -> str:
             f" WHERE ts1.user_id = {_x(a)} AND ts2.user_id = {_x(b)})")
 
 
+_TCOL = re.compile(r"^[a-z_][a-z0-9_]*\.team_id$")
+
+
+def member_of_sql(who, team_col: str) -> str:
+    """`who` é membro de uma equipe ATIVA cujo id está na coluna `team_col`
+    ("alias.team_id"): quem vê um item compartilhado com a equipe (Vencimentos)."""
+    if not _TCOL.match(team_col):
+        raise ValueError(f"coluna inválida: {team_col!r}")
+    return (f"EXISTS (SELECT 1 FROM team_members tc JOIN teams ttc ON ttc.id = tc.team_id AND ttc.archived_at IS NULL"
+            f" WHERE tc.team_id = {team_col} AND tc.user_id = {_x(who)})")
+
+
 def master_sql(who, role: str) -> str:
     """`who` é o admin master E tem o papel `role` ligado (viewer/assigner)."""
     assert role in ("viewer", "assigner")
@@ -106,6 +118,23 @@ def of_user(user_id: int, archived: bool = False) -> list[dict]:
               JOIN team_members m ON m.team_id = t.id
              WHERE m.user_id = %s {'' if archived else 'AND t.archived_at IS NULL'}
              ORDER BY lower(t.name)""", (user_id,))
+
+
+def choosable(user_id: int) -> list[dict]:
+    """Equipes com que a pessoa pode compartilhar um item (Vencimentos): as
+    ativas dela; o admin master, todas as ativas."""
+    if is_master(user_id):
+        return db.query_all("SELECT id, name FROM teams WHERE archived_at IS NULL ORDER BY lower(name)")
+    return [{"id": t["id"], "name": t["name"]} for t in of_user(user_id)]
+
+
+def is_member(user_id: int, team_id) -> bool:
+    """A pessoa está nessa equipe (ativa)?"""
+    if team_id is None:
+        return False
+    return bool(db.query_one(
+        """SELECT 1 FROM team_members m JOIN teams t ON t.id = m.team_id AND t.archived_at IS NULL
+            WHERE m.team_id = %s AND m.user_id = %s""", (team_id, user_id)))
 
 
 def joined_at(user_id: int):
