@@ -1798,3 +1798,12 @@ input:disabled { cursor: not-allowed; }
 @media (max-width: 560px) { .admin-filters.has-teams .admin-role { flex: 1 1 calc(50% - 5px); } }
 
 .team-pick-line[hidden] { display: none; }
+
+/* Áreas de toque de 44 px: botões pequenos de Configurações (também no desktop) e o
+   "Apontar" do painel da tarefa no celular. Regras pontuais; .btn-sm segue igual nas outras telas. */
+.settings-index a { min-height: 44px; }
+.settings-grid .btn-sm, .settings-danger .btn-sm { min-height: 44px; height: auto; }
+@media (max-width: 860px) {
+  .time-form .btn { height: 44px; }
+  .time-form input { height: 44px; }
+}
