@@ -8,7 +8,7 @@ import { avatar } from "./profile.js";
 const ROLES = [
   ["user", "Usuário", "tem o próprio registro (Hoje, Tarefas, Rotinas) e pode receber tarefas"],
   ["admin", "Admin", "convites, contas, papéis e configurações gerais"],
-  ["assigner", "Manda tarefas", "libera a tela Atribuir: manda tarefas para quem aceitou receber"],
+  ["assigner", "Manda tarefas", "libera Atribuir na tela Equipe: manda tarefas para quem aceitou receber"],
   ["viewer", "Vê a equipe", "libera a tela Equipe: vê, sem editar, o registro (quadro, números, PDF, horas e fotos) de quem permitir (cada pessoa libera em Configurações > Conta)"],
 ];
 

@@ -143,13 +143,21 @@ def _team_first_day(uids: list[int]) -> date:
 
 
 def _attention(uids: list[int], viewer_id: int, names: dict[int, str]) -> list[dict]:
-    """O que destrava trabalho, agora: tarefas que EU atribuí e estão
-    aguardando ou paradas (a fazer, sem nada registrado há ASSIGNED_STALE
-    dias), o que aguarda há mais tempo e os vencimentos próximos. Até
-    ATTENTION_MAX, alternando os três tipos (cada um aparece)."""
-    if not uids:
-        return []
+    """O que destrava trabalho, agora: tarefas que EU atribuí e foram
+    devolvidas (até eu decidir), estão aguardando ou paradas (a fazer, sem nada
+    registrado há ASSIGNED_STALE dias), o que aguarda há mais tempo e os
+    vencimentos próximos. Até ATTENTION_MAX, alternando os tipos (cada um
+    aparece). As devolvidas são minhas (estão na minha lista de atribuídas):
+    entram mesmo de quem não compartilha o dia a dia."""
+    from .assign import open_returns
     today = app_today()
+    tz = app_tz()
+    returned = [{"kind": "returned", "task_id": r["id"], "title": r["title"], "user_id": r["to_id"],
+                 "name": r["to_name"], "status": "returned", "due_date": None, "blocked_reason": None,
+                 "follow_up_on": None, "reason": r["reason"],
+                 "days": (today - r["at"].astimezone(tz).date()).days} for r in open_returns(viewer_id)]
+    if not uids:
+        return returned[:ATTENTION_MAX]
     rows = db.query_all(
         """SELECT w.id, w.user_id, w.title, w.status, w.due_date, w.blocked_at, w.blocked_reason, w.follow_up_on,
                   w.assigned_at, (w.assigned_by IS NOT DISTINCT FROM %(me)s) AS mine,
@@ -163,7 +171,6 @@ def _attention(uids: list[int], viewer_id: int, names: dict[int, str]) -> list[d
                    OR (w.assigned_by = %(me)s AND w.status = 'todo'
                        AND w.assigned_at < now() - make_interval(days => %(stale)s)))""",
         {"me": viewer_id, "u": uids, "soon": today + timedelta(days=DUE_SOON_DAYS), "stale": ASSIGNED_STALE})
-    tz = app_tz()
     # Dias desde ts (None: sem a data, como aguardando antes da sql/012; a tela não diz "há quanto").
     since = lambda ts: (today - ts.astimezone(tz).date()).days if ts else None  # noqa: E731
 
@@ -182,7 +189,7 @@ def _attention(uids: list[int], viewer_id: int, names: dict[int, str]) -> list[d
     due = sorted((item(r, "due", (r["due_date"] - today).days) for r in rows
                   if r["due_date"] and r["due_date"] <= today + timedelta(days=DUE_SOON_DAYS)),
                  key=lambda x: (x["due_date"], x["task_id"]))
-    out, seen, groups = [], set(), [mine, waiting, due]
+    out, seen, groups = [], set(), [returned, mine, waiting, due]
     while len(out) < ATTENTION_MAX and any(groups):
         for g in groups:
             while g and g[0]["task_id"] in seen:
@@ -191,7 +198,7 @@ def _attention(uids: list[int], viewer_id: int, names: dict[int, str]) -> list[d
                 x = g.pop(0)
                 seen.add(x["task_id"])
                 out.append(x)
-    order = {"assigned": 0, "waiting": 1, "due": 2}
+    order = {"returned": 0, "assigned": 1, "waiting": 2, "due": 3}
     return sorted(out, key=lambda x: order[x["kind"]])  # estável: dentro do tipo, a ordem da escolha
 
 

@@ -956,6 +956,19 @@ def t_list_assigned(ctx, args):
     rows = _call(assign_routes.sent, user=ctx)
     linhas = []
     for r in rows:
+        end = r.get("ended") or {}
+        if end.get("kind") == "returned":
+            # O motivo é texto de quem devolveu: entre « », como o de tarefas atribuídas.
+            motivo = (end.get("reason") or "").replace("«", '"').replace("»", '"')
+            res = end.get("resolved") or {}
+            fim = (f"; atribuída de novo a {res.get('to')}" if res.get("kind") == "reassigned"
+                   else "; encerrada" if res.get("kind") == "closed" else "; espera você atribuir de novo ou encerrar")
+            linhas.append(f"#{r['id']} {r['title']} → {r['to_name']} [devolvida: «{motivo}»{fim}]")
+            continue
+        if end:
+            linhas.append(f"#{r['id']} {r['title']} → {r['to_name']} "
+                          f"[{'cancelada por você' if end.get('kind') == 'canceled' else 'saiu da conta de quem recebeu'}]")
+            continue
         st = STATUS_PT.get(r["status"], r["status"])
         fim = f", concluída em {r['completed_at'].astimezone(services.app_tz()).date().isoformat()}" if r["completed_at"] else ""
         atraso = " (ATRASADA)" if r["late"] else ""

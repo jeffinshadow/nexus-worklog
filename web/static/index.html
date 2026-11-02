@@ -24,6 +24,7 @@
   <link rel="modulepreload" href="/js/atribuir.js">
   <link rel="modulepreload" href="/js/board.js">
   <link rel="modulepreload" href="/js/branding.js">
+  <link rel="modulepreload" href="/js/devolver.js">
   <link rel="modulepreload" href="/js/dom.js">
   <link rel="modulepreload" href="/js/equipe.js">
   <link rel="modulepreload" href="/js/fila.js">
@@ -192,8 +193,7 @@
         <a href="#/vencimentos" data-view="vencimentos" data-need="user" class="hidden"><svg class="ico"><use href="#icon-calendar"></use></svg><span>Vencimentos</span></a>
         <a href="#/mes" data-view="mes" data-need="user" class="hidden"><svg class="ico"><use href="#icon-dashboard"></use></svg><span>Meu mês</span></a>
         <a href="#/historico" data-view="historico"><svg class="ico"><use href="#icon-history"></use></svg><span>Histórico</span></a>
-        <a href="#/atribuir" data-view="atribuir" data-need="assigner" class="hidden" title="Atribuir (papel Manda tarefas)"><svg class="ico"><use href="#icon-send"></use></svg><span>Atribuir</span></a>
-        <a href="#/equipe" data-view="equipe" data-need="viewer" class="hidden" title="Equipe (papel Vê a equipe)"><svg class="ico"><use href="#icon-team"></use></svg><span>Equipe</span></a>
+        <a href="#/equipe" data-view="equipe" data-need="viewer assigner" class="hidden" title="Equipe (papéis Vê a equipe e Manda tarefas)"><svg class="ico"><use href="#icon-team"></use></svg><span>Equipe</span></a>
         <a href="#/admin" data-view="admin" data-need="admin" class="hidden"><svg class="ico"><use href="#icon-admin"></use></svg><span>Admin</span></a>
       </nav>
       <div class="sidebar-foot">
@@ -235,7 +235,6 @@
       <section id="view-admin" class="view hidden"></section>
       <section id="view-vencimentos" class="view hidden"></section>
       <section id="view-equipe" class="view hidden"></section>
-      <section id="view-atribuir" class="view hidden"></section>
       <section id="view-mais" class="view hidden"></section>
       <section id="view-busca" class="view hidden"></section>
     </main>
@@ -245,7 +244,7 @@
       <a href="#/hoje" data-view="hoje" data-need="user" class="hidden"><span class="tab-ind"><svg class="ico"><use href="#icon-today"></use></svg></span><span>Hoje</span></a>
       <a href="#/tarefas" data-view="tarefas" data-need="user" class="hidden"><span class="tab-ind"><svg class="ico"><use href="#icon-tasks"></use></svg></span><span>Tarefas</span></a>
       <a href="#/projetos" data-view="projetos" data-need="user" class="hidden"><span class="tab-ind"><svg class="ico"><use href="#icon-route"></use></svg></span><span>Projetos</span></a>
-      <a href="#/atribuir" data-view="atribuir" data-need="assigner" class="hidden" title="Atribuir (papel Manda tarefas)"><span class="tab-ind"><svg class="ico"><use href="#icon-send"></use></svg></span><span>Atribuir</span></a>
+      <a href="#/equipe" data-view="equipe" data-need="viewer assigner" class="hidden" title="Equipe"><span class="tab-ind"><svg class="ico"><use href="#icon-team"></use></svg></span><span>Equipe</span></a>
       <a href="#/mes" data-view="mes" data-need="user" class="hidden"><span class="tab-ind"><svg class="ico"><use href="#icon-dashboard"></use></svg></span><span>Meu mês</span></a>
       <a href="#/mais" data-view="mais"><span class="tab-ind"><svg class="ico"><use href="#icon-more"></use></svg></span><span>Mais</span></a>
     </nav>

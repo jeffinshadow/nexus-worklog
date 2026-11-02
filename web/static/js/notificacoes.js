@@ -110,7 +110,7 @@ const TYPES = [
   ["routine", "Rotina na hora", "No horário da rotina, com Marcar feita e Adiar 10 min; repete 10 e 30 min depois até ser marcada."],
   ["follow_up", "Cobrar hoje", "No horário da manhã (em Seu dia, abaixo), as tarefas aguardando com o dia de cobrar chegando."],
   ["deadline", "Prazos de hoje", "No horário da manhã (em Seu dia, abaixo), as atrasadas e o que vence hoje."],
-  ["assigned", "Tarefa atribuída a você", "Quando alguém manda uma tarefa pelo Nexus."],
+  ["assigned", "Tarefas atribuídas", "Quando alguém manda uma tarefa para você, ou devolve uma que você mandou."],
 ];
 // O horário da manhã e o Salvar ficam um só na aba: o painel devolve `collect()`
 // (o corpo de PUT /push/prefs, sem o horário) e o Salvar do e-mail grava os dois.

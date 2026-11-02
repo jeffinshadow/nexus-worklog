@@ -9,7 +9,6 @@ import * as history from "./history.js";
 import * as settings from "./settings.js";
 import * as admin from "./admin.js";
 import * as equipe from "./equipe.js";
-import * as atribuir from "./atribuir.js";
 import { newRenewal, renewalsPanel } from "./renewals.js";
 import * as search from "./search.js";
 import { highlight } from "./search.js";
@@ -31,7 +30,7 @@ import { modal, busy, initTooltips, initRailPeek, syncRail, calmMotion, toast, s
 
 let me = null;
 
-// need: papel exigido (user = tem o próprio registro). O backend confere de novo.
+// need: papel exigido (user = tem o próprio registro); uma lista = qualquer um deles. O backend confere de novo.
 const VIEWS = {
   hoje: { title: "Hoje", need: "user", mount: (el, ctx) => today.mount(el, ctx) },
   tarefas: { title: "Tarefas", need: "user", mount: (el, ctx) => board.mount(el, ctx) },
@@ -40,8 +39,8 @@ const VIEWS = {
   mes: { title: "Meu mês", need: "user", eyebrow: "como foi o mês", mount: (el, ctx) => mes.mount(el, ctx) },
   historico: { title: "Histórico", eyebrow: "o que mudou", mount: (el) => history.mount(el) },
   config: { title: "Configurações", mount: (el, ctx) => settings.mount(el, ctx) },
-  atribuir: { title: "Atribuir tarefas", need: "assigner", eyebrow: "para a equipe", mount: (el, ctx) => atribuir.mount(el, ctx) },
-  equipe: { title: "Equipe", need: "viewer", eyebrow: "a equipe no mês", mount: (el, ctx) => equipe.mount(el, ctx) },
+  // Equipe: o painel (quem acompanha) e Atribuir (quem manda tarefas), numa tela só.
+  equipe: { title: "Equipe", need: ["viewer", "assigner"], mount: (el, ctx) => equipe.mount(el, ctx) },
   admin: { title: "Admin", need: "admin", eyebrow: "contas e papéis", mount: (el, ctx) => admin.mount(el, ctx) },
   mais: { title: "Mais", mount: (el) => mountMore(el) },
   busca: { title: "Busca", need: "user", eyebrow: "em tudo", mount: (el, ctx) => search.mount(el, ctx) },
@@ -49,12 +48,14 @@ const VIEWS = {
 
 // Telas que viraram Meu mês: links antigos (favoritos, e-mails) continuam valendo;
 // os Relatórios chegam com a exportação aberta.
-const MOVED = { dashboard: "mes", relatorios: "mes?aba=pdf" };
+// Atribuir virou parte da Equipe (e-mails antigos levam a #/atribuir).
+const MOVED = { dashboard: "mes", relatorios: "mes?aba=pdf", atribuir: "equipe" };
 
 const has = (role) => !!me && (me.roles || []).includes(role);
-const allowed = (name) => VIEWS[name] && (!VIEWS[name].need || has(VIEWS[name].need));
+const hasAny = (need) => [].concat(need).some(has);
+const allowed = (name) => VIEWS[name] && (!VIEWS[name].need || hasAny(VIEWS[name].need));
 // Primeira tela: Hoje para quem tem registro; senão, a primeira função da conta.
-const home = () => ["hoje", "atribuir", "equipe", "admin", "historico"].find(allowed);
+const home = () => ["hoje", "equipe", "admin", "historico"].find(allowed);
 
 function setActions(...nodes) {
   const box = document.getElementById("page-actions");
@@ -82,7 +83,7 @@ async function route() {
   const wantFocus = Date.now() - navAt < 1500;
   navAt = 0;
   let name = (location.hash.replace(/^#\/?/, "") || home()).split("?")[0];
-  if (MOVED[name]) { window.history.replaceState(null, "", "#/" + MOVED[name]); name = "mes"; }
+  if (MOVED[name]) { window.history.replaceState(null, "", "#/" + MOVED[name]); name = MOVED[name].split("?")[0]; }
   if (!allowed(name)) name = home();
   const view = VIEWS[name];
 
@@ -225,8 +226,7 @@ function mountMore(el) {
   const items = [
     ["vencimentos", "calendar", "Vencimentos"],
     ["historico", "history", "Histórico"],
-    // A Busca fica sempre na barra; Atribuir vem para cá (na barra só para quem não tem registro próprio).
-    has("user") ? ["atribuir", "send", "Atribuir tarefas"] : null,
+    // A Busca fica sempre na barra; a Equipe vem para cá (na barra só para quem não tem registro próprio).
     ["equipe", "team", "Equipe"],
     ["admin", "admin", "Admin"],
     ["config", "settings", "Configurações"],
@@ -266,8 +266,8 @@ function showHelp(focus) {
         ["Projetos", "Cada projeto com os objetivos em ordem de execução e as tarefas de cada um."],
         ["Meu mês", "Como foi o mês numa frase, com o PDF do mês. Embaixo, o painel: rotinas em dia, tarefas concluídas e horas apontadas, cada um com os últimos 6 meses e uma palavra que situa o mês na sua própria média (acima, na média, abaixo — só para você ver o seu ritmo; quem acompanha a equipe não vê); o calendário do mês, com cada dia pintado pela parte das rotinas feitas (mais forte = mais feitas); o ritmo por semana; o tempo por projeto; e as rotinas que pedem atenção. Depois, o que foi entregue. Outro período, um projeto e a exportação dos dados ficam em “Outro período ou formato”."]] : []),
       ["Histórico", "Tudo o que mudou, com desfazer."],
-      ...(has("assigner") ? [["Atribuir", "Do papel “Manda tarefas”. Manda uma tarefa para quem aceitou receber. Enquanto ela está a fazer, você ainda corrige ou cancela; depois, é da pessoa."]] : []),
-      ...(has("viewer") ? [["Equipe", "Do papel “Vê a equipe”. Um painel para coordenar, não para comparar: os números da equipe somados (rotinas em dia, tarefas concluídas, horas, aguardando), o que precisa de atenção, o tempo por projeto e as pessoas em ordem alfabética. Tocar numa pessoa abre o mês e o quadro dela, só para ver. Entra só quem permitiu (cada pessoa decide em Configurações > Conta). No topo: Atribuir tarefa, Horas da equipe (CSV) e PDF."]] : []),
+      ...(has("viewer") ? [["Equipe", "Do papel “Vê a equipe”. Um painel para coordenar, não para comparar: os números da equipe somados (rotinas em dia, tarefas concluídas, horas, aguardando), o que precisa de atenção, o tempo por projeto e as pessoas em ordem alfabética. Tocar numa pessoa abre o mês e o quadro dela, só para ver. Entra só quem permitiu (cada pessoa decide em Configurações > Conta). No topo: Horas da equipe (CSV) e PDF."]] : []),
+      ...(has("assigner") ? [["Atribuir (na Equipe)", "Do papel “Manda tarefas”. “Atribuir tarefa”, no alto da tela Equipe, manda uma tarefa para quem aceitou receber. Logo abaixo ficam as Tarefas que atribuí: enquanto ela está a fazer, você ainda altera ou cancela; depois, é da pessoa. Quem recebeu pode devolver com o motivo: aí você atribui de novo (a ela ou a outra pessoa) ou encerra."]] : []),
       ...(has("admin") ? [["Admin", "Convites e pedidos de convite, contas (senha, bloquear, excluir), papéis, configurações gerais e identidade visual."]] : []),
       ["Configurações", user ? "A sua conta (dias úteis, projeto padrão, quem vê e quem manda tarefas), modelos, avisos, calendário e IA." : "A sua conta, e IA e API."],
     ])),
@@ -394,7 +394,7 @@ async function boot() {
   // Perfil ou assistente mudou (Configurações, convite do assistente): atualiza o menu e o lembrete.
   window.addEventListener("nexus:me", () => { renderWho(); configureAssistant(me); if (has("user")) startIdle(me, route); });
   // Menu: cada item aparece só para quem tem o papel (data-need).
-  for (const el of document.querySelectorAll("[data-need]")) el.classList.toggle("hidden", !has(el.dataset.need));
+  for (const el of document.querySelectorAll("[data-need]")) el.classList.toggle("hidden", !hasAny(el.dataset.need.split(" ")));
   initTooltips();
   initRailPeek();
   syncRail();
@@ -407,9 +407,9 @@ async function boot() {
     fab.classList.toggle("compact", y > lastY && y > 80);
     lastY = y;
   }, { passive: true });
-  // Barra inferior: no máximo 5 itens; a Busca fica sempre e Atribuir vai para "Mais"
-  // (fica na barra só para quem atribui sem ter registro próprio).
-  if (has("user")) document.querySelector('#tabbar [data-view="atribuir"]').classList.add("hidden");
+  // Barra inferior: no máximo 5 itens; a Busca fica sempre e a Equipe vai para "Mais"
+  // (fica na barra só para quem acompanha ou atribui sem ter registro próprio).
+  if (has("user")) document.querySelector('#tabbar [data-view="equipe"]').classList.add("hidden");
   // Celular: quando o título da tela passa por baixo da barra do topo, ela ganha a linha de baixo.
   const pageTitle = document.getElementById("page-title");
   const barH = () => document.getElementById("appbar").getBoundingClientRect().height || 56;

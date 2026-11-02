@@ -92,6 +92,9 @@ class AssignIn(BaseModel):
     priority: int = Field(default=2, ge=1, le=3)
     ticket: Optional[str] = Field(default=None, max_length=41)
     after_hours: bool = False
+    # Atribuir de novo uma tarefa que foi devolvida (o id dela): a devolução
+    # fica resolvida e sai de "Precisa de atenção".
+    from_return: Optional[int] = None
 
     @model_validator(mode="after")
     def _norm(self):
@@ -99,6 +102,18 @@ class AssignIn(BaseModel):
         self.title = self.title.strip()
         if not self.title:
             raise ValueError("título em branco")
+        return self
+
+
+class ReturnIn(BaseModel):
+    """Quem recebeu devolve a tarefa atribuída, com o porquê (vai para quem mandou)."""
+    reason: str = Field(min_length=1, max_length=120)
+
+    @model_validator(mode="after")
+    def _norm(self):
+        self.reason = " ".join(self.reason.split())
+        if len(self.reason) < 3:
+            raise ValueError("diga em poucas palavras por que está devolvendo")
         return self
 
 

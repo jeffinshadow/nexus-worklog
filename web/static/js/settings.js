@@ -17,7 +17,7 @@ const TABS = [
 const OLD_TABS = { dias: "conta", chaves: "ia" }; // links antigos
 // Os mesmos nomes do Admin (cada papel com o nome do que ele faz; a tela vem junto).
 const ROLE_SHORT = { admin: "Admin", assigner: "Manda tarefas", viewer: "Vê a equipe" };
-const ROLE_SCREEN = { admin: "tela Admin", assigner: "tela Atribuir", viewer: "tela Equipe" };
+const ROLE_SCREEN = { admin: "tela Admin", assigner: "tela Equipe", viewer: "tela Equipe" };
 
 // Dias úteis como máscara de bits, domingo = bit 0 (igual ao backend).
 const DAYS = [
@@ -790,6 +790,7 @@ const WH_EVENTS = [
   ["worklog.update", "Tarefa editada", "inclui reabrir e marcar como aguardando"],
   ["worklog.delete", "Tarefa excluída"],
   ["worklog.assign", "Tarefa recebida", "atribuída a você por alguém"],
+  ["assign.returned", "Tarefa devolvida", "uma que você atribuiu voltou, com o motivo"],
   ["note.*", "Anotações"],
   ["checklist.*", "Checklist"],
   ["time.*", "Tempo apontado"],
@@ -973,7 +974,7 @@ function assignments(me) {
     finally { cb.disabled = false; }
   });
   return [
-    h("p", { class: "help", text: "Quem tem o papel “Manda tarefas” (tela Atribuir) pode mandar tarefas para você, mas só se você permitir aqui. A tarefa recebida é sua: você edita, conclui ou exclui. Quem mandou só corrige ou cancela enquanto ela está a fazer e você não registrou nada nela." }),
+    h("p", { class: "help", text: "Quem tem o papel “Manda tarefas” (tela Equipe) pode mandar tarefas para você, mas só se você permitir aqui. A tarefa recebida é sua: você edita, conclui, exclui ou devolve com o motivo. Quem mandou só corrige ou cancela enquanto ela está a fazer e você não registrou nada nela." }),
     h("label", { class: "check-line" }, cb, h("span", { text: "Permitir que me atribuam tarefas" })),
     since];
 }

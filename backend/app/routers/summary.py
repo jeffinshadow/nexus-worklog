@@ -15,6 +15,10 @@ def summary(user=Depends(active_user)):
     # Para o assistente do Hoje: convite da revisão semanal e tarefas paradas.
     from ..review import hints
     out["review"] = hints(user["user_id"])
+    # Quem atribui: "Das que você atribuiu: 2 concluídas, 1 devolvida" desde o último aviso visto.
+    if "assigner" in (user.get("roles") or []):
+        from .assign import news
+        out["assigned_news"] = news(user["user_id"])
     return out
 
 
