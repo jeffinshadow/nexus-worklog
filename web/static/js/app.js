@@ -18,7 +18,7 @@ import { startIdle } from "./idle.js";
 import { startReminders } from "./lembretes.js";
 import { canOfferInstall, install, offerInstall, sharedTask, stashShare, takeShortcut } from "./instalar.js";
 import { offerNotifications, syncOnBoot } from "./notificacoes.js";
-import { pendingCount, prepareButton, startQueue, wipe } from "./fila.js";
+import { pendingCount, startQueue, wipe } from "./fila.js";
 import { configure as configureAssistant } from "./assistant.js";
 import { session } from "./session.js";
 import { initTimer, stopTimer, timerState } from "./timer.js";
@@ -242,8 +242,6 @@ function mountMore(el) {
       ...items.map(([v, ic, label]) => h("a", { href: "#/" + v, "data-view": v }, icon(ic), h("span", { text: label }))),
       // A revisão guiada da semana (também no convite do assistente, no último dia útil).
       has("user") ? h("button", { type: "button", class: "nav-btn", onClick: () => openReview() }, icon("check"), h("span", { text: "Revisão da semana" })) : null,
-      // Quem vai para o campo: com texto e à vista (no Hoje é só um ícone, lá embaixo).
-      has("user") ? h("button", { type: "button", class: "nav-btn", onClick: () => prepareButton().click() }, icon("download"), h("span", { text: "Deixar pronto para sem sinal" })) : null,
       h("button", { type: "button", class: "nav-btn", onClick: showHelp }, icon("help"), h("span", { text: "Ajuda" })),
       h("button", { type: "button", class: "nav-btn logout", onClick: logout }, icon("logout"), h("span", { text: "Sair" }))
     )
@@ -292,8 +290,7 @@ function showHelp(focus) {
       h("p", { class: "help-example" }, "Ex.: ", h("code", { text: "Troca do switch @Matriz #4821 — 45min" })),
       h("p", { class: "help-example" }, "Colou uma lista (uma por linha)? Vira uma tarefa por linha, com prévia antes de criar.")) : null,
     user ? sec("alert", "Sem sinal",
-      h("p", { class: "help", text: "O app abre com as telas da última visita e guarda o que for feito (registrar, concluir, anotar, rotina, fotos, cronômetro); vai sozinho quando a conexão voltar. Antes de ir para onde não há sinal, guarde o detalhe das tarefas em aberto (checklist e anotações):" }),
-      h("div", { class: "help-start" }, prepareButton())) : null,
+      h("p", { class: "help", text: "O app abre com as telas da última visita e guarda o que for feito (registrar, concluir, anotar, rotina, fotos, cronômetro); vai sozinho quando a conexão voltar. Com sinal, ele também guarda sozinho, de tempos em tempos, o detalhe das tarefas em aberto (checklist e anotações): é só abrir o app antes de sair. Sem sinal, a barra do topo diz de que hora são." })) : null,
     user && desk ? sec("key", "Atalhos de teclado", list([
       ["n", "nova tarefa", true], ["q", "registro rápido", true], ["/", "buscar", true], ["h t", "Hoje, Tarefas", true], ["r l", "Meu mês: números, relatórios", true],
       ["s", "parar o cronômetro", true], ["?", "ver todos os atalhos", true],
@@ -547,7 +544,7 @@ async function boot() {
   syncOnBoot();
   // Admin: pedidos de convite abertos viram um número no item Admin do menu.
   if (has("admin")) api.get("/admin/invite-requests").then((l) => import("./admin.js").then((m) => m.setRequestsBadge(l.filter((r) => r.status === "pending").length))).catch(() => {});
-  startQueue(route);  // sem sinal: a fila do aparelho vai quando a conexão voltar
+  startQueue(route, { ready: has("user") });  // sem sinal: a fila do aparelho vai quando a conexão voltar
   // Primeiro acesso: o tour guiado abre sozinho (uma vez; a Ajuda reabre).
   if (has("user") && !me.tour_done_at) setTimeout(() => startTour(me), 700);
   // Avisos únicos (visibilidade, receber tarefas, papéis): um só diálogo, "O que mudou para você".

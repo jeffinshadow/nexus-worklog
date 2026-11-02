@@ -14,7 +14,6 @@ import { todayCard } from "./assistant.js";
 import { timerButton } from "./timer.js";
 import { todayRenewals } from "./renewals.js";
 import { packButton } from "./pacotes.js";
-import { prepareButton } from "./fila.js";
 import { markWithSteps } from "./passos.js";
 import { pickFirst, firstLabel } from "./primeiro.js";
 
@@ -229,8 +228,7 @@ export async function mount(root, ctx, opts = {}) {
     h("div", { class: "panel-head" }, h("h2", { text: "Em aberto" }),
       h("span", { class: "count" + (late.length || blocked.length ? " warn" : ""), text: [String(open.length),
         late.length ? `${late.length} atrasada${late.length > 1 ? "s" : ""}` : "",
-        blocked.length ? `${blocked.length} aguardando` : ""].filter(Boolean).join(" · ") }),
-      open.length ? prepareButton({ compact: true }) : null),
+        blocked.length ? `${blocked.length} aguardando` : ""].filter(Boolean).join(" · ") })),
     h("div", { class: "quick-row" }, quick, proj),
     h("p", { class: "quick-hint" }, "Enter registra. Projeto, chamado e prazo no próprio texto: ",
       h("button", { type: "button", class: "link-btn", text: "ver marcadores", onClick: () => window.dispatchEvent(new CustomEvent("nexus:help", { detail: "marcadores" })) })), hint);

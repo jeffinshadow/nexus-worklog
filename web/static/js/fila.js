@@ -264,66 +264,47 @@ export async function overlay(path, data) {
   return data;
 }
 
-// ------------------------------------------- deixar pronto para sem sinal --
-// Antes de sair para onde não há sinal: lê as telas de abrir o dia e o detalhe
-// de cada tarefa aberta (checklist, anotações), em série curta, e o service
-// worker guarda como sempre (nexus-dados). Até READY_MAX tarefas, as primeiras
-// na ordem do Hoje (atrasadas, vencem hoje, prioridade). Sair apaga tudo.
-const READY_KEY = "nexus.pronto", READY_MAX = 60;
+// ------------------------------------------------- pronto para sem sinal --
+// O app se prepara sozinho: ao abrir com rede e, no máximo, a cada 30 min, lê
+// as telas de abrir o dia e o detalhe de cada tarefa aberta (checklist,
+// anotações), em série curta, e o service worker guarda como sempre
+// (nexus-dados). Até READY_MAX tarefas, as primeiras na ordem do Hoje
+// (atrasadas, vencem hoje, prioridade). Sem 5 MB livres, não guarda. Sair apaga tudo.
+// A barra de sem conexão diz de que hora são os detalhes guardados.
+const READY_KEY = "nexus.pronto", READY_MAX = 60, READY_EVERY = 30 * 60 * 1000;
 
 // { at, n } da última vez que ficou pronto (ou null).
-export function readyInfo() {
+function readyInfo() {
   try { return JSON.parse(localStorage.getItem(READY_KEY) || "null"); } catch { return null; }
 }
 
-// onStep(feitas, total): para a tela mostrar o andamento. Devolve { n, total, at, failed }.
-export async function prepareOffline(onStep) {
-  if (!navigator.onLine) throw Object.assign(new Error("Sem conexão agora. Faça isto antes de sair, com sinal."), { status: 0 });
-  if (!sendFn) throw new Error("O app ainda está abrindo. Tente de novo.");
-  // Pede ao navegador para não apagar estes dados quando faltar espaço (quando ele deixa).
-  try { await navigator.storage?.persist?.(); } catch { /* opcional */ }
-  // 60 detalhes são poucos centenas de KB; sem nem 5 MB livres, o navegador apagaria o que já está guardado.
-  try {
-    const est = await navigator.storage?.estimate?.();
-    if (est && est.quota && est.quota - (est.usage || 0) < 5e6) throw Object.assign(new Error("Pouco espaço livre no aparelho para guardar as tarefas. Libere espaço e tente de novo."), { status: 507 });
-  } catch (e) { if (e.status === 507) throw e; /* sem estimativa: segue */ }
-  const board = await sendFn("GET", "/board");
-  await Promise.all(["/recurring/reminders", "/projects", "/timer", "/summary"].map((p) => sendFn("GET", p).catch(() => null)));
-  const open = (board.in_progress || []).slice(0, READY_MAX);
-  let n = 0, failed = 0;
-  for (const t of open) {
-    try { await sendFn("GET", `/worklog/${t.id}`); n++; } catch (e) { if (!e.status) break; failed++; }
-    if (onStep) onStep(n + failed, open.length);
-  }
-  const info = { at: new Date().toISOString(), n, total: (board.in_progress || []).length, failed };
-  try { localStorage.setItem(READY_KEY, JSON.stringify({ at: info.at, n })); } catch { /* sem armazenamento: vale a cópia do SW */ }
-  changed();
-  return info;
-}
+let lastTry = 0, preparing = false;
 
-// Botão "Deixar pronto para sem sinal": um toque guarda e avisa no fim.
-// compact: só o ícone (cabeçalho do Em aberto no Hoje); senão, com o texto (Ajuda).
-export function prepareButton({ compact = false } = {}) {
-  const label = "Deixar pronto para sem sinal";
-  const hint = "Guarda no aparelho o detalhe das tarefas em aberto (checklist e anotações), para abrir sem sinal";
-  const btn = compact
-    ? h("button", { type: "button", class: "icon", title: `${label}: ${hint.toLowerCase()}`, "aria-label": label }, icon("download"))
-    : h("button", { type: "button", class: "btn btn-ghost btn-sm" }, icon("download"), label);
-  btn.addEventListener("click", async () => {
-    const { toast, errorToast } = await import("./ui.js");
-    btn.disabled = true;
-    btn.setAttribute("aria-busy", "true");
-    try {
-      const r = await prepareOffline((done, total) => { btn.title = `Guardando ${done} de ${total}…`; });
-      const hora = hourOf(r.at);
-      const tarefas = r.n === 1 ? "1 tarefa" : `${r.n} tarefas`;
-      toast(r.total > r.n + r.failed
-        ? `Pronto às ${hora}: ${tarefas} com checklist e anotações no aparelho (as ${READY_MAX} primeiras do Hoje).`
-        : `Pronto às ${hora}: ${tarefas} com checklist e anotações no aparelho.`);
-    } catch (e) { errorToast(e, "Não deu para guardar. Tente de novo com sinal."); }
-    finally { btn.disabled = false; btn.removeAttribute("aria-busy"); if (compact) btn.title = `${label}: ${hint.toLowerCase()}`; }
-  });
-  return btn;
+// Em silêncio: sem rede, sem espaço, sem sessão ou erro, tenta de novo na próxima vez.
+async function prepareOffline() {
+  if (preparing || !sendFn || !navigator.onLine || document.hidden) return;
+  const ready = readyInfo();
+  const last = Math.max(lastTry, ready ? Date.parse(ready.at) || 0 : 0);
+  if (Date.now() - last < READY_EVERY) return;
+  preparing = true;
+  lastTry = Date.now();  // falhou (espaço, rede ruim): só tenta de novo em 30 min
+  try {
+    // 60 detalhes são poucos centenas de KB; sem nem 5 MB livres, o navegador apagaria o que já está guardado.
+    const est = await navigator.storage?.estimate?.().catch(() => null);
+    if (est && est.quota && est.quota - (est.usage || 0) < 5e6) return;
+    // Pede ao navegador para não apagar estes dados quando faltar espaço (quando ele deixa).
+    try { await navigator.storage?.persist?.(); } catch { /* opcional */ }
+    const board = await sendFn("GET", "/board");
+    await Promise.all(["/recurring/reminders", "/projects", "/timer", "/summary"].map((p) => sendFn("GET", p).catch(() => null)));
+    let n = 0;
+    for (const t of (board.in_progress || []).slice(0, READY_MAX)) {
+      if (!navigator.onLine) break;
+      try { await sendFn("GET", `/worklog/${t.id}`); n++; } catch (e) { if (!e.status) break; }
+    }
+    try { localStorage.setItem(READY_KEY, JSON.stringify({ at: new Date().toISOString(), n })); } catch { /* sem armazenamento: vale a cópia do SW */ }
+    changed();
+  } catch { /* quieto: é só adiantar o que seria lido depois */ }
+  finally { preparing = false; }
 }
 
 // --------------------------------------------------------------- barra --
@@ -340,7 +321,7 @@ async function changed() {
   if (!offline && !ops.length && !bad.length) { bar?.remove(); bar = null; document.body.classList.remove("has-offline-bar"); return; }
   document.body.classList.add("has-offline-bar");
   const hora = staleAt ? hourOf(staleAt) : null;
-  // "Deixar pronto para sem sinal" de hoje: a barra diz de que hora são os detalhes guardados.
+  // Detalhes guardados hoje: a barra diz de que hora são.
   const ready = readyInfo();
   const readyHour = ready && localDay(ready.at) === localDay(Date.now())
     ? hourOf(ready.at) : null;
@@ -406,10 +387,15 @@ export async function wipe() {
 }
 
 let started = false;
-export function startQueue(refresh) {
+export function startQueue(refresh, { ready = true } = {}) {
   onSynced = refresh;
   if (started) return;
   started = true;
+  if (ready) {  // ao abrir (depois de a tela aparecer), a cada 30 min e quando a rede volta
+    setTimeout(prepareOffline, 4000);
+    setInterval(prepareOffline, READY_EVERY);
+    addEventListener("online", () => setTimeout(prepareOffline, 3000));
+  }
   // Rede de volta: envia a fila e relê a tela mesmo sem nada na fila (a leitura
   // nova tira o "sem conexão desde…" e troca os dados guardados pelos de agora).
   // A primeira tentativa logo na volta da rede costuma falhar (a rede ainda acordando): tenta de novo em 2 s e 5 s.
