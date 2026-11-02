@@ -20,7 +20,14 @@ servidor guarda só o HMAC.
 Authorization: Bearer nxs_...
 ```
 
-- Sem cookie e sem CSRF. Escopo `write` (lê e altera) ou `read` (escrita → 403).
+- Sem cookie e sem CSRF. Escopo `write` (lê e altera), `append` (**só registrar**) ou `read` (escrita → 403).
+- `append` lê tudo e só acrescenta: `POST /api/worklog` (criar), `/{id}/notes`, `/{id}/checklist`, `/{id}/time`,
+  `/{id}/finish` (só tarefa ainda aberta), `/{id}/duplicate`, `POST /api/templates/{id}/use`,
+  `POST /api/recurring/{id}/toggle` (só marcar: `done: false` ou trocar a evidência de uma já marcada → 403) e
+  `POST /api/timer/start` · `/stop`. Qualquer outra escrita (editar, excluir, desfazer, projetos, rotinas,
+  vencimentos, atribuir...) → **403** `esta chave só registra (...)`. A lista é fechada (`APPEND_ROUTES` em
+  `backend/app/deps.py`): rota nova nasce negada. Pelo MCP, a mesma regra (ver MCP). Boa para uma IA que só
+  anota o que a pessoa contar ou para um alerta automático que abre tarefa.
 - Validade de 1 a 365 dias ou sem validade; revogável. 240 req/min por pessoa, somando as chaves (429).
 - Trocar a própria senha (ou o reset pelo admin) revoga todas as chaves e o link do calendário.
 - 429 e 503 trazem o header `Retry-After` (segundos).
@@ -269,7 +276,7 @@ projeto principal vem em `project_icon` (nulo sem projeto) e o de cada extra em 
 
 | Rota | | Observação |
 | --- | --- | --- |
-| `GET /?limit=&offset=&entity=&entity_id=` | | quem fez (app, chave, IA, admin), o quê, `can_undo` (do mais novo ao mais velho; `limit` até 200, padrão 50); `offset` pula os N mais novos e o total vem em `X-Total-Count` (os 180 dias guardados) |
+| `GET /?limit=&offset=&entity=&entity_id=&token_id=` | | quem fez (app, chave, IA, admin), o quê, `can_undo` (do mais novo ao mais velho; `limit` até 200, padrão 50); `offset` pula os N mais novos e o total vem em `X-Total-Count` (os 180 dias guardados). `token_id` = só o que aquela chave fez ("O que fez" na lista de chaves). Os avisos de agenda (`actor: "system"`) não entram aqui: só no feed e nos webhooks |
 | `GET /?after=<id>&limit=` | | **feed de mudanças**, para sincronizar: os eventos da pessoa com id maior que `after`, do mais velho ao mais novo (até 200 por vez) |
 | `POST /{id}/undo` | W | só a ação mais recente de cada item; criação de tarefa que já tem filhos → 409 |
 
@@ -285,6 +292,17 @@ em dia. `after=0` começa do mais velho guardado. O histórico guarda 180 dias: 
 (integração parada há meses) recebe **410** — recomece com `after=0`. Os eventos dos últimos 2 segundos só
 aparecem na próxima leitura (garante a ordem). Escopo `read` basta.
 
+**Avisos de agenda** (o tempo chegou, não uma mudança). Gravados pelo agendador com `actor: "system"`,
+`entity: "agenda"` e `entity_id` = o id do item; **uma vez por ocorrência** (`occurrence` no corpo), mesmo com
+o servidor reiniciando. Só para quem tem um webhook ligado ou uma chave ativa. Não são desfazíveis e não
+aparecem na tela de Histórico.
+
+| `action` | Quando | `data` (webhook) |
+| --- | --- | --- |
+| `followup.due` | uma tarefa aguardando chegou no dia de cobrar (`follow_up_on` = hoje), a partir da hora da manhã da pessoa (a das notificações, padrão 8h) | a tarefa, como em `worklog.*`, + `occurrence` = o dia de cobrar |
+| `recurring.due` | a hora de uma rotina com horário (`remind_at`) chegou e ela não foi marcada; respeita agenda e pausa | a rotina + `day` e `occurrence` = hoje |
+| `renewal.warning` | um vencimento entrou no aviso (a antecedência dele), de manhã; até 7 dias depois, se o servidor estava fora | o vencimento + `days_left` e `occurrence` = a data de vencer (renovou: nova ocorrência) |
+
 ## Webhooks — `/api/webhooks`
 
 O Nexus avisa outro sistema a cada mudança: o mesmo evento do feed, empurrado por `POST`.
@@ -299,7 +317,10 @@ O Nexus avisa outro sistema a cada mudança: o mesmo evento do feed, empurrado p
 | `DELETE /{id}` | W | |
 
 - Corpo: o item do feed + `data` (o estado do item logo depois da mudança, para tarefa, anotação, checklist,
-  tempo, rotina, projeto, objetivo e vencimento; `null` nas exclusões e nos demais). Fotos nunca vão.
+  tempo, rotina, projeto, objetivo e vencimento, e o item dos avisos de agenda; `null` nas exclusões e nos
+  demais). Fotos nunca vão.
+- Avisos de agenda (`followup.due`, `recurring.due`, `renewal.warning`, ver Histórico): entram em `*` e nos
+  grupos `followup.*`, `recurring.*` e `renewal.*`; para só eles, marque as ações exatas.
 - Headers: `X-Nexus-Event` (a `action`), `X-Nexus-Delivery` (= `id` do evento; use para ignorar repetição) e
   `X-Nexus-Signature: t=<unix>,v1=<hex>`, onde `v1 = HMAC-SHA256(segredo, "<t>.<corpo bruto>")`. Confira a
   assinatura e recuse `t` muito antigo (ex.: mais de 5 min).
@@ -327,7 +348,7 @@ O Nexus avisa outro sistema a cada mudança: o mesmo evento do feed, empurrado p
 | `POST /api/push/devices` · `DELETE /api/push/devices/{id}` | S W | `{endpoint, keys: {p256dh, auth}, label?}` — só serviços de push dos navegadores (Google, Mozilla, Apple, Microsoft); o mesmo navegador com outra conta passa para quem entrou |
 | `PUT /api/push/prefs` | S W | `{routine, follow_up, deadline, assigned, morning_hour, hide_content}` (o app grava o mesmo `morning_hour` do e-mail "Seu dia": uma hora da manhã só, um Salvar na aba Avisos) |
 | `POST /api/push/test?device_id=` | S W | notificação de teste (502 se o serviço do aparelho recusar) |
-| `GET /api/tokens` · `POST /api/tokens` · `DELETE /api/tokens/{id}` | S (W) | `{name, scope, expires_in_days}`; até 20 ativas |
+| `GET /api/tokens` · `POST /api/tokens` · `DELETE /api/tokens/{id}` | S (W) | `{name, scope: write\|append\|read, expires_in_days}`; até 20 ativas. Na lista, `actions_7d` = ações da chave nos últimos 7 dias (o Histórico filtra com `token_id`) |
 | `POST /api/tokens/{id}/renew` | S W | `{expires_in_days}` (1–365; `null` = sem validade) — nova validade, contada de agora, para uma chave não revogada (vencida volta a funcionar com o mesmo valor; revogada → 404). Conta no limite de 20 ativas. Histórico `token.renew` |
 
 ## Identidade visual
@@ -364,6 +385,7 @@ Aparecem no Hoje (só os no aviso), no e-mail da manhã e no calendário (dia de
 | `POST /users/{id}/cancel-invite` | W | convite ainda não aceito: a conta (sem dados) sai e o link deixa de valer; o pedido de convite que a gerou volta a pendente; 400 se a pessoa já entrou (aí é `delete`) |
 | `POST /users/{id}/delete` | W | `{confirm_email, transfer_to?}` — exclui a conta e todos os dados (não a própria, nunca o último admin); com `transfer_to`, antes as tarefas abertas passam para essa conta (`transferred` na resposta); e-mail e contagens ficam no histórico de quem excluiu |
 | `GET /settings` · `PUT /settings` | W | `{retro_days (1–366), support_contact?}` |
+| `GET /health` | | **Saúde do Nexus** (Admin › Geral), só leitura: `version` (`commit` e `deployed_at` gravados pelo `deploy.sh` em `estado/deploy.json`, `migration` = a última de `backend/sql`, `started_at`), `backup` (`at`, `size_bytes`, `tables` de `estado/backup.json`, gravado pelo `deploy.sh` depois do `pg_dump`; `null` = sem informação), `email` (`configured`, `last_ok_at`, `last_error_at`, `last_error` sem e-mails), `push` (`keys_ok`, `devices`, `failing`), `photos` (`quota_mb`, `used_bytes`, `top_bytes`, `near_quota` = pessoas com 80%+), `webhooks` (`total`, `disabled`), `accounts`, `invite_requests`, `api_tokens`, `db_bytes`. Só contagens e datas: sem nomes, e-mails, endereços de webhook, caminhos ou segredos |
 | `GET /org` · `PUT /org` | W | Para empresas e instituições, tudo desligado por padrão: `{team_visibility: "self"\|"managers", identity_managed, invite_request_off, ticket_url}` (ausente = mantém; o GET também traz `mail_configured`). `managers` = quem tem o papel `viewer` vê o registro de todos (as escolhas de cada um ficam guardadas); `identity_managed` = só o admin muda nome e e-mail; `invite_request_off` = a tela de login não oferece "Solicitar convite"; `ticket_url` = endereço do sistema de chamados para todos (`{id}` = o número; `""` ou `null` = vazio, cada pessoa usa o seu). Cada mudança vai ao histórico do admin (`app.team_visibility`, `app.identity_managed`, `app.invite_request_off`, `app.ticket_url`). O tour do primeiro acesso é obrigatório para toda conta nova (deixou de ser opção) |
 
 **Transferir tarefas** (bloquear ou excluir com `transfer_to`): as tarefas não concluídas mudam de dono numa gravação só, com as anotações, o checklist e as fotos; entram no projeto padrão de quem recebe (os projetos são de cada pessoa) e perdem o objetivo e o `external_ref`; o tempo já registrado fica no registro de quem saiu. Cada tarefa vai ao histórico de quem recebe (`worklog.transfer`, não desfazível) e a transferência ao do admin (`user.transfer_tasks`); quem recebe é avisado como numa atribuição (e-mail, com e-mail no servidor, e notificação no aparelho, se ligou as de tarefas atribuídas). Rotinas não são transferidas.
@@ -416,18 +438,28 @@ JSON-RPC 2.0 sobre HTTP, **uma mensagem por requisição** (sem lote, sem SSE),
 
 Leitura: `get_today`, `get_summary`, `get_period` (`from`, `to`, `project`: concluídas, tempo por projeto e rotinas de qualquer período, como a prévia do relatório), `get_handoff` (passagem de turno: abertas, aguardando, concluídas nas últimas 12 h, vencimentos no aviso), `get_week_review` (revisão da semana: o que fechou, o que ficou, sugestões e o que aguarda há dias sem dia para cobrar), `list_renewals` (vencimentos), `find_similar` (já resolvi isso antes?), `list_tasks` (com `from`/`to`/`by` por período e `project`; mostra o tempo de cada tarefa), `get_task`, `search`,
 `list_projects` (com objetivos e arquivados marcados), `list_objectives`, `list_recurring`, `list_templates`, `list_routine_packs` (pacotes de rotina por área, com `[já existe]`), `get_history`.
-Escrita (chave `write`): `create_task` (com `minutes` = tempo gasto, já apontado; `created_at`, `completed_at` — só com a conclusão, começou `minutes` antes dela —, `external_ref`, `blocked_reason`, `follow_up_on`, `resolution`), `update_task` (com `completed_at`, `blocked_reason`, `follow_up_on`, `resolution`; motivo ou dia de cobrar sem `status` só numa tarefa que já aguarda, senão erro pedindo `status: "blocked"` junto — vale também para o `PATCH`), `complete_task` (com `completed_at` e `resolution`),
+Escrita (chave `write`; a chave `append`, "só registrar", vê só `create_task`, `complete_task` — tarefa aberta —, `add_note`, `add_checklist_item`, `log_time`, `start_timer`, `stop_timer`, `create_from_template` e `set_recurring` só para marcar, sem `paused_until`): `create_task` (com `minutes` = tempo gasto, já apontado; `created_at`, `completed_at` — só com a conclusão, começou `minutes` antes dela —, `external_ref`, `blocked_reason`, `follow_up_on`, `resolution`), `update_task` (com `completed_at`, `blocked_reason`, `follow_up_on`, `resolution`; motivo ou dia de cobrar sem `status` só numa tarefa que já aguarda, senão erro pedindo `status: "blocked"` junto — vale também para o `PATCH`), `complete_task` (com `completed_at` e `resolution`),
 `add_note`, `add_checklist_item`, `set_checklist_item`, `log_time`, `start_timer` (`at` = hora em que começou), `stop_timer` (`at` = hora em que parou; os dois em HH:MM, "9h" ou data e hora, até 24 h atrás),
 `create_from_template`, `set_recurring` (`recurring_id`, `note` = evidência; `paused_until` = pausa até a data, `null` = retoma; com `paused_until` só marca se vier `done: true` explícito — `note` sozinha não marca nem é gravada), `create_recurring` (`label`, `freq` — inclui `after`, N dias depois da última vez —, `weekdays` em nomes seg/ter..., `month_day`, `interval_days`, `remind_at`, `require_note`, `paused_until`; nome repetido devolve a existente), `apply_routine_pack` (`pack`, `items` = as chaves escolhidas, ausente = todas; `project`, padrão `true`: cria o projeto da área com ícone ou reaproveita o de mesmo nome; rotina de mesmo nome não se repete), `update_recurring` (`recurring_id` e só o que muda: `label`, `freq` com o parâmetro, `remind_at`, `null` tira, `require_note`; usa o `PATCH /api/recurring/{id}`), `undo` (só ações da própria chave; `get_history` marca `[pode desfazer]` só nelas).
-Projetos e objetivos: `create_project` / `create_objective` (nome ou título repetido, sem diferenciar maiúsculas e acentos, ou `external_ref` repetido devolvem o existente; `position` 1 = primeiro), `update_project` (`archived` em vez de excluir; `icon` de uma lista fixa, enum no esquema, em `create_project` também), `update_objective` (com `position`), `reorder_objectives` (a lista completa; a ordem anterior vai pro histórico, com desfazer). O status do objetivo é automático (pelas tarefas). Pelo MCP a IA não exclui nada (tarefas, rotinas, projetos, objetivos). A mesma chave `write`, porém, vale para a API REST, que exclui (com desfazer no Histórico): uma IA com terminal (Claude Code, Gemini CLI) consegue chamá-la. Para quem só quer consultas, use uma chave `read`.
+Projetos e objetivos: `create_project` / `create_objective` (nome ou título repetido, sem diferenciar maiúsculas e acentos, ou `external_ref` repetido devolvem o existente; `position` 1 = primeiro), `update_project` (`archived` em vez de excluir; `icon` de uma lista fixa, enum no esquema, em `create_project` também), `update_objective` (com `position`), `reorder_objectives` (a lista completa; a ordem anterior vai pro histórico, com desfazer). O status do objetivo é automático (pelas tarefas). Pelo MCP a IA não exclui nada (tarefas, rotinas, projetos, objetivos). A mesma chave `write`, porém, vale para a API REST, que exclui (com desfazer no Histórico): uma IA com terminal (Claude Code, Gemini CLI) consegue chamá-la. Para uma IA que só registra, use uma chave `append` (não altera nem exclui, nem pela REST); para quem só quer consultas, uma chave `read`.
 Só com o papel de atribuidor: `list_assignable`, `list_assigned` (as devolvidas aparecem com o motivo entre « », texto de quem devolveu) e `assign_task` (`to` = U<id>, e-mail ou nome). Devolver uma tarefa não tem ferramenta: pelo MCP a IA não tira tarefas da conta (é como excluir); a pessoa devolve pelo app ou pela API.
 
 Páginas no MCP: `list_tasks`, `search` e `get_history` aceitam `offset` (pula os N primeiros; padrão 0).
 Quando há mais, a resposta termina com a linha “(… chame de novo com offset=N)”, já com o próximo valor.
 `list_tasks` e `get_history` usam o `limit` como tamanho da página; `search` traz 40 tarefas por vez.
 
-Prompts (`prompts/list`, `prompts/get`): `resumo_semanal` (argumento `para`: o time, um cliente, quem acompanha o trabalho) e `daily`.
-No Claude Code viram `/mcp__nexus__resumo_semanal` e `/mcp__nexus__daily`.
+Prompts (`prompts/list`, `prompts/get`), em português, só com as ferramentas acima:
+- `resumo_semanal` (argumento `para`: o time, um cliente, quem acompanha o trabalho) e `daily`;
+- `planejar_dia` — de manhã: `get_today`, `list_renewals` e `get_handoff` viram uma ordem curta (atrasadas, dia
+  de cobrar, rotinas com horário, prazo de hoje, vencimentos no aviso); **não muda nada** e pergunta antes de sugerir mudança;
+- `fechar_dia` — no fim do dia: mostra o que já está registrado (`get_summary`, `get_today`), pergunta o que mais
+  aconteceu e, **depois de confirmar**, registra com `create_task` (`done`, `minutes`, `external_ref`
+  `fechar-AAAA-MM-DD-N`: rodar de novo não duplica), `complete_task`, `add_note`, `log_time` ou `set_recurring`.
+  Uma chave `append` basta;
+- `resumo_projeto` (argumentos `projeto`, obrigatório, e `periodo`, padrão "este mês") — `get_period` e
+  `list_tasks` do projeto: entregue (com o "como resolveu"), tempo, em andamento e aguardando; nada inventado.
+No Claude Code viram `/mcp__nexus__planejar_dia`, `/mcp__nexus__fechar_dia`, `/mcp__nexus__resumo_projeto`,
+`/mcp__nexus__resumo_semanal` e `/mcp__nexus__daily`.
 
 Argumento fora do `inputSchema` (todos têm `additionalProperties: false`) é recusado com `isError` e a
 lista dos válidos: nada é feito em silêncio. Tarefas atribuídas por outra pessoa mostram título e
@@ -500,7 +532,8 @@ outros, use um dos clientes acima ou a API REST.
 ## Integração passo a passo
 
 Receitas com `curl` (em qualquer ferramenta — n8n, Make, Power Automate, script — é a mesma chamada
-HTTP). `NEXUS` = o endereço do seu Nexus; `KEY` = uma chave `write` criada em Configurações > IA e API.
+HTTP). `NEXUS` = o endereço do seu Nexus; `KEY` = uma chave criada em Configurações > IA e API (receitas 1 a 3
+funcionam com uma chave `append`, "só registrar": criar, concluir e apontar, sem poder editar nem excluir).
 
 ```bash
 NEXUS=https://SEU-HOST; KEY=nxs_SUA_CHAVE
@@ -655,7 +688,7 @@ mensagem” com `data.title`.
 **7. Mandar e-mail a alguém quando algo acontecer.**
 
 Pela automação (o mais simples): gatilho Webhook → filtro pela ação (`action` = `worklog.finish`, ou a que
-quiser: `recurring.toggle`, `renewal.update`…) → ação “Enviar e-mail” (Gmail, Outlook ou SMTP) com
+quiser: `recurring.toggle`, `renewal.update`, `followup.due`…) → ação “Enviar e-mail” (Gmail, Outlook ou SMTP) com
 assunto `Concluída: {{data.title}}` e corpo `data.resolution`. No Nexus, crie o webhook com o endereço do
 gatilho e só os eventos que interessam (ex.: `worklog.finish`). Testar: na automação, deixe o gatilho
 “ouvindo” e aperte **Testar** no Nexus; o `ping` aparece como exemplo de dados para montar os campos.
@@ -761,4 +794,13 @@ Prefere na hora, por webhook? Use a automação: gatilho Webhook → filtro `act
 
 **9. Alerta de monitoramento vira tarefa.** É a receita 1 (criar com `external_ref` = id do alerta, sem
 duplicar) e a 2 (concluir pela referência quando o alerta normalizar). Na ferramenta de monitoramento,
-configure o envio de alerta “por webhook/HTTP” para fazer essas chamadas com uma chave `write`.
+configure o envio de alerta “por webhook/HTTP” para fazer essas chamadas com uma chave `append` (só
+registrar): se ela vazar, ninguém edita nem exclui nada com ela.
+
+**10. Lembrete da agenda no chat, no relógio ou na automação.** Os avisos de agenda chegam pelo mesmo
+webhook: `followup.due` (dia de cobrar uma tarefa aguardando), `recurring.due` (a hora da rotina chegou e
+ela não foi marcada) e `renewal.warning` (vencimento entrou no aviso), uma vez cada. Use a receita 6 ou 7
+trocando os eventos por `followup.due, recurring.due, renewal.warning` e a mensagem por, por exemplo,
+`Cobrar hoje: {{data.title}} (aguardando {{data.blocked_reason}})`, `Rotina na hora: {{data.label}}` e
+`Vence em {{data.days_left}} dias: {{data.label}}`. Quem lê o feed recebe os mesmos eventos, com
+`actor: "system"`.

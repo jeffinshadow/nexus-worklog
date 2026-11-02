@@ -889,6 +889,8 @@ def t_set_recurring(ctx, args):
     if rid is None:
         raise ToolError("informe recurring_id (veja list_recurring)")
     if "paused_until" in args:  # só pausa/retoma; marca só com done explícito
+        if ctx.get("scope") == "append":
+            raise ToolError(deps.APPEND_DENIED + " (pausar é alterar a rotina; nada foi feito)")
         try:
             msg = _pause(ctx, int(rid), args["paused_until"]).strip()
         except ToolError as e:
@@ -1412,6 +1414,45 @@ PROMPTS = {
                  "desde o último dia útil), Hoje (o que está em andamento, atrasado ou vence hoje) e Aguardando "
                  "(tarefas com status blocked e o que esperam; se não houver, \"nada\"). Só com o que está registrado."),
     },
+    "planejar_dia": {
+        "title": "Planejar o dia",
+        "description": "De manhã: o que atacar primeiro hoje, em ordem curta, sem mudar nada no Nexus.",
+        "arguments": [],
+        "text": ("Use get_today, list_renewals e get_handoff do Nexus e me proponha a ordem do meu dia, em português, "
+                 "numa lista curta (no máximo 7 itens), nesta prioridade: o que está atrasado; o que está aguardando e "
+                 "chegou no dia de cobrar (follow_up_on até hoje); as rotinas com horário, na hora delas; o que vence hoje; "
+                 "os vencimentos no aviso ([AVISO]); depois a prioridade alta. Diga em meia linha por que cada item está ali. "
+                 "NÃO crie, altere nem conclua nada: é só a proposta. Se sugerir uma mudança (um prazo novo, um dia para "
+                 "cobrar), pergunte antes e só faça se eu disser que sim. Use só o que está registrado; se o dia estiver "
+                 "vazio, diga isso."),
+    },
+    "fechar_dia": {
+        "title": "Fechar o dia",
+        "description": "No fim do dia: o que foi feito, o que faltou registrar, e registra o que eu confirmar.",
+        "arguments": [],
+        "text": ("Use get_summary e get_today do Nexus e me mostre, em português e curto, o que já está registrado hoje: "
+                 "tarefas concluídas, tempo apontado e rotinas feitas e não feitas. Depois me pergunte o que mais aconteceu "
+                 "hoje e ainda não está no Nexus. Com a minha resposta, monte a lista do que vai registrar (título, "
+                 "minutos, projeto se eu disser) e PEÇA CONFIRMAÇÃO antes de gravar. Confirmado: para o que já foi "
+                 "feito, use create_task com status done, completed_at de hoje, minutes com o tempo e external_ref "
+                 "\"fechar-{hoje}-N\" (N = 1, 2, 3... na ordem da lista), assim rodar de novo não duplica; para uma "
+                 "tarefa que já existe, use complete_task, add_note ou log_time nela em vez de criar outra; rotina feita, "
+                 "set_recurring com done=true. Não altere nem exclua o que já estava registrado. No fim, diga o que foi gravado."),
+    },
+    "resumo_projeto": {
+        "title": "Resumo de um projeto",
+        "description": "Resumo de um projeto num período (para o cliente, o síndico, a coordenação): entregue, tempo e o que está aguardando.",
+        "arguments": [{"name": "projeto", "description": "Nome do projeto (como está no Nexus)", "required": True},
+                      {"name": "periodo", "description": "Período, ex.: este mês, outubro, de 01/10 a 15/10 (padrão: este mês)",
+                       "required": False}],
+        "text": ("Escreva, em português, um resumo do projeto “{projeto}” no período: {periodo}. Converta o período em datas "
+                 "AAAA-MM-DD (hoje é {hoje}). Use get_period com project e from/to para os totais e list_tasks com project, "
+                 "from/to e by=completed para as tarefas concluídas (get_task numa tarefa traz o \"como resolveu\"); "
+                 "list_tasks com project e status=open para o que segue aberto. Monte: o que foi entregue (com o como "
+                 "resolveu, em uma linha cada), o tempo apontado no período, o que está em andamento e o que está "
+                 "aguardando algo de fora (status blocked, com o motivo). Não invente nada que não esteja nos dados; se o "
+                 "projeto não existir, diga quais existem (list_projects). Só leitura: não altere nada."),
+    },
 }
 
 
@@ -1420,23 +1461,44 @@ def _prompt_list() -> list:
             for n, p in PROMPTS.items()]
 
 
+def _arg(args: dict, name: str, default: str) -> str:
+    """Argumento de prompt em uma linha e curto (vai dentro do texto pedido à IA)."""
+    value = " ".join(str(args.get(name) or "").split())[:80]
+    return value or default
+
+
 def _prompt_get(name: str, args: dict) -> dict:
     p = PROMPTS[name]
-    text = p["text"].format(para=(args.get("para") or "quem acompanha meu trabalho").strip()[:80])
+    falta = [a["name"] for a in p["arguments"] if a.get("required") and not _arg(args, a["name"], "")]
+    if falta:
+        raise ToolError(f"falta o argumento {', '.join(falta)}")
+    text = p["text"].format(para=_arg(args, "para", "quem acompanha meu trabalho"),
+                            projeto=_arg(args, "projeto", ""), periodo=_arg(args, "periodo", "este mês"),
+                            hoje=services.app_today().isoformat())
     return {"description": p["description"], "messages": [{"role": "user", "content": {"type": "text", "text": text}}]}
 
 
 ASSIGNER_TOOLS = {"list_assignable", "assign_task", "list_assigned"}
+# Chave "só registrar" (escopo append): as ferramentas que só acrescentam. As
+# mesmas rotas de deps.APPEND_ROUTES; desmarcar rotina e reconcluir tarefa são
+# recusados na própria rota (deps.deny_append).
+APPEND_TOOLS = {"create_task", "complete_task", "add_note", "add_checklist_item", "log_time",
+                "set_recurring", "start_timer", "stop_timer", "create_from_template"}
 
 
 def _allowed(ctx, name: str) -> bool:
     return name not in ASSIGNER_TOOLS or "assigner" in (ctx.get("roles") or [])
 
 
+def _can_write(ctx, name: str) -> bool:
+    scope = ctx.get("scope")
+    return scope == "write" or (scope == "append" and name in APPEND_TOOLS)
+
+
 def _tool_list(ctx) -> list:
     out = []
     for name, (_, writes, desc, schema) in TOOLS.items():
-        if (writes and ctx.get("scope") != "write") or not _allowed(ctx, name):
+        if (writes and not _can_write(ctx, name)) or not _allowed(ctx, name):
             continue
         out.append({
             "name": name,
@@ -1514,7 +1576,10 @@ def _handle(ctx, msg):
     elif method == "prompts/get":
         if params.get("name") not in PROMPTS:
             return _rpc_error(rid, -32602, f"prompt desconhecido: {params.get('name')}")
-        result = _prompt_get(params["name"], params.get("arguments") or {})
+        try:
+            result = _prompt_get(params["name"], params.get("arguments") or {})
+        except ToolError as e:
+            return _rpc_error(rid, -32602, str(e))
     elif method == "tools/call":
         name, args = params.get("name"), params.get("arguments") or {}
         spec = TOOLS.get(name) if _allowed(ctx, name) else None
@@ -1522,8 +1587,8 @@ def _handle(ctx, msg):
             return _rpc_error(rid, -32602, f"ferramenta desconhecida: {name}")
         fn, writes, schema = spec[0], spec[1], spec[3]
         try:
-            if writes and ctx.get("scope") != "write":
-                raise ToolError("esta chave de API é só de leitura")
+            if writes and not _can_write(ctx, name):
+                raise ToolError(deps.APPEND_DENIED if ctx.get("scope") == "append" else "esta chave de API é só de leitura")
             text, is_error = fn(ctx, _check_args(name, schema, args)), False
         except ToolError as e:
             text, is_error = str(e), True

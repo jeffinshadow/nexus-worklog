@@ -302,6 +302,11 @@ button.column-toggle { display: none; }
 
 /* ------------------------------------------------------------ histórico -- */
 .hist { display: flex; flex-direction: column; }
+/* "O que esta chave fez": o Histórico filtrado por uma chave, com a volta para tudo. */
+.hist-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 4px 0 8px; padding: 6px 6px 6px 14px;
+  border-radius: 12px; background: var(--primary-container); color: var(--on-primary-container); }
+.hist-filter > span { flex: 1 1 200px; font-weight: 500; }
+.hist-filter .btn { color: inherit; }
 .hist-row { display: grid; grid-template-columns: 92px 1fr auto; gap: 14px; align-items: center; padding: 12px 4px; border-bottom: 1px solid var(--outline-variant); }
 .hist-row:last-child { border-bottom: 0; }
 .hist-when { font-family: var(--font-label); font-size: var(--type-label); color: var(--dim); line-height: 1.35; }
@@ -320,6 +325,19 @@ button.column-toggle { display: none; }
   transition: background-color var(--dur-short) var(--ease-standard), color var(--dur-short) var(--ease-standard); }
 .seg button.chip-btn[aria-selected="true"], .seg button.chip-btn[aria-checked="true"] { background-color: var(--primary-container); color: var(--on-primary-container); }
 .settings-grid { display: grid; gap: var(--gap); grid-template-columns: minmax(0, 1fr); }  /* nada passa da tela no celular */
+/* Saúde do Nexus (Admin > Geral): título à esquerda, situação à direita; no celular, um embaixo do outro. */
+.health-list { display: grid; grid-template-columns: minmax(120px, max-content) minmax(0, 1fr); gap: 10px 18px; margin: 4px 0 8px; }
+.health-list dt { display: flex; align-items: flex-start; gap: 6px; font-weight: var(--weight-title); color: var(--on-surface); }
+.health-list dt .ico { width: 18px; height: 18px; flex: none; margin-top: 2px; }
+.health-list dd { margin: 0; color: var(--on-surface-variant); overflow-wrap: anywhere; }
+.health-list dd.warn { color: var(--warning-ink); }
+.health-list dt:has(+ dd.warn) .ico { color: var(--warning); }
+.health-list dt:has(+ dd.ok) .ico { color: var(--success); }
+.health-actions { justify-content: flex-start; }
+@media (max-width: 560px) {
+  .health-list { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .health-list dd { margin-bottom: 10px; }
+}
 .panel p.help { color: var(--on-surface-variant); font-size: var(--type-body-s); margin-bottom: 14px; max-width: 62ch; }
 .panel ol.help { color: var(--on-surface-variant); font-size: var(--type-body-s); margin: 0 0 14px; padding-left: 1.4em; max-width: 62ch; display: grid; gap: 4px; }
 .panel ol.help a { color: var(--primary); }

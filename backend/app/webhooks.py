@@ -40,7 +40,8 @@ BATCH = 20  # eventos por webhook em cada passada
 LAG_SECONDS = 2  # como o feed: gravações simultâneas podem terminar fora de ordem
 # Entidades cujo estado (o "depois" do histórico) vai no corpo; o resto vai só
 # com o evento. Fotos nunca vão (o corpo leva no máximo quantas há).
-DATA_ENTITIES = {"worklog", "note", "checklist", "time", "recurring", "project", "objective", "renewal"}
+DATA_ENTITIES = {"worklog", "note", "checklist", "time", "recurring", "project", "objective", "renewal",
+                 "agenda"}  # agenda: followup.due, recurring.due, renewal.warning (app/agenda.py)
 
 
 class Refused(ValueError):

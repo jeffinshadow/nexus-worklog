@@ -141,9 +141,44 @@ def _check_csrf(request: Request, session: dict) -> None:
 # nenhuma checagem de permissao fica espalhada nos handlers.
 
 
-def _require_write(session: dict) -> None:
-    if session.get("scope") != "write":
-        raise HTTPException(status_code=403, detail="esta chave de API é só de leitura")
+# Escopo "append" (só registrar): cria tarefa, anota, adiciona item, aponta
+# tempo, marca rotina, conclui e usa o cronômetro; nunca altera nem exclui.
+# Lista fechada (método, rota): rota nova nasce negada para essa chave. O MCP
+# chama as rotas direto, sem passar aqui: lá vale APPEND_TOOLS (routers/mcp.py),
+# e as duas regras finas (desmarcar rotina, reconcluir tarefa) ficam nas rotas
+# via deny_append, para valer nas duas portas.
+APPEND_ROUTES = frozenset({
+    ("POST", "/api/worklog"),
+    ("POST", "/api/worklog/{task_id}/notes"),
+    ("POST", "/api/worklog/{task_id}/checklist"),
+    ("POST", "/api/worklog/{task_id}/time"),
+    ("POST", "/api/worklog/{task_id}/finish"),
+    ("POST", "/api/worklog/{task_id}/duplicate"),
+    ("POST", "/api/templates/{tid}/use"),
+    ("POST", "/api/recurring/{task_id}/toggle"),
+    ("POST", "/api/timer/start"),
+    ("POST", "/api/timer/stop"),
+})
+APPEND_DENIED = "esta chave só registra (cria, anota, aponta, marca e conclui); não altera nem exclui"
+
+
+def _require_write(session: dict, request: Request | None = None) -> None:
+    scope = session.get("scope")
+    if scope == "write":
+        return
+    if scope == "append" and request is not None:
+        route = request.scope.get("route")
+        if (request.method, getattr(route, "path", None)) in APPEND_ROUTES:
+            return
+        raise HTTPException(status_code=403, detail=APPEND_DENIED)
+    raise HTTPException(status_code=403, detail="esta chave de API é só de leitura")
+
+
+def deny_append(session: dict, when: bool = True) -> None:
+    """Regra fina do "só registrar" dentro de uma rota liberada (ex.: desmarcar
+    rotina, mudar a conclusão de tarefa já concluída)."""
+    if when and session.get("scope") == "append":
+        raise HTTPException(status_code=403, detail=APPEND_DENIED)
 
 
 def _require_web(session: dict) -> None:
@@ -177,7 +212,7 @@ def active_user_csrf(request: Request) -> dict:
     """Escrita de dados: sessão + CSRF, ou chave de API com escopo de escrita."""
     session = active_user(request)
     _check_csrf(request, session)
-    _require_write(session)
+    _require_write(session, request)
     return session
 
 
@@ -234,7 +269,7 @@ def require_assigner_csrf(request: Request) -> dict:
     """Atribuir: sessão + CSRF, ou chave de API com escopo de escrita."""
     session = require_assigner(request)
     _check_csrf(request, session)
-    _require_write(session)
+    _require_write(session, request)
     return session
 
 

@@ -11,6 +11,14 @@ INSTALL=false
 log()  { printf '\033[1;34m[deploy]\033[0m %s\n' "$1"; }
 err()  { printf '\033[1;31m[erro]\033[0m %s\n' "$1" >&2; }
 
+# estado/<arquivo>: números para a Saúde do Nexus (Admin > Geral). O backend lê
+# a pasta estado/ só leitura (nunca vê backups/). Falhar aqui nunca para o deploy.
+write_state() {
+  { mkdir -p estado && printf '%s\n' "$2" > "estado/$1.tmp" && chmod 644 "estado/$1.tmp" \
+      && mv -f "estado/$1.tmp" "estado/$1"; } \
+    || log "aviso: não gravei estado/$1 (a Saúde do Nexus fica sem essa informação)"
+}
+
 # --- 1. Verificação de dependências ---
 missing=()
 command -v git            >/dev/null 2>&1 || missing+=("git")
@@ -90,6 +98,8 @@ if [[ -n "$(docker compose ps --status running -q db 2>/dev/null)" ]]; then
     exit 1
   fi
   log "Backup ok: $(du -h "$BACKUP" | cut -f1), $tables tabelas com dados."
+  # Só data, tamanho e tabelas (sem o caminho do arquivo).
+  write_state backup.json "{\"at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"size_bytes\":$(stat -c %s "$BACKUP"),\"tables\":$tables}"
 
   # Retenção: mantém só os KEEP_BACKUPS mais recentes.
   ls -1t backups/pre-deploy-*.dump 2>/dev/null | tail -n +"$((KEEP_BACKUPS + 1))" | xargs -r rm --
@@ -128,4 +138,5 @@ if [[ "$ok" != true ]]; then
 fi
 
 log "Deploy concluído (antes: ${PREV_COMMIT:0:7}, agora: $(git rev-parse --short HEAD))."
+write_state deploy.json "{\"commit\":\"$(git rev-parse --short HEAD)\",\"previous\":\"${PREV_COMMIT:0:7}\",\"at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
 if [[ -n "$BACKUP" ]]; then log "Backup pré-deploy: $BACKUP"; fi

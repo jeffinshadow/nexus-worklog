@@ -15,7 +15,7 @@ from . import db, notify, roles
 from .config import config
 from .routers import (admin, assign, auth, board, branding, calendar, dashboard, export, history, mcp, me, packs,
                       invite_requests, notifications, objectives, passkeys, photos, projects, push, recurring, renewals, reports, review, search, summary, templates, timer,
-                      tokens, viewer, webhooks, worklog)
+                      saude, tokens, viewer, webhooks, worklog)
 from .deps import web_active
 from .security import Busy, client_error_limiter, hash_password
 
@@ -116,7 +116,7 @@ def client_error(data: ClientErrorIn, user=Depends(web_active)):
 
 for module in (auth, recurring, worklog, board, dashboard, reports, admin, history, tokens, mcp, branding, projects,
                summary, search, photos, export, calendar, notifications, me, timer, templates, viewer, assign, renewals,
-               objectives, push, passkeys, invite_requests, webhooks, review, packs):
+               objectives, push, passkeys, invite_requests, webhooks, review, packs, saude):
     app.include_router(module.router)
 app.include_router(worklog.items)  # /api/notes, /api/checklist, /api/time
 app.include_router(assign.received)  # /api/worklog/{id}/return (quem recebeu devolve)

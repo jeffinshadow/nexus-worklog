@@ -5,6 +5,7 @@ e-mail é texto + HTML simples, sem imagens remotas nem links redirecionados.
 """
 import smtplib
 import ssl
+from datetime import datetime, timezone
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid, parseaddr
 
@@ -13,6 +14,11 @@ from .config import config
 
 class MailError(Exception):
     pass
+
+
+# Último envio (ok e falha) deste processo, para a Saúde do Nexus (Admin > Geral):
+# pega também convites e links de senha, que não passam pelo notification_log.
+last = {"ok_at": None, "error_at": None, "error": None}
 
 
 def configured() -> bool:
@@ -56,4 +62,7 @@ def send(to: str, subject: str, text: str, html: str | None = None,
             smtp.send_message(msg)
     except (smtplib.SMTPException, OSError) as e:
         # Mensagem curta para o usuário/log; nunca inclui a senha.
-        raise MailError(f"falha no envio: {type(e).__name__}: {str(e)[:160]}") from e
+        err = MailError(f"falha no envio: {type(e).__name__}: {str(e)[:160]}")
+        last.update(error_at=datetime.now(timezone.utc), error=str(err))
+        raise err from e
+    last["ok_at"] = datetime.now(timezone.utc)

@@ -182,7 +182,10 @@ mudança fica no histórico do admin. Toda conta nova faz o tour guiado no prime
   senha** (link de 1 hora). Sem e-mail, senha temporária trocada no 1º acesso.
 - **IA** — chaves de API e servidor **MCP** (`/mcp`): a IA registra, anota,
   aponta e cronometra o que você contar, com tudo marcado no histórico pelo nome
-  da chave. Comandos prontos para o resumo da semana e para a daily; `get_week`
+  da chave. Chave **só registrar** (cria, anota, aponta, marca e conclui; não
+  altera nem exclui, nem pela API REST) e **O que fez** em cada chave (o
+  Histórico só com as ações dela). Comandos prontos para planejar e fechar o dia,
+  o resumo de um projeto, o resumo da semana e a daily; `get_week`
   traz semanas passadas e `get_period`, qualquer período (tempo por projeto). Para
   lançar o que já aconteceu: `created_at`/`completed_at`, `external_ref` (não
   duplica) e `list_tasks` por período. A IA também monta projetos:
@@ -198,7 +201,8 @@ mudança fica no histórico do admin. Toda conta nova faz o tour guiado no prime
   `external_ref` em tarefas, projetos, anotações e tempo (repetir não duplica),
   feed de mudanças (`/api/history?after=`) e webhooks de saída assinados
   (HMAC-SHA256), com os eventos numa lista para marcar, edição sem trocar o
-  segredo e botão Testar. Chave de API vencida se renova sem trocar de valor;
+  segredo e botão Testar. Também avisos de **agenda** (dia de cobrar, hora da
+  rotina, vencimento no aviso), uma vez cada, no feed e no webhook. Chave de API vencida se renova sem trocar de valor;
   as vencidas e revogadas ficam recolhidas. Contrato em [`docs/openapi.json`](docs/openapi.json);
   receitas `curl` em [`docs/API.md`](docs/API.md#integração-passo-a-passo) e, prontas,
   aviso no Telegram, e-mail e planilha em [`docs/API.md`](docs/API.md#receitas-avisos-e-planilha).
@@ -298,7 +302,10 @@ contra a homologação: veja [`tools/e2e/README.md`](tools/e2e/README.md).
 
 `./deploy.sh` na VM: confere o `.env`, faz `pg_dump` verificado do banco, `git
 pull --ff-only`, rebuild e smoke test (`--install` prepara uma VM Debian/Ubuntu
-limpa). O túnel: `cloudflared` como serviço systemd com o token em
+limpa). Ele grava em `estado/` (montada só leitura no backend) a data, o tamanho e
+as tabelas do último backup e o commit do deploy: a **Saúde do Nexus** (Admin ›
+Geral) mostra isso, com e-mail, notificações, fotos e webhooks desligados, e um
+"Copiar diagnóstico" sem dados de pessoas nem segredos. O túnel: `cloudflared` como serviço systemd com o token em
 `/etc/cloudflared/<nome>.env` (root, 600), *public hostname* →
 `http://localhost:${WEB_PORT}`. Cloudflare Access na frente é opcional (defesa
 em profundidade).

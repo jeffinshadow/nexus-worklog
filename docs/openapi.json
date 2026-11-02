@@ -2332,6 +2332,25 @@
               "title": "Offset"
             },
             "description": "Pula as N ações mais recentes (páginas); o total vem em X-Total-Count"
+          },
+          {
+            "name": "token_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Só o que esta chave de API fez (\"o que esta chave fez\")",
+              "title": "Token Id"
+            },
+            "description": "Só o que esta chave de API fez (\"o que esta chave fez\")"
           }
         ],
         "responses": {
@@ -6881,6 +6900,25 @@
         }
       }
     },
+    "/api/admin/health": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Admin Health",
+        "operationId": "admin_health_api_admin_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/notes/{note_id}": {
       "patch": {
         "tags": [
@@ -9471,7 +9509,8 @@
             "type": "string",
             "enum": [
               "read",
-              "write"
+              "write",
+              "append"
             ],
             "title": "Scope",
             "default": "write"

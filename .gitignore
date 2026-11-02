@@ -11,6 +11,8 @@ tunnel/*.pem
 
 # Dados e dumps do Postgres (nunca versionar dados reais)
 backups/
+estado/*
+!estado/.gitkeep
 pgdata/
 data/
 *.dump

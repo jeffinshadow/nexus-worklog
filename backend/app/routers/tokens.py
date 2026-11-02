@@ -21,11 +21,15 @@ MAX_ACTIVE = 20
 def list_tokens(user=Depends(web_active)):
     return db.query_all(
         """
-        SELECT id, name, prefix, scope, created_at, expires_at, last_used_at, revoked_at,
-               (revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())) AS active
-          FROM api_tokens
-         WHERE user_id = %s
-         ORDER BY revoked_at IS NOT NULL, created_at DESC
+        SELECT t.id, t.name, t.prefix, t.scope, t.created_at, t.expires_at, t.last_used_at, t.revoked_at,
+               (t.revoked_at IS NULL AND (t.expires_at IS NULL OR t.expires_at > now())) AS active,
+               -- "o que esta chave fez": quantas ações nos últimos 7 dias (o Histórico filtra por token_id)
+               (SELECT count(*)::int FROM audit_log a
+                 WHERE a.user_id = t.user_id AND a.token_id = t.id
+                   AND a.created_at > now() - interval '7 days') AS actions_7d
+          FROM api_tokens t
+         WHERE t.user_id = %s
+         ORDER BY t.revoked_at IS NOT NULL, t.created_at DESC
         """,
         (user["user_id"],),
     )

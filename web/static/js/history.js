@@ -15,19 +15,31 @@ const WHO = {
 
 export async function mount(root) {
   let page = hashPage();
+  // "O que esta chave fez" (Configurações > IA e API): #/historico?chave=<id>.
+  const chave = Number(new URLSearchParams(location.hash.split("?")[1] || "").get("chave")) || null;
+  let chaveNome = null;
+  if (chave) {
+    try { chaveNome = ((await api.get("/tokens")).find((t) => t.id === chave) || {}).name || null; } catch { /* só o nome do aviso */ }
+  }
+  const url = () => `/history?limit=${SIZE}&offset=${(page - 1) * SIZE}` + (chave ? `&token_id=${chave}` : "");
 
   async function render() {
-    let { rows, total } = await api.page(`/history?limit=${SIZE}&offset=${(page - 1) * SIZE}`);
+    let { rows, total } = await api.page(url());
     const last = Math.max(1, Math.ceil(total / SIZE));
     if (page > last) { // a página guardada sumiu (o histórico encolheu): a última
       page = last;
-      ({ rows, total } = await api.page(`/history?limit=${SIZE}&offset=${(page - 1) * SIZE}`));
+      ({ rows, total } = await api.page(url()));
     }
     setHashPage("p", page, "historico");
     clear(root);
     const panel = h("section", { class: "panel" },
       h("p", { class: "help muted", text: "Toda alteração fica registrada por 180 dias. A origem aparece quando não foi pelo app (chave de API, IA, admin). Dá para desfazer a mais recente de cada tarefa, rotina ou configuração." }));
-    if (!rows.length) panel.append(h("p", { class: "empty", text: "Nada registrado ainda." }));
+    if (chave) {
+      panel.append(h("div", { class: "hist-filter", role: "status" },
+        icon("key"), h("span", { text: `Só o que a chave “${chaveNome || "#" + chave}” fez` + (total ? ` · ${total} ${total === 1 ? "ação" : "ações"}` : "") }),
+        h("a", { class: "btn btn-ghost btn-sm", href: "#/historico", text: "Ver tudo" })));
+    }
+    if (!rows.length) panel.append(h("p", { class: "empty", text: chave ? "Esta chave ainda não fez nada (ou o que fez já passou de 180 dias)." : "Nada registrado ainda." }));
     const list = h("div", { class: "hist" });
     for (const r of rows) {
       const [cls, ic, label] = (WHO[r.actor] || WHO.web)(r);

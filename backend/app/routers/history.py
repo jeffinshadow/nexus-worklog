@@ -295,6 +295,7 @@ def list_history(
     entity_id: Optional[int] = None,
     after: Annotated[Optional[int], Query(ge=0)] = None,  # Annotated: None também quando o MCP chama direto
     offset: Annotated[int, Query(ge=0, le=100000, description="Pula as N ações mais recentes (páginas); o total vem em X-Total-Count")] = 0,
+    token_id: Annotated[Optional[int], Query(ge=1, description="Só o que esta chave de API fez (\"o que esta chave fez\")")] = None,
     response: Response = None,
     user=Depends(active_user),
 ):
@@ -302,7 +303,11 @@ def list_history(
     offset = clamp(offset, 0, 100000, 0)
     if after is not None:  # feed de mudanças, para sincronizar (docs/API.md); sem offset nem total
         return feed(user["user_id"], after, limit)
-    cond, params = ["user_id = %s"], [user["user_id"]]
+    # Os avisos de agenda do sistema (followup.due...) são só do feed e dos webhooks.
+    cond, params = ["user_id = %s", "actor <> 'system'"], [user["user_id"]]
+    if token_id is not None:
+        cond.append("token_id = %s")
+        params.append(token_id)
     if entity:
         cond.append("entity = %s")
         params.append(entity)

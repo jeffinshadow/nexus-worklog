@@ -8,7 +8,7 @@ from psycopg.errors import UniqueViolation
 
 from .. import audit, db
 from ..paging import clamp, put_total
-from ..deps import active_user, active_user_csrf
+from ..deps import active_user, active_user_csrf, deny_append
 from ..schemas import ChecklistIn, ChecklistUpdate, FinishIn, NoteIn, NoteUpdate, TimeIn, TimeUpdate, WorklogIn, WorklogUpdate
 from .assign import notify_assigner
 from .objectives import check_objective, next_position, objective_project
@@ -391,6 +391,7 @@ def finish(task_id: int, data: Optional[FinishIn] = None, user=Depends(active_us
     """Conclui agora, ou na data informada (retroativo). Já concluída e sem
     data: mantém a conclusão que tinha."""
     before = _own_task(user["user_id"], task_id)
+    deny_append(user, before["status"] == "done")  # "só registrar" conclui, não muda a conclusão
     raw = data.completed_at if data else None
     when = before["completed_at"] if (before["completed_at"] and not raw) else \
         resolve_completed(raw, before["created_at"], datetime.now(timezone.utc))
