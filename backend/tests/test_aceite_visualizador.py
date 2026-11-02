@@ -73,12 +73,22 @@ def test_aceite_vai_ao_historico_e_so_pelo_app(usuario):
     assert _aceite(usuario.me["email"]) is False
 
 
+def _reciclar_conexoes():
+    """Mudar a tabela users invalida os planos preparados guardados nas conexões abertas do pool
+    ("cached plan must not change result type"): troca as conexões antes de seguir."""
+    drain = getattr(db.pool, "drain", None)
+    if drain:
+        drain()
+
+
 def test_migracao_liga_existentes_e_nao_religa(usuario, novo_usuario):
     antiga = usuario.me["email"]
     try:
         # Banco "de antes": sem a coluna. Aplicar liga quem já existe...
         db.execute("ALTER TABLE users DROP COLUMN viewers_allowed")
+        _reciclar_conexoes()
         db.execute_script(MIGRACAO.read_text())
+        _reciclar_conexoes()
         assert _aceite(antiga) is True
         # ...e quem nasce depois começa desligado.
         nova = novo_usuario("nova@example.com").me["email"]
@@ -90,3 +100,4 @@ def test_migracao_liga_existentes_e_nao_religa(usuario, novo_usuario):
         assert _aceite(antiga) is False and _aceite(nova) is False
     finally:
         db.execute_script(MIGRACAO.read_text())  # nunca deixa a suíte sem a coluna
+        _reciclar_conexoes()
