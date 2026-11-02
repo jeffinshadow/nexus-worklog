@@ -144,6 +144,8 @@ input::placeholder { color: var(--dim); }
 .page-head h1 { font-size: var(--type-screen); font-weight: var(--weight-title); letter-spacing: -.035em; line-height: 1.1; }
 .page-head .eyebrow { margin-top: 6px; font-size: var(--type-caption); color: var(--on-surface-variant); }
 .page-head .eyebrow:empty { display: none; }
+.page-back { flex: 0 0 100%; margin: -6px 0 -8px -8px; }  /* a volta numa linha só, acima do título */
+.page-back:empty { display: none; }
 .page-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .quick-hint { margin: 6px 0 10px 4px; font: var(--type-label) var(--font-label); color: var(--dim); }  /* os marcadores, sob o registro rápido */
 
@@ -1436,7 +1438,6 @@ li.mes-res { padding-top: 10px; border-top: 1px solid var(--outline-variant); }
 .arq-op select { margin: 2px 0 6px 30px; width: calc(100% - 30px); }
 .mm-proj-ico { width: 16px; height: 16px; }
 .proj-head { margin-bottom: 20px; }
-.proj-back { margin: 0 0 8px -8px; }
 .obj-progress { display: flex; align-items: center; gap: 10px; }
 .obj-progress .progress { flex: 1; margin: 0; }
 .obj-progress-l { color: var(--dim); font-size: var(--type-caption); white-space: nowrap; }
@@ -1462,12 +1463,9 @@ li.mes-res { padding-top: 10px; border-top: 1px solid var(--outline-variant); }
 .obj-block.unassigned { border-style: dashed; }
 .chip.objective { display: inline-flex; align-items: center; gap: 4px; }
 .chip.objective .ico { width: 16px; height: 16px; }
-/* Projeto aberto: o título da página é o nome; aqui só a volta (as ações ficam no cabeçalho) */
-.proj-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 /* Ações do projeto no cabeçalho: "Editar" (tonal) e o ⋮ logo ao lado, na altura dos botões. */
 .page-actions .proj-more { width: 40px; height: 40px; }
 @media (max-width: 860px) { .page-actions .proj-more { width: 44px; height: 44px; } }
-.proj-bar .proj-back { margin: 0 0 0 -8px; }
 .dialog-note.intro { margin: -8px 0 16px; }
 /* Vencimento no celular (Hoje e tela própria): nome na largura toda, prazo e botões embaixo.
    Com os botões ao lado, o nome ficava espremido e quebrava no meio da palavra. */

@@ -169,10 +169,11 @@ async function mountProject(root, ctx, pid) {
   const today = localDay(new Date().toISOString());
   const p = o.project;
   // O título da página é o projeto aberto (como o detalhe de qualquer item), com o
-  // ícone grande na cor dele; a lista volta pelo link. O próximo título troca o texto todo.
+  // ícone grande na cor dele; a lista volta pelo link acima dele. O próximo título troca o texto todo.
   const titulo = document.getElementById("page-title");
   titulo.replaceChildren(projTile(p, "proj-tile-lg"), h("span", { text: p.name }));
   ctx.setEyebrow(p.archived ? "projeto arquivado" : "projeto");
+  ctx.setBack(h("a", { class: "btn btn-text btn-sm", href: "#/projetos" }, icon("left"), "Todos os projetos"));
   document.title = `${p.name} · Nexus Worklog`;
   // As ações do projeto ficam no cabeçalho, junto do título (celular e
   // computador): "Editar" com rótulo e, logo ao lado, o ⋮ com o resto
@@ -205,7 +206,6 @@ async function mountProject(root, ctx, pid) {
           text: late ? "atrasado · " + shortDate(x.due_date) : x.due_date === today ? "hoje" : shortDate(x.due_date) }));
     }))) : null;
   root.append(h("div", { class: "proj-head" },
-    h("div", { class: "proj-bar" }, h("a", { class: "btn btn-text btn-sm proj-back", href: "#/projetos" }, icon("left"), "Todos os projetos")),
     p.description ? h("p", { class: "proj-desc", text: p.description }) : null,
     h("div", { class: "proj-summary" }, numeros(p, "proj-nums proj-nums-lg"),
       h("p", { class: "proj-last", text: "última atividade " + quando(p.last_activity, today) })),

@@ -96,7 +96,7 @@ try:
           ev(f"!!{card}.querySelector('.proj-tile use[href=\"#icon-proj-pasta\"]') && {card}.querySelectorAll('.proj-num').length === 3"))
     shot("o01-lista")
     ev(f"{card}.click()")
-    check("abre o projeto (título da página = nome)", wait(f"!!document.querySelector('.proj-bar') && document.getElementById('page-title').textContent === {json.dumps(PROJ)}"))
+    check("abre o projeto (título da página = nome)", wait(f"!!document.querySelector('#page-back a') && document.getElementById('page-title').textContent === {json.dumps(PROJ)}"))
     check("cabeçalho com o ícone do projeto", ev("!!document.querySelector('#page-title .proj-tile')"))
 
     # Objetivos pela tela.

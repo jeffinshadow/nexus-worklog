@@ -57,6 +57,13 @@ const allowed = (name) => VIEWS[name] && (!VIEWS[name].need || hasAny(VIEWS[name
 // Primeira tela: Hoje para quem tem registro; senão, a primeira função da conta.
 const home = () => ["hoje", "equipe", "admin", "historico"].find(allowed);
 
+// A volta para a lista ("Todos os projetos"), acima do título; vazia some.
+function setBack(node) {
+  const box = document.getElementById("page-back");
+  clear(box);
+  if (node) box.append(node);
+}
+
 function setActions(...nodes) {
   const box = document.getElementById("page-actions");
   clear(box);
@@ -104,13 +111,14 @@ async function route() {
   const changed = shownView !== name;
   if (changed) closeSidePanel(); // o detalhe lateral é da tela que ficou para trás
   if (shownView) kept[shownView] = { assist: document.getElementById("assist-slot").firstChild, eyebrow: eyebrow.textContent,
-    actions: [...document.getElementById("page-actions").childNodes] };
+    actions: [...document.getElementById("page-actions").childNodes], back: document.getElementById("page-back").firstChild };
   shownView = name;
   const prev = kept[name] || {};
   document.getElementById("page-title").textContent = view.title;
   setEyebrow(view.eyebrow || prev.eyebrow || "");
   document.title = `${view.title} · Nexus Worklog`;
   setActions(...(prev.actions || []));
+  setBack(prev.back || null);
 
   const el = document.getElementById("view-" + name);
   const seq = ++routeSeq;
@@ -121,6 +129,8 @@ async function route() {
   const assist = (node) => { if (seq === routeSeq) { assisted = true; setAssist(node); } };
   let acted = false;
   const actions = (...nodes) => { if (seq === routeSeq) { acted = true; setActions(...nodes); } };
+  let backed = false;
+  const back = (node) => { if (seq === routeSeq) { backed = true; setBack(node); } };
   // Tela já visitada: aparece na hora com o que mostrava e se atualiza quando a
   // resposta chega (esmaecida se demorar). Primeira visita: título e tela só
   // aparecem prontos, juntos com a fala do assistente, sem descer quando ela
@@ -139,7 +149,7 @@ async function route() {
     loadingMsg.classList.remove("hidden");
   }, 250);
   try {
-    await view.mount(el, { me, setActions: actions, setEyebrow, setAssist: assist, go });
+    await view.mount(el, { me, setActions: actions, setBack: back, setEyebrow, setAssist: assist, go });
   } catch (e) {
     clear(el);
     // Servidor fora (ou o app abriu do cache do aparelho): a frase e o botão, como na abertura.
@@ -155,6 +165,7 @@ async function route() {
       if (!visited && changed) enter(el);
       if (!assisted) setAssist(null);
       if (!acted) setActions();
+      if (!backed) setBack(null);
     }
   }
   // A mesma tela redesenhada (parar o cronômetro, voltar à interrompida, lembrete): fica onde estava.

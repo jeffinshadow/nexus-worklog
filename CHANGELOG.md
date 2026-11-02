@@ -9,6 +9,10 @@ maior seguinte (política completa em [`docs/ADMIN.md`](docs/ADMIN.md#versioname
 não a da hora do deploy. As versões 0.x e 1.x foram numeradas depois, sobre o histórico do git
 (etiquetas `v0.1.0` … `v1.12.1`).
 
+## 2.0.2 — 2026-11-02
+Projeto aberto: "Todos os projetos" volta para cima do título, no cabeçalho da página (estava abaixo do título
+e dos botões, fora de onde se procura a volta).
+
 ## 2.0.1 — 2026-11-02
 Vencimentos no celular: o nome usa a largura toda, com o prazo e os botões embaixo (no Hoje, o nome
 espremido ao lado dos botões quebrava no meio da palavra).
