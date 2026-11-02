@@ -390,6 +390,7 @@ class InviteRequestIn(BaseModel):
     source_note: Optional[str] = Field(default=None, max_length=120)
     reason: str = Field(min_length=3, max_length=600)
     website: Optional[str] = Field(default=None, max_length=200)  # armadilha: gente não vê, robô preenche
+    form_t: Optional[str] = Field(default=None, max_length=100)   # carimbo de GET /auth/invite-request/form (3 s a 1 h)
 
 
 class TokenIn(BaseModel):

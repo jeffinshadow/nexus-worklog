@@ -85,7 +85,10 @@ api.get("/auth/options").then((o) => {
 }).catch(() => {});
 
 // ---- Pedido de convite: vai para o administrador (e-mail e Admin).
+let formT = null;  // carimbo do servidor: a hora em que o formulário foi mostrado (o envio antes de 3 s é recusado)
+const loadFormT = () => api.get("/auth/invite-request/form").then((r) => { formT = r.t; }).catch(() => { formT = null; });
 $("go-request").addEventListener("click", () => {
+  loadFormT();
   $("req-email").value = $("req-email").value || $("login-email").value;
   $("request-ok").classList.add("hidden");
   $("auth-foot").classList.add("hidden");
@@ -101,7 +104,7 @@ $("form-request").addEventListener("submit", async (ev) => {
   try {
     await api.post("/auth/invite-request", {
       name: $("req-name").value.trim(), email: $("req-email").value.trim(), source: $("req-source").value,
-      source_note: $("req-note").value.trim() || null, reason: $("req-reason").value.trim(), website: $("req-website").value || null,
+      source_note: $("req-note").value.trim() || null, reason: $("req-reason").value.trim(), website: $("req-website").value || null, form_t: formT,
     });
     // Mesma frase em qualquer caso: a tela não revela se o e-mail já tem conta.
     ok.textContent = "Pedido enviado. Com a aprovação, o convite chega no seu e-mail; confira também o spam.";
@@ -110,6 +113,7 @@ $("form-request").addEventListener("submit", async (ev) => {
   } catch (e) {
     err.textContent = e.message || "Não foi possível enviar.";
     btn.disabled = false;
+    loadFormT();  // carimbo novo para a próxima tentativa
   }
 });
 $("go-forgot").addEventListener("click", () => {
