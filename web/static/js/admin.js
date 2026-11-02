@@ -5,6 +5,7 @@ import { codeBox, confirmDialog, errorToast, modal, navBadge, toast, busy, warnB
 import { applyBranding } from "./branding.js";
 import { avatar } from "./profile.js";
 import { healthPanel } from "./saude.js";
+import { editUserTeams, inviteTeamsField, mountTeams } from "./admin-equipes.js";
 
 const ROLES = [
   ["user", "Usuário", "tem o próprio registro (Hoje, Tarefas, Rotinas) e pode receber tarefas"],
@@ -15,7 +16,9 @@ const ROLES = [
 
 // "Vê a equipe" com a instância em "Visível para quem gerencia": vê todos (sem aceite).
 // "Manda tarefas" com "Todos recebem de quem atribui": manda para todos (sem aceite).
-const roleDesc = (k, d, me) => k === "viewer" && me && me.org && me.org.team_visibility === "managers"
+const roleDesc = (k, d, me) => roleDescBase(k, d, me) + (me && me.teams_on && (k === "viewer" || k === "assigner")
+  ? " (com equipes: só de quem está na mesma equipe; Admin › Equipes)" : "");
+const roleDescBase = (k, d, me) => k === "viewer" && me && me.org && me.org.team_visibility === "managers"
   ? "libera a tela Equipe: vê, sem editar, o registro (quadro, números, PDF, horas e fotos) de todos — nesta instância, visível para quem gerencia (Admin › Para empresas)"
   : k === "assigner" && me && me.org && me.org.assign_receive === "all"
   ? "libera Atribuir na tela Equipe: manda tarefas para todos com o papel Usuário — nesta instância, todos recebem de quem atribui (Admin › Para empresas)"
@@ -53,7 +56,7 @@ const STATUS = [
 ];
 const PAGE = 20;
 // Filtros da lista de contas: ficam enquanto o app está aberto (redesenhar depois de uma ação não os perde).
-const usersFilter = { q: "", role: "", status: "all" };
+const usersFilter = { q: "", role: "", status: "all", team: "" };
 
 // Origem dos pedidos de convite ("site" e "github" só nos pedidos antigos).
 const ORIGEM = { colega: "indicação de colega", empresa: "pela empresa ou equipe", internet: "internet ou redes sociais",
@@ -100,6 +103,7 @@ export async function mount(root, ctx) {
   const body = h("div");
   const abas = [
     ["usuarios", "Contas", (el) => mountUsers(el, ctx.me)],
+    ["equipes", "Equipes", (el) => mountTeams(el, ctx.me)],
     ["geral", "Geral", (el) => mountGeneral(el, ctx.me)],
     ["empresas", "Para empresas", (el) => mountOrg(el, ctx.me)],
     ["identidade", "Identidade visual", (el) => mountBranding(el)],
@@ -124,7 +128,11 @@ const roleNames = (roles) => ROLES.filter(([k]) => roles.includes(k)).map(([, n]
 
 async function mountUsers(root, me) {
   clear(root);
-  const [users, pedidos] = await Promise.all([api.get("/admin/users"), api.get("/admin/invite-requests").catch(() => [])]);
+  const [users, pedidos, teams] = await Promise.all([api.get("/admin/users"), api.get("/admin/invite-requests").catch(() => []),
+    api.get("/admin/teams").catch(() => [])]);
+  // Equipes (sql/043): coluna na linha e filtro, só quando a instância tem alguma ativa.
+  const liveTeams = teams.filter((t) => !t.archived_at);
+  const teamsOn = liveTeams.length > 0;
   const emailById = new Map(users.map((u) => [String(u.id), u.email]));
   const inviteBtn = h("button", { type: "button", class: "btn btn-primary", onClick: onInvite }, icon("add"), "Convidar pessoa");
   const st = usersFilter;
@@ -146,20 +154,29 @@ async function mountUsers(root, me) {
       h("option", { value: k, text: `${label} (${users.filter(test).length})` })));
   statusSel.value = st.status;
   statusSel.addEventListener("change", () => { st.status = statusSel.value; page = 1; paint(); });
+  if (st.team && st.team !== "none" && !liveTeams.some((t) => String(t.id) === st.team)) st.team = "";
+  const teamSel = h("select", { "aria-label": "Filtrar por equipe" }, h("option", { value: "", text: "Todas as equipes" }),
+    h("option", { value: "none", text: `Sem equipe (${users.filter((u) => !(u.teams || []).length).length})` }),
+    ...liveTeams.map((t) => h("option", { value: String(t.id), text: `${t.name} (${t.members.length})` })));
+  teamSel.value = st.team;
+  teamSel.addEventListener("change", () => { st.team = teamSel.value; page = 1; paint(); });
+  const teamTest = (u) => !teamsOn || !st.team || (st.team === "none" ? !(u.teams || []).length : (u.teams || []).some((t) => String(t.id) === st.team));
   const list = h("section", { class: "panel admin-users" },
     h("div", { class: "panel-head" }, title, h("div", { class: "spacer" }), inviteBtn),
     // Os papéis de cada conta mudam no ⋮ dela ("Papéis…"); aqui, o que cada um pode.
     h("details", { class: "roles-help" }, h("summary", { text: "O que cada papel pode" }),
       h("dl", { class: "roles-legend" }, ...ROLES.flatMap(([k, n, d]) => [h("dt", { text: n }), h("dd", { text: roleDesc(k, d, me) })]))),
-    many ? h("div", { class: "admin-filters" }, h("div", { class: "field admin-search" }, search),
-      h("div", { class: "field admin-role" }, roleSel), h("div", { class: "field admin-role" }, statusSel)) : null,
+    many || teamsOn ? h("div", { class: "admin-filters" + (teamsOn ? " has-teams" : "") },
+      many ? h("div", { class: "field admin-search" }, search) : null,
+      many ? h("div", { class: "field admin-role" }, roleSel) : null, many ? h("div", { class: "field admin-role" }, statusSel) : null,
+      teamsOn ? h("div", { class: "field admin-role" }, teamSel) : null) : null,
     box);
 
   function paint() {
     clear(box);
     const test = STATUS.find(([k]) => k === st.status)[2];
     const f = many ? st : { q: "", role: "" };
-    const shown = users.filter((u) => (!many || test(u)) && (!f.role || u.roles.includes(f.role)) && (!f.q || userText(u).includes(f.q)));
+    const shown = users.filter((u) => (!many || test(u)) && (!f.role || u.roles.includes(f.role)) && (!f.q || userText(u).includes(f.q)) && teamTest(u));
     if (!shown.length) box.append(h("p", { class: "empty", text: "Nenhuma conta com esses filtros." }));
     const sl = pageSlice(shown, page, PAGE);
     page = sl.page;
@@ -176,6 +193,7 @@ async function mountUsers(root, me) {
       title: u.invite_expired ? "O link de 7 dias venceu: reenvie o convite" : "Aguardando a pessoa criar a senha" }));
     if (u.blocked_at) chips.push(h("span", { class: "chip pending-chip late", text: "acesso bloqueado", title: `Bloqueada em ${dmy(u.blocked_at)}. Para liberar, use Liberar acesso` }));
     if (self) chips.push(h("span", { class: "chip pending-chip", text: "você" }));
+    if (u.is_master) chips.push(h("span", { class: "chip pending-chip master-chip", text: "admin master", title: "O primeiro admin: vê e atribui para todos quando liga os próprios papéis (Admin › Equipes)" }));
     // Quem ainda não aceitou o convite recebe outro link; os demais, nova senha
     // (que também libera uma conta bloqueada). O resto fica no menu da linha.
     // No celular, a ação da linha vai para o ⋮ (o e-mail fica inteiro na linha).
@@ -186,6 +204,7 @@ async function mountUsers(root, me) {
     const items = [
       self ? null : u.invite_pending ? ["Cancelar convite", "close", () => onCancelInvite(u)] : u.blocked_at ? null : ["Bloquear acesso", "alert", () => onBlock(u)],
       ["Papéis…", "person", () => editRoles(u, me, () => mountUsers(root, me))],
+      ["Equipes…", "team", () => editUserTeams(u, () => mountUsers(root, me))],
       ["Editar nome e e-mail", "edit", () => editProfile(u, me, () => mountUsers(root, me))],
       self || u.invite_pending ? null : ["Excluir conta", "trash", () => onDelete(u)],
     ];
@@ -194,6 +213,8 @@ async function mountUsers(root, me) {
     return h("div", { class: "list-row" }, avatar(u, "sm"),
       h("div", { class: "t" }, u.display_name ? h("span", { class: "dot-list" }, h("span", { text: u.display_name }), h("span", { text: u.email })) : h("span", { text: u.email }),
         h("small", {}, roleNames(u.roles), ...chips),
+        teamsOn ? h("small", { class: "account-teams" + ((u.teams || []).length ? "" : " no-team"), text: (u.teams || []).length
+          ? `Equipes: ${u.teams.map((t) => t.name).join(", ")}` : "Sem equipe" }) : null,
         h("small", { class: "account-seen", text: accessLine(u) })),
       main, more);
   }
@@ -393,6 +414,7 @@ async function mountUsers(root, me) {
       return [cb, h("label", { class: "check-line role-line" }, cb, h("span", {}, h("strong", { text: n }), h("small", { text: roleDesc(k, d, me) })))];
     });
     const locked = me.org && me.org.identity_managed;
+    const [teamsBox, teamIds] = inviteTeamsField(teams);
     const submit = h("button", { type: "submit", class: "btn btn-primary", text: byLink ? "Enviar convite" : "Criar conta" });
     const form = h(
       "form",
@@ -403,6 +425,7 @@ async function mountUsers(root, me) {
         ? "Fica como o nome da conta. Nome e e-mail são definidos pela administração: depois, mude em Editar nome e e-mail."
         : "Fica como o nome da conta até o primeiro acesso; no tour, a pessoa confere e ajusta." }),
       h("fieldset", { class: "invite-roles" }, h("legend", { text: "Papéis (dá para mudar depois em Papéis…)" }), ...boxes.map(([, l]) => l)),
+      teamsBox,
       h("p", {
         class: "dialog-note",
         text: byLink
@@ -432,7 +455,7 @@ async function mountUsers(root, me) {
         text: "A pessoa vai poder convidar, bloquear e excluir contas, mudar papéis e as configurações gerais.",
         confirm: "Convidar como Admin" }))) return;
       submit.disabled = true;
-      const body = { display_name: name.value.trim() || null, roles };
+      const body = { display_name: name.value.trim() || null, roles, team_ids: teamIds() };
       try {
         const res = req ? await api.post(`/admin/invite-requests/${req.id}/invite`, body)
           : await api.post("/admin/users", { email: input.value.trim(), ...body });
@@ -484,6 +507,7 @@ function editRoles(u, me, onChanged) {
     const cb = h("input", { type: "checkbox", value: k });
     cb.checked = u.roles.includes(k);
     if (k === "admin" && u.id === me.id) { cb.disabled = true; cb.title = "Você não pode tirar o seu próprio admin"; }
+    else if (k === "admin" && u.is_master) { cb.disabled = true; cb.title = "É o admin master: só ele passa o papel adiante (Admin › Equipes)"; }
     cb.addEventListener("change", () => { if (saving) { cb.checked = !cb.checked; return; } save(cb); });
     return [cb, h("label", { class: "check-line role-line" }, cb, h("span", {}, h("strong", { text: n }), h("small", { text: roleDesc(k, d, me) })))];
   });

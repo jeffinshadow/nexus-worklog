@@ -20,6 +20,16 @@ const ROUTINE_HINTS = ["Revisar a fila de pedidos", "Conferir os backups da noit
 
 let running = false;
 
+// Com equipes (sql/043), "Para empresas" vale só para quem está em alguma e
+// alcança só quem compartilha equipe: os textos dizem isso (com o nome delas).
+const teamsOf = (me) => (me.teams || []).join(", ");
+const VIS_TEXT = (me) => me.teams_on && (me.teams || []).length
+  ? `Nesta instância do Nexus, quem gerencia vê as tarefas de quem está na mesma equipe (definido pela administração). Você está em: ${teamsOf(me)}. Quem tem o papel “Vê a equipe” nessas equipes vê, sem editar, o seu quadro, os seus números, relatórios, horas e fotos.`
+  : "Nesta instância do Nexus, quem gerencia a equipe vê as tarefas de todos (definido pela administração). Quem tem o papel “Vê a equipe” vê, sem editar, o seu quadro, os seus números, relatórios, horas e fotos.";
+const assignText = (me) => me.teams_on && (me.teams || []).length
+  ? `Nesta instância do Nexus, quem está na mesma equipe recebe tarefas de quem atribui (definido pela administração). Você está em: ${teamsOf(me)}. Quem tem o papel “Manda tarefas” nessas equipes pode mandar tarefas para você; cada uma chega por e-mail e aparece em Tarefas com “de” e o nome de quem mandou.`
+  : ASSIGN_TEXT;
+
 // Aviso único (fora do tour) para quem já usava o Nexus quando a administração
 // ligou "Visível para quem gerencia". Só "Entendi" grava; Esc mostra de novo depois.
 export async function visibilityNotice(me) {
@@ -31,9 +41,10 @@ export async function visibilityNotice(me) {
   } });
   const dlg = modal(
     h("h2", { text: "Quem gerencia a equipe vê o seu registro" }),
-    h("p", { id: "vis-notice-text", text: "Nesta instância do Nexus, quem gerencia a equipe vê as tarefas de todos (definido pela administração). Quem tem o papel “Vê a equipe” vê, sem editar, o seu quadro, os seus números, relatórios, horas e fotos." }),
+    h("p", { id: "vis-notice-text", text: VIS_TEXT(me) }),
     h("p", { class: "dialog-note", text: viewers.length ? `Hoje, com esse papel: ${viewers.join(", ")}.` : "Hoje, ninguém tem esse papel." }),
-    h("p", { class: "dialog-note", text: "A sua escolha em Configurações > Conta fica guardada e volta a valer se a administração mudar isso." }),
+    h("p", { class: "dialog-note", text: me.teams_on ? "A sua escolha em Configurações > Conta fica guardada e volta a valer se a administração mudar isso ou se você sair das equipes."
+      : "A sua escolha em Configurações > Conta fica guardada e volta a valer se a administração mudar isso." }),
     h("div", { class: "dialog-actions" }, ok));
   dlg.setAttribute("aria-describedby", "vis-notice-text"); // o leitor lê o porquê, não só o título e o "Entendi"
   ok.focus();
@@ -51,7 +62,7 @@ export function assignNotice(me) {
   } });
   const dlg = modal(
     h("h2", { text: "Você pode receber tarefas de quem atribui" }),
-    h("p", { id: "assign-notice-text", text: ASSIGN_TEXT }),
+    h("p", { id: "assign-notice-text", text: assignText(me) }),
     h("p", { class: "dialog-note", text: ASSIGN_OWN }),
     h("p", { class: "dialog-note", text: "A sua escolha em Configurações > Conta fica guardada e volta a valer se a administração mudar isso." }),
     h("div", { class: "dialog-actions" }, ok));
@@ -67,10 +78,14 @@ const ROLE_INFO = {
   admin: ["Admin", "Você administra o Nexus: convites, contas, papéis e configurações. Fica em Admin, no menu."],
   assigner: ["Manda tarefas", "Você pode mandar tarefas para quem aceitou receber e acompanhar o que mandou."],
   viewer: ["Vê a equipe", "Você vê, sem editar, o registro da equipe na tela Equipe, no menu."],
+  master: ["Admin master", "Você é o admin master: com “Vê a equipe” e “Manda tarefas” ligados (Admin › Equipes), vê e manda tarefas para todos, com ou sem equipe. O que você abrir do registro dos outros fica no log de admin, e só você passa este papel adiante."],
 };
 // Com Para empresas ligado, "Manda tarefas" e "Vê a equipe" valem para todos (sem aceite).
 function roleText(k, me) {
   const org = me.org || {};
+  const inTeams = me.teams_on && !me.is_master;
+  if (inTeams && k === "assigner") return (me.teams || []).length ? `Você pode mandar tarefas para quem está nas suas equipes (${teamsOf(me)}) e acompanhar o que mandou, na tela Equipe.` : "Você pode mandar tarefas para quem está nas suas equipes. Hoje você não está em nenhuma: peça à administração para incluir você.";
+  if (inTeams && k === "viewer") return (me.teams || []).length ? `Você vê, sem editar, o registro de quem está nas suas equipes (${teamsOf(me)}) na tela Equipe, no menu.` : "Você vê, sem editar, o registro de quem está nas suas equipes. Hoje você não está em nenhuma: peça à administração para incluir você.";
   if (k === "assigner" && org.assign_receive === "all") return "Você pode mandar tarefas para todos da equipe (nesta instância, todos recebem de quem atribui) e acompanhar o que mandou, na tela Equipe.";
   if (k === "viewer" && org.team_visibility === "managers") return "Você vê, sem editar, o registro de toda a equipe na tela Equipe, no menu (nesta instância, visível para quem gerencia).";
   return ROLE_INFO[k][1];
@@ -268,7 +283,7 @@ function setup(me, must, from = 0) {
     async function visibility() {
       const list = await api.get("/me/visibility").catch(() => []);
       const viewers = list.filter((p) => p.roles.includes("viewer")).map((p) => p.name);
-      return frame("Quem vê o seu registro", "Nesta instância do Nexus, quem gerencia a equipe vê as tarefas de todos (definido pela administração). Quem tem o papel “Vê a equipe” vê, sem editar, o seu quadro, os seus números, relatórios, horas e fotos.",
+      return frame("Quem vê o seu registro", VIS_TEXT(me),
         [h("p", { class: "dialog-note", text: viewers.length ? `Hoje, com esse papel: ${viewers.join(", ")}.` : "Hoje, ninguém tem esse papel." }),
           h("p", { class: "dialog-note", text: "A lista fica sempre em Configurações > Conta." })],
         async () => { await api.put("/me/visibility-notice"); me.visibility_notice = false; }, "Entendi");
@@ -276,7 +291,7 @@ function setup(me, must, from = 0) {
 
     // Só quando a administração ligou "Todos recebem de quem atribui".
     function receiving() {
-      return frame("Tarefas de quem atribui", ASSIGN_TEXT,
+      return frame("Tarefas de quem atribui", assignText(me),
         [h("p", { class: "dialog-note", text: ASSIGN_OWN })],
         async () => { await api.put("/me/assign-notice"); me.assign_notice = false; }, "Entendi");
     }
