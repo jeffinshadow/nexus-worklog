@@ -1,7 +1,8 @@
 // Tela de login. Contas são criadas pelo admin (convite); não há cadastro público.
 // Com e-mail no servidor, a mesma tela também: pede o link de senha nova
 // ("Esqueci a senha") e recebe os links do e-mail — #convite=… (criar a senha
-// do convite) e #senha=… (senha nova). O token fica no # (não vai para logs).
+// do convite), #senha=… (senha nova) e #email=… (confirmar o e-mail novo da
+// conta). O token fica no # (não vai para logs).
 import { api } from "./api.js";
 import { loadBranding } from "./branding.js";
 import { markInvalid, matchPasswords } from "./dom.js";
@@ -138,11 +139,38 @@ $("form-forgot").addEventListener("submit", async (ev) => {
 // ---- Links do e-mail.
 // Também quando o link abre numa aba que já estava no login (só o # muda).
 function fromHash() {
-  const m = location.hash.match(/^#(convite|senha)=([\w-]{20,100})$/);
-  if (m) openLink(m[1] === "convite" ? "invite" : "reset", m[2]);
+  const m = location.hash.match(/^#(convite|senha|email)=([\w-]{20,100})$/);
+  if (m && m[1] === "email") confirmEmail(m[2]);
+  else if (m) openLink(m[1] === "convite" ? "invite" : "reset", m[2]);
 }
 fromHash();
 addEventListener("hashchange", fromHash);
+
+// Confirmação do e-mail novo (Configurações > Conta > E-mail): troca na hora e
+// avisa o endereço antigo. Mostra o resultado na mesma caixa dos outros links.
+async function confirmEmail(token) {
+  history.replaceState(null, "", location.pathname);
+  $("auth-foot").classList.add("hidden");
+  show("form-link");
+  $("link-name-wrap").classList.add("hidden");
+  $("form-link").querySelectorAll(".field, #link-submit").forEach((el) => el.classList.add("hidden"));
+  $("link-back").classList.remove("hidden");
+  $("link-title").textContent = "Confirmando o e-mail…";
+  $("link-sub").textContent = "";
+  document.title = "Confirmar e-mail · Nexus Worklog";
+  $("link-title").focus();
+  try {
+    const res = await api.post("/auth/email/confirm", { token });
+    $("link-title").textContent = "E-mail confirmado";
+    $("link-sub").textContent = `Pronto: a sua conta agora usa ${res.email}. Entre com ele daqui em diante.`;
+    $("login-email").value = res.email;
+  } catch (e) {
+    $("link-title").textContent = "Não foi possível confirmar";
+    $("link-sub").textContent = e.status === 429 ? "Muitas tentativas agora. Espere um minuto e abra o link de novo."
+      : e.message ? e.message.charAt(0).toUpperCase() + e.message.slice(1) + "." : "Este link venceu ou já foi usado. Peça a troca de novo em Configurações > Conta.";
+  }
+  $("link-title").focus();
+}
 
 async function openLink(kind, token) {
   history.replaceState(null, "", location.pathname); // o token sai da barra (e do histórico)
@@ -172,6 +200,9 @@ async function openLink(kind, token) {
   $("link-back").classList.add("hidden");
   $("link-submit").classList.remove("hidden");
   $("form-link").querySelectorAll(".field:not(#link-name-wrap)").forEach((el) => el.classList.remove("hidden"));
+  // Quem convidou já pôs o nome (a pessoa confere no tour) ou a administração o
+  // define: o convite não pergunta de novo.
+  $("link-name-wrap").classList.toggle("hidden", !invite || !!info.display_name || !!info.name_locked);
   $("link-sub").textContent = invite
     ? `Crie a senha da sua conta ${info.email}. Depois disso você já entra.`
     : `Conta ${info.email}. Ao salvar, as outras sessões e as chaves de API são encerradas.`;
@@ -186,7 +217,7 @@ async function openLink(kind, token) {
     if (btn) btn.disabled = true;
     try {
       const body = { token, password: $("link-pw").value };
-      if (invite) body.display_name = $("link-name").value.trim() || null;
+      if (invite && !$("link-name-wrap").classList.contains("hidden")) body.display_name = $("link-name").value.trim() || null;
       await api.post(invite ? "/auth/invite/accept" : "/auth/reset", body);
       location.href = "/";
     } catch (e) {

@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from .. import audit, db, mailer, people, push
 from ..deps import client_ip, require_admin, require_admin_csrf
-from ..schemas import InviteIn, InviteRequestIn
+from ..schemas import InviteChoiceIn, InviteIn, InviteRequestIn
 from ..security import invite_req_email_limiter, invite_req_limiter
 from .admin import invite_user
 
@@ -102,14 +102,16 @@ def _decide(rid: int, status: str, admin: dict) -> dict:
 
 
 @router.post("/api/admin/invite-requests/{rid}/invite")
-def invite(rid: int, admin=Depends(require_admin_csrf)):
+def invite(rid: int, data: InviteChoiceIn | None = None, admin=Depends(require_admin_csrf)):
+    """Convida quem pediu, com o nome (revisado pelo admin; padrão: o do pedido)
+    e os papéis escolhidos ali (padrão: só Usuário), como em POST /admin/users."""
     req = db.query_one("SELECT * FROM invite_requests WHERE id = %s AND status = 'pending'", (rid,))
     if not req:
         raise HTTPException(status_code=404, detail="pedido não encontrado ou já decidido")
-    out = invite_user(InviteIn(email=req["email"]), admin=admin)  # 409 se já tiver conta
+    data = data or InviteChoiceIn()
+    nome = data.display_name if "display_name" in data.model_fields_set else (req["name"] or "")[:60]
+    out = invite_user(InviteIn(email=req["email"], display_name=nome or None, roles=data.roles), admin=admin)  # 409 se já tiver conta
     _decide(rid, "invited", admin)
-    if req["name"]:  # o nome que a pessoa deu já fica na conta (ela pode trocar)
-        db.execute("UPDATE users SET display_name = COALESCE(display_name, %s) WHERE email = %s", (req["name"][:60], req["email"]))
     return out
 
 

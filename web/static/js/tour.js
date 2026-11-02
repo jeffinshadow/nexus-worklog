@@ -3,9 +3,12 @@
 // (nome, tema, dias úteis, projetos, projeto padrão, rotinas) e (2) um passeio pela
 // tela Hoje, com destaque em cada parte, mostrando como fica o dia a dia.
 // Quem já configurou passa rápido: cada passo vem com o que já está salvo.
+// Tour obrigatório (Admin › Para empresas, só no primeiro acesso): sem "Pular"
+// nem Esc até concluir (Voltar continua); a conclusão vai para o servidor.
+// Parada que falha (passo que não carrega, alvo ausente) segue para a próxima.
 import { api } from "./api.js";
 import { h, icon, clear, field } from "./dom.js";
-import { errorToast } from "./ui.js";
+import { errorToast, modal } from "./ui.js";
 import { listProjects, projectChip } from "./projects.js";
 import { applyPack, loadPacks, packAreas, packPicker } from "./pacotes.js";
 
@@ -17,19 +20,46 @@ const ROUTINE_HINTS = ["Revisar a fila de pedidos", "Conferir os backups da noit
 
 let running = false;
 
+// Aviso único (fora do tour) para quem já usava o Nexus quando a administração
+// ligou "Visível para quem gerencia". Só "Entendi" grava; Esc mostra de novo depois.
+export async function visibilityNotice(me) {
+  const list = await api.get("/me/visibility").catch(() => []);
+  const viewers = list.filter((p) => p.roles.includes("viewer")).map((p) => p.name);
+  const ok = h("button", { type: "button", class: "btn btn-primary", text: "Entendi", onClick: async () => {
+    try { await api.put("/me/visibility-notice"); me.visibility_notice = false; dlg.close(); }
+    catch (e) { errorToast(e); }
+  } });
+  const dlg = modal(
+    h("h2", { text: "Quem gerencia a equipe vê o seu registro" }),
+    h("p", { text: "Nesta instância do Nexus, quem gerencia a equipe vê as tarefas de todos (definido pela administração). Quem tem o papel “Vê a equipe” vê, sem editar, o seu quadro, os seus números, relatórios, horas e fotos." }),
+    h("p", { class: "dialog-note", text: viewers.length ? `Hoje, com esse papel: ${viewers.join(", ")}.` : "Hoje, ninguém tem esse papel." }),
+    h("p", { class: "dialog-note", text: "A sua escolha em Configurações > Conta fica guardada e volta a valer se a administração mudar isso." }),
+    h("div", { class: "dialog-actions" }, ok));
+  ok.focus();
+}
+
 // me: o objeto da sessão (é atualizado e avisado com "nexus:me").
 export async function startTour(me) {
   if (running) return;
   running = true;
+  const must = !!me.tour_required;
+  let completed = false;
   try {
-    const go = await setup(me);
-    if (go === "walk") await walk();
+    const go = await setup(me, must);
+    if (go === "walk") { await walk(must); completed = true; }
   } finally {
     running = false;
-    // Visto (ou pulado): não abre sozinho de novo; a Ajuda reabre.
-    api.put("/me/tour", { done: true }).then((r) => { me.tour_done_at = r.tour_done_at; }).catch(() => {});
+    // Visto (ou pulado, quando pode): não abre sozinho de novo; a Ajuda reabre.
+    // Obrigatório e interrompido (aba fechada, erro): abre de novo no próximo acesso.
+    if (!must || completed) {
+      api.put("/me/tour", { done: true }).then((r) => {
+        Object.assign(me, { tour_done_at: r.tour_done_at, tour_required: !!r.tour_required, visibility_notice: !!r.visibility_notice });
+      }).catch(() => {});
+    }
   }
 }
+
+const NUM = { 5: "cinco", 6: "seis", 7: "sete", 8: "oito" };
 
 function changed(me, res) {
   Object.assign(me, res);
@@ -38,23 +68,42 @@ function changed(me, res) {
 
 // ------------------------------------------------------ parte 1: configurar --
 // Devolve "walk" (seguir para o passeio) ou "close".
-function setup(me) {
+function setup(me, must) {
   return new Promise((resolve) => {
     let result = "close", step = 0, dir = 1;
     const body = h("div", { class: "tour-body" });
     const dlg = h("dialog", { class: "tour-dialog", "aria-labelledby": "tour-title" }, body);
     document.body.append(dlg);
-    dlg.addEventListener("close", () => { dlg.remove(); resolve(result); });
-    dlg.addEventListener("cancel", () => { result = "close"; });
+    let ended = false;
+    dlg.addEventListener("close", () => {
+      // Obrigatório: só sai pelo botão principal. Se o navegador fechou mesmo assim
+      // (Esc repetido, gesto de voltar), abre de novo no mesmo passo.
+      if (must && !ended) { dlg.showModal(); paint().catch(() => {}); return; }
+      dlg.remove(); resolve(result);
+    });
+    // Obrigatório: Esc não fecha (o tour termina pelo botão principal).
+    dlg.addEventListener("keydown", (ev) => { if (must && ev.key === "Escape") ev.preventDefault(); });
+    dlg.addEventListener("cancel", (ev) => { if (must) ev.preventDefault(); else result = "close"; });
 
-    const steps = [welcome, profile, theme, workDays, projects, defaultProject, routines, ready];
+    const org = me.org || {};
+    const nameLocked = !!org.identity_managed;
+    const visOn = org.team_visibility === "managers";
+    const steps = [welcome, profile, theme, ...(visOn ? [visibility] : []), workDays, projects, defaultProject, routines, ready];
     const total = steps.length - 2; // boas-vindas e "pronto" não contam
     const next = () => { step++; dir = 1; paint(); };
     const back = () => { step--; dir = -1; paint(); };
-    const end = (r) => { result = r; dlg.close(); };
+    const end = (r) => { ended = true; result = r; dlg.close(); };
 
+    // Passo que não carrega (rede, servidor) não prende ninguém: segue na mesma direção.
     async function paint() {
-      const content = await steps[step]();
+      let content;
+      try { content = await steps[step](); }
+      catch (e) {
+        const to = Math.min(steps.length - 1, Math.max(0, step + dir));
+        if (to === step) throw e;
+        step = to;
+        return paint();
+      }
       clear(body);
       body.append(...content);
       const first = body.querySelector("input:not([type=checkbox]), select, .btn-primary");
@@ -71,8 +120,8 @@ function setup(me) {
         h("p", { class: "tour-intro", text: intro }),
         ...controls, err,
         h("div", { class: "dialog-actions tour-actions" },
-          h("button", { type: "button", class: "btn btn-text tour-skip", text: "Pular o tour", onClick: () => end("close") }),
-          h("button", { type: "button", class: "btn btn-text", text: "Voltar", onClick: back }),
+          must ? null : h("button", { type: "button", class: "btn btn-text tour-skip", text: "Pular o tour", onClick: () => end("close") }),
+          h("button", { type: "button", class: "btn btn-text" + (must ? " tour-skip" : ""), text: "Voltar", onClick: back }),
           ok));
       form.addEventListener("submit", async (ev) => {
         ev.preventDefault();
@@ -91,17 +140,26 @@ function setup(me) {
         h("div", { class: "tour-hero" }, h("img", { src: "/img/dragon-mark.svg", alt: "", width: "40", height: "46" })),
         h("h2", { id: "tour-title", text: `Boas-vindas ao Nexus${nome}` }),
         h("p", { class: "tour-intro", text: "O Nexus guarda o seu dia de trabalho: as rotinas que você confere, as tarefas que aparecem e o tempo de cada uma. No fim do dia, da semana ou do mês, o relatório sai pronto." }),
-        h("p", { class: "tour-intro", text: "Primeiro, seis passos rápidos para deixar o Nexus do seu jeito. Depois, um passeio de um minuto pela tela. Dá para rever tudo depois pela Ajuda." }),
+        h("p", { class: "tour-intro", text: `Primeiro, ${NUM[total] || total} passos rápidos para deixar o Nexus do seu jeito. Depois, um passeio de um minuto pela tela. ` +
+          (must ? "Neste primeiro acesso o tour vai até o fim; dá para rever tudo depois pela Ajuda." : "Dá para rever tudo depois pela Ajuda.") }),
         h("div", { class: "dialog-actions tour-actions" },
-          h("button", { type: "button", class: "btn btn-text tour-skip", text: "Agora não", onClick: () => end("close") }),
-          h("button", { type: "button", class: "btn btn-ghost", text: "Só o passeio", onClick: () => end("walk") }),
+          must ? null : h("button", { type: "button", class: "btn btn-text tour-skip", text: "Agora não", onClick: () => end("close") }),
+          must ? null : h("button", { type: "button", class: "btn btn-ghost", text: "Só o passeio", onClick: () => end("walk") }),
           h("button", { type: "button", class: "btn btn-primary", text: "Começar", onClick: next })),
       ];
     }
 
     function profile() {
+      // Nome definido pela administração: o tour só mostra (sem campo para editar).
+      if (nameLocked) {
+        return frame("O seu nome no Nexus", "Aparece no menu, nas saudações do assistente e para quem atribui tarefas a você. Nesta instância, nome e e-mail são definidos pela administração: para mudar, fale com quem administra.",
+          [h("p", { class: "tour-name-locked" }, h("strong", { text: me.name }), h("span", { class: "mono", text: me.email }))], null, "Seguir");
+      }
       const name = h("input", { type: "text", maxlength: "60", value: me.display_name || "", placeholder: "Seu nome", autocomplete: "name" });
-      return frame("Qual nome devemos usar?", "Aparece no menu, nas saudações do assistente e para quem atribui tarefas a você. A foto você coloca depois em Configurações > Conta.",
+      const intro = me.display_name
+        ? "Quem convidou você colocou este nome. Confira e ajuste se quiser: aparece no menu, nas saudações do assistente e para quem atribui tarefas a você."
+        : "Aparece no menu, nas saudações do assistente e para quem atribui tarefas a você. A foto você coloca depois em Configurações > Conta.";
+      return frame(me.display_name ? "Este é o seu nome?" : "Qual nome devemos usar?", intro,
         [field("Nome", name)],
         async () => {
           const v = name.value.trim() || null;
@@ -124,6 +182,16 @@ function setup(me) {
       paint(me.theme || "dark");
       return frame("Claro ou escuro?", "Automático segue o aparelho: se ele escurece à noite, o Nexus também. Toque para ver como fica. Dá para trocar depois em Configurações > Conta.",
         [seg], null, "Seguir");
+    }
+
+    // Só quando a administração ligou "Visível para quem gerencia": quem vê o quê.
+    async function visibility() {
+      const list = await api.get("/me/visibility").catch(() => []);
+      const viewers = list.filter((p) => p.roles.includes("viewer")).map((p) => p.name);
+      return frame("Quem vê o seu registro", "Nesta instância do Nexus, quem gerencia a equipe vê as tarefas de todos (definido pela administração). Quem tem o papel “Vê a equipe” vê, sem editar, o seu quadro, os seus números, relatórios, horas e fotos.",
+        [h("p", { class: "dialog-note", text: viewers.length ? `Hoje, com esse papel: ${viewers.join(", ")}.` : "Hoje, ninguém tem esse papel." }),
+          h("p", { class: "dialog-note", text: "A lista fica sempre em Configurações > Conta." })],
+        async () => { await api.put("/me/visibility-notice"); me.visibility_notice = false; }, "Entendi");
     }
 
     function workDays() {
@@ -241,16 +309,18 @@ function setup(me) {
       return [
         h("p", { class: "tour-step mono", text: "Tudo pronto" }),
         h("h2", { id: "tour-title", text: "Agora, o dia a dia" }),
-        h("p", { class: "tour-intro", text: "Um passeio rápido pela tela Hoje: onde registrar, o que filtrar e onde ficam os relatórios. São poucos passos, e dá para sair a qualquer momento." }),
+        h("p", { class: "tour-intro", text: must
+          ? "Um passeio rápido pela tela Hoje: onde registrar, o que filtrar e onde ficam os relatórios. São poucos passos."
+          : "Um passeio rápido pela tela Hoje: onde registrar, o que filtrar e onde ficam os relatórios. São poucos passos, e dá para sair a qualquer momento." }),
         h("div", { class: "dialog-actions tour-actions" },
-          h("button", { type: "button", class: "btn btn-text tour-skip", text: "Fechar", onClick: () => end("close") }),
-          h("button", { type: "button", class: "btn btn-text", text: "Voltar", onClick: () => { step = steps.indexOf(routines); paint(); } }),
+          must ? null : h("button", { type: "button", class: "btn btn-text tour-skip", text: "Fechar", onClick: () => end("close") }),
+          h("button", { type: "button", class: "btn btn-text" + (must ? " tour-skip" : ""), text: "Voltar", onClick: () => { step = steps.indexOf(routines); dir = -1; paint(); } }),
           h("button", { type: "button", class: "btn btn-primary", text: "Fazer o passeio", onClick: () => end("walk") })),
       ];
     }
 
     dlg.showModal();
-    paint().catch((e) => { errorToast(e); dlg.close(); });
+    paint().catch((e) => { errorToast(e); end(must ? "walk" : "close"); });
   });
 }
 
@@ -297,7 +367,7 @@ function visible(el) {
   return r.width > 0 && r.height > 0;
 }
 
-function walk() {
+function walk(must = false) {
   return new Promise((resolve) => {
     // Sempre um Hoje recém-montado (com o que o tour acabou de criar): de outra
     // tela, troca a rota; já no Hoje, monta de novo.
@@ -306,14 +376,15 @@ function walk() {
     const zoom = () => parseFloat(getComputedStyle(document.body).zoom) || 1;
     const spot = h("div", { class: "tour-spot", "aria-hidden": "true" });
     const title = h("h2", { id: "tour-pop-title" });
-    const text = h("p");
+    const text = h("p", { id: "tour-pop-text" });
     const count = h("span", { class: "tour-step mono" });
     const prev = h("button", { type: "button", class: "btn btn-text", text: "Voltar" });
     const next = h("button", { type: "button", class: "btn btn-primary" });
-    const pop = h("div", { class: "tour-pop", role: "dialog", "aria-modal": "true", "aria-labelledby": "tour-pop-title" },
+    if (must) prev.classList.add("tour-skip");
+    const pop = h("div", { class: "tour-pop", role: "dialog", "aria-modal": "true", "aria-labelledby": "tour-pop-title", "aria-describedby": "tour-pop-text" },
       count, title, text,
       h("div", { class: "dialog-actions tour-actions" },
-        h("button", { type: "button", class: "btn btn-text tour-skip", text: "Encerrar", onClick: () => done() }), prev, next));
+        must ? null : h("button", { type: "button", class: "btn btn-text tour-skip", text: "Encerrar", onClick: () => done() }), prev, next));
     // Fundo escuro em quatro faixas em volta do alvo (cima, baixo, esquerda, direita).
     const shades = [0, 1, 2, 3].map(() => h("div", { class: "tour-shade", "aria-hidden": "true" }));
     const layer = h("div", { class: "tour-layer" }, ...shades, spot, pop);
@@ -328,9 +399,9 @@ function walk() {
       resolve();
     }
     function onKey(ev) {
-      if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); done(); }
+      if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); if (!must) done(); }
       else if (ev.key === "ArrowRight") { ev.preventDefault(); show(i + 1); }
-      else if (ev.key === "ArrowLeft") { ev.preventDefault(); show(i - 1); }
+      else if (ev.key === "ArrowLeft") { ev.preventDefault(); show(i - 1, -1); }
       else if (ev.key === "Tab") { // o foco fica no cartão
         const btns = [...pop.querySelectorAll("button:not([disabled])")];
         const at = btns.indexOf(document.activeElement);
@@ -368,7 +439,9 @@ function walk() {
     }
     // O alvo é procurado na hora: a tela pode ter sido montada de novo no meio.
     const find = (sels) => sels.map((s) => document.querySelector(s)).find(visible);
-    function show(n) {
+    // Alvo que sumiu (a tela mudou no meio): a parada é pulada na mesma direção.
+    function show(n, dir = 1) {
+      while (n >= 0 && n < stops.length && !find(stops[n][0])) n += dir;
       if (n < 0 || n >= stops.length) { if (n >= stops.length) done(); return; }
       i = n;
       const [sels, t, body] = stops[i];
@@ -384,7 +457,7 @@ function walk() {
       setTimeout(place, 350); // depois da rolagem suave
       next.focus();
     }
-    prev.addEventListener("click", () => show(i - 1));
+    prev.addEventListener("click", () => show(i - 1, -1));
     next.addEventListener("click", () => show(i + 1));
     layer.addEventListener("click", (ev) => { if (ev.target === layer) next.focus(); }); // clique fora não fecha por engano
 

@@ -11,12 +11,47 @@ Status = Literal["todo", "in_progress", "blocked", "done"]
 _PW = Field(min_length=config.MIN_PASSWORD_LEN, max_length=config.MAX_PASSWORD_LEN)
 
 
+RoleName = Literal["user", "admin", "assigner", "viewer"]
+
+
 class InviteIn(BaseModel):
     email: EmailStr
+    # Nome da conta até o primeiro acesso (no tour a pessoa confirma ou ajusta).
+    display_name: Optional[str] = Field(default=None, max_length=60)
+    # Papéis já no convite (mudam depois em Papéis…). Padrão: só Usuário.
+    roles: list[RoleName] = Field(default_factory=lambda: ["user"], min_length=1, max_length=4)
+
+
+class InviteChoiceIn(BaseModel):
+    """Convidar a partir de um pedido: nome (padrão: o do pedido) e papéis (padrão: só Usuário)."""
+    display_name: Optional[str] = Field(default=None, max_length=60)
+    roles: list[RoleName] = Field(default_factory=lambda: ["user"], min_length=1, max_length=4)
+
+
+class OrgIn(BaseModel):
+    """Admin › Para empresas e instituições. Campo ausente = mantém."""
+    team_visibility: Optional[Literal["self", "managers"]] = None  # cada pessoa escolhe / visível para quem gerencia
+    identity_managed: Optional[bool] = None  # nome e e-mail definidos pela administração
+    tour_required: Optional[bool] = None     # tour obrigatório no primeiro acesso
+
+
+class AdminProfileIn(BaseModel):
+    """Admin › pessoa › Editar nome e e-mail. Campo ausente = mantém; nome vazio = derivado do e-mail."""
+    display_name: Optional[str] = Field(default=None, max_length=60)
+    email: Optional[EmailStr] = None
+
+
+class EmailChangeIn(BaseModel):
+    new_email: EmailStr
+    password: str = Field(min_length=1, max_length=config.MAX_PASSWORD_LEN)  # senha atual
+
+
+class EmailConfirmIn(BaseModel):
+    token: str = Field(min_length=20, max_length=100)
 
 
 class RolesIn(BaseModel):
-    roles: list[Literal["user", "admin", "assigner", "viewer"]] = Field(min_length=1, max_length=4)
+    roles: list[RoleName] = Field(min_length=1, max_length=4)
 
 
 class AppSettingsIn(BaseModel):

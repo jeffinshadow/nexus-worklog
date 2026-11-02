@@ -288,6 +288,46 @@
         }
       }
     },
+    "/api/auth/email/confirm": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Confirm Email",
+        "description": "Confirma o e-mail novo pelo link mandado a ele (Configurações > Conta >\nTrocar e-mail). Uso único, vale 24 horas; só aqui o e-mail muda. Avisa o\nendereço antigo. Não precisa estar logado (o link pode abrir em outro aparelho).",
+        "operationId": "confirm_email_api_auth_email_confirm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailConfirmIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/auth/logout": {
       "post": {
         "tags": [
@@ -1710,7 +1750,7 @@
           "admin"
         ],
         "summary": "Invite User",
-        "description": "Cria a conta de um convidado. Nasce com o papel Usuário; os outros se\ndão em Permissões.\n\nCom e-mail configurado: convite por link (vale 7 dias, uso único), mandado\npor e-mail e mostrado ao admin para copiar; a pessoa cria a própria senha.\nSem e-mail: senha temporária (mostrada uma única vez ao admin), trocada no\nprimeiro login, como no reset.",
+        "description": "Cria a conta de um convidado, com o nome (vale até o primeiro acesso; no\ntour a pessoa confirma ou ajusta) e os papéis escolhidos ali (padrão: só\nUsuário; mudam depois em Papéis…).\n\nCom e-mail configurado: convite por link (vale 7 dias, uso único), mandado\npor e-mail e mostrado ao admin para copiar; a pessoa cria a própria senha.\nSem e-mail: senha temporária (mostrada uma única vez ao admin), trocada no\nprimeiro login, como no reset.",
         "operationId": "invite_user_api_admin_users_post",
         "requestBody": {
           "content": {
@@ -1918,6 +1958,57 @@
         }
       }
     },
+    "/api/admin/users/{user_id}/profile": {
+      "put": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Edit Profile",
+        "description": "Admin › pessoa › Editar nome e e-mail (o caminho para mudar quando a\nopção \"Nome e e-mail definidos pela administração\" está ligada; vale também\ncom ela desligada, para corrigir um convite). Campo ausente = mantém.\nTrocar o e-mail avisa o endereço antigo e o novo (conta que já entrou). Fica\nno log de admin (histórico de quem alterou).",
+        "operationId": "edit_profile_api_admin_users__user_id__profile_put",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminProfileIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/users/{user_id}/delete": {
       "post": {
         "tags": [
@@ -1998,6 +2089,64 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/AppSettingsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/org": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Get Org",
+        "description": "Para empresas e instituições: as opções globais (todas desligadas por padrão).",
+        "operationId": "get_org_api_admin_org_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Put Org",
+        "description": "Liga/desliga cada opção (campo ausente = mantém). Cada mudança fica no\nlog de admin (quem e quando). Visibilidade: as escolhas de cada pessoa\nficam guardadas; voltar para \"Cada pessoa escolhe\" as devolve.",
+        "operationId": "put_org_api_admin_org_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrgIn"
               }
             }
           },
@@ -3770,6 +3919,64 @@
         }
       }
     },
+    "/api/me/email": {
+      "post": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Request Email Change",
+        "description": "Trocar o próprio e-mail: pede a senha atual e manda um link de\nconfirmação ao endereço NOVO (24 horas, uso único). O e-mail só muda quando\na pessoa confirma (POST /api/auth/email/confirm); o antigo recebe um aviso.\nBloqueado quando a administração define nome e e-mail.",
+        "operationId": "request_email_change_api_me_email_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailChangeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Cancel Email Change",
+        "description": "Desiste da troca pendente: o link mandado ao endereço novo deixa de valer.",
+        "operationId": "cancel_email_change_api_me_email_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/me/avatar": {
       "post": {
         "tags": [
@@ -4051,7 +4258,7 @@
           "me"
         ],
         "summary": "Put Tour",
-        "description": "Tour guiado visto (ou pulado). false = abre de novo no próximo acesso.",
+        "description": "Tour guiado visto (ou pulado, quando não é obrigatório). false = abre de\nnovo no próximo acesso. Concluído uma vez, o primeiro acesso acabou: o tour\nobrigatório nunca mais força esta conta. Quem passou pelo tour já viu a\nparada da visibilidade (quando ativa): o aviso único não aparece depois.",
         "operationId": "put_tour_api_me_tour_put",
         "requestBody": {
           "content": {
@@ -4079,6 +4286,26 @@
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
                 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/me/visibility-notice": {
+      "put": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Seen Visibility Notice",
+        "description": "\"Entendi\" no aviso único de que quem gerencia a equipe vê o registro de todos.",
+        "operationId": "seen_visibility_notice_api_me_visibility_notice_put",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
               }
             }
           }
@@ -6061,6 +6288,7 @@
           "invite-requests"
         ],
         "summary": "Invite",
+        "description": "Convida quem pediu, com o nome (revisado pelo admin; padrão: o do pedido)\ne os papéis escolhidos ali (padrão: só Usuário), como em POST /admin/users.",
         "operationId": "invite_api_admin_invite_requests__rid__invite_post",
         "parameters": [
           {
@@ -6073,6 +6301,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/InviteChoiceIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Data"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -6789,6 +7034,37 @@
   },
   "components": {
     "schemas": {
+      "AdminProfileIn": {
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "email"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          }
+        },
+        "type": "object",
+        "title": "AdminProfileIn",
+        "description": "Admin › pessoa › Editar nome e e-mail. Campo ausente = mantém; nome vazio = derivado do e-mail."
+      },
       "AppSettingsIn": {
         "properties": {
           "retro_days": {
@@ -7209,6 +7485,42 @@
         ],
         "title": "DeleteUserIn"
       },
+      "EmailChangeIn": {
+        "properties": {
+          "new_email": {
+            "type": "string",
+            "format": "email",
+            "title": "New Email"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "new_email",
+          "password"
+        ],
+        "title": "EmailChangeIn"
+      },
+      "EmailConfirmIn": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 20,
+            "title": "Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "title": "EmailConfirmIn"
+      },
       "FeedIn": {
         "properties": {
           "include_recurring": {
@@ -7278,12 +7590,73 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "InviteChoiceIn": {
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "roles": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "user",
+                "admin",
+                "assigner",
+                "viewer"
+              ]
+            },
+            "type": "array",
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Roles"
+          }
+        },
+        "type": "object",
+        "title": "InviteChoiceIn",
+        "description": "Convidar a partir de um pedido: nome (padrão: o do pedido) e papéis (padrão: só Usuário)."
+      },
       "InviteIn": {
         "properties": {
           "email": {
             "type": "string",
             "format": "email",
             "title": "Email"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "roles": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "user",
+                "admin",
+                "assigner",
+                "viewer"
+              ]
+            },
+            "type": "array",
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Roles"
           }
         },
         "type": "object",
@@ -7609,6 +7982,50 @@
           "ids"
         ],
         "title": "OrderIn"
+      },
+      "OrgIn": {
+        "properties": {
+          "team_visibility": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "self",
+                  "managers"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Visibility"
+          },
+          "identity_managed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identity Managed"
+          },
+          "tour_required": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tour Required"
+          }
+        },
+        "type": "object",
+        "title": "OrgIn",
+        "description": "Admin › Para empresas e instituições. Campo ausente = mantém."
       },
       "PackApplyIn": {
         "properties": {

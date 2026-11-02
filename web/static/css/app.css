@@ -1641,3 +1641,22 @@ dialog .pack-intro { margin: -8px 0 14px; }
 .wh-ev small { color: var(--on-surface-variant); font-size: var(--type-label); }
 .wh-ev.covered > span { color: var(--on-surface-variant); }
 .wh-dialog { width: min(640px, calc(100vw - 32px)); }
+
+/* ---------------------------------------- Para empresas e instituições -- */
+/* Motivo de um campo bloqueado pela administração: cadeado + texto, à vista. */
+.lock-note { display: flex; align-items: flex-start; gap: 8px; }
+.lock-note .ico { flex: none; width: 16px; height: 16px; margin-top: 2px; }
+.check-line.is-locked { cursor: not-allowed; color: var(--on-surface-variant); }
+input:disabled { cursor: not-allowed; }
+.tour-name-locked { display: flex; flex-direction: column; gap: 2px; margin: 0 0 14px; padding: 12px 14px;
+  border-radius: var(--radius-m); background: var(--surface-container-high, var(--surface)); }
+.tour-name-locked .mono { color: var(--on-surface-variant); font-size: var(--type-body-s); }
+.org-option { border: 0; padding: 0; margin: 0 0 18px; }
+.org-option legend { padding: 0; margin: 0 0 4px; font-weight: var(--weight-title); color: var(--on-surface); }
+.org-option .role-line { min-height: 44px; }
+.org-option .role-line small { color: var(--on-surface-variant); }
+.invite-roles { border: 0; padding: 0; margin: 12px 0 0; }
+.invite-roles legend { padding: 0; margin: 0 0 4px; color: var(--on-surface); font-size: var(--type-body); }
+.invite-roles .role-line { min-height: 44px; }
+.invite-roles .role-line small { color: var(--on-surface-variant); }
+.email-block { margin: 0 0 8px; }

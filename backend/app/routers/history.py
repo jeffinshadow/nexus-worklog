@@ -57,6 +57,12 @@ ACTION_LABELS = {
     "renewal.renew": "renovou",
     "renewal.delete": "excluiu o vencimento",
     "app.settings": "alterou as configurações gerais",
+    "app.team_visibility": "alterou a visibilidade da equipe",
+    "app.identity_managed": "alterou quem define nome e e-mail",
+    "app.tour_required": "alterou o tour obrigatório",
+    "email.change_request": "pediu para trocar o e-mail da conta",
+    "email.change": "trocou o e-mail da conta",
+    "user.profile": "alterou nome e e-mail de uma conta",
     "recurring.create": "criou a rotina",
     "recurring.update": "editou a rotina",
     "recurring.deactivate": "excluiu a rotina",
@@ -157,6 +163,27 @@ def _label(row) -> str:
     if row["action"] == "viewers.consent" and row["after"]:
         return ("passou a permitir que quem vê a equipe veja seu registro" if row["after"].get("accept")
                 else "deixou de permitir que quem vê a equipe veja seu registro")
+    if row["action"] == "app.team_visibility" and row["after"]:
+        return ("ligou “Visível para quem gerencia”: quem tem o papel Vê a equipe vê o registro de todos"
+                if row["after"].get("team_visibility") == "managers"
+                else "voltou para “Cada pessoa escolhe” quem vê o registro")
+    if row["action"] == "app.identity_managed" and row["after"]:
+        return ("ligou “Nome e e-mail definidos pela administração”" if row["after"].get("identity_managed")
+                else "desligou “Nome e e-mail definidos pela administração”")
+    if row["action"] == "app.tour_required" and row["after"]:
+        return ("ligou o tour obrigatório no primeiro acesso" if row["after"].get("tour_required")
+                else "desligou o tour obrigatório no primeiro acesso")
+    if row["action"] in ("email.change_request", "email.change") and row["after"]:
+        return f"{ACTION_LABELS[row['action']]} para {row['after'].get('email', '')}"
+    if row["action"] == "user.profile":
+        b, a = row["before"] or {}, row["after"] or {}
+        quem = a.get("target") or b.get("email") or ""
+        partes = []
+        if "email" in a and a["email"] != b.get("email"):
+            partes.append(f"e-mail para {a['email']}")
+        if "display_name" in a and a["display_name"] != b.get("display_name"):
+            partes.append(f"nome para “{a['display_name']}”" if a["display_name"] else "nome (volta ao do e-mail)")
+        return f"alterou {' e '.join(partes) or 'o perfil'} da conta {quem}"
     if row["action"] == "user.roles" and row["after"]:
         from ..roles import LABELS
         papeis = ", ".join(LABELS.get(r, r) for r in row["after"].get("roles", [])) or "nenhum"

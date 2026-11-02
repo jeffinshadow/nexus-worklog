@@ -100,8 +100,14 @@ function meChanged(me, res) {
   window.dispatchEvent(new Event("nexus:me"));
 }
 
+// Nome e e-mail definidos pela administração (Admin › Para empresas): a Conta só mostra.
+const IDENTITY_LOCKED = "Nesta instância do Nexus, nome e e-mail são definidos pela administração. Para mudar, fale com quem administra.";
+const identityLocked = (me) => !!(me.org && me.org.identity_managed);
+
 function profilePanel(me, rerender) {
+  const locked = identityLocked(me);
   const name = h("input", { type: "text", maxlength: "60", value: me.display_name || "", placeholder: me.name });
+  if (locked) { name.disabled = true; name.setAttribute("aria-describedby", "name-locked"); }
   const err = h("p", { class: "error-text" });
   const file = h("input", { type: "file", accept: "image/png,image/jpeg,image/webp", class: "hidden" });
   const pick = h("button", { type: "button", class: "btn btn-ghost btn-sm", onClick: () => file.click() }, icon("edit"), me.avatar ? "Trocar foto" : "Enviar foto");
@@ -127,8 +133,9 @@ function profilePanel(me, rerender) {
       file.value = "";
     }
   });
-  const form = h("form", {}, field("Nome de exibição", name), err,
-    h("button", { type: "submit", class: "btn btn-primary", text: "Salvar nome" }));
+  const form = h("form", {}, field("Nome de exibição", name), locked ? null : err,
+    locked ? h("p", { class: "dialog-note lock-note", id: "name-locked" }, icon("lock"), IDENTITY_LOCKED)
+      : h("button", { type: "submit", class: "btn btn-primary", text: "Salvar nome" }));
   form.addEventListener("submit", busy(async (ev) => {
     ev.preventDefault();
     err.textContent = "";
@@ -145,8 +152,8 @@ function profilePanel(me, rerender) {
     h("div", { class: "profile-row" }, avatar(me, "lg"),
       h("div", {}, h("div", { class: "row-actions" }, pick, remove), file,
         h("p", { class: "help", text: "PNG, JPEG ou WebP. A foto é recortada em quadrado e reduzida no seu navegador antes do envio; os dados de localização dela não saem daqui." }))),
-    h("p", { class: "help", text: "Aparece no menu, nas saudações e no cabeçalho dos relatórios. " +
-      (me.display_name ? "Em branco, volto a usar o nome tirado do seu e-mail." : `Em branco, uso “${me.name}”, tirado do seu e-mail.`) }),
+    h("p", { class: "help", text: "Aparece no menu, nas saudações e no cabeçalho dos relatórios. " + (locked ? "" :
+      (me.display_name ? "Em branco, volto a usar o nome tirado do seu e-mail." : `Em branco, uso “${me.name}”, tirado do seu e-mail.`)) }),
     form);
 }
 
@@ -1082,22 +1089,77 @@ function account(me) {
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Conta" })),
     h("p", { class: "help mono", text: [me.email, ...(me.roles || []).filter((r) => r !== "user").map((r) => `${ROLE_SHORT[r]} (${ROLE_SCREEN[r]})`)].join(" · ") }),
+    emailBlock(me),
+    h("h3", { class: "sum-h", text: "Senha" }),
     form);
+}
+
+// Trocar o próprio e-mail: senha atual + link de confirmação no endereço NOVO
+// (24 horas, uso único). Só troca depois de confirmar; o antigo recebe um aviso.
+function emailBlock(me) {
+  const box = h("div", { class: "email-block" });
+  const paint = () => {
+    clear(box);
+    box.append(h("h3", { class: "sum-h", text: "E-mail" }));
+    const input = h("input", { type: "email", maxlength: "254", autocomplete: "email", value: "", placeholder: "nome@empresa.com.br", required: "required" });
+    if (identityLocked(me)) {
+      input.value = me.email;
+      input.disabled = true;
+      input.setAttribute("aria-describedby", "email-locked");
+      box.append(field("E-mail da conta", input), h("p", { class: "dialog-note lock-note", id: "email-locked" }, icon("lock"), IDENTITY_LOCKED));
+      return;
+    }
+    if (me.email_pending) {
+      box.append(h("p", { class: "help" }, "Aguardando a confirmação em ", h("strong", { text: me.email_pending }),
+        ". Abra o link que mandamos para lá (vale 24 horas). Até confirmar, você entra com ", h("strong", { text: me.email }), "."),
+      h("div", { class: "row-actions" },
+        h("button", { type: "button", class: "btn btn-text btn-sm", text: "Desistir da troca", onClick: busy(async () => {
+          try { meChanged(me, await api.del("/me/email")); toast("Troca de e-mail cancelada. O link deixa de valer."); paint(); }
+          catch (e) { errorToast(e); }
+        }) })));
+      return;  // um pedido por vez: desistir libera o formulário de novo
+    }
+    const pw = h("input", { type: "password", autocomplete: "current-password", required: "required", maxlength: "128" });
+    const err = h("p", { class: "error-text", role: "alert" });
+    const form = h("form", {},
+      h("div", { class: "field-row" }, field("E-mail novo", input), field("Sua senha atual", pw)), err,
+      h("p", { class: "dialog-note", text: "Mandamos um link de confirmação para o e-mail novo. Ele só passa a valer depois que você confirmar; o endereço atual recebe um aviso." }),
+      h("button", { type: "submit", class: "btn btn-ghost", text: "Mandar o link de confirmação" }));
+    form.addEventListener("submit", busy(async (ev) => {
+      ev.preventDefault();
+      err.textContent = "";
+      try {
+        meChanged(me, await api.post("/me/email", { new_email: input.value.trim(), password: pw.value }));
+        toast(`Link mandado para ${me.email_pending}. Confira também o spam.`);
+        paint();
+      } catch (e) {
+        err.textContent = e.message || "Não foi possível pedir a troca.";
+        (/senha/i.test(err.textContent) ? pw : input).focus();
+      }
+    }));
+    box.append(form);
+  };
+  paint();
+  return box;
 }
 
 // Aceite do visualizador + transparência: quem tem papel que alcança o seu
 // registro (visualizador e admin). Desligado, só você vê.
 function seenBy(me) {
+  // "Visível para quem gerencia" (Admin › Para empresas): a chave fica bloqueada,
+  // à vista, com o motivo; a escolha da pessoa fica guardada para quando voltar.
+  const managed = !!(me.org && me.org.team_visibility === "managers");
   const cb = h("input", { type: "checkbox" });
   cb.checked = !!me.viewers_allowed;
+  if (managed) { cb.disabled = true; cb.setAttribute("aria-describedby", "seen-locked"); }
   const help = h("p", { class: "help" });
   const line = h("p", { class: "dialog-note" });
   let list = [];
   const paint = () => {
     const viewers = list.filter((p) => p.roles.includes("viewer")).map((p) => p.name);
-    help.textContent = `Quem tem o papel “Vê a equipe” (${viewers.length ? viewers.join(", ") : "hoje, ninguém"}) vê na tela Equipe, sem editar, seu quadro, seus números, seus relatórios em PDF, suas horas e suas fotos. Só se você permitir.`;
+    help.textContent = `Quem tem o papel “Vê a equipe” (${viewers.length ? viewers.join(", ") : "hoje, ninguém"}) vê na tela Equipe, sem editar, seu quadro, seus números, seus relatórios em PDF, suas horas e suas fotos.` + (managed ? "" : " Só se você permitir.");
     const names = list.map((p) => `${p.name} (${p.roles.map((r) => ROLE_SHORT[r]).join(", ")})`);
-    line.textContent = cb.checked
+    line.textContent = managed || cb.checked
       ? `Quem pode ver seu registro: ${names.length ? names.join(", ") : "só você"}.`
       : "Quem pode ver seu registro: só você.";
   };
@@ -1113,5 +1175,8 @@ function seenBy(me) {
     } catch (e) { cb.checked = !cb.checked; errorToast(e); }
     finally { cb.disabled = false; }
   });
-  return [help, h("label", { class: "check-line" }, cb, h("span", { text: "Permitir que quem tem o papel “Vê a equipe” veja meu registro" })), line];
+  const lock = managed ? h("p", { class: "dialog-note lock-note", id: "seen-locked" }, icon("lock"),
+    "Nesta instância do Nexus, quem gerencia a equipe vê as tarefas de todos (definido pela administração). " +
+    `A sua escolha (${me.viewers_allowed ? "permitir" : "não permitir"}) fica guardada e volta a valer se isso mudar.`) : null;
+  return [help, h("label", { class: "check-line" + (managed ? " is-locked" : "") }, cb, h("span", { text: "Permitir que quem tem o papel “Vê a equipe” veja meu registro" })), lock, line];
 }

@@ -89,7 +89,8 @@ Legenda: **S** = só sessão do app · **W** = exige escopo `write` (chave) ou C
 | `POST /logout` | S W | |
 | `GET /sessions` | S | `{others}` — quantas outras sessões (aparelhos, navegadores) estão abertas |
 | `POST /logout-others` | S W | sai dos outros aparelhos sem trocar a senha: encerra as outras sessões e mantém esta; chaves de API e calendário não mudam. `{ok, ended}`; vai para o histórico (`sessions.logout_others`) |
-| `GET /me` | | `{id, email, display_name, name, avatar, assistant, role, roles, retro_days, support_contact, accepts_assignments_at, viewers_allowed, ticket_url, must_change_password, work_days, tz, csrf_token}` — `name` é o de exibição ou, sem ele, o derivado do e-mail; `role` só espelha `admin` (compatibilidade) |
+| `GET /me` | | `{id, email, display_name, name, avatar, assistant, role, roles, retro_days, support_contact, accepts_assignments_at, viewers_allowed, ticket_url, must_change_password, work_days, tz, org, tour_required, visibility_notice, email_pending, csrf_token}` — `name` é o de exibição ou, sem ele, o derivado do e-mail; `role` só espelha `admin` (compatibilidade). `org` = `{team_visibility, identity_managed, tour_required}` (Admin › Para empresas); `tour_required` = esta conta está no primeiro acesso com o tour obrigatório; `visibility_notice` = falta o aviso único de "visível para quem gerencia"; `email_pending` = e-mail novo aguardando confirmação |
+| `POST /email/confirm` | público | `{token}` (do link `#email=` mandado ao endereço novo) → `{ok, email}`; 24 h, uso único; avisa o endereço antigo; 409 se o e-mail virou de outra conta, 403 se a administração passou a definir os e-mails |
 | `POST /change-password` | S W | `{current_password, new_password}`; encerra as outras sessões e revoga chaves e calendário |
 | `POST /settings` | W | `{work_days}` — máscara, domingo = bit 0 (seg–sex = 62). Não reescreve o passado: rotinas "dias úteis" com história são encerradas com os dias antigos e recomeçam hoje; não se desfaz pelo histórico |
 
@@ -110,7 +111,11 @@ apaga as passkeys da conta; "Esqueci a senha" mantém e avisa por e-mail.
 
 | Rota | | Corpo / observação |
 | --- | --- | --- |
-| `PUT /profile` | S W | `{display_name}` (até 60; vazio = volta ao nome do e-mail) |
+| `PUT /profile` | S W | `{display_name}` (até 60; vazio = volta ao nome do e-mail); 403 com o motivo quando "Nome e e-mail definidos pela administração" está ligado |
+| `POST /email` | S W | `{new_email, password}` → `{email_pending}` — pede a troca do próprio e-mail: senha atual, e-mail único, link de confirmação ao endereço NOVO (24 h, uso único; só troca ao confirmar em `POST /api/auth/email/confirm`). 400 sem servidor de e-mail; 403 quando a administração define nome e e-mail |
+| `DELETE /email` | S W | desiste da troca pendente (o link deixa de valer) |
+| `PUT /tour` | S W | `{done}` — tour visto (`false` = abre de novo). Concluir encerra o primeiro acesso (o tour obrigatório nunca mais força a conta) e conta como visto o aviso de visibilidade → `{tour_done_at, tour_required, visibility_notice}` |
+| `PUT /visibility-notice` | S W | "Entendi" no aviso único de "visível para quem gerencia" |
 | `POST /avatar` · `DELETE /avatar` | S W | corpo bruto PNG, JPEG ou WebP até 256 KB (tipo pelo conteúdo; SVG não). O app recorta e reduz antes |
 | `GET /avatar/{user_id}?v=` | S | a própria foto; o admin vê a de todos; o atribuidor, a de quem aceitou receber tarefas (e não está bloqueado); o visualizador, a de quem aceitou ser visto; o resto 404 |
 | `PUT /assistant` | S W | `{enabled, idle_on, idle_minutes (5–480), idle_start, idle_end, reopen_on, reopen_minutes (1–240), summary_from, stale_days (1–60, padrão 5)}` — janela em minutos do dia; `stale_days`: tarefa aguardando há tantos dias sem dia para cobrar ganha a pergunta "quer marcar quando cobrar?" (no Hoje sempre; no aviso da manhã, no dia N e de 7 em 7) |
@@ -118,7 +123,7 @@ apaga as passkeys da conta; "Esqueci a senha" mantém e avisa por e-mail.
 | `GET /activity` | S | `{last_activity, timer}`: último registro de qualquer origem (tarefa, rotina, anotação, checklist, tempo, cronômetro) e o cronômetro rodando |
 | `PUT /tickets` | S W | `{ticket_url}` — endereço do sistema de chamados; `{id}` vira o número (sem `{id}`, vai no fim) |
 | `PUT /assignments` | S W | `{accept}` — aceitar receber tarefas de um atribuidor (desligar não mexe nas recebidas) |
-| `PUT /viewers` | S W | `{accept}` → `{viewers_allowed}` — permitir que quem tem o papel "Vê a equipe" (`viewer`) veja seu registro (quadro, números, PDF, horas, fotos). Contas novas começam com `false`; vai ao histórico (`viewers.consent`) |
+| `PUT /viewers` | S W | `{accept}` → `{viewers_allowed}` — permitir que quem tem o papel "Vê a equipe" (`viewer`) veja seu registro (quadro, números, PDF, horas, fotos). Contas novas começam com `false`; vai ao histórico (`viewers.consent`). Com a instância em "Visível para quem gerencia": 409 com o motivo, e a escolha guardada não muda (volta a valer quando o admin voltar para "Cada pessoa escolhe") |
 | `POST /delete` | S W | `{password}` — exclui a conta e todos os dados dela; o último admin não sai |
 
 ## Cronômetro e modelos
@@ -347,23 +352,27 @@ Aparecem no Hoje (só os no aviso), no e-mail da manhã e no calendário (dia de
 | Rota | | Observação |
 | --- | --- | --- |
 | `GET /users` | | contas, com `roles`, `accepts_assignments_at`, `viewers_allowed` (liberou o registro ao visualizador), `invite_pending`/`invite_expired` e `blocked_at` |
-| `POST /users` | W | `{email}` → senha temporária (troca no 1º acesso); nasce com o papel `user` |
+| `POST /users` | W | `{email, display_name?, roles?}` → convite por link (com e-mail no servidor) ou senha temporária (troca no 1º acesso). `display_name` vira o nome da conta até o primeiro acesso (no tour a pessoa confere); `roles` = os papéis já no convite (padrão `["user"]`, ao menos um) |
+| `PUT /users/{id}/profile` | W | `{display_name?, email?}` (ausente = mantém) — edita nome e e-mail de uma conta; trocar o e-mail avisa o antigo e o novo (conta que já entrou); 409 se o e-mail é de outra conta; vai ao histórico (`user.profile`) |
+| `POST /invite-requests/{id}/invite` | W | `{display_name?, roles?}` (opcional) — convida quem pediu; nome padrão = o do pedido, papéis padrão = `["user"]` |
 | `PUT /users/{id}/roles` | W | `{roles: [...]}` (ao menos um); não tira o próprio admin nem deixa o sistema sem admin |
 | `POST /users/{id}/reset-password` | W | senha temporária; encerra sessões e revoga chaves, calendário e passkeys; numa conta bloqueada, libera o acesso |
 | `POST /users/{id}/block` | W | bloqueia o acesso sem apagar nada: senha que ninguém sabe, sessões, chaves, calendário, notificações e passkeys cortados, links de e-mail sem valor e "Esqueci a senha" sem efeito (`blocked_at`); não a própria conta, nem convite pendente. `reset-password` libera |
 | `POST /users/{id}/cancel-invite` | W | convite ainda não aceito: a conta (sem dados) sai e o link deixa de valer; o pedido de convite que a gerou volta a pendente; 400 se a pessoa já entrou (aí é `delete`) |
 | `POST /users/{id}/delete` | W | `{confirm_email}` — exclui a conta e todos os dados (não a própria, nunca o último admin); e-mail e contagens ficam no histórico de quem excluiu |
 | `GET /settings` · `PUT /settings` | W | `{retro_days (1–366), support_contact?}` |
+| `GET /org` · `PUT /org` | W | Para empresas e instituições, tudo desligado por padrão: `{team_visibility: "self"\|"managers", identity_managed, tour_required}` (ausente = mantém). `managers` = quem tem o papel `viewer` vê o registro de todos (as escolhas de cada um ficam guardadas); `identity_managed` = só o admin muda nome e e-mail; `tour_required` = tour obrigatório no primeiro acesso de contas novas. Cada mudança vai ao histórico do admin (`app.team_visibility`, `app.identity_managed`, `app.tour_required`) |
 
 ## Vê a equipe — `/api/viewer` (só pelo app, papel viewer; tela Equipe)
 
-Quem pode ser visto é decidido num lugar só (`backend/app/visibility.py`): hoje, papel `user` e o aceite
-(`PUT /api/me/viewers`). Vale para todas as rotas abaixo, para as fotos e para a foto de perfil.
+Quem pode ser visto é decidido num lugar só (`backend/app/visibility.py`, `visible_sql`/`can_see`): papel `user` e
+o aceite (`PUT /api/me/viewers`) — ou todos, com a instância em "Visível para quem gerencia" (`PUT /api/admin/org`).
+Vale para todas as rotas abaixo, para as fotos e para a foto de perfil.
 
 | Rota | | Observação |
 | --- | --- | --- |
 | `GET /team?month=AAAA-MM` | | o painel da Equipe (padrão: o mês corrente, até hoje), tudo SOMADO de quem pode ser visto e está com a conta em uso: `month {recurring_done, recurring_total, pontual_done, minutes, now}` (a soma do PDF/Meu mês de cada pessoa; as horas são as do CSV do mesmo período), `trend` (até 6 meses da equipe, terminando no escolhido), `waiting`/`open` (agora), `attention` (até 6: `kind` `assigned` = atribuída por você e aguardando ou a fazer sem nada registrado há 5 dias, `waiting` = aguardando há mais tempo, `due` = prazo até 7 dias ou já passado; com `task_id`, `user_id`, `name`, `days`), `projects` (tempo por nome de projeto), `people` (ordem alfabética: `open`, `waiting`, `last_activity`, `avatar`), `people_count`, `hidden_count` (contas com registro que não compartilham, sem nomes; você não conta), `months` (para o seletor) e `can_assign`. Sem média, tendência ou ranking por pessoa |
-| `GET /users` | | contas com registro próprio (papel `user`) que deram o aceite (`PUT /api/me/viewers`) |
+| `GET /users` | | contas com registro próprio (papel `user`) visíveis (aceite ou "Visível para quem gerencia") e com a conta em uso |
 | `GET /users/{id}/board` · `/dashboard` · `/projects` · `/reports/export` | | visão só leitura da pessoa; sem o aceite, 404. No `/dashboard?month=`, o `overview` vem sem `behind`, `trend`, `average` e `compare` (sem placar nem comparação) |
 | `GET /export/apontamentos.csv?start=&end=` | | horas de quem aceitou, com coluna `usuario`, do período (`AAAA-MM-DD`; padrão: o mês corrente; até 1 ano) |
 

@@ -2,8 +2,9 @@
 (quadro, retrospectiva, relatório em PDF) e baixa as horas da equipe.
 
 Só pelo app (nunca por chave de API), como o admin. Quem pode ser visto é
-decidido num lugar só, app/visibility.py (hoje: papel Usuário e o aceite em
-Configurações > Conta, users.viewers_allowed): quem não pode responde 404, como
+decidido num lugar só, app/visibility.py (papel Usuário e o aceite em
+Configurações > Conta, users.viewers_allowed, ou todos com a instância em
+"Visível para quem gerencia", Admin › Para empresas): quem não pode responde 404, como
 quem não existe, e não entra em nenhum número do painel da Equipe (/team).
 """
 from datetime import date, timedelta

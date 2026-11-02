@@ -11,6 +11,11 @@ const ROLES = [
   ["viewer", "Vê a equipe", "libera a tela Equipe: vê, sem editar, o registro (quadro, números, PDF, horas e fotos) de quem permitir (cada pessoa libera em Configurações > Conta)"],
 ];
 
+// "Vê a equipe" com a instância em "Visível para quem gerencia": vê todos (sem aceite).
+const roleDesc = (k, d, me) => k === "viewer" && me && me.org && me.org.team_visibility === "managers"
+  ? "libera a tela Equipe: vê, sem editar, o registro (quadro, números, PDF, horas e fotos) de todos — nesta instância, visível para quem gerencia (Admin › Para empresas)"
+  : d;
+
 const phone = () => matchMedia("(max-width: 860px)").matches;
 
 // Menu "mais ações" de uma linha: no computador ao lado do botão; no celular, de baixo.
@@ -50,6 +55,7 @@ export async function mount(root, ctx) {
   const abas = [
     ["usuarios", "Contas", (el) => mountUsers(el, ctx.me)],
     ["geral", "Geral", (el) => mountGeneral(el, ctx.me)],
+    ["empresas", "Para empresas", (el) => mountOrg(el, ctx.me)],
     ["identidade", "Identidade visual", (el) => mountBranding(el)],
   ];
   for (const [key, label, fn] of abas) {
@@ -77,7 +83,7 @@ async function mountUsers(root, me) {
     h("div", { class: "panel-head" }, h("h2", { text: "Contas" }), h("div", { class: "spacer" }), inviteBtn),
     // Os papéis de cada conta mudam no ⋮ dela ("Papéis…"); aqui, o que cada um pode.
     h("details", { class: "roles-help" }, h("summary", { text: "O que cada papel pode" }),
-      h("dl", { class: "roles-legend" }, ...ROLES.flatMap(([, n, d]) => [h("dt", { text: n }), h("dd", { text: d })]))),
+      h("dl", { class: "roles-legend" }, ...ROLES.flatMap(([k, n, d]) => [h("dt", { text: n }), h("dd", { text: roleDesc(k, d, me) })]))),
     ...searchBox(rows), ...rows.map(([el]) => el));
 
   function userRow(u) {
@@ -97,6 +103,7 @@ async function mountUsers(root, me) {
     const items = [
       self ? null : u.invite_pending ? ["Cancelar convite", "close", () => onCancelInvite(u)] : u.blocked_at ? null : ["Bloquear acesso", "alert", () => onBlock(u)],
       ["Papéis…", "person", () => editRoles(u, me, () => mountUsers(root, me))],
+      ["Editar nome e e-mail", "edit", () => editProfile(u, me, () => mountUsers(root, me))],
       self || u.invite_pending ? null : ["Excluir conta", "trash", () => onDelete(u)],
     ];
     const more = h("button", { type: "button", class: "icon", title: "Mais ações", "aria-label": "Mais ações para " + u.email, "aria-haspopup": "menu",
@@ -122,10 +129,8 @@ async function mountUsers(root, me) {
     r.status === "pending"
       ? h("div", { class: "request-actions" },
           r.has_account ? h("span", { class: "chip", text: "já tem conta" }) : null,
-          h("button", { type: "button", class: "btn btn-primary btn-sm", disabled: r.has_account ? "disabled" : null, onClick: busy(async () => {
-            try { const res = await api.post(`/admin/invite-requests/${r.id}/invite`); await mountUsers(root, me); showInvite(res); }
-            catch (e) { errorToast(e, "Não foi possível convidar."); }
-          }) }, icon("send"), "Convidar"),
+          h("button", { type: "button", class: "btn btn-primary btn-sm", disabled: r.has_account ? "disabled" : null,
+            "aria-label": `Convidar ${r.name}`, onClick: () => onInvite(r) }, icon("send"), "Convidar"),
           h("button", { type: "button", class: "btn btn-text btn-sm", text: "Recusar", onClick: async () => {
             if (!(await confirmDialog({ title: `Recusar o pedido de ${r.name}?`, text: "Nenhum e-mail é enviado para quem pediu. O pedido fica na lista por 30 dias.", confirm: "Recusar" }))) return;
             try { await api.post(`/admin/invite-requests/${r.id}/decline`); await mountUsers(root, me); } catch (e) { errorToast(e); }
@@ -214,16 +219,34 @@ async function mountUsers(root, me) {
 
   // ---- Convidar pessoa (convite). Com e-mail no servidor: link por e-mail (a
   // pessoa cria a senha); sem: senha temporária, trocada no 1º login ----
-  async function onInvite() {
-    const byLink = await api.get("/auth/options").then((o) => o.email).catch(() => false);
-    const input = h("input", { type: "email", required: "required", autocomplete: "off" });
+  // O admin já informa o nome (vale até o primeiro acesso; no tour a pessoa
+  // confere) e escolhe os papéis ali (mudam depois em Papéis…). Vindo de um
+  // pedido de convite (req), o e-mail é o do pedido e o nome vem preenchido.
+  async function onInvite(req = null) {
+    if (req instanceof Event) req = null;
+    const byLink = req ? true : await api.get("/auth/options").then((o) => o.email).catch(() => false);
+    const input = h("input", { type: "email", required: "required", autocomplete: "off", value: req ? req.email : "" });
+    if (req) { input.readOnly = true; input.setAttribute("aria-readonly", "true"); }
+    const name = h("input", { type: "text", maxlength: "60", autocomplete: "off", value: req ? req.name || "" : "", placeholder: "Ex.: Maria Souza" });
     const err = h("p", { class: "error-text", role: "alert" });
     input.addEventListener("input", () => markInvalid([input], err, false));
+    const boxes = ROLES.map(([k, n, d]) => {
+      const cb = h("input", { type: "checkbox", value: k });
+      cb.checked = k === "user";
+      cb.addEventListener("change", () => markInvalid(boxes.map(([b]) => b), err, false));
+      return [cb, h("label", { class: "check-line role-line" }, cb, h("span", {}, h("strong", { text: n }), h("small", { text: roleDesc(k, d, me) })))];
+    });
+    const locked = me.org && me.org.identity_managed;
     const submit = h("button", { type: "submit", class: "btn btn-primary", text: byLink ? "Enviar convite" : "Criar conta" });
     const form = h(
       "form",
       {},
-      h("label", { class: "field" }, "E-mail do convidado", input),
+      field("E-mail do convidado", input),
+      field("Nome da pessoa (opcional)", name),
+      h("p", { class: "dialog-note field-note", text: locked
+        ? "Fica como o nome da conta. Nome e e-mail são definidos pela administração: depois, mude em Editar nome e e-mail."
+        : "Fica como o nome da conta até o primeiro acesso; no tour, a pessoa confere e ajusta." }),
+      h("fieldset", { class: "invite-roles" }, h("legend", { text: "Papéis (dá para mudar depois em Papéis…)" }), ...boxes.map(([, l]) => l)),
       h("p", {
         class: "dialog-note",
         text: byLink
@@ -241,9 +264,22 @@ async function mountUsers(root, me) {
     form.addEventListener("submit", busy(async (ev) => {
       ev.preventDefault();
       err.textContent = "";
+      const roles = boxes.filter(([b]) => b.checked).map(([b]) => b.value);
+      if (!roles.length) {
+        err.textContent = "Escolha pelo menos um papel.";
+        markInvalid(boxes.map(([b]) => b), err);
+        boxes[0][0].focus();
+        return;
+      }
+      if (roles.includes("admin") && !(await confirmDialog({
+        title: "Convidar já como Admin?",
+        text: "A pessoa vai poder convidar, bloquear e excluir contas, mudar papéis e as configurações gerais.",
+        confirm: "Convidar como Admin" }))) return;
       submit.disabled = true;
+      const body = { display_name: name.value.trim() || null, roles };
       try {
-        const res = await api.post("/admin/users", { email: input.value.trim() });
+        const res = req ? await api.post(`/admin/invite-requests/${req.id}/invite`, body)
+          : await api.post("/admin/users", { email: input.value.trim(), ...body });
         dlg.close();
         if (res.invite_url) showInvite(res); else showPassword(res.email, res.temp_password);
         mountUsers(root, me); // recarrega a lista com o novo usuário
@@ -257,8 +293,8 @@ async function mountUsers(root, me) {
         input.focus();
       }
     }));
-    const dlg = modal(h("h2", { text: "Convidar pessoa" }), form);
-    input.focus();
+    const dlg = modal(h("h2", { text: req ? `Convidar ${req.name}` : "Convidar pessoa" }), form);
+    (req ? name : input).focus();
   }
 
   function showInvite(res) {
@@ -293,7 +329,7 @@ function editRoles(u, me, onChanged) {
     cb.checked = u.roles.includes(k);
     if (k === "admin" && u.id === me.id) { cb.disabled = true; cb.title = "Você não pode tirar o seu próprio admin"; }
     cb.addEventListener("change", () => { if (saving) { cb.checked = !cb.checked; return; } save(cb); });
-    return [cb, h("label", { class: "check-line role-line" }, cb, h("span", {}, h("strong", { text: n }), h("small", { text: d })))];
+    return [cb, h("label", { class: "check-line role-line" }, cb, h("span", {}, h("strong", { text: n }), h("small", { text: roleDesc(k, d, me) })))];
   });
   async function save(cb) {
     const roles = boxes.filter(([b]) => b.checked).map(([b]) => b.value);
@@ -325,7 +361,9 @@ function editRoles(u, me, onChanged) {
   // Visualizador só vê quem liberou: mostra aqui, para o admin não procurar a pessoa na Equipe.
   const consent = h("p", { class: "dialog-note" });
   const paintConsent = () => {
-    consent.textContent = !u.roles.includes("user") ? "" : u.viewers_allowed
+    consent.textContent = !u.roles.includes("user") ? "" : me.org && me.org.team_visibility === "managers"
+      ? "Nesta instância, quem vê a equipe vê o registro de todos (Admin › Para empresas). A escolha da pessoa fica guardada para quando voltar a “Cada pessoa escolhe”."
+      : u.viewers_allowed
       ? "O registro desta conta está liberado a quem vê a equipe (cada pessoa decide em Configurações > Conta)."
       : "O registro desta conta não está liberado a quem vê a equipe (cada pessoa decide em Configurações > Conta).";
   };
@@ -340,6 +378,111 @@ function editRoles(u, me, onChanged) {
     await onChanged();
     refocusBy(document.getElementById("main"), "Mais ações para " + u.email);
   });
+}
+
+// ---- Editar nome e e-mail de uma conta (o caminho quando a administração os
+// define; também corrige um convite). Trocar o e-mail avisa o antigo e o novo. ----
+function editProfile(u, me, onChanged) {
+  const name = h("input", { type: "text", maxlength: "60", value: u.display_name || "", placeholder: u.name || "", autocomplete: "off" });
+  const email = h("input", { type: "email", maxlength: "254", value: u.email, required: "required", autocomplete: "off" });
+  const err = h("p", { class: "error-text", role: "alert" });
+  for (const el of [name, email]) el.addEventListener("input", () => markInvalid([name, email], err, false));
+  const submit = h("button", { type: "submit", class: "btn btn-primary", text: "Salvar" });
+  const form = h("form", {},
+    field("Nome", name),
+    h("p", { class: "dialog-note field-note", text: "Em branco, o Nexus usa o nome tirado do e-mail." }),
+    field("E-mail (é o login)", email),
+    h("p", { class: "dialog-note field-note", text: u.invite_pending
+      ? "O convite ainda não foi aceito: depois de trocar o e-mail, use Reenviar convite."
+      : "Trocar o e-mail muda o login na hora. Mandamos um aviso para o endereço antigo e para o novo." }),
+    err,
+    h("div", { class: "dialog-actions" },
+      h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }), submit));
+  form.addEventListener("submit", busy(async (ev) => {
+    ev.preventDefault();
+    err.textContent = "";
+    const body = { display_name: name.value.trim() || null };
+    if (email.value.trim().toLowerCase() !== u.email) body.email = email.value.trim();
+    try {
+      await api.put(`/admin/users/${u.id}/profile`, body);
+      dlg.close();
+      toast("Nome e e-mail salvos.");
+      await onChanged();
+      refocusBy(document.getElementById("main"), "Mais ações para " + (body.email || u.email).toLowerCase());
+    } catch (e) {
+      err.textContent = e.status === 409 ? "Esse e-mail já é de outra conta." : e.status === 422 ? "E-mail inválido." : e.message || "Não foi possível salvar.";
+      markInvalid(e.status === 409 || e.status === 422 ? [email] : [name, email], err);
+      (e.status === 409 || e.status === 422 ? email : name).focus();
+    }
+  }));
+  const dlg = modal(h("h2", { text: `Nome e e-mail de ${u.display_name || u.email}` }), form);
+  name.focus();
+}
+
+// ---- Para empresas e instituições: opções globais, todas desligadas por
+// padrão (o padrão é o organizador pessoal). Cada mudança vale na hora e fica
+// no histórico de quem mudou. ----
+async function mountOrg(root, me) {
+  clear(root);
+  let cfg = await api.get("/admin/org");
+  const save = async (patch, msg) => {
+    cfg = await api.put("/admin/org", patch);
+    me.org = { team_visibility: cfg.team_visibility, identity_managed: cfg.identity_managed, tour_required: cfg.tour_required };
+    toast(msg);
+  };
+
+  // Visibilidade da equipe: duas opções; trocar pede confirmação com o efeito.
+  const VIS = [
+    ["self", "Cada pessoa escolhe", "Padrão. Quem tem o papel “Vê a equipe” vê só o registro de quem permitir, em Configurações > Conta."],
+    ["managers", "Visível para quem gerencia", "Quem tem o papel “Vê a equipe” vê o registro de todos (quadro, números, PDF, horas e fotos), sem que a pessoa possa desligar. A escolha de cada um fica guardada."],
+  ];
+  const radios = VIS.map(([v, n, d]) => {
+    const r = h("input", { type: "radio", name: "org-vis", value: v });
+    r.checked = cfg.team_visibility === v;
+    r.addEventListener("change", async () => {
+      if (!r.checked) return;
+      const toManagers = v === "managers";
+      const ok = await confirmDialog(toManagers ? {
+        title: "Deixar o registro de todos visível para quem gerencia?",
+        text: "Quem tem o papel “Vê a equipe” passa a ver o registro de todas as pessoas, mesmo de quem não permitiu. Na Conta de cada um, a chave fica bloqueada com o motivo, e quem já usa o Nexus vê um aviso no próximo acesso. As escolhas de cada pessoa ficam guardadas.",
+        confirm: "Deixar visível",
+      } : {
+        title: "Voltar para “Cada pessoa escolhe”?",
+        text: "Cada pessoa volta ao que tinha escolhido em Configurações > Conta. Quem não tinha permitido some da tela Equipe na hora.",
+        confirm: "Voltar ao padrão",
+      });
+      if (!ok) { for (const x of radios) x[0].checked = x[0].value === cfg.team_visibility; r.focus(); return; }
+      try { await save({ team_visibility: v }, toManagers ? "Pronto: quem gerencia a equipe vê o registro de todos." : "Pronto: cada pessoa escolhe de novo."); }
+      catch (e) { errorToast(e); for (const x of radios) x[0].checked = x[0].value === cfg.team_visibility; }
+    });
+    return [r, h("label", { class: "check-line role-line" }, r, h("span", {}, h("strong", { text: n }), h("small", { text: d })))];
+  });
+
+  // Chaves simples (ligou ou desligou, já vale).
+  const toggle = (key, label, desc, onMsg, offMsg) => {
+    const cb = h("input", { type: "checkbox" });
+    cb.checked = !!cfg[key];
+    cb.addEventListener("change", async () => {
+      cb.setAttribute("aria-disabled", "true");
+      try { await save({ [key]: cb.checked }, cb.checked ? onMsg : offMsg); }
+      catch (e) { cb.checked = !cb.checked; errorToast(e); }
+      finally { cb.removeAttribute("aria-disabled"); }
+    });
+    return h("label", { class: "check-line role-line" }, cb, h("span", {}, h("strong", { text: label }), h("small", { text: desc })));
+  };
+
+  root.append(h("div", { class: "settings-grid" }, h("section", { class: "panel" },
+    h("div", { class: "panel-head" }, h("h2", { text: "Para empresas e instituições" })),
+    h("p", { class: "help", text: "O Nexus nasce como organizador pessoal: cada pessoa decide o que mostra. Quando ele é de uma empresa ou instituição, estas opções ajudam. Todas começam desligadas; cada mudança vale na hora e fica no seu histórico." }),
+    h("fieldset", { class: "org-option" }, h("legend", { text: "Visibilidade da equipe" }), ...radios.map(([, l]) => l)),
+    h("fieldset", { class: "org-option" }, h("legend", { text: "Nome e e-mail" }),
+      toggle("identity_managed", "Nome e e-mail definidos pela administração",
+        "Ligado, só o admin muda nome e e-mail (Contas › ⋮ › Editar nome e e-mail); na Conta de cada um, os campos ficam bloqueados com o motivo. Desligado, cada pessoa muda os seus (o e-mail novo é confirmado por link).",
+        "Pronto: nome e e-mail agora são definidos pela administração.", "Pronto: cada pessoa volta a mudar o próprio nome e e-mail.")),
+    h("fieldset", { class: "org-option" }, h("legend", { text: "Primeiro acesso" }),
+      toggle("tour_required", "Tour obrigatório no primeiro acesso",
+        "Quem entra pela primeira vez faz o tour até o fim (sem “Pular”; Voltar continua). Quem já usa o Nexus ou já fez o tour não é obrigado.",
+        "Pronto: o tour passa a ser obrigatório no primeiro acesso.", "Pronto: o tour volta a ser opcional.")))));
 }
 
 // ---- Geral: limite de datas retroativas em tarefas ----
