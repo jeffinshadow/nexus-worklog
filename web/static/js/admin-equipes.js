@@ -37,7 +37,6 @@ export async function mountTeams(root, me) {
     onClick: () => teamDialog(null, users, !activeTeams(teams).length, reload) }, icon("add"), "Nova equipe");
   const title = h("h2", { text: "Equipes" });
   const list = h("div", { class: "admin-users-list" });
-  const active = activeTeams(teams);
   if (!teams.length) {
     list.append(h("p", { class: "empty", text: "Nenhuma equipe ainda. Sem equipes, o Nexus funciona como organizador pessoal: quem tem “Vê a equipe” ou “Manda tarefas” alcança quem aceitar, em toda a instância." }));
   }
@@ -80,8 +79,7 @@ export async function mountTeams(root, me) {
   root.append(h("div", { class: "settings-grid" },
     masterPanel(master, users, me, reload),
     h("section", { class: "panel" },
-      h("div", { class: "panel-head" }, title, active.length ? h("span", { class: "count", text: String(active.length) }) : null,
-        h("div", { class: "spacer" }), newBtn),
+      h("div", { class: "panel-head" }, title, h("div", { class: "spacer" }), newBtn),
       h("p", { class: "help", text: "Com equipes, “Vê a equipe” e “Manda tarefas” valem só entre quem está na mesma equipe (somado ao aceite de cada pessoa ou às opções de Para empresas). Quem fica sem equipe não é visto nem recebe tarefas de ninguém, exceto do admin master. As opções de Para empresas valem só para quem está em alguma equipe; o pedido de convite e a política de privacidade valem para todos." }),
       list)));
 }
@@ -97,7 +95,8 @@ function teamDialog(team, users, first, onSaved) {
   const search = h("input", { type: "search", placeholder: "Buscar por nome ou e-mail", "aria-label": "Buscar pessoa", autocomplete: "off" });
   const count = h("p", { class: "dialog-note", "aria-live": "polite" });
   const pick = h("div", { class: "team-pick", role: "group", "aria-label": "Quem está na equipe" });
-  const sorted = [...users].sort((a, b) => nameOf(a).localeCompare(nameOf(b), "pt-BR"));
+  // Quem já está na equipe vem primeiro (o resto, em ordem de nome).
+  const sorted = [...users].sort((a, b) => (chosen.has(b.id) - chosen.has(a.id)) || nameOf(a).localeCompare(nameOf(b), "pt-BR"));
   const paintCount = () => { count.textContent = chosen.size ? `${plural(chosen.size, "pessoa marcada", "pessoas marcadas")}.` : "Ninguém marcado ainda."; };
   const boxes = sorted.map((u) => {
     const cb = h("input", { type: "checkbox", value: String(u.id) });
@@ -213,7 +212,8 @@ function transferDialog(m, admins, reload) {
     step2.hidden = true; step1.hidden = false; submit.textContent = "Mandar o código"; back.textContent = "Cancelar"; err.textContent = ""; pw.value = ""; pw.focus();
   } });
   const submit = h("button", { type: "submit", class: "btn btn-primary", text: "Mandar o código" });
-  const form = h("form", {}, step1, step2, err, h("div", { class: "dialog-actions" }, back, submit));
+  // Os dois passos validam aqui (a senha do 1º passo fica vazia e escondida no 2º: a validação nativa travaria o envio).
+  const form = h("form", { novalidate: "novalidate" }, step1, step2, err, h("div", { class: "dialog-actions" }, back, submit));
   form.addEventListener("submit", busy(async (ev) => {
     ev.preventDefault();
     err.textContent = "";

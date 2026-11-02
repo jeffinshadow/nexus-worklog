@@ -24,6 +24,10 @@ e lotes de correção).
 - **409** ao mudar o status de uma tarefa já concluída (antes aceitava); reabrir é a ação própria.
 - **Aceite do visualizador**: contas novas começam sem permitir que quem tem o papel "Vê a equipe" veja o
   registro; a pessoa liga em Configurações > Conta (contas anteriores ficaram ligadas, sql/027).
+- **Equipes** (sql/043): com pelo menos uma equipe cadastrada, "Vê a equipe" e "Manda tarefas" valem só entre
+  quem compartilha uma equipe (app, API, MCP, CSV, PDF, painel e "Precisa de atenção"), e as opções de Para
+  empresas só para quem está em alguma equipe (exceto pedido de convite e política de privacidade). Sem equipes,
+  nada muda. `GET /api/me/visibility` passa a trazer só quem está no escopo, com `sees`/`assigns`.
 - **MCP**: as instruções que o servidor entrega ao conectar variam com o escopo da chave (só registrar
   × completa), trazem a versão do Nexus, e sessão antiga com ferramenta ou argumento velho recebe erro
   em português ("use /mcp, reconectar"); `listChanged` ligado em ferramentas e comandos.
@@ -40,6 +44,12 @@ e lotes de correção).
 - **Para empresas** (Admin): visibilidade da equipe, receber tarefas atribuídas ("Todos recebem de quem
   atribui"), nome e e-mail definidos pela administração, endereço do sistema de chamados, política de
   privacidade (login, Conta e convite) e pedido de convite no login.
+- **Equipes** (Admin > Equipes): várias por pessoa, membros em lote, arquivar; coluna e filtro em Contas;
+  equipes no convite e em Contas > ⋮ > Equipes…; seletor de equipe na tela Equipe; Atribuir agrupado por equipe;
+  a Conta mostra as equipes da pessoa e quem pode vê-la ou mandar tarefas agora.
+- **Admin master** (o primeiro admin): com os próprios papéis ligados (um toque), vê e atribui para todos, com
+  ou sem equipe; o que ele abre de outras pessoas vai ao log de admin; transferência só por ele, com senha e
+  código de uso único mandado ao e-mail.
 - Convite com **nome e papéis** já definidos, convite a partir de pedido, cancelar convite, último acesso e
   filtros na lista de contas, redefinir senha por link, **bloquear acesso**, transferir tarefas ao bloquear
   ou excluir, aviso de papel novo.
@@ -50,10 +60,10 @@ e lotes de correção).
 - **Saúde do Nexus** com versão, último backup, e-mail, push, fotos e webhooks; "Copiar diagnóstico".
 - API: `external_ref` em tudo, feed de mudanças, webhooks assinados com botão Testar, chaves "só registrar"
   com agenda, `get_period`, `create_recurring`, pacotes pelo MCP; contrato em `docs/openapi.json`.
-- Limpeza de código morto (CSS, JS e Python) sem mudar comportamento; 526 testes.
+- Limpeza de código morto (CSS, JS e Python) sem mudar comportamento; 544 testes.
 
 ### Banco
-- Migrações `sql/027` a `sql/042`, todas aditivas e idempotentes (nada a fazer além do `./deploy.sh`).
+- Migrações `sql/027` a `sql/043`, todas aditivas e idempotentes (nada a fazer além do `./deploy.sh`).
 
 ## 1.12.1 — 2026-11-01
 Relatórios: só um período marcado quando dois coincidem.

@@ -1792,3 +1792,7 @@ input:disabled { cursor: not-allowed; }
 .eq-team-pick select { width: 100%; min-height: 44px; }
 @media (max-width: 560px) { .eq-team-pick { flex: 1 1 100%; } }
 .account-teams-line strong { color: var(--on-surface); }
+/* Contas com equipes: quatro filtros; a busca ganha a linha dela e os três seletores dividem a de baixo. */
+.admin-filters.has-teams .admin-search { flex-basis: 100%; }
+.admin-filters.has-teams .admin-role { flex: 1 1 180px; }
+@media (max-width: 560px) { .admin-filters.has-teams .admin-role { flex: 1 1 calc(50% - 5px); } }
