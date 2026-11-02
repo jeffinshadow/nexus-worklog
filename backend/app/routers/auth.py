@@ -45,7 +45,8 @@ def _public(row: dict, csrf: str) -> dict:
         "id": uid,
         "email": row["email"],
         **people.profile(uid),  # display_name, name, avatar
-        **(db.query_one("SELECT ticket_url, accepts_assignments_at, viewers_allowed, default_project_id, tour_done_at, theme FROM users WHERE id = %s",
+        # role_notice: papéis ganhos/perdidos ainda não vistos (aviso único com "Entendi")
+        **(db.query_one("SELECT accepts_assignments_at, viewers_allowed, default_project_id, tour_done_at, theme, role_notice FROM users WHERE id = %s",
                         (uid,)) or {}),
         **org.for_user(uid),  # org (Para empresas), tour_required, visibility_notice, email_pending
         "assistant": people.assistant_prefs(uid),
@@ -116,6 +117,7 @@ def _start_session(user: dict, response: Response) -> dict:
            VALUES (%s, %s, %s, %s)""",
         (user["id"], token_hash(token), csrf, expires),
     )
+    db.execute("UPDATE users SET last_seen_at = now() WHERE id = %s", (user["id"],))  # Admin › Contas: último acesso
     set_session_cookie(response, token)
     return _public(user, csrf)
 
@@ -125,8 +127,13 @@ def _start_session(user: dict, response: Response) -> dict:
 
 @router.get("/options")
 def options():
-    """O que a tela de login oferece (público): "Esqueci a senha" só com e-mail."""
-    return {"email": mailer.configured(), "invite_request": mailer.configured()}
+    """O que a tela de login oferece (público): "Esqueci a senha" só com e-mail;
+    "Solicitar convite" só com e-mail e se o admin não o desligou (Para empresas)."""
+    return {"email": mailer.configured(), "invite_request": invite_request_open()}
+
+
+def invite_request_open() -> bool:
+    return mailer.configured() and not org.get()["invite_request_off"]
 
 
 def _reset_mail(email: str, link: str):

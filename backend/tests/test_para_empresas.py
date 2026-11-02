@@ -1,6 +1,7 @@
 """Admin › "Para empresas e instituições" (sql/036): visibilidade definida pelo
 admin, nome e e-mail (pela pessoa com confirmação, ou só pelo admin), convite
-com nome e papéis, tour obrigatório no primeiro acesso."""
+com nome e papéis. O tour do primeiro acesso é obrigatório para toda conta
+nova (deixou de ser opção em 01/11)."""
 import base64
 import os
 import re
@@ -61,13 +62,14 @@ def _admin_log(admin, action):
 
 def test_tudo_desligado_por_padrao(admin, usuario):
     assert admin.get("/admin/org").json() == {"team_visibility": "self", "team_visibility_since": None,
-                                              "identity_managed": False, "tour_required": False}
+                                              "identity_managed": False, "invite_request_off": False,
+                                              "ticket_url": None, "mail_configured": False}
     me = usuario.get("/auth/me").json()
-    assert me["org"] == {"team_visibility": "self", "identity_managed": False, "tour_required": False}
-    assert me["tour_required"] is False and me["visibility_notice"] is False and me["email_pending"] is None
+    assert me["org"] == {"team_visibility": "self", "identity_managed": False}
+    assert me["visibility_notice"] is False and me["email_pending"] is None
     # Só o admin mexe nas opções.
     assert usuario.get("/admin/org").status_code == 403
-    assert usuario.put("/admin/org", {"tour_required": True}).status_code == 403
+    assert usuario.put("/admin/org", {"identity_managed": True}).status_code == 403
 
 
 # ---------------------------------------------------------------- visibilidade da equipe --
@@ -165,12 +167,12 @@ def test_aviso_unico_para_quem_ja_usa(admin, usuario):
 def test_log_de_admin_das_opcoes(admin):
     _org(admin, team_visibility="managers")
     _org(admin, team_visibility="managers")  # sem mudança: não registra
-    _org(admin, identity_managed=True, tour_required=True)
+    _org(admin, identity_managed=True)
     _org(admin, team_visibility="self")
     rows = _admin_log(admin, "app.team_visibility")
     assert [r["after"]["team_visibility"] for r in rows] == ["managers", "self"]
     assert all(r["actor"] == "admin" and r["after"]["by"] == admin.me["email"] for r in rows)
-    assert len(_admin_log(admin, "app.identity_managed")) == 1 and len(_admin_log(admin, "app.tour_required")) == 1
+    assert len(_admin_log(admin, "app.identity_managed")) == 1
     textos = [h["summary"] for h in hist(admin) if h["action"] == "app.team_visibility"]
     assert any("Visível para quem gerencia" in t for t in textos)
     assert any("Cada pessoa escolhe" in t for t in textos)
@@ -283,7 +285,7 @@ def test_convite_com_nome_e_papel(admin, caixa):
     anon = Api()
     me = anon.post("/auth/invite/accept", {"token": token, "password": "Senha-Da-Gestora-1"}).json()
     assert me["display_name"] == "Gestora Lima" and sorted(me["roles"]) == ["user", "viewer"]
-    assert me["tour_required"] is False  # opção desligada
+    assert me["tour_required"] is True  # conta nova: tour obrigatório no primeiro acesso
     # Os papéis continuam mudando depois.
     uid = me["id"]
     assert admin.put(f"/admin/users/{uid}/roles", {"roles": ["user"]}).status_code == 200
@@ -308,12 +310,11 @@ def test_convite_com_nome_travado_pela_administracao(admin, caixa):
 
 # --------------------------------------------------------------------- tour obrigatório --
 
-def test_tour_obrigatorio_so_no_primeiro_acesso(admin, usuario, caixa):
-    # Conta que já existia antes de ligar: tour_first_access vem da migração (falso p/ quem já usa).
+def test_tour_obrigatorio_sempre_no_primeiro_acesso(admin, usuario, caixa):
+    # Conta que já existia: tour_first_access vem da migração (falso p/ quem já usa) e nunca é forçada.
     db.execute("UPDATE users SET tour_first_access = false WHERE id = %s", (uid_de(usuario),))
-    _org(admin, tour_required=True)
     assert usuario.get("/auth/me").json()["tour_required"] is False
-    # Conta nova: obrigatório até concluir.
+    # Conta nova: obrigatório até concluir, sem opção nenhuma ligada.
     r = admin.post("/admin/users", {"email": "nova@example.com", "display_name": "Nova"})
     nova = Api()
     me = nova.post("/auth/invite/accept", {"token": _token(r.json()["invite_url"], "convite"), "password": "Senha-Da-Nova-1"}).json()
@@ -325,12 +326,13 @@ def test_tour_obrigatorio_so_no_primeiro_acesso(admin, usuario, caixa):
     nova.put("/me/tour", {"done": False})
     me = nova.get("/auth/me").json()
     assert me["tour_done_at"] is None and me["tour_required"] is False
-    # Desligada a opção, ninguém é obrigado.
+    # A opção saiu do Admin: mandar o campo antigo não muda nada.
+    assert admin.put("/admin/org", {"tour_required": False}).status_code == 200
     r = admin.post("/admin/users", {"email": "outra@example.com"})
-    _org(admin, tour_required=False)
     outra = Api()
     me = outra.post("/auth/invite/accept", {"token": _token(r.json()["invite_url"], "convite"), "password": "Senha-Da-Outra-1"}).json()
-    assert me["tour_required"] is False
+    assert me["tour_required"] is True
+    assert "tour_required" not in admin.get("/admin/org").json()
 
 
 def test_migracao_nao_obriga_quem_ja_usa():

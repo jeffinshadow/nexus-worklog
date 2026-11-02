@@ -220,7 +220,8 @@ def export(kind: str, start: Optional[date] = Query(None), end: Optional[date] =
             "exported_at": datetime.now(app_tz()),
             "user": db.query_one("SELECT email, work_days, created_at FROM users WHERE id = %s", (uid,)),
             "profile": db.query_one(
-                """SELECT display_name, theme, ticket_url, default_project_id, accepts_assignments_at, viewers_allowed,
+                """SELECT display_name, theme, COALESCE((SELECT s.ticket_url FROM app_settings s WHERE s.id = 1), ticket_url) AS ticket_url,
+                          default_project_id, accepts_assignments_at, viewers_allowed,
                           EXISTS (SELECT 1 FROM user_avatars a WHERE a.user_id = users.id) AS has_avatar
                      FROM users WHERE id = %s""", (uid,)),
             "prefs": {"email": prefs("notification_prefs"), "push": prefs("push_prefs"),

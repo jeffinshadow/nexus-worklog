@@ -14,10 +14,14 @@ manda tarefas a quem aceitou receber) e **Vê a equipe** (libera a tela Equipe: 
 para leitura, o quadro, a retrospectiva, os relatórios, as horas e as fotos de
 quem **aceitou** em Configurações > Conta; contas novas começam sem o aceite, e
 os Papéis… de cada conta mostram quem liberou). O admin também tem o próprio registro;
-em Admin > Contas ele busca a conta, reenvia ou **cancela um convite** ainda
-não aceito, redefine a senha, **bloqueia o acesso** (a pessoa sai de todos os
-aparelhos, chaves e passkeys param, os dados ficam; Redefinir senha libera) ou
-exclui a conta de vez. No convite, o admin já informa o nome e escolhe os papéis.
+em Admin > Contas ele vê quando cada conta foi criada e o **último acesso**, filtra
+por papel e situação (ativa, convite pendente, bloqueada), reenvia ou **cancela um
+convite** ainda não aceito, redefine a senha (com e-mail configurado, manda o **link de
+nova senha** em vez de uma senha para repassar), **bloqueia o acesso** (a pessoa sai de
+todos os aparelhos, chaves e passkeys param, os dados ficam; Redefinir senha libera) ou
+exclui a conta de vez; ao bloquear ou excluir, pode **passar as tarefas abertas** para
+outra pessoa. No convite, o admin já informa o nome e escolhe os papéis; quem ganha
+ou perde um papel depois é avisado no app (e por e-mail).
 
 **Para empresas e instituições** (Admin > Para empresas; tudo desligado por padrão,
 porque o padrão é o organizador pessoal): **visibilidade da equipe** ("Cada pessoa
@@ -25,7 +29,9 @@ escolhe" ou "Visível para quem gerencia", em que quem tem o papel Vê a equipe 
 a chave de aceite fica bloqueada, à vista, com o motivo; as escolhas de cada um ficam
 guardadas), **nome e e-mail definidos pela administração** (desligado, cada pessoa
 troca os seus na Conta, e o e-mail novo só vale depois de confirmado por link) e
-**tour obrigatório no primeiro acesso**. Cada mudança fica no histórico do admin.
+**sem "Solicitar convite" na tela de login** (só entra quem o admin convidar) e o
+**endereço do sistema de chamados para todos** (vazio, cada pessoa usa o seu). Cada
+mudança fica no histórico do admin. Toda conta nova faz o tour guiado no primeiro acesso.
 
 **Manual de uso, tela por tela:** [shadow.tec.br/nexus-manual](https://shadow.tec.br/nexus-manual).
 

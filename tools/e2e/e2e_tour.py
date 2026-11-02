@@ -203,14 +203,14 @@ try:
             api("DELETE", f"/worklog/{x['id']}")
     api("PUT", "/me/default-project", {"project_id": None})
 
-    # ---- tour obrigatório no primeiro acesso (conta nova, convidada com nome e papel)
+    # ---- tour obrigatório no primeiro acesso (sempre, para toda conta nova; convidada com nome e papel)
     AEMAIL, APW = _cred("NEXUS_E2E_ADMIN")
     login = lambda e, s: ev(f"fetch('/api/auth/login',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{email:{json.dumps(e)},password:{json.dumps(s)}}})}}).then(r=>r.status)")  # noqa: E731
     cmd("Network.enable"); cmd("Network.clearBrowserCookies")
     cmd("Page.navigate", url=B + "/login"); time.sleep(1)
     check("admin entra", login(AEMAIL, APW) == 200)
     org0 = api("GET", "/admin/org")["j"]
-    api("PUT", "/admin/org", {"tour_required": True, "team_visibility": "managers", "identity_managed": False})
+    api("PUT", "/admin/org", {"team_visibility": "managers", "identity_managed": False})  # o tour é sempre obrigatório para conta nova
     nova = f"e2e.tour.{int(time.time())}@example.com"
     r = api("POST", "/admin/users", {"email": nova, "display_name": "Pessoa E2E", "roles": ["user"]})
     check("convite com nome e papel", r["s"] == 201 and r["j"]["display_name"] == "Pessoa E2E")
@@ -262,7 +262,7 @@ try:
     login(AEMAIL, APW)
     uid_nova = next(u["id"] for u in api("GET", "/admin/users")["j"] if u["email"] == nova)
     api("POST", f"/admin/users/{uid_nova}/delete", {"confirm_email": nova})
-    api("PUT", "/admin/org", {k: org0[k] for k in ("team_visibility", "identity_managed", "tour_required")})
+    api("PUT", "/admin/org", {k: org0[k] for k in ("team_visibility", "identity_managed")})
 finally:
     p.terminate()
     print("OK:", len(ok)); print("FALHAS:", falhas or "nenhuma"); print("ERROS JS:", erros or "nenhum")

@@ -303,6 +303,15 @@ function editTemplate(t, rerender) {
 // --------------------------------------------------------------- chamados --
 
 function ticketsPanel(me) {
+  // Definido pela administração (Admin › Para empresas): o campo fica à vista, travado, com o motivo.
+  if (me.ticket_url_managed) {
+    const locked = h("input", { type: "url", value: me.ticket_url || "", disabled: "disabled", "aria-describedby": "tickets-locked" });
+    return h("section", { class: "panel", id: "chamados" },
+      h("div", { class: "panel-head" }, h("h2", { text: "Chamados e ordens de serviço" })),
+      field("Endereço do chamado ou OS", locked),
+      h("p", { class: "dialog-note field-note", id: "tickets-locked" }, "Definido pela administração e vale para todos: o “#4821” das tarefas abre o chamado.",
+        (me.roles || []).includes("admin") ? h("a", { href: "#/admin?aba=empresas", text: " Mudar em Admin › Para empresas." }) : " Para mudar, fale com quem administra."));
+  }
   const url = h("input", { type: "url", maxlength: "300", value: me.ticket_url || "",
     placeholder: "https://glpi.empresa.com.br/front/ticket.form.php?id={id}" });
   const save = h("button", { type: "button", class: "btn btn-primary", text: "Salvar endereço" });
@@ -313,7 +322,7 @@ function ticketsPanel(me) {
       toast(r.ticket_url ? "Endereço salvo: o número do chamado vira link." : "Endereço removido.");
     } catch (e) { errorToast(e, "Use um endereço começando com http:// ou https://."); }
   });
-  return h("section", { class: "panel" },
+  return h("section", { class: "panel", id: "chamados" },
     h("div", { class: "panel-head" }, h("h2", { text: "Chamados e ordens de serviço" })),
     h("p", { class: "help", text: "Opcional. Se a sua equipe usa um sistema de chamados ou de ordens de serviço, cole o endereço de um deles, trocando o número por {id} (ex.: https://sistema.empresa/os/{id}). Sem {id}, o número vai no fim. Com o endereço, o “#4821” das tarefas abre o chamado." }),
     field("Endereço do chamado ou OS", url),

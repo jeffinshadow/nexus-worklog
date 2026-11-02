@@ -56,7 +56,7 @@ def _load_session(request: Request) -> dict:
         """
         SELECT s.id AS sid, s.csrf_token, s.expires_at,
                u.id AS user_id, u.email, u.role, u.must_change_password,
-               u.work_days, """ + ROLES_SQL + """
+               u.work_days, u.last_seen_at, """ + ROLES_SQL + """
           FROM sessions s
           JOIN users u ON u.id = s.user_id
          WHERE s.token_hash = %s
@@ -72,6 +72,11 @@ def _load_session(request: Request) -> dict:
     if row["expires_at"] <= now:
         db.execute("DELETE FROM sessions WHERE id = %s", (row["sid"],))
         raise HTTPException(status_code=401, detail="sessão expirada")
+    # Último acesso (Admin › Contas) com resolução de 5 minutos: no máximo uma
+    # escrita a cada 5 min por pessoa, não uma por requisição.
+    seen = row.pop("last_seen_at")
+    if seen is None or now - seen > timedelta(minutes=5):
+        db.execute("UPDATE users SET last_seen_at = %s WHERE id = %s", (now, row["user_id"]))
     return row
 
 

@@ -18,11 +18,15 @@ from ..deps import client_ip, require_admin, require_admin_csrf
 from ..schemas import InviteChoiceIn, InviteIn, InviteRequestIn
 from ..security import invite_req_email_limiter, invite_req_limiter
 from .admin import invite_user
+from .auth import invite_request_open
 
 log = logging.getLogger("uvicorn.error")
 router = APIRouter(tags=["invite-requests"])
 
-SOURCES = {"colega": "indicação de colega", "site": "site da ShadowTec", "github": "GitHub", "outro": "outro"}
+# Origens genéricas (sql/037): servem a qualquer instância. "site" e "github"
+# só aparecem em pedidos antigos (saem sozinhos em até 180 dias).
+SOURCES = {"colega": "indicação de colega", "empresa": "pela empresa ou equipe", "internet": "internet ou redes sociais",
+           "outro": "outro", "site": "site", "github": "GitHub"}
 
 
 def _mail_admins(req: dict) -> None:
@@ -63,7 +67,7 @@ def _mail_requester(req: dict) -> None:
 
 @router.post("/api/auth/invite-request", status_code=202)
 def request_invite(data: InviteRequestIn, request: Request):
-    if not mailer.configured():
+    if not invite_request_open():  # sem e-mail ou desligado pelo admin (Para empresas)
         raise HTTPException(status_code=404, detail="não disponível")
     email = data.email.lower()
     if not invite_req_limiter.allow(f"ip:{client_ip(request)}") or not invite_req_email_limiter.allow(f"em:{email}"):

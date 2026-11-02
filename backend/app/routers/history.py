@@ -60,6 +60,10 @@ ACTION_LABELS = {
     "app.team_visibility": "alterou a visibilidade da equipe",
     "app.identity_managed": "alterou quem define nome e e-mail",
     "app.tour_required": "alterou o tour obrigatório",
+    "app.invite_request_off": "alterou o pedido de convite na tela de login",
+    "app.ticket_url": "alterou o endereço do sistema de chamados da instância",
+    "worklog.transfer": "recebeu a tarefa transferida",
+    "user.transfer_tasks": "transferiu as tarefas abertas",
     "email.change_request": "pediu para trocar o e-mail da conta",
     "email.change": "trocou o e-mail da conta",
     "user.profile": "alterou nome e e-mail de uma conta",
@@ -173,6 +177,15 @@ def _label(row) -> str:
     if row["action"] == "app.tour_required" and row["after"]:
         return ("ligou o tour obrigatório no primeiro acesso" if row["after"].get("tour_required")
                 else "desligou o tour obrigatório no primeiro acesso")
+    if row["action"] == "app.invite_request_off" and row["after"]:
+        return ("tirou o “Solicitar convite” da tela de login" if row["after"].get("invite_request_off")
+                else "voltou a oferecer o “Solicitar convite” na tela de login")
+    if row["action"] == "worklog.transfer" and row["after"]:
+        return f"recebeu a tarefa “{name}”, que era de {snap.get('from', '')} (transferida por {snap.get('by', '')})"
+    if row["action"] == "user.transfer_tasks" and row["after"]:
+        n = row["after"].get("count", 0)
+        s_ = "s" if n != 1 else ""
+        return f"transferiu {n} tarefa{s_} aberta{s_} de {row['after'].get('from', '')} para {row['after'].get('to', '')}"
     if row["action"] in ("email.change_request", "email.change") and row["after"]:
         return f"{ACTION_LABELS[row['action']]} para {row['after'].get('email', '')}"
     if row["action"] == "user.profile":

@@ -25,7 +25,7 @@ import { session } from "./session.js";
 import { initTimer, stopTimer, timerState } from "./timer.js";
 import { openWorklog } from "./board.js";
 import { openTask, closeSidePanel } from "./task.js";
-import { startTour, visibilityNotice } from "./tour.js";
+import { startTour, visibilityNotice, roleNotice } from "./tour.js";
 import { openReview } from "./review.js";
 import { modal, busy, initTooltips, initRailPeek, syncRail, calmMotion, toast, singleKeysOn, repaintBadges } from "./ui.js";
 
@@ -541,6 +541,8 @@ async function boot() {
   if (has("user") && !me.tour_done_at) setTimeout(() => startTour(me), 700);
   // Quem já usava quando a administração ligou "Visível para quem gerencia": aviso único.
   else if (me.visibility_notice) setTimeout(() => visibilityNotice(me), 700);
+  // Papel ganho ou retirado pela administração: aviso único (Admin › Contas › Papéis).
+  else if (me.role_notice) setTimeout(() => roleNotice(me), 700);
 }
 
 boot();

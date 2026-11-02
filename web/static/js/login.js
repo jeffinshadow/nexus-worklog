@@ -90,7 +90,7 @@ $("go-request").addEventListener("click", () => {
   show("form-request");
 });
 $("request-back").addEventListener("click", () => { $("auth-foot").classList.remove("hidden"); show("form-login"); });
-$("req-source").addEventListener("change", () => $("req-note-wrap").classList.toggle("hidden", !["colega", "outro"].includes($("req-source").value)));
+$("req-source").addEventListener("change", () => $("req-note-wrap").classList.toggle("hidden", !["colega", "internet", "outro"].includes($("req-source").value)));
 $("form-request").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const err = $("request-error"), ok = $("request-ok"), btn = $("request-submit");
