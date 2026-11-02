@@ -747,8 +747,11 @@ body:has(.rem-card) .idle-card:not(.rem-card) { display: none; }
 .rem-row input { flex: 1 1 100%; order: 2; }
 .rem-row input + .btn { order: 3; margin-left: auto; }
 .rem-acts { display: flex; flex-wrap: wrap; gap: 4px; margin-left: auto; }  /* lembrete de tarefa: Abrir, Ok, Concluir */
+.rem-row p:has(+ .rem-acts) { flex: 1 1 200px; }  /* celular: o título fica inteiro e as ações descem para a linha de baixo */
+.paste-form .field { margin-top: 12px; }
 .rec-title { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .chip.rem-at { font-variant-numeric: tabular-nums; }
+.chip.rem-at:has(.ico) { display: inline-flex; align-items: center; gap: 4px; }  /* lembrete da tarefa: sino + hora */
 .chip.rem-at.due { border-color: var(--warning); }  /* na hora: o mesmo contêiner, com contorno */
 .check-row.done .chip.rem-at { opacity: .6; }
 .profile-row .row-actions { margin-top: 0; }

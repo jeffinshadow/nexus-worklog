@@ -27,7 +27,7 @@ function getPrev() {
 function setPrev(p) {
   try { if (p) localStorage.setItem(PREV_KEY, JSON.stringify(p)); else localStorage.removeItem(PREV_KEY); } catch { /* sem armazenamento */ }
 }
-const shortTitle = (t) => (t.length > 32 ? t.slice(0, 31) + "…" : t);
+const shortTitle = (t) => (t.length > 24 ? t.slice(0, 23) + "…" : t);  // cabe no aviso do celular
 
 // A interrupção terminou (parou ou concluiu a tarefa `taskId`): a ação "Voltar para «X»"
 // para o aviso, ou null. Usa uma vez só.
