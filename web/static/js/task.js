@@ -14,6 +14,7 @@ import { extraProjectsField, fillObjectiveSelect, fillProjectSelect } from "./pr
 import { session } from "./session.js";
 import { timerButton, timerState, startTimer, stopTimer } from "./timer.js";
 import { pastedImages, photosSection, upload } from "./fotos.js";
+import { returnTask } from "./devolver.js";
 
 export function duration(min) {
   if (!min) return "0 min";
@@ -199,9 +200,13 @@ export async function openTask(taskId, onChange, opts = {}) {
     const remove = async () => { if (await deleteTask(t, onChange)) dlg.close(); };
     // A cópia leva o que está salvo: espera o último campo e abre no lugar desta.
     const dup = async () => { await pending; dlg.close(); duplicateTask(cur, onChange); };
+    // Atribuída por outra pessoa e ainda aberta: devolver com o motivo (sai das tarefas dela).
+    const giveBack = t.assigned_by_name && t.status !== "done" && !off
+      ? async () => { await pending; if (await returnTask(cur, onChange)) dlg.close(); } : null;
     const head = h("div", { class: "task-head" },
       h("div", { class: "task-title" }, h("div", { class: "title-row" }, h("div", { class: "title-main" }, ...titleBlock), toggle),
-        t.assigned_by_name ? h("p", { class: "assigned-note" }, icon("send"), "Atribuída por " + t.assigned_by_name) : null),
+        t.assigned_by_name ? h("p", { class: "assigned-note" }, icon("send"), "Atribuída por " + t.assigned_by_name,
+          giveBack ? h("button", { type: "button", class: "btn btn-text btn-sm", onClick: giveBack }, "Devolver…") : null) : null),
       h("div", { class: "task-tools" },
         timerButton(t, after),
         t.status !== "done"
@@ -231,6 +236,7 @@ export async function openTask(taskId, onChange, opts = {}) {
           ["Copiar resumo (para o chamado ou o cliente)", "copy", async () => { await pending; copySummary(cur); }],
           ["Salvar como modelo", "list", async () => { await pending; saveAsTemplate(cur); }],
           ["Duplicar tarefa", "add", dup],
+          giveBack ? ["Devolver a quem atribuiu…", "undo", giveBack] : null,
           ["Excluir tarefa", "trash", remove],
         ];
         // Computador (painel ao lado): menu junto do botão, como o clique direito; celular: folha de baixo.

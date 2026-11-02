@@ -5,7 +5,7 @@ B = os.environ.get("NEXUS_E2E_URL", "http://localhost:8090")
 CONTAS = [("user", os.environ["NEXUS_E2E_USER"].split(":", 1)), ("admin", os.environ["NEXUS_E2E_ADMIN"].split(":", 1))]
 TELAS = {"user": ["hoje", "tarefas", "projetos", "vencimentos", "mes", "mes?aba=pdf", "historico", "busca?q=rede",
                   "config?aba=modelos", "config?aba=avisos", "config?aba=calendario", "config?aba=ia", "config?aba=conta", "mais"],
-         "admin": ["admin", "equipe", "atribuir"]}
+         "admin": ["admin", "equipe"]}
 JS = r"""(()=>{
   const out=[];
   for (const el of document.querySelectorAll('button, a[href], select, input:not([type=hidden]), summary, [role=tab], [role=radio], label.weekday-option, label.check-line, label.check-row')) {

@@ -7,10 +7,16 @@
 // alfabética. Tocar numa pessoa abre o mês dela na mesma tela de Meu mês (sem
 // média, sem tendência, sem comparação: o servidor nem manda) e o quadro.
 // Tudo vem só de quem permitiu ser visto (o servidor filtra, /viewer/team).
+//
+// Atribuir mora aqui (sem tela própria, sem abas): quem tem "Manda tarefas" vê
+// o botão "Atribuir tarefa" no cabeçalho (diálogo por cima da tela) e, logo
+// abaixo do painel, "Tarefas que atribuí" (atribuir.js). Quem só atribui vê só
+// a lista e o botão: nada de números, painel ou pessoas.
 import { api } from "./api.js";
 import { h, icon, clear, field, localDay, dateTime, shortDate, addDays } from "./dom.js";
-import { busy, errorToast, modal, toast } from "./ui.js";
+import { busy, errorToast, hashPage, modal, pager, pageSlice, setHashPage, toast } from "./ui.js";
 import { session } from "./session.js";
+import { assignDialog, sentPanel } from "./atribuir.js";
 import { duration } from "./task.js";
 import * as board from "./board.js";
 import * as mes from "./mes.js";
@@ -18,6 +24,8 @@ import * as mes from "./mes.js";
 // O mês escolhido vale para o painel e para o mês de cada pessoa (fica entre visitas).
 const monthState = { month: null, months: null };
 const SETTING = "Permitir que quem tem o papel “Vê a equipe” veja meu registro";
+const PEOPLE_PAGE = 12; // cartões de pessoas por página
+let peoplePage = 1;
 
 export async function mount(root, ctx) {
   const q = new URLSearchParams(location.hash.split("?")[1] || "");
@@ -33,13 +41,29 @@ const roles = () => (session.me && session.me.roles) || [];
 async function panelView(root, ctx) {
   const st = monthState;
   if (!st.month || st.month > mes.thisMonth()) st.month = mes.thisMonth();
-  ctx.setEyebrow("a equipe no mês");
+  const canView = roles().includes("viewer"), canAssign = roles().includes("assigner");
+  peoplePage = hashPage("pp");
+  ctx.setEyebrow(canView ? "a equipe no mês" : "as tarefas que você atribuiu");
   let data = null;
+
+  // Tarefas que atribuí (logo abaixo do painel) e o diálogo de atribuir, por cima da tela.
+  const sent = canAssign ? sentPanel({ onChange: () => { if (canView) load().catch(errorToast); } }) : null;
+  const afterAssign = () => { sent.load(); if (canView) load().catch(errorToast); };
+  const assignBtn = canAssign ? h("button", { type: "button", class: "btn btn-primary", "data-fab": "",
+    onClick: () => assignDialog({ onDone: afterAssign }) }, icon("send"), "Atribuir tarefa") : null;
+  if (!canView) {
+    // Só atribui: a lista e o botão, nada da equipe.
+    ctx.setActions(assignBtn);
+    const ready = await api.get("/assign/sent").catch((e) => e);
+    await sent.load(ready);
+    clear(root);
+    root.append(sent.el);
+    return;
+  }
 
   const pdfBtn = h("button", { type: "button", class: "btn btn-ghost", onClick: () => pdfDialog(data) }, icon("reports"), "PDF");
   ctx.setActions(
-    roles().includes("assigner")
-      ? h("button", { type: "button", class: "btn btn-primary", onClick: () => ctx.go("atribuir") }, icon("send"), "Atribuir tarefa") : null,
+    assignBtn,
     h("button", { type: "button", class: "btn btn-ghost", onClick: () => csvDialog(data) }, icon("download"), "Horas da equipe"),
     pdfBtn);
 
@@ -69,7 +93,7 @@ async function panelView(root, ctx) {
       pdfBtn.title = a.people.length ? "" : "Ninguém compartilha o registro ainda";
       paintNav();
       clear(content);
-      content.append(...screen(a, ctx));
+      content.append(...screen(a, ctx, sent));
     } finally {
       if (my === seq) content.classList.remove("refreshing");
     }
@@ -81,12 +105,15 @@ async function panelView(root, ctx) {
   }
 
   paintNav();
+  // O painel e a lista juntos (uma espera só).
+  const sentReady = sent ? api.get("/assign/sent").catch((e) => e) : null;
   await load();
+  if (sent) await sent.load(await sentReady);
   clear(root); // só depois da resposta: na volta à tela, a visita anterior fica até chegar
-  root.append(h("div", { class: "day-nav dash-period mes-nav" }, prev, label, next), content);
+  root.append(h("div", { class: "day-nav dash-period mes-nav" }, prev, label, next), content, sent ? sent.el : null);
 }
 
-function screen(a, ctx) {
+function screen(a, ctx, sent) {
   const mesNome = mes.nameOf(a.period.month);
   const hero = h("section", { class: "mes-hero" }, h("p", { class: "mes-sentence", text: sentence(a, mesNome) }));
   if (a.hidden_count) {
@@ -95,7 +122,7 @@ function screen(a, ctx) {
       : `${a.hidden_count} pessoas da equipe não compartilham o dia a dia.` }));
   }
   const panel = h("section", { class: "mm-panel eq-panel", "aria-label": `Painel da equipe em ${mesNome}` },
-    ...kpis(a), attentionTile(a), mes.projectsTile(a, mesNome, 5), peopleTile(a, ctx));
+    ...kpis(a), attentionTile(a, sent), mes.projectsTile(a, mesNome, 5), peopleTile(a, ctx));
   return [hero, panel];
 }
 
@@ -146,10 +173,11 @@ function kpis(a) {
 }
 
 // 2) Precisa de atenção: o que destrava trabalho (sem vermelho, sem placar).
-const KIND_ICON = { assigned: "send", waiting: "clock", due: "calendar" };
+const KIND_ICON = { returned: "undo", assigned: "send", waiting: "clock", due: "calendar" };
 
 function attentionLine(x) {
   const dias = (n) => (n == null ? "" : n === 0 ? " desde hoje" : n === 1 ? " há 1 dia" : ` há ${n} dias`);
+  if (x.kind === "returned") return `devolveu${x.days === 0 ? " hoje" : x.days === 1 ? " ontem" : dias(x.days)} · «${x.reason || "sem motivo"}»`;
   if (x.kind === "assigned") {
     return x.status === "blocked" ? `você atribuiu · aguardando${dias(x.days)}` : `você atribuiu · ainda não começou (${dias(x.days).trim()})`;
   }
@@ -158,12 +186,14 @@ function attentionLine(x) {
   return x.days === 0 ? "vence hoje" : x.days === 1 ? "vence amanhã" : `vence em ${shortDate(x.due_date)}`;
 }
 
-function attentionTile(a) {
-  const tile = (...body) => mes.tile(7, "eq-att-tile", "Precisa de atenção", "agora: o que está aguardando, vencendo ou parado", ...body);
-  if (!a.people.length) return tile(h("p", { class: "mes-ok", text: "Quando alguém compartilhar o dia a dia, aparece aqui o que está aguardando ou vencendo." }));
-  if (!a.attention.length) return tile(h("p", { class: "mes-ok" }, icon("check"), h("span", { text: "Nada aguardando, vencendo nos próximos 7 dias ou parado." })));
+function attentionTile(a, sent) {
+  const tile = (...body) => mes.tile(7, "eq-att-tile", "Precisa de atenção", "agora: o que foi devolvido, está aguardando, vencendo ou parado", ...body);
+  if (!a.people.length && !a.attention.length) return tile(h("p", { class: "mes-ok", text: "Quando alguém compartilhar o dia a dia, aparece aqui o que está aguardando ou vencendo." }));
+  if (!a.attention.length) return tile(h("p", { class: "mes-ok" }, icon("check"), h("span", { text: "Nada devolvido, aguardando, vencendo nos próximos 7 dias ou parado." })));
+  // A devolvida não existe mais no quadro de ninguém: abre a linha dela em Tarefas que atribuí.
+  const open = (x) => (x.kind === "returned" && sent ? sent.focusReturned(x.task_id) : openPerson(x.user_id, "quadro", x.task_id));
   return tile(h("ul", { class: "eq-att-list" }, ...a.attention.map((x) => h("li", {},
-    h("button", { type: "button", class: "eq-att", onClick: () => openPerson(x.user_id, "quadro", x.task_id) },
+    h("button", { type: "button", class: "eq-att", onClick: () => open(x) },
       icon(KIND_ICON[x.kind]),
       h("span", { class: "eq-att-t", text: x.title }),
       h("span", { class: "eq-att-m", text: `${x.name} · ${attentionLine(x)}` }))))));
@@ -196,14 +226,29 @@ function peopleTile(a, ctx) {
         roles().includes("admin") ? h("button", { type: "button", class: "btn btn-ghost", onClick: () => ctx.go("admin") }, icon("person"), "Convidar pessoa") : null),
       h("div", { class: "eq-people", "aria-hidden": "true" }, ...[0, 1, 2].map(() => h("div", { class: "eq-person eq-ghost" }))));
   }
-  return mes.tile(12, "eq-people-tile", "Pessoas", "em ordem alfabética · toque para ver o mês e o quadro",
-    h("ul", { class: "eq-people" }, ...a.people.map((p) => h("li", {},
+  // 12 cartões por página (o pager comum; a página fica no endereço, ?pp=).
+  const list = h("ul", { class: "eq-people" });
+  const box = h("div", {}, list);
+  const tile = mes.tile(12, "eq-people-tile", "Pessoas", "em ordem alfabética · toque para ver o mês e o quadro", box);
+  const paint = () => {
+    const slice = pageSlice(a.people, peoplePage, PEOPLE_PAGE);
+    peoplePage = slice.page;
+    setHashPage("pp", peoplePage, "equipe");
+    list.replaceChildren(...slice.rows.map((p) => h("li", {},
       h("button", { type: "button", class: "eq-person", title: p.email, onClick: () => openPerson(p.id) },
         initial(p),
         h("span", { class: "eq-p-name", text: p.name }),
         h("span", { class: "eq-p-n", text: `${p.open} em aberto · ${p.waiting} aguardando` }),
-        h("span", { class: "eq-p-last", title: p.last_activity ? dateTime(p.last_activity) : "", text: lastSeen(p.last_activity) }))))));
+        h("span", { class: "eq-p-last", title: p.last_activity ? dateTime(p.last_activity) : "", text: lastSeen(p.last_activity) })))));
+    box.querySelector(".pager")?.remove();
+    const nav = pager({ page: peoplePage, total: a.people.length, size: PEOPLE_PAGE, label: "pessoas",
+      onPage: (n) => { peoplePage = n; paint(); }, focus: () => tile.querySelector(".mm-title") });
+    if (nav) box.append(nav);
+  };
+  paint();
+  return tile;
 }
+
 
 function openPerson(uid, aba, taskId) {
   const q = new URLSearchParams({ pessoa: String(uid) });

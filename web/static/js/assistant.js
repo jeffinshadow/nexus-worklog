@@ -77,12 +77,13 @@ export function card({ key = null, hello, lines = [], actions = [], extra = null
 // Um aviso dentro da fala principal: sem moldura própria, só um fundo leve, o
 // símbolo do assistente (é ele falando, não um aviso geral do app) e um X
 // discreto para dispensá-lo sem fechar o resto.
-function noticeItem({ key, lines = [], extra = null }) {
+// onClose: o aviso também é dispensado no servidor (não volta ao recarregar).
+function noticeItem({ key, lines = [], extra = null, onClose = null }) {
   const el = h("div", { class: "assist-item" + (isClosed(key) ? " hidden" : ""), "data-key": key },
     h("span", { class: "assist-mark", "aria-hidden": "true" }, icon("spark")),
     h("div", { class: "assist-item-body" }, ...renderLines(lines), extra),
-    h("button", { type: "button", class: "icon assist-item-close", title: "Dispensar este aviso por enquanto",
-      "aria-label": "Dispensar este aviso", onClick: () => closeCard(key, el) }, icon("close")));
+    h("button", { type: "button", class: "icon assist-item-close", title: onClose ? "Dispensar este aviso" : "Dispensar este aviso por enquanto",
+      "aria-label": "Dispensar este aviso", onClick: () => { closeCard(key, el); if (onClose) onClose(); } }, icon("close")));
   return el;
 }
 
@@ -300,6 +301,16 @@ export function todayCard(b, sum, ctx) {
     items.push({ key: `hoje:parada:${x.id}`, lines: [{
       line: h("p", {}, h("strong", { text: q(x.title) }), ` está aguardando há ${x.days} dias. Quer marcar quando cobrar?`),
       actions: [action("Marcar quando cobrar", () => followUpTask(task, () => ctx.onChanged && ctx.onChanged()), true)] }] });
+  }
+  // Quem atribui: o retorno das que mandou desde o último aviso visto (só
+  // concluídas e devolvidas; nunca "fulano está atrasado"). "Ver" leva à Equipe.
+  const an = sum && sum.assigned_news;
+  if (an) {
+    const seen = () => api.post("/assign/news/seen").catch(() => { /* sem rede: volta no próximo Hoje */ });
+    const partes = [an.done ? plural(an.done, "concluída", "concluídas") : "", an.returned ? plural(an.returned, "devolvida", "devolvidas") : ""];
+    items.push({ key: "hoje:atribuidas", onClose: seen, lines: [{
+      line: `Das que você atribuiu: ${partes.filter(Boolean).join(", ")}.` + (an.returned === 1 ? " A devolvida espera você atribuir de novo ou encerrar." : an.returned ? " As devolvidas esperam você atribuir de novo ou encerrar." : ""),
+      actions: [action("Ver na Equipe", () => { seen(); ctx.go("equipe"); }, true)] }] });
   }
   // Último dia útil da semana: convite para a revisão (uma vez; "Agora não" vale a semana toda).
   if (rv && rv.invite) items.push({ key: "hoje:revisao", lines: [{

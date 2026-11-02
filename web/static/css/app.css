@@ -1520,6 +1520,19 @@ dialog.proj-dialog { max-width: 480px; width: min(480px, calc(100vw / var(--ui-z
 .eq-back { margin-left: -12px; min-height: 44px; }
 .eq-person-name { display: flex; align-items: center; gap: 10px; margin: 0; font-size: var(--type-title); font-weight: var(--weight-title); }
 .card.eq-focus { outline: 2px solid var(--primary); outline-offset: 2px; }
+/* Tarefas que atribuí: logo abaixo do painel (quem só atribui: só ela). O filtro
+   é um grupo de botões que marcam (não é aba); a devolvida mostra o motivo. */
+.mes-content + .eq-sent { margin-top: var(--gap); }
+.eq-sent .eq-sent-filter { margin: 2px 0 10px; }
+.eq-sent .seg button.chip-btn[aria-pressed="true"] { background-color: var(--primary-container); color: var(--on-primary-container); }
+.eq-sent .help { margin: 0 0 6px; }
+.chip.returned { color: var(--on-secondary-container); background: var(--secondary-container); }
+.sent-reason { margin: 4px 0 0; font-size: var(--type-body-s); color: var(--on-surface); overflow-wrap: anywhere; }
+.list-row.eq-focus { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: var(--radius-s); }
+.eq-returned-note { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 var(--gap); padding: 10px 12px; border-radius: var(--radius-m);
+  background: var(--secondary-container); color: var(--on-secondary-container); font-size: var(--type-body-s); line-height: 1.45; overflow-wrap: anywhere; }
+.eq-returned-note .ico { flex: none; width: 18px; height: 18px; margin-top: 1px; }
+.assigned-note .btn-text { margin-left: auto; }
 
 /* Celular: áreas de toque de pelo menos 44 px (Material 3 pede 48 de alvo). Controles
    crescem de verdade; o que precisa continuar pequeno (x do chip, link do chamado,
