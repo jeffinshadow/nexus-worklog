@@ -584,6 +584,7 @@ class RenewalIn(BaseModel):
     project_id: Optional[int] = None
     note: Optional[str] = Field(default=None, max_length=200)
     renew_months: Optional[int] = Field(default=None, ge=1, le=120)  # repete a cada N meses (Renovei sugere)
+    team_id: Optional[int] = None  # compartilha com uma equipe dele (sql/044); sem = só dele
 
     @model_validator(mode="after")
     def _label(self):
@@ -597,6 +598,7 @@ class RenewalUpdate(BaseModel):
     project_id: Optional[int] = None
     note: Optional[str] = Field(default=None, max_length=200)
     renew_months: Optional[int] = Field(default=None, ge=1, le=120)  # null apaga
+    team_id: Optional[int] = None  # null deixa de compartilhar
 
     @model_validator(mode="after")
     def _label(self):

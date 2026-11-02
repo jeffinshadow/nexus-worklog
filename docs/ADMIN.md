@@ -107,6 +107,13 @@ filtra por equipe (ou "Sem equipe").
   equipe, continuam na lista de quem mandou, mas não se alteram nem se cancelam.
 - **Para empresas** passa a valer só para quem está em alguma equipe: sem equipe, a pessoa volta às próprias
   escolhas (guardadas). Exceções globais: "Solicitar convite" na tela de login e a política de privacidade.
+- **Vencimentos compartilhados** (sql/044): ao cadastrar um vencimento, quem o cria pode compartilhá-lo com UMA das
+  equipes dele (o admin master, qualquer uma). Todo membro atual vê o vencimento em Vencimentos e no Hoje, marcado com o
+  nome da equipe, e pode **Renovei** (nova data, registrada no histórico de quem criou com o nome de quem renovou) e
+  **Virar tarefa** (a tarefa nasce na conta de quem tocou). Só quem criou (ou um admin que o enxerga) edita o texto,
+  a data, a antecedência e a equipe, ou exclui. O aviso (e-mail da manhã, push, `renewal.warning`) vai a cada membro uma
+  vez. Quem sai da equipe deixa de ver; equipe arquivada ou excluída devolve o vencimento só a quem criou. Instância
+  sem equipes: o campo nem aparece.
 - **Admin master:** o primeiro admin da instância (a migração 043 marca o admin mais antigo); sempre existe
   exatamente um. Com os próprios papéis "Vê a equipe" e "Manda tarefas" ligados (um toque em Admin > Equipes), vê e
   manda tarefas para **todos**, com ou sem equipe (ainda respeitando o aceite de cada pessoa ou Para empresas);

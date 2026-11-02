@@ -76,7 +76,7 @@ def _renewals(uid: int, today) -> list[str]:
         # estava fora): um vencimento antigo não dispara ao criar a 1ª chave.
         if not r["warning"] or (today - r["warn_from"]).days > WARN_GRACE_DAYS:
             continue
-        data = {k: r[k] for k in ("id", "label", "expires_on", "warn_days", "project_id", "note", "renew_months", "days_left")}
+        data = {k: r[k] for k in ("id", "label", "expires_on", "warn_days", "project_id", "note", "renew_months", "days_left", "team_id", "team_name")}
         if _emit(uid, "renewal.warning", r["id"], r["expires_on"], data):
             out.append(f"renewal:{r['id']}")
     return out

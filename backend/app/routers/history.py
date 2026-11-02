@@ -180,6 +180,9 @@ def _label(row) -> str:
         return f"recebeu a tarefa “{name}”, atribuída por {snap['by']}"
     if row["action"] == "user.delete" and row["before"]:
         return f"excluiu a conta {row['before'].get('email', '')} e todos os dados dela"
+    if row["action"].startswith("renewal.") and snap.get("por"):
+        verbo = {"renewal.renew": "renovou", "renewal.update": "editou", "renewal.delete": "excluiu"}.get(row["action"], "alterou")
+        return f"{snap['por']} {verbo} o vencimento “{name}” (compartilhado com a equipe)"
     if row["action"] == "assign.send":
         return f"atribuiu a tarefa “{name}” a {snap.get('to', '')}"
     if row["action"] in ("assign.update", "assign.cancel"):
@@ -743,17 +746,19 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
     elif a in ("renewal.update", "renewal.renew"):
         if not db.execute(
                 """UPDATE renewals SET label = %s, expires_on = %s, warn_days = %s, project_id = %s, note = %s,
-                                       renew_months = %s
+                                       renew_months = %s, team_id = (SELECT id FROM teams WHERE id = %s)
                     WHERE id = %s AND user_id = %s""",
                 (before["label"], before["expires_on"], before["warn_days"],
-                 _projeto_existente(uid, before.get("project_id")), before.get("note"), before.get("renew_months"), eid, uid)):
+                 _projeto_existente(uid, before.get("project_id")), before.get("note"), before.get("renew_months"),
+                 before.get("team_id"), eid, uid)):
             raise _gone()
     elif a == "renewal.delete":
         db.execute(
-            """INSERT INTO renewals (id, user_id, label, expires_on, warn_days, project_id, note, renew_months)
-               OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+            """INSERT INTO renewals (id, user_id, label, expires_on, warn_days, project_id, note, renew_months, team_id)
+               OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s, %s, %s, %s, (SELECT id FROM teams WHERE id = %s))""",
             (eid, uid, before["label"], before["expires_on"], before["warn_days"],
-             _projeto_existente(uid, before.get("project_id")), before.get("note"), before.get("renew_months")))
+             _projeto_existente(uid, before.get("project_id")), before.get("note"), before.get("renew_months"),
+             before.get("team_id")))
     elif a == "objective.create":
         # As tarefas que entraram nele depois voltam para "Sem objetivo" (o FK cuida).
         db.execute("DELETE FROM project_objectives WHERE id = %s AND user_id = %s", (eid, uid))
