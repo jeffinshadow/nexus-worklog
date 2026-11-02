@@ -39,6 +39,13 @@ try:
     cmd("Page.enable"); cmd("Runtime.enable"); cmd("Emulation.setFocusEmulationEnabled", enabled=True)
     cmd("Emulation.setDeviceMetricsOverride", width=1440, height=900, deviceScaleFactor=1, mobile=False)
 
+    # ---- o pedido é opt-in (sql/042): o admin liga em Para empresas
+    login(A)
+    st = ev("""(async()=>{const me=await (await fetch('/api/auth/me')).json();
+      const r=await fetch('/api/admin/org',{method:'PUT',headers:{'Content-Type':'application/json','X-CSRF-Token':me.csrf_token},
+        body:JSON.stringify({invite_request_on:true})});return r.status})()""")
+    check("admin: liga o pedido de convite", st == 200, st)
+
     # ---- pedido de convite pela tela de login
     marca = str(int(time.time()) % 100000)
     email = f"pedido{marca}@exemplo.com.br"
@@ -58,7 +65,10 @@ try:
     check("admin: número no menu", (ev("document.querySelector('#nav [data-view=\"admin\"] .nav-badge')?.textContent") or "0") != "0")
     row = f"[...document.querySelectorAll('.request-row')].find(r=>r.textContent.includes('{email}'))"
     check("admin: pedido na lista", ev(f"!!{row}"))
-    ev(f"{row}.querySelector('.btn-primary').click()"); time.sleep(3)
+    ev(f"{row}.querySelector('.btn-primary').click()"); time.sleep(1.5)
+    # Convidar abre o diálogo do convite já preenchido (nome e e-mail do pedido): Enviar convite.
+    check("admin: Convidar abre o convite preenchido", email in (ev("[...document.querySelectorAll('dialog[open] input')].map(i=>i.value).join(' ')") or ""))
+    ev("document.querySelector('dialog[open] button[type=submit]').click()"); time.sleep(3)
     check("admin: Convidar mostra o convite", "Convite" in (ev("document.querySelector('dialog[open] h2')?.textContent") or ""), ev("document.querySelector('dialog[open]')?.innerText"))
     ev("document.querySelectorAll('dialog[open]').forEach(d=>d.close())")
     check("admin: pedido marcado como convidado", "convidado" in (ev(f"{row}?.textContent") or ""))
@@ -70,7 +80,7 @@ try:
     check("avatar padrão (ícone, sem letra)", ev("!!document.querySelector('.who .avatar-default svg')") and not (ev("document.querySelector('.who .avatar')?.textContent") or "").strip())
     ev("[...document.querySelectorAll('.seg [data-v]')].find(b=>b.dataset.v==='light').click()"); time.sleep(1.2)
     check("tema Claro aplicado", ev("document.documentElement.dataset.theme") == "light")
-    check("fundo claro de verdade", ev("getComputedStyle(document.body).backgroundColor") in ("rgb(246, 247, 250)",), ev("getComputedStyle(document.body).backgroundColor"))
+    check("fundo claro de verdade", ev("getComputedStyle(document.body).backgroundColor") in ("rgb(246, 247, 250)", "rgb(251, 250, 255)"), ev("getComputedStyle(document.body).backgroundColor"))
     cmd("Page.reload"); time.sleep(3)
     check("tema continua depois de recarregar", ev("document.documentElement.dataset.theme") == "light")
     check("tema guardado na conta", ev("fetch('/api/auth/me').then(r=>r.json()).then(m=>m.theme)") == "light")

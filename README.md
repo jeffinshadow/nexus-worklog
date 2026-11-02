@@ -31,8 +31,9 @@ guardadas), **receber tarefas atribuídas** ("Cada pessoa escolhe" ou "Todos rec
 quem atribui", em que todo Usuário recebe tarefas de quem tem o papel Manda tarefas, com
 a mesma chave bloqueada e as escolhas guardadas), **nome e e-mail definidos pela administração** (desligado, cada pessoa
 troca os seus na Conta, e o e-mail novo só vale depois de confirmado por link) e
-**sem "Solicitar convite" na tela de login** (só entra quem o admin convidar) e o
-**endereço do sistema de chamados para todos** (vazio, cada pessoa usa o seu). Cada
+**"Solicitar convite" na tela de login** (desligado, só entra quem o admin convidar), o
+**endereço do sistema de chamados para todos** (vazio, cada pessoa usa o seu) e o
+**link da política de privacidade** (na tela de login, na Conta e no convite). Cada
 mudança fica no histórico do admin. Toda conta nova faz o tour guiado no primeiro acesso.
 
 **Manual de uso, tela por tela:** [shadow.tec.br/nexus-manual](https://shadow.tec.br/nexus-manual).
@@ -189,8 +190,9 @@ mudança fica no histórico do admin. Toda conta nova faz o tour guiado no prime
 - **Tema claro e escuro** (Material 3) — segue o aparelho ou fica fixo pela
   conta, com contraste AA medido em todo texto; no celular, controles com área
   de toque de pelo menos 44 px.
-- **Pedido de convite** — com e-mail configurado, quem não tem conta pede pela
-  tela de entrar; o admin recebe e-mail e notificação e convida ou recusa em Admin.
+- **Pedido de convite** — opcional (o admin liga em Para empresas): com e-mail
+  configurado, quem não tem conta pede pela tela de entrar; o admin recebe e-mail
+  e notificação e convida ou recusa em Admin. Até 20 pedidos por dia.
 - **Passkeys** — entrar sem senha, com a digital, o rosto, o Windows Hello ou
   uma chave física (WebAuthn); a senha continua valendo. **Sair dos outros
   aparelhos** sem trocar a senha (celular perdido, computador emprestado).

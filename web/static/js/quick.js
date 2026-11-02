@@ -35,7 +35,10 @@ function remindFrom(dayToken, hh, mm) {
   const now = localDateTime(Date.now());
   if (dayToken) {
     const day = dueFrom(dayToken);
-    return day ? `${day}T${hhmm}` : null;
+    if (!day) return null;
+    // "^seg 9h" na própria segunda, depois das 9h: a próxima segunda (como "^15h" pula para amanhã).
+    if (dayToken.toLowerCase() in WD && `${day}T${hhmm}` <= now) return `${addDays(day, 7)}T${hhmm}`;
+    return `${day}T${hhmm}`;
   }
   const today = now.slice(0, 10);
   return `${today}T${hhmm}` > now ? `${today}T${hhmm}` : `${addDays(today, 1)}T${hhmm}`;

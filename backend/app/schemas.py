@@ -34,7 +34,9 @@ class OrgIn(BaseModel):
     team_visibility: Optional[Literal["self", "managers"]] = None  # cada pessoa escolhe / visível para quem gerencia
     assign_receive: Optional[Literal["self", "all"]] = None  # cada pessoa escolhe / todos recebem de quem atribui
     identity_managed: Optional[bool] = None  # nome e e-mail definidos pela administração
-    invite_request_off: Optional[bool] = None  # sem "Solicitar convite" na tela de login
+    invite_request_on: Optional[bool] = None  # oferecer "Solicitar convite" na tela de login (padrão: não)
+    # Política de privacidade da instância (link no login, na Conta e no convite); "" ou null = sem link.
+    privacy_url: Optional[str] = Field(default=None, max_length=300, pattern=r"^(https://\S+)?$")
     # Endereço do sistema de chamados da instância ({id} = o número); "" ou null = sem endereço.
     ticket_url: Optional[str] = Field(default=None, max_length=300, pattern=r"^(https?://\S+)?$")
 
@@ -150,6 +152,12 @@ class ChangePasswordIn(BaseModel):
 
 class ForgotIn(BaseModel):
     email: EmailStr
+
+
+class LinkPeekIn(BaseModel):
+    """O token vai no corpo (POST), fora da URL e do log de acesso do servidor."""
+    kind: Literal["invite", "reset"]
+    token: str = Field(min_length=1, max_length=100)
 
 
 class LinkPasswordIn(BaseModel):
@@ -347,6 +355,13 @@ def _events(events: list[str]) -> list[str]:
     evs = [e.strip() for e in events]
     if any(not re.fullmatch(r"\*|[a-z_]{1,30}\.(\*|[a-z_]{1,30})", e) for e in evs):
         raise ValueError('eventos: "*", "entidade.*" ou "entidade.acao" (ex.: worklog.finish)')
+    from .webhooks import known_events  # import tardio: webhooks importa os routers
+    acts, groups = known_events()
+    bad = [e for e in evs if e != "*" and (e[:-2] not in groups if e.endswith(".*") else e not in acts)]
+    if bad:
+        raise ValueError(f"evento desconhecido: {', '.join(bad)}. Grupos válidos: "
+                         f"{', '.join(g + '.*' for g in sorted(groups))} (ou uma ação deles, como worklog.finish; "
+                         "lista completa em docs/API.md)")
     return ["*"] if "*" in evs else sorted(set(evs))
 
 

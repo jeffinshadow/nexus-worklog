@@ -47,8 +47,8 @@ def test_convite_por_link(admin, caixa):
     assert pend["invite_pending"]
 
     anon = Api()
-    assert anon.get(f"/auth/link?kind=invite&token={token}").json()["email"] == "nova@example.com"
-    assert anon.get(f"/auth/link?kind=reset&token={token}").status_code == 404  # outro tipo não vale
+    assert anon.post("/auth/link", {"kind": "invite", "token": token}).json()["email"] == "nova@example.com"
+    assert anon.post("/auth/link", {"kind": "reset", "token": token}).status_code == 404  # outro tipo não vale
     assert anon.post("/auth/invite/accept", {"token": token, "password": "curta"}).status_code == 422
     r = anon.post("/auth/invite/accept", {"token": token, "password": SENHA_NOVA, "display_name": "  Nova   Pessoa "})
     assert r.status_code == 200, r.text
@@ -68,8 +68,8 @@ def test_reenviar_convite_invalida_o_anterior(admin, caixa):
     uid = db.query_one("SELECT id FROM users WHERE email = 'nova@example.com'")["id"]
     novo = admin.post(f"/admin/users/{uid}/invite").json()
     assert novo["emailed"] and len(caixa) == 2
-    assert Api().get(f"/auth/link?kind=invite&token={velho}").status_code == 404
-    assert Api().get(f"/auth/link?kind=invite&token={_token(novo['invite_url'], 'convite')}").status_code == 200
+    assert Api().post("/auth/link", {"kind": "invite", "token": velho}).status_code == 404
+    assert Api().post("/auth/link", {"kind": "invite", "token": _token(novo['invite_url'], 'convite')}).status_code == 200
     # Quem já aceitou não recebe outro.
     Api().post("/auth/invite/accept", {"token": _token(novo["invite_url"], "convite"), "password": SENHA_NOVA})
     assert admin.post(f"/admin/users/{uid}/invite").status_code == 400
@@ -107,9 +107,10 @@ def test_convite_e_falha_de_envio(admin, monkeypatch):
 # ------------------------------------------------------------- recuperação --
 
 def test_options_mostra_se_ha_email(monkeypatch):
-    assert Api().get("/auth/options").json() == {"email": False, "invite_request": False}
+    assert Api().get("/auth/options").json() == {"email": False, "invite_request": False, "privacy_url": None}
     monkeypatch.setattr(mailer, "configured", lambda: True)
-    assert Api().get("/auth/options").json() == {"email": True, "invite_request": True}
+    # O pedido de convite é opt-in (sql/042): com e-mail, só aparece depois que o admin liga.
+    assert Api().get("/auth/options").json() == {"email": True, "invite_request": False, "privacy_url": None}
 
 
 def test_esqueci_a_senha(usuario, caixa):
@@ -120,7 +121,7 @@ def test_esqueci_a_senha(usuario, caixa):
     assert anon.post("/auth/forgot", {"email": email.upper()}).json() == {"ok": True}
     assert caixa[0][0] == email and "#senha=" in caixa[0][2]
     token = _token(caixa[0][2], "senha")
-    assert anon.get(f"/auth/link?kind=reset&token={token}").json()["email"] == email
+    assert anon.post("/auth/link", {"kind": "reset", "token": token}).json()["email"] == email
     r = anon.post("/auth/reset", {"token": token, "password": SENHA_NOVA})
     assert r.status_code == 200 and r.json()["email"] == email
     assert usuario.get("/auth/me").status_code == 401  # a sessão antiga caiu
@@ -134,8 +135,8 @@ def test_esqueci_a_senha_limites(usuario, caixa, monkeypatch):
         assert Api().post("/auth/forgot", {"email": usuario.me["email"]}).status_code == 200
     assert Api().post("/auth/forgot", {"email": usuario.me["email"]}).status_code == 429
     # Só o último link vale.
-    assert Api().get(f"/auth/link?kind=reset&token={_token(caixa[0][2], 'senha')}").status_code == 404
-    assert Api().get(f"/auth/link?kind=reset&token={_token(caixa[-1][2], 'senha')}").status_code == 200
+    assert Api().post("/auth/link", {"kind": "reset", "token": _token(caixa[0][2], 'senha')}).status_code == 404
+    assert Api().post("/auth/link", {"kind": "reset", "token": _token(caixa[-1][2], 'senha')}).status_code == 200
 
 
 def test_esqueci_a_senha_sem_email():
@@ -146,7 +147,7 @@ def test_link_vencido(usuario, caixa):
     Api().post("/auth/forgot", {"email": usuario.me["email"]})
     db.execute("UPDATE auth_links SET expires_at = now() - interval '1 minute'")
     token = _token(caixa[0][2], "senha")
-    assert Api().get(f"/auth/link?kind=reset&token={token}").status_code == 404
+    assert Api().post("/auth/link", {"kind": "reset", "token": token}).status_code == 404
     assert Api().post("/auth/reset", {"token": token, "password": SENHA_NOVA}).status_code == 400
 
 

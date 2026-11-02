@@ -66,6 +66,10 @@ def signature(secret: str, t: int, body: bytes) -> str:
 
 # --------------------------------------------------------------------- SSRF --
 
+# Portas aceitas no endereço (80 só para quem serve https nela, como alguns proxies).
+PORTS = {443, 8443, 80}
+
+
 def _ip_ok(raw: str) -> bool:
     ip = ipaddress.ip_address(raw.split("%")[0])
     if ip.version == 6 and ip.ipv4_mapped:  # ::ffff:127.0.0.1
@@ -93,6 +97,8 @@ def check_url(url: str) -> tuple[str, int, str, str]:
         port = parts.port or 443
     except ValueError:
         raise Refused("porta inválida") from None
+    if port not in PORTS:  # outras portas fariam do Testar uma sonda de serviços (ssh, banco…)
+        raise Refused("use a porta padrão do https (443) ou 8443")
     try:
         ips = resolve(parts.hostname, port)
     except (OSError, UnicodeError):
@@ -136,6 +142,21 @@ def post(url: str, headers: dict, body: bytes) -> int:
     finally:
         timer.cancel()
         conn.close()
+
+
+# ------------------------------------------------------------ eventos válidos --
+
+# Ações que não têm rótulo na tela de Histórico mas vão ao feed/webhooks.
+_EXTRA_EVENTS = {"undo", "followup.due", "recurring.due", "renewal.warning", "passkey.add", "passkey.remove",
+                 "invite_request.invited", "invite_request.declined"}
+
+
+def known_events() -> tuple[set[str], set[str]]:
+    """(ações, grupos) que um webhook pode ouvir: as do Histórico mais as de
+    agenda. Um evento com erro de digitação ("worklog.finsh") nunca dispararia."""
+    from .routers.history import ACTION_LABELS  # import tardio: history importa os routers
+    acts = set(ACTION_LABELS) | _EXTRA_EVENTS
+    return acts, {a.split(".")[0] for a in acts if "." in a}
 
 
 # ------------------------------------------------------------------ entrega --

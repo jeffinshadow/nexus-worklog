@@ -44,6 +44,9 @@ def _app():
     # Abre o pool, aplica as migrations e semeia o admin (lifespan real).
     with TestClient(app):
         yield
+    # Fecha o pool no fim (sem isso, cada processo imprime "couldn't stop thread"
+    # e esconde avisos de verdade na saída da suíte).
+    db.pool.close()
 
 
 @pytest.fixture(autouse=True)
@@ -135,6 +138,11 @@ def novo_usuario(admin):
 @pytest.fixture
 def usuario(novo_usuario):
     return novo_usuario()
+
+
+def ligar_pedido_convite():
+    """"Solicitar convite" na tela de login é opt-in (sql/042): liga para o teste."""
+    db.execute("UPDATE app_settings SET invite_request_on = true WHERE id = 1")
 
 
 def recuar_criacao(task_id, dias):

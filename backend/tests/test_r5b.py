@@ -90,8 +90,11 @@ def test_primeiro_amanha_escolhe_ate_3_e_abre_o_dia(usuario, novo_usuario):
     ia = Bearer(criar_chave(usuario)["token"])
     txt = texto(ia.tool("get_today"))
     assert "Escolhidas para começar hoje (Primeiro amanhã): #%d T2" % ids[2] in txt
-    # Passado o dia, a marca não vale mais (sem apagar nada): volta à ordem de sempre.
+    # Escolha de ontem (feriado em que o app não abriu) continua valendo hoje (R6 funcional M2);
+    # passados 7 dias, a marca não vale mais (sem apagar nada): volta à ordem de sempre.
     db.execute("UPDATE worklog_tasks SET first_on = %s WHERE id = %s", (hoje - timedelta(days=1), ids[2]))
+    assert usuario.get("/board").json()["in_progress"][0]["id"] == ids[2]
+    db.execute("UPDATE worklog_tasks SET first_on = %s WHERE id = %s", (hoje - timedelta(days=8), ids[2]))
     abertas = usuario.get("/board").json()["in_progress"]
     assert abertas[0]["id"] == ids[0]
     assert "Primeiro amanhã" not in texto(ia.tool("get_today"))

@@ -63,8 +63,8 @@ def _admin_log(admin, action):
 def test_tudo_desligado_por_padrao(admin, usuario):
     assert admin.get("/admin/org").json() == {"team_visibility": "self", "team_visibility_since": None,
                                               "assign_receive": "self", "assign_receive_since": None,
-                                              "identity_managed": False, "invite_request_off": False,
-                                              "ticket_url": None, "mail_configured": False}
+                                              "identity_managed": False, "invite_request_on": False,
+                                              "ticket_url": None, "privacy_url": None, "mail_configured": False}
     me = usuario.get("/auth/me").json()
     assert me["org"] == {"team_visibility": "self", "assign_receive": "self", "identity_managed": False}
     assert me["visibility_notice"] is False and me["assign_notice"] is False and me["email_pending"] is None
@@ -279,7 +279,7 @@ def test_convite_com_nome_e_papel(admin, caixa):
     assert r.status_code == 201, r.text
     assert r.json()["display_name"] == "Gestora Lima" and r.json()["roles"] == ["user", "viewer"]
     token = _token(r.json()["invite_url"], "convite")
-    info = Api().get(f"/auth/link?kind=invite&token={token}").json()
+    info = Api().post("/auth/link", {"kind": "invite", "token": token}).json()
     assert info["display_name"] == "Gestora Lima" and info["name_locked"] is False
     pend = next(u for u in admin.get("/admin/users").json() if u["email"] == "gestora@example.com")
     assert pend["name"] == "Gestora Lima" and sorted(pend["roles"]) == ["user", "viewer"]
@@ -304,7 +304,7 @@ def test_convite_com_nome_travado_pela_administracao(admin, caixa):
     _org(admin, identity_managed=True)
     r = admin.post("/admin/users", {"email": "func@example.com", "display_name": "Funcionário Um"})
     token = _token(r.json()["invite_url"], "convite")
-    assert Api().get(f"/auth/link?kind=invite&token={token}").json()["name_locked"] is True
+    assert Api().post("/auth/link", {"kind": "invite", "token": token}).json()["name_locked"] is True
     me = Api().post("/auth/invite/accept", {"token": token, "password": "Senha-Do-Func-1", "display_name": "Apelido"}).json()
     assert me["display_name"] == "Funcionário Um"
 
@@ -355,6 +355,8 @@ def test_convite_a_partir_do_pedido_com_nome_e_papel(monkeypatch, admin, caixa):
     monkeypatch.setattr(ir.push, "send", lambda *a, **k: 0)
     corpo = {"name": "Carla Dias", "email": "carla@empresa.com.br", "source": "colega",
              "reason": "Quero registrar o suporte da filial e tirar o relatório do mês."}
+    from conftest import ligar_pedido_convite
+    ligar_pedido_convite()
     assert Api().post("/auth/invite-request", corpo).status_code == 202
     rid = admin.get("/admin/invite-requests").json()[0]["id"]
     r = admin.post(f"/admin/invite-requests/{rid}/invite", {"display_name": "Carla D. Souza", "roles": ["user", "assigner"]})

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from psycopg.errors import UniqueViolation
 
 from .. import audit, db
-from ..paging import put_total
+from ..paging import put_total, OFFSET_MAX
 from ..deps import active_user, active_user_csrf
 from ..schemas import ObjectiveIn, ObjectiveUpdate, OrderIn, TaskOrderIn
 from ..services import ASSIGNER_NAME, PROJECT_ICON, TASK_COUNTS, project_rows
@@ -137,7 +137,7 @@ def overview(project_id: int, user=Depends(active_user)):
 def done_of_block(
     project_id: int,
     objective: Annotated[int, Query(ge=0, description="Id do objetivo; 0 = “Sem objetivo”")],
-    offset: Annotated[int, Query(ge=0, le=1000000)] = 0,
+    offset: Annotated[int, Query(ge=0, le=OFFSET_MAX)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 10,
     response: Response = None,
     user=Depends(active_user),

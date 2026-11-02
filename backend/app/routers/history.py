@@ -11,7 +11,7 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from .. import audit, db
-from ..paging import clamp, put_total
+from ..paging import clamp, put_total, OFFSET_MAX
 from . import photos
 from ..labels import dur
 from ..services import RETRO_DAYS, app_today, app_tz, board_day_range, set_extra_projects
@@ -64,6 +64,8 @@ ACTION_LABELS = {
     "app.identity_managed": "alterou quem define nome e e-mail",
     "app.tour_required": "alterou o tour obrigatório",
     "app.invite_request_off": "alterou o pedido de convite na tela de login",
+    "app.invite_request_on": "alterou o pedido de convite na tela de login",
+    "app.privacy_url": "alterou o endereço da política de privacidade",
     "app.ticket_url": "alterou o endereço do sistema de chamados da instância",
     "worklog.transfer": "recebeu a tarefa transferida",
     "user.transfer_tasks": "transferiu as tarefas abertas",
@@ -193,6 +195,9 @@ def _label(row) -> str:
     if row["action"] == "app.invite_request_off" and row["after"]:
         return ("tirou o “Solicitar convite” da tela de login" if row["after"].get("invite_request_off")
                 else "voltou a oferecer o “Solicitar convite” na tela de login")
+    if row["action"] == "app.invite_request_on" and row["after"]:
+        return ("passou a oferecer o “Solicitar convite” na tela de login" if row["after"].get("invite_request_on")
+                else "tirou o “Solicitar convite” da tela de login")
     if row["action"] == "worklog.transfer" and row["after"]:
         return f"recebeu a tarefa “{name}”, que era de {snap.get('from', '')} (transferida por {snap.get('by', '')})"
     if row["action"] == "user.transfer_tasks" and row["after"]:
@@ -299,13 +304,13 @@ def list_history(
     entity: Optional[str] = None,
     entity_id: Optional[int] = None,
     after: Annotated[Optional[int], Query(ge=0)] = None,  # Annotated: None também quando o MCP chama direto
-    offset: Annotated[int, Query(ge=0, le=100000, description="Pula as N ações mais recentes (páginas); o total vem em X-Total-Count")] = 0,
+    offset: Annotated[int, Query(ge=0, le=OFFSET_MAX, description="Pula as N ações mais recentes (páginas); o total vem em X-Total-Count")] = 0,
     token_id: Annotated[Optional[int], Query(ge=1, description="Só o que esta chave de API fez (\"o que esta chave fez\")")] = None,
     response: Response = None,
     user=Depends(active_user),
 ):
     limit = clamp(limit, 1, 200, 50)  # também quando chamada pelo MCP (sem validação de Query)
-    offset = clamp(offset, 0, 100000, 0)
+    offset = clamp(offset, 0, OFFSET_MAX, 0)
     if after is not None:  # feed de mudanças, para sincronizar (docs/API.md); sem offset nem total
         return feed(user["user_id"], after, limit)
     # Os avisos de agenda do sistema (followup.due...) são só do feed e dos webhooks.
@@ -581,6 +586,9 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
             _put_item(uid, eid, c)
         for e in kids.get("time", []):
             _put_time(uid, eid, e)
+        if before.get("return_reason") and before.get("assigned_by"):
+            from .assign import notify_return_undone
+            notify_return_undone(before["assigned_by"], eid, before["title"], uid)
     elif a == "recurring.create":
         if not db.query_one("SELECT 1 FROM recurring_tasks WHERE id = %s AND user_id = %s AND active", (eid, uid)):
             raise HTTPException(status_code=409, detail="a rotina já foi encerrada")

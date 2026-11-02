@@ -125,9 +125,13 @@ def test_registrar_no_mcp(usuario):
     res = b.tool("create_task", title="Reator", minutes=20, status="done")
     assert not res["isError"], texto(res)
     tid = int(texto(res).split("#")[1].split()[0])
-    for nome, args in (("update_task", {"task_id": tid, "title": "x"}), ("complete_task", {"task_id": tid})):
-        r = b.tool(nome, **args)
-        assert r["isError"] and "só registra" in texto(r), nome
+    r = b.tool("update_task", task_id=tid, title="x")
+    assert r["isError"] and "só registra" in texto(r)
+    # Concluir de novo uma concluída não muda nada (nem reemite): diz que já estava (R6 ia-api 6).
+    r = b.tool("complete_task", task_id=tid)
+    assert not r["isError"] and texto(r).startswith("Já estava concluída")
+    r = b.tool("complete_task", task_id=tid, completed_at=dia_hoje(usuario).isoformat())
+    assert r["isError"] and "só registra" in texto(r)  # mudar a conclusão continua negado
     rid = usuario.post("/recurring", {"label": "Ronda"}).json()["id"]
     assert not b.tool("set_recurring", recurring_id=rid, done=True)["isError"]
     assert b.tool("set_recurring", recurring_id=rid, done=False)["isError"]
@@ -145,7 +149,8 @@ def test_registrar_aparece_na_lista_de_chaves(usuario):
 # ------------------------------------------------------------ 2. prompts MCP --
 
 def test_prompts_do_dia_e_do_projeto(usuario):
-    b = Bearer(criar_chave(usuario, scope="read")["token"])
+    # fechar_dia grava: a chave só de leitura não o recebe (R6); aqui, a de escrita.
+    b = Bearer(criar_chave(usuario)["token"])
     nomes = {p["name"] for p in b.rpc("prompts/list").json()["result"]["prompts"]}
     assert {"planejar_dia", "fechar_dia", "resumo_projeto", "daily", "resumo_semanal"} <= nomes
     plano = b.rpc("prompts/get", {"name": "planejar_dia"}).json()["result"]["messages"][0]["content"]["text"]

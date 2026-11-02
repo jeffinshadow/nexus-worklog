@@ -1,7 +1,14 @@
 """Pedido de convite pela tela de login: só com e-mail, sem revelar contas,
 um aberto por e-mail, armadilha para robôs, admin convida ou recusa; e o tema."""
 from app import db, mailer, push
-from conftest import Api
+import pytest
+
+from conftest import Api, ligar_pedido_convite
+
+
+@pytest.fixture(autouse=True)
+def _pedido_ligado():
+    ligar_pedido_convite()
 
 
 def _corpo(**kw):

@@ -80,6 +80,8 @@ if (passkeySupported()) {
 api.get("/auth/options").then((o) => {
   if (o.email) $("go-forgot").classList.remove("hidden");
   if (o.invite_request) { $("go-request").classList.remove("hidden"); $("foot-ask").classList.add("hidden"); }
+  // Política de privacidade da instância (Admin › Para empresas), quando definida.
+  if (o.privacy_url && /^https:\/\//.test(o.privacy_url)) { $("privacy-link").href = o.privacy_url; $("privacy-foot").classList.remove("hidden"); }
 }).catch(() => {});
 
 // ---- Pedido de convite: vai para o administrador (e-mail e Admin).
@@ -186,7 +188,7 @@ async function openLink(kind, token) {
   const err = $("link-error");
   let info;
   try {
-    info = await api.get(`/auth/link?kind=${kind}&token=${encodeURIComponent(token)}`);
+    info = await api.post("/auth/link", { kind, token });  // token no corpo: fora do log de acesso
   } catch (e) {
     $("link-sub").textContent = e.status === 429  // limite de tentativas: o link pode estar bom
       ? "Muitas tentativas agora. Espere um minuto e abra o link de novo."

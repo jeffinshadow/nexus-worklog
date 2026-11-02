@@ -78,8 +78,12 @@ def test_atribuir_exige_papel_e_consentimento(admin, usuario, novo_usuario, envi
     assert r.status_code == 403 and "aceitou" in r.json()["detail"]  # sem consentimento
     # Tela de consentimentos: admin e atribuidor veem; usuário comum não.
     assert usuario.get("/assign/people").status_code == 403
-    pessoas = {p["email"]: p for p in chefe.get("/assign/people").json()}
-    assert pessoas[usuario.me["email"]]["accepts"] is False
+    lista = chefe.get("/assign/people").json()
+    # Quem não aceita aparece só na contagem, sem e-mail (pentest R6 A1).
+    assert usuario.me["email"] not in {p.get("email") for p in lista}
+    assert any(p == {"accepts": False, "everyone": False} for p in lista)
+    pessoas = {p["email"]: p for p in admin.get("/assign/people").json()}
+    assert pessoas[usuario.me["email"]]["accepts"] is False  # o admin vê todos
     assert usuario.put("/me/assignments", {"accept": True}).status_code == 200
     pessoas = {p["email"]: p for p in admin.get("/assign/people").json()}
     assert pessoas[usuario.me["email"]]["accepts"] and pessoas[usuario.me["email"]]["accepts_assignments_at"]

@@ -1462,6 +1462,8 @@ dialog.proj-dialog { max-width: 480px; width: min(480px, calc(100vw / var(--ui-z
 /* Pedido de convite: a armadilha para robôs fica fora da tela (não some com display:none, que robô ignora). */
 .trap { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
 .auth-foot .link-btn { margin: 0; font-size: inherit; }
+.privacy-link { display: inline-flex; align-items: center; min-height: 44px; }
+.auth-foot#privacy-foot { margin-top: 4px; }
 
 /* Admin: pedidos de convite. */
 .request-row { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-top: 1px solid var(--outline-variant); }
