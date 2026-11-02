@@ -1,9 +1,9 @@
-// Configurações: uma página só, com seções (Conta, Avisos, Modelos, Calendário, IA e API) e atalhos no topo.
+// Configurações: uma página só, com seções (Conta, Avisos, Calendário, IA e API) e atalhos no topo.
 // Cada campo salva ao mudar (sem botão Salvar). Links antigos (#/config?aba=avisos) rolam até a seção.
 import { api } from "./api.js";
 import { h, icon, clear, dateTime, field, matchPasswords } from "./dom.js";
 import { codeBox, confirmDialog, errorToast, modal, toast, warnBox, busy, singleKeysOn, setSingleKeys, calmMotion, hashPage, pager, pageSlice, setHashPage } from "./ui.js";
-import { defaultProjectPanel, fillProjectSelect } from "./projects.js";
+import { defaultProjectPanel } from "./projects.js";
 import { avatar, squarePhoto } from "./profile.js";
 import { pushPanel } from "./notificacoes.js";
 import { cancelled, register as registerPasskey, supported as passkeySupported } from "./passkey.js";
@@ -11,7 +11,6 @@ import { cancelled, register as registerPasskey, supported as passkeySupported }
 const SECTIONS = [
   ["conta", "Conta"],
   ["avisos", "Avisos"],
-  ["modelos", "Modelos"],
   ["calendario", "Calendário"],
   ["ia", "IA e API"],
 ];
@@ -102,7 +101,6 @@ export async function mount(root, ctx) {
       : [profilePanel(ctx.me, again), themePanel(ctx.me), account(ctx.me), await otherDevicesPanel(), await passkeysPanel(again)],
     // Notificações dos aparelhos primeiro; e-mail depois.
     avisos: async (again) => [...(await notices(await pushPanel(again))).childNodes],
-    modelos: async (again) => [...(await templatesPanel(again)).childNodes],
     calendario: async (again) => [...(await calendarFeed(again)).childNodes],
     ia: async (again) => [...(await tokens(again)).childNodes, ...aiHelp(), ...(await webhooksPanel(again)).childNodes],
   };
@@ -246,84 +244,7 @@ function assistantPanel(me) {
         h("small", { text: "A saudação e os avisos do Hoje, o lembrete quando passa um tempo sem registro, a prévia do PDF em Meu mês e as notas em Tarefas e Busca. Tudo calculado a partir dos seus próprios registros." })))));
 }
 
-// ---------------------------------------------------------------- modelos --
-
-const PRIO = [["1", "Alta"], ["2", "Normal"], ["3", "Baixa"]];
-
-const TEMPLATES_PAGE = 15; // linha curta
 const TOKENS_OFF_PAGE = 10; // chaves revogadas e vencidas, recolhidas
-
-async function templatesPanel(rerender) {
-  const list = await api.get("/templates");
-  const rowOf = (t) => h("div", { class: "token-row" },
-    h("span", { class: "token-name", text: t.name }),
-    h("div", { class: "actions" },
-      // Lápis e lixeira, como nas outras listas (Vencimentos, checklist).
-      h("button", { type: "button", class: "icon", title: "Editar", "aria-label": "Editar " + t.name, onClick: () => editTemplate(t, rerender) }, icon("edit")),
-      h("button", { type: "button", class: "icon", title: "Excluir", "aria-label": "Excluir " + t.name, onClick: async () => {
-        if (!(await confirmDialog({ title: `Excluir o modelo “${t.name}”?`, text: "As tarefas já criadas com ele continuam.", confirm: "Excluir", danger: true }))) return;
-        try { await api.del(`/templates/${t.id}`); toast("Modelo excluído."); rerender(); } catch (e) { errorToast(e); }
-      } }, icon("trash"))),
-    h("span", { class: "token-meta", text: [t.title, t.checklist.length ? `${t.checklist.length} itens no checklist` : "sem checklist", t.after_hours ? "plantão" : ""].filter(Boolean).join(" · ") }));
-  const box = h("div");
-  let page = hashPage("p");
-  const paint = () => {
-    clear(box);
-    if (!list.length) { box.append(h("p", { class: "empty", text: "Nenhum modelo ainda. Salve como modelo uma tarefa que se repete (com checklist) para criá-la em um toque." })); return; }
-    const slice = pageSlice(list, page, TEMPLATES_PAGE);
-    page = slice.page;
-    setHashPage("p", page, "config");
-    box.append(...slice.rows.map(rowOf));
-    const nav = pager({ page, total: list.length, size: TEMPLATES_PAGE, label: "modelos",
-      onPage: (n) => { page = n; paint(); }, focus: () => box.closest(".panel")?.querySelector("h2, h3") });
-    if (nav) box.append(nav);
-  };
-  paint();
-  const rows = [box];
-  return h("div", { class: "settings-grid" },
-    h("section", { class: "panel" },
-      h("div", { class: "panel-head" }, h("h2", { text: "Modelos de tarefa" }),
-        h("button", { type: "button", class: "btn btn-primary btn-sm", onClick: () => editTemplate(null, rerender) }, icon("add"), "Novo modelo")),
-      h("p", { class: "help", text: "Procedimentos que se repetem (entrada de colaborador novo, troca de equipamento, servidor novo) viram um modelo com checklist pronto. Use em “+ Tarefa”, escolhendo o modelo, ou salve uma tarefa existente como modelo pelo detalhe dela." })),
-    h("section", { class: "panel" },
-      h("div", { class: "panel-head" }, h("h2", { text: "Meus modelos" }), h("span", { class: "count", text: String(list.length) })),
-      ...rows));
-}
-
-function editTemplate(t, rerender) {
-  const name = h("input", { type: "text", maxlength: "60", required: "required", value: t ? t.name : "" });
-  const title = h("input", { type: "text", maxlength: "200", required: "required", value: t ? t.title : "" });
-  const desc = h("input", { type: "text", maxlength: "300", value: t && t.description ? t.description : "" });
-  const prio = h("select", {}, ...PRIO.map(([v, l]) => h("option", { value: v, text: l })));
-  prio.value = String(t ? t.priority : 2);
-  const proj = h("select", {});
-  fillProjectSelect(proj, t ? t.project_id : null).catch(() => {});
-  const after = h("input", { type: "checkbox" });
-  after.checked = !!(t && t.after_hours);
-  const items = h("textarea", { rows: "6", maxlength: "6200", placeholder: "Um item por linha" });
-  items.value = t ? t.checklist.join("\n") : "";
-  const err = h("p", { class: "error-text" });
-  const form = h("form", {}, h("h2", { text: t ? "Editar modelo" : "Novo modelo" }),
-    field("Nome do modelo", name), field("Título da tarefa", title), field("Descrição (uma linha)", desc),
-    h("div", { class: "field-row" }, field("Prioridade", prio), field("Projeto", proj)),
-    h("label", { class: "check-line" }, after, h("span", { text: "Plantão / fora do horário" })),
-    field("Checklist (um item por linha, até 30)", items), err,
-    h("div", { class: "dialog-actions" },
-      h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
-      h("button", { type: "submit", class: "btn btn-primary", text: "Salvar modelo" })));
-  const dlg = modal(form);
-  form.addEventListener("submit", busy(async (ev) => {
-    ev.preventDefault();
-    const body = { name: name.value.trim(), title: title.value.trim(), description: desc.value.trim() || null,
-      priority: Number(prio.value), project_id: proj.value && proj.value !== "__new" ? Number(proj.value) : null,
-      after_hours: after.checked, checklist: items.value.split("\n").map((x) => x.trim()).filter(Boolean).slice(0, 30) };
-    try {
-      if (t) await api.put(`/templates/${t.id}`, body); else await api.post("/templates", body);
-      dlg.close(); toast("Modelo salvo."); rerender();
-    } catch (e) { err.textContent = e.message || "Não foi possível salvar."; }
-  }));
-  setTimeout(() => (t ? title : name).focus(), 0);
-}
 
 // --------------------------------------------------------------- chamados --
 

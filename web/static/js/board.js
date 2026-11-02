@@ -430,33 +430,6 @@ export function openWorklog(onDone, opts = {}) {
     }, 400);
   };
 
-  // Modelo: preenche o formulário; o checklist dele entra depois de criar.
-  let checklist = [];
-  const tplWrap = document.getElementById("wl-template-wrap");
-  const tplSel = document.getElementById("wl-template");
-  tplWrap.classList.add("hidden");
-  api.get("/templates").then((list) => {
-    if (!list.length) return;
-    clear(tplSel);
-    tplSel.append(h("option", { value: "", text: "Nenhum (tarefa em branco)" }),
-      ...list.map((t) => h("option", { value: String(t.id), text: t.name + (t.checklist.length ? ` · ${t.checklist.length} itens` : "") })));
-    tplSel.onchange = async () => {
-      const t = list.find((x) => String(x.id) === tplSel.value);
-      checklist = t ? t.checklist : [];
-      if (!t) return;
-      document.getElementById("wl-title").value = t.title;
-      titleInput.oninput && titleInput.oninput(); // título do modelo também procura "já resolvido antes"
-      document.getElementById("wl-desc").value = t.description || "";
-      document.getElementById("wl-prio").value = String(t.priority);
-      after.checked = t.after_hours;
-      await projReady;
-      if (t.project_id && [...projSel.options].some((o) => o.value === String(t.project_id))) projSel.value = String(t.project_id);
-      extras.sync();
-      syncObjectives();
-    };
-    tplWrap.classList.remove("hidden");
-  }).catch(() => {});
-
   document.getElementById("wl-cancel").onclick = () => dlg.close();
   document.getElementById("wl-close").onclick = () => dlg.close();
   // Campos menos usados ficam em "Mais opções" (celular e computador).
@@ -516,8 +489,7 @@ export function openWorklog(onDone, opts = {}) {
       const created = await api.post("/worklog", payload);
       if (payload.remind_at) refreshReminders();  // o aviso da tela já conta com o lembrete
       if (created && created.queued) {
-        // Sem sinal: o resto (checklist, tempo, anotação, fotos) vai junto quando a tarefa for criada.
-        for (const label of checklist) await api.after(created.qid, "POST", "/worklog/{id}/checklist", { label });
+        // Sem sinal: o resto (tempo, anotação, fotos) vai junto quando a tarefa for criada.
         if (minutes) await api.after(created.qid, "POST", "/worklog/{id}/time", { minutes });
         if (opts.note) await api.after(created.qid, "POST", "/worklog/{id}/notes", { body: opts.note });
         for (const f of opts.files || []) await api.after(created.qid, "POST", "/worklog/{id}/photos", await prepare(f));
@@ -526,15 +498,14 @@ export function openWorklog(onDone, opts = {}) {
         onDone && onDone();
         return;
       }
-      // A tarefa já existe: se checklist ou tempo falharem, não reenviar (duplicaria).
+      // A tarefa já existe: se o tempo falhar, não reenviar (duplicaria).
       try {
-        for (const label of checklist) await api.post(`/worklog/${created.id}/checklist`, { label });
         if (minutes) await api.post(`/worklog/${created.id}/time`, { minutes });
         // Texto compartilhado de outro app que não coube na descrição: vira anotação.
         if (opts.note) await api.post(`/worklog/${created.id}/notes`, { body: opts.note });
         if (opts.files && opts.files.length) await upload(`/worklog/${created.id}/photos`, opts.files);
       } catch (e) {
-        toast(`Tarefa criada, mas ${minutes ? "o tempo ou " : ""}o checklist não foi salvo: ${e.message || "tente pelo detalhe"}.`, { error: true });
+        toast(`Tarefa criada, mas ${minutes ? "o tempo" : "algum item"} não foi salvo: ${e.message || "tente pelo detalhe"}.`, { error: true });
       }
       dlg.close();
       onDone && onDone();

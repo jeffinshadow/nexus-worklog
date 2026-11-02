@@ -218,7 +218,6 @@ export async function openTask(taskId, onChange, opts = {}) {
           onClick: async () => { await pending; blockTask(cur, after); } }, icon("clock")) : null,
         ...(off ? [] : [
           h("button", { type: "button", class: "icon", title: "Copiar resumo (para o chamado ou o cliente)", "aria-label": "Copiar resumo", onClick: async () => { await pending; copySummary(cur); } }, icon("copy")),
-          h("button", { type: "button", class: "icon", title: "Salvar como modelo", "aria-label": "Salvar como modelo", onClick: async () => { await pending; saveAsTemplate(cur); } }, icon("list")),
           h("button", { type: "button", class: "icon", title: "Duplicar tarefa", "aria-label": "Duplicar tarefa", onClick: dup }, icon("add")),
           h("button", { type: "button", class: "icon", title: "Excluir", "aria-label": "Excluir", onClick: remove }, icon("trash"))]),
         h("button", { type: "button", class: "icon", title: "Fechar", "aria-label": "Fechar", onClick: () => dlg.close() }, icon("close"))));
@@ -236,7 +235,6 @@ export async function openTask(taskId, onChange, opts = {}) {
         const items = [
           t.status === "done" ? ["Reabrir", "undo", async () => { await pending; reopenTask(cur, after); }] : null,
           ["Copiar resumo (para o chamado ou o cliente)", "copy", async () => { await pending; copySummary(cur); }],
-          ["Salvar como modelo", "list", async () => { await pending; saveAsTemplate(cur); }],
           ["Duplicar tarefa", "add", dup],
           giveBack ? ["Devolver a quem atribuiu…", "undo", giveBack] : null,
           ["Excluir tarefa", "trash", remove],
@@ -693,29 +691,4 @@ async function copySummary(t) {
       h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-text", text: "Fechar", onClick: () => dlg.close() })));
     area.select();
   }
-}
-
-// "Salvar como modelo": título, descrição, prioridade, projeto, plantão e os
-// itens do checklist viram um modelo (Configurações > Modelos).
-function saveAsTemplate(t) {
-  const name = h("input", { type: "text", maxlength: "60", value: t.title.slice(0, 60), required: "required" });
-  const err = h("p", { class: "error-text" });
-  const form = h("form", {}, h("h2", { text: "Salvar como modelo" }),
-    h("p", { class: "dialog-note", text: `Vai junto: título, descrição, prioridade, projeto${t.checklist.length ? ` e os ${t.checklist.length} itens do checklist` : ""}.` }),
-    field("Nome do modelo", name), err,
-    h("div", { class: "dialog-actions" },
-      h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
-      h("button", { type: "submit", class: "btn btn-primary", text: "Salvar modelo" })));
-  const dlg = modal(form);
-  form.addEventListener("submit", busy(async (ev) => {
-    ev.preventDefault();
-    try {
-      await api.post("/templates", { name: name.value.trim(), title: t.title, description: t.description || null,
-        priority: t.priority || 2, project_id: t.project_id || null, after_hours: !!t.after_hours,
-        checklist: t.checklist.map((c) => c.label) });
-      dlg.close();
-      toast(`Modelo “${name.value.trim()}” salvo. Use em “+ Tarefa”.`);
-    } catch (e) { err.textContent = e.message || "Não foi possível salvar."; }
-  }));
-  setTimeout(() => name.select(), 0);
 }

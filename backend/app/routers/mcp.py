@@ -53,7 +53,7 @@ INSTRUCTIONS = (
     "semana, com tempo por projeto) e get_week para semanas passadas. Registre o que o usuário contar com "
     "create_task/update_task/complete_task, log_time e add_note; marque rotinas com "
     "set_recurring (com note = evidência); get_handoff dá a passagem de turno e get_week_review a revisão da semana. Para medir o tempo enquanto o usuário trabalha, use start_timer/stop_timer; "
-    "procedimentos repetidos têm modelos (list_templates, create_from_template); quem está começando pode partir de "
+    "quem está começando pode partir de "
     "um pacote de rotinas da área (list_routine_packs, apply_routine_pack). "
     "Projetos e objetivos (as demandas do projeto, em ordem de execução): create_project/update_project, "
     "create_objective/update_objective e reorder_objectives; confira com list_projects e list_objectives. "
@@ -912,7 +912,7 @@ def t_stop_timer(ctx, args):
 def t_list_templates(ctx, args):
     rows = template_routes.list_templates(user=ctx)
     return "\n".join(f"M{t['id']} {t['name']}: “{t['title']}”" + (f" · checklist de {len(t['checklist'])} itens" if t["checklist"] else "")
-                     for t in rows) or "(nenhum modelo; o usuário cria em Configurações > Modelos)"
+                     for t in rows) or "(nenhum modelo)"
 
 
 def t_create_from_template(ctx, args):
@@ -1393,9 +1393,9 @@ TOOLS = {
                    {"type": "object", "properties": {
                        "at": {"type": "string", "description": "Hora em que parou: HH:MM (a mais recente que já passou) "
                               "ou AAAA-MM-DDTHH:MM, fuso " + config.APP_TZ + ". Padrão: agora. Até 24 h atrás"}}}),
-    "list_templates": (t_list_templates, False, "Lista os modelos de tarefa do usuário (procedimentos com checklist pronto).",
+    "list_templates": (t_list_templates, False, "OBSOLETA (sai na 3.0; prefira duplicar uma tarefa ou aplicar um pacote de rotinas). Lista os modelos de tarefa do usuário.",
                        {"type": "object", "properties": {}}),
-    "create_from_template": (t_create_from_template, True, "Cria uma tarefa a partir de um modelo (com o checklist dele).",
+    "create_from_template": (t_create_from_template, True, "OBSOLETA (sai na 3.0; prefira duplicar uma tarefa). Cria uma tarefa a partir de um modelo.",
                              {"type": "object", "required": ["template"], "properties": {
                                  "template": {"type": "string", "description": "Nome do modelo ou M<id> (veja list_templates)"}}}),
     "list_renewals": (t_list_renewals, False,
