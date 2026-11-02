@@ -36,6 +36,26 @@ export async function visibilityNotice(me) {
     h("p", { class: "dialog-note", text: "A sua escolha em Configurações > Conta fica guardada e volta a valer se a administração mudar isso." }),
     h("div", { class: "dialog-actions" }, ok));
   ok.focus();
+  return dlg;
+}
+
+// Aviso único (fora do tour) para quem já usava o Nexus quando a administração
+// ligou "Todos recebem de quem atribui". Só "Entendi" grava; Esc mostra de novo depois.
+const ASSIGN_TEXT = "Nesta instância do Nexus, todos recebem tarefas de quem atribui (definido pela administração). Quem tem o papel “Manda tarefas” pode mandar tarefas para você; cada uma chega por e-mail e aparece em Tarefas com “de” e o nome de quem mandou.";
+const ASSIGN_OWN = "A tarefa recebida é sua: você edita, conclui ou devolve com o motivo.";
+export function assignNotice(me) {
+  const ok = h("button", { type: "button", class: "btn btn-primary", text: "Entendi", onClick: async () => {
+    try { await api.put("/me/assign-notice"); me.assign_notice = false; dlg.close(); }
+    catch (e) { errorToast(e); }
+  } });
+  const dlg = modal(
+    h("h2", { text: "Você pode receber tarefas de quem atribui" }),
+    h("p", { text: ASSIGN_TEXT }),
+    h("p", { class: "dialog-note", text: ASSIGN_OWN }),
+    h("p", { class: "dialog-note", text: "A sua escolha em Configurações > Conta fica guardada e volta a valer se a administração mudar isso." }),
+    h("div", { class: "dialog-actions" }, ok));
+  ok.focus();
+  return dlg;
 }
 
 // Aviso único de papel ganho ou retirado pela administração (o menu já mudou;
@@ -49,7 +69,7 @@ const ROLE_INFO = {
 export function roleNotice(me) {
   const n = me.role_notice || {};
   const added = (n.added || []).filter((k) => ROLE_INFO[k]), removed = (n.removed || []).filter((k) => ROLE_INFO[k]);
-  if (!added.length && !removed.length) return;
+  if (!added.length && !removed.length) return null;
   const ok = h("button", { type: "button", class: "btn btn-primary", text: "Entendi", onClick: async () => {
     try { await api.put("/me/role-notice"); me.role_notice = null; dlg.close(); }
     catch (e) { errorToast(e); }
@@ -65,6 +85,7 @@ export function roleNotice(me) {
         h("span", { text: "O que vinha com esse papel saiu do menu. Os seus dados continuam guardados." })))),
     h("div", { class: "dialog-actions" }, ok));
   ok.focus();
+  return dlg;
 }
 
 // me: o objeto da sessão (é atualizado e avisado com "nexus:me").
@@ -82,7 +103,8 @@ export async function startTour(me) {
     // Obrigatório e interrompido (aba fechada, erro): abre de novo no próximo acesso.
     if (!must || completed) {
       api.put("/me/tour", { done: true }).then((r) => {
-        Object.assign(me, { tour_done_at: r.tour_done_at, tour_required: !!r.tour_required, visibility_notice: !!r.visibility_notice });
+        Object.assign(me, { tour_done_at: r.tour_done_at, tour_required: !!r.tour_required, visibility_notice: !!r.visibility_notice,
+          assign_notice: !!r.assign_notice });
       }).catch(() => {});
     }
   }
@@ -117,7 +139,9 @@ function setup(me, must) {
     const org = me.org || {};
     const nameLocked = !!org.identity_managed;
     const visOn = org.team_visibility === "managers";
-    const steps = [welcome, profile, theme, ...(visOn ? [visibility] : []), workDays, projects, defaultProject, routines, ready];
+    const assignOn = org.assign_receive === "all";
+    const steps = [welcome, profile, theme, ...(visOn ? [visibility] : []), ...(assignOn ? [receiving] : []),
+      workDays, projects, defaultProject, routines, ready];
     const total = steps.length - 2; // boas-vindas e "pronto" não contam
     const next = () => { step++; dir = 1; paint(); };
     const back = () => { step--; dir = -1; paint(); };
@@ -221,6 +245,13 @@ function setup(me, must) {
         [h("p", { class: "dialog-note", text: viewers.length ? `Hoje, com esse papel: ${viewers.join(", ")}.` : "Hoje, ninguém tem esse papel." }),
           h("p", { class: "dialog-note", text: "A lista fica sempre em Configurações > Conta." })],
         async () => { await api.put("/me/visibility-notice"); me.visibility_notice = false; }, "Entendi");
+    }
+
+    // Só quando a administração ligou "Todos recebem de quem atribui".
+    function receiving() {
+      return frame("Tarefas de quem atribui", ASSIGN_TEXT,
+        [h("p", { class: "dialog-note", text: ASSIGN_OWN })],
+        async () => { await api.put("/me/assign-notice"); me.assign_notice = false; }, "Entendi");
     }
 
     function workDays() {

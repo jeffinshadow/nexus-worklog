@@ -14,8 +14,11 @@ const ROLES = [
 ];
 
 // "Vê a equipe" com a instância em "Visível para quem gerencia": vê todos (sem aceite).
+// "Manda tarefas" com "Todos recebem de quem atribui": manda para todos (sem aceite).
 const roleDesc = (k, d, me) => k === "viewer" && me && me.org && me.org.team_visibility === "managers"
   ? "libera a tela Equipe: vê, sem editar, o registro (quadro, números, PDF, horas e fotos) de todos — nesta instância, visível para quem gerencia (Admin › Para empresas)"
+  : k === "assigner" && me && me.org && me.org.assign_receive === "all"
+  ? "libera Atribuir na tela Equipe: manda tarefas para todos com o papel Usuário — nesta instância, todos recebem de quem atribui (Admin › Para empresas)"
   : d;
 
 const phone = () => matchMedia("(max-width: 860px)").matches;
@@ -584,9 +587,38 @@ async function mountOrg(root, me) {
   let cfg = await api.get("/admin/org");
   const save = async (patch, msg) => {
     cfg = await api.put("/admin/org", patch);
-    me.org = { team_visibility: cfg.team_visibility, identity_managed: cfg.identity_managed };
+    me.org = { team_visibility: cfg.team_visibility, assign_receive: cfg.assign_receive, identity_managed: cfg.identity_managed };
     toast(msg);
   };
+
+  // Duas opções em rádio; trocar pede confirmação com o efeito (visibilidade e receber tarefas).
+  const choice = (key, opts, confirmOf, msgOf) => {
+    const radios = opts.map(([v, n, d]) => {
+      const r = h("input", { type: "radio", name: "org-" + key, value: v });
+      r.checked = cfg[key] === v;
+      r.addEventListener("change", async () => {
+        if (!r.checked) return;
+        const reset = () => { for (const x of radios) x[0].checked = x[0].value === cfg[key]; };
+        if (!(await confirmDialog(confirmOf(v)))) { reset(); r.focus(); return; }
+        try { await save({ [key]: v }, msgOf(v)); }
+        catch (e) { errorToast(e); reset(); }
+      });
+      return [r, h("label", { class: "check-line role-line" }, r, h("span", {}, h("strong", { text: n }), h("small", { text: d })))];
+    });
+    return radios.map(([, l]) => l);
+  };
+  const receive = choice("assign_receive", [
+    ["self", "Cada pessoa escolhe", "Padrão. Quem tem o papel “Manda tarefas” só manda para quem aceitar receber, em Configurações > Conta."],
+    ["all", "Todos recebem de quem atribui", "Todos com o papel Usuário recebem tarefas de quem tem o papel “Manda tarefas”, sem que a pessoa possa desligar. A escolha de cada um fica guardada."],
+  ], (v) => v === "all" ? {
+    title: "Todos passam a receber tarefas de quem atribui?",
+    text: "Quem tem o papel “Manda tarefas” passa a mandar tarefas para todas as pessoas com o papel Usuário, mesmo quem não aceitou. Na Conta de cada um, a chave fica bloqueada com o motivo, e quem já usa o Nexus vê um aviso no próximo acesso. As escolhas de cada pessoa ficam guardadas.",
+    confirm: "Todos recebem",
+  } : {
+    title: "Voltar para “Cada pessoa escolhe”?",
+    text: "Cada pessoa volta ao que tinha escolhido em Configurações > Conta. Quem não tinha aceitado deixa de receber tarefas novas; as que já recebeu continuam com ela.",
+    confirm: "Voltar ao padrão",
+  }, (v) => v === "all" ? "Pronto: todos recebem tarefas de quem atribui." : "Pronto: cada pessoa escolhe de novo se recebe tarefas.");
 
   // Visibilidade da equipe: duas opções; trocar pede confirmação com o efeito.
   const VIS = [
@@ -632,6 +664,7 @@ async function mountOrg(root, me) {
     h("div", { class: "panel-head" }, h("h2", { text: "Para empresas e instituições" })),
     h("p", { class: "help", text: "O Nexus nasce como organizador pessoal: cada pessoa decide o que mostra. Quando ele é de uma empresa ou instituição, estas opções ajudam. Todas começam desligadas; cada mudança vale na hora e fica no seu histórico." }),
     h("fieldset", { class: "org-option" }, h("legend", { text: "Visibilidade da equipe" }), ...radios.map(([, l]) => l)),
+    h("fieldset", { class: "org-option" }, h("legend", { text: "Receber tarefas atribuídas" }), ...receive),
     h("fieldset", { class: "org-option" }, h("legend", { text: "Nome e e-mail" }),
       toggle("identity_managed", "Nome e e-mail definidos pela administração",
         "Ligado, só o admin muda nome e e-mail (Contas › ⋮ › Editar nome e e-mail); na Conta de cada um, os campos ficam bloqueados com o motivo. Desligado, cada pessoa muda os seus (o e-mail novo é confirmado por link).",

@@ -27,7 +27,9 @@ ou perde um papel depois é avisado no app (e por e-mail).
 porque o padrão é o organizador pessoal): **visibilidade da equipe** ("Cada pessoa
 escolhe" ou "Visível para quem gerencia", em que quem tem o papel Vê a equipe vê todos e
 a chave de aceite fica bloqueada, à vista, com o motivo; as escolhas de cada um ficam
-guardadas), **nome e e-mail definidos pela administração** (desligado, cada pessoa
+guardadas), **receber tarefas atribuídas** ("Cada pessoa escolhe" ou "Todos recebem de
+quem atribui", em que todo Usuário recebe tarefas de quem tem o papel Manda tarefas, com
+a mesma chave bloqueada e as escolhas guardadas), **nome e e-mail definidos pela administração** (desligado, cada pessoa
 troca os seus na Conta, e o e-mail novo só vale depois de confirmado por link) e
 **sem "Solicitar convite" na tela de login** (só entra quem o admin convidar) e o
 **endereço do sistema de chamados para todos** (vazio, cada pessoa usa o seu). Cada
@@ -47,7 +49,10 @@ mudança fica no histórico do admin. Toda conta nova faz o tour guiado no prime
   3 passos (o que fechou, com "como resolveu"; o que ficou, um toque em
   manter, reagendar, aguardando ou concluir; o que vem, até 3 prioridades), que
   termina com o texto da semana pronto para copiar; o assistente convida no
-  último dia útil, uma vez. No primeiro acesso, um **tour
+  último dia útil, uma vez. **Primeiro amanhã**: no resumo do dia do assistente
+  ou na Passagem de turno, até 3 tarefas para começar o próximo dia útil; nesse
+  dia elas abrem as abertas com o selo "primeiro hoje" e saem sozinhas depois
+  (as prioridades da revisão da semana entram no mesmo lugar). No primeiro acesso, um **tour
   guiado** configura o essencial (nome, dias úteis, projetos, projeto padrão,
   rotinas, com um pacote da área se quiser) e mostra a tela; a Ajuda reabre.
 - **Projetos e objetivos** — cada projeto tem objetivos (as demandas
@@ -138,7 +143,9 @@ mudança fica no histórico do admin. Toda conta nova faz o tour guiado no prime
   corrente, proporcional aos dias passados e só depois da primeira semana. Na
   Equipe aparecem o mês e o calendário, sem a tendência, a média e o ranking
   de rotinas (não é placar).
-  **Baixar o PDF do mês** é a ação principal; em "Outro período ou formato"
+  **Baixar o PDF do mês** é a ação principal; antes dele, se alguma concluída do
+  mês está sem tempo ou sem "como resolveu", uma lista curta deixa completar ali
+  mesmo (15/30/60 min, uma linha do como resolveu) ou baixar assim mesmo. Em "Outro período ou formato"
   ficam o PDF de outras datas, por projeto ou do projeto inteiro, e as
   exportações. O PDF é editorial: o período em texto corrido, os números, o ritmo, a
   **matriz de rotinas** (um ponto por dia) e o diário. Pode ir toda segunda

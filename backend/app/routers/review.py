@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from .. import review
+from .board import first_day, set_first
 from ..deps import active_user, active_user_csrf
 
 router = APIRouter(prefix="/api/review", tags=["review"])
@@ -26,10 +27,16 @@ def week(user=Depends(active_user)):
 @router.post("/week/done")
 def week_done(data: WeekDoneIn | None = None, user=Depends(active_user_csrf)):
     """Registra a revisão da semana (o assistente para de convidar) e devolve o
-    texto da semana pronto para copiar."""
+    texto da semana pronto para copiar. As prioridades escolhidas (`next`)
+    também viram o "Primeiro amanhã" do próximo dia útil (`first_day`): abrem o
+    Hoje desse dia, no topo das abertas (o mesmo campo, sem outra escolha)."""
     uid = user["user_id"]
     st = review.mark(uid, "done_at")
-    return {"done_at": st["done_at"], "text": review.week_text(uid, (data.next if data else []))}
+    nxt = data.next if data else []
+    day = first_day(uid)
+    first = set_first(uid, day, nxt, strict=False) if nxt else []
+    return {"done_at": st["done_at"], "text": review.week_text(uid, nxt),
+            "first_day": day if first else None, "first": first}
 
 
 @router.post("/week/dismiss")

@@ -450,6 +450,7 @@ def get_org(admin=Depends(require_admin)):
     `mail_configured`: sem e-mail, o pedido de convite nunca aparece (a opção só explica)."""
     o = org.get()
     return {"team_visibility": o["team_visibility"], "team_visibility_since": o["team_visibility_since"],
+            "assign_receive": o["assign_receive"], "assign_receive_since": o["assign_receive_since"],
             "identity_managed": o["identity_managed"], "invite_request_off": o["invite_request_off"],
             "ticket_url": o["ticket_url"], "mail_configured": mailer.configured()}
 
@@ -457,8 +458,8 @@ def get_org(admin=Depends(require_admin)):
 @router.put("/org")
 def put_org(data: OrgIn, admin=Depends(require_admin_csrf)):
     """Liga/desliga cada opção (campo ausente = mantém). Cada mudança fica no
-    log de admin (quem e quando). Visibilidade: as escolhas de cada pessoa
-    ficam guardadas; voltar para "Cada pessoa escolhe" as devolve."""
+    log de admin (quem e quando). Visibilidade e receber tarefas: as escolhas
+    de cada pessoa ficam guardadas; voltar para "Cada pessoa escolhe" as devolve."""
     before = org.get()
     ctx = {**admin, "actor": "admin"}
     if data.team_visibility is not None and data.team_visibility != before["team_visibility"]:
@@ -467,6 +468,12 @@ def put_org(data: OrgIn, admin=Depends(require_admin_csrf)):
                        WHERE id = 1""", (data.team_visibility, data.team_visibility))
         audit.record(ctx, "app.team_visibility", "app_settings", 1, before={"team_visibility": before["team_visibility"]},
                      after={"team_visibility": data.team_visibility, "by": admin["email"]})
+    if data.assign_receive is not None and data.assign_receive != before["assign_receive"]:
+        db.execute("""UPDATE app_settings SET assign_receive = %s, updated_at = now(),
+                             assign_receive_since = CASE WHEN %s = 'all' THEN now() ELSE assign_receive_since END
+                       WHERE id = 1""", (data.assign_receive, data.assign_receive))
+        audit.record(ctx, "app.assign_receive", "app_settings", 1, before={"assign_receive": before["assign_receive"]},
+                     after={"assign_receive": data.assign_receive, "by": admin["email"]})
     for key in ("identity_managed", "invite_request_off"):
         val = getattr(data, key)
         if val is not None and val != before[key]:

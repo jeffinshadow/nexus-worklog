@@ -1606,6 +1606,46 @@
         }
       }
     },
+    "/api/board/first": {
+      "put": {
+        "tags": [
+          "board"
+        ],
+        "summary": "Put First",
+        "description": "\"Primeiro amanhã\": até 3 tarefas para começar o próximo dia útil. Nesse\ndia elas abrem as abertas do Hoje (e de Tarefas) com um selo; passado o dia,\nou concluídas, saem sozinhas. Vale em todos os aparelhos. `day` (opcional)\nentre amanhã e daqui a 7 dias.",
+        "operationId": "put_first_api_board_first_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FirstIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/dashboard": {
       "get": {
         "tags": [
@@ -2250,7 +2290,7 @@
           "admin"
         ],
         "summary": "Put Org",
-        "description": "Liga/desliga cada opção (campo ausente = mantém). Cada mudança fica no\nlog de admin (quem e quando). Visibilidade: as escolhas de cada pessoa\nficam guardadas; voltar para \"Cada pessoa escolhe\" as devolve.",
+        "description": "Liga/desliga cada opção (campo ausente = mantém). Cada mudança fica no\nlog de admin (quem e quando). Visibilidade e receber tarefas: as escolhas\nde cada pessoa ficam guardadas; voltar para \"Cada pessoa escolhe\" as devolve.",
         "operationId": "put_org_api_admin_org_put",
         "requestBody": {
           "content": {
@@ -4458,6 +4498,26 @@
         }
       }
     },
+    "/api/me/assign-notice": {
+      "put": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Seen Assign Notice",
+        "description": "\"Entendi\" no aviso único de que todos recebem tarefas de quem atribui.",
+        "operationId": "seen_assign_notice_api_me_assign_notice_put",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/me/role-notice": {
       "put": {
         "tags": [
@@ -4484,7 +4544,7 @@
           "me"
         ],
         "summary": "Put Assignments",
-        "description": "Consentimento para receber tarefas de um atribuidor (só pelo app).\nDesligar não mexe nas tarefas já recebidas.",
+        "description": "Consentimento para receber tarefas de um atribuidor (só pelo app).\nDesligar não mexe nas tarefas já recebidas. Com \"Todos recebem de quem\natribui\" (Admin › Para empresas), 409: a escolha fica guardada como está.",
         "operationId": "put_assignments_api_me_assignments_put",
         "requestBody": {
           "content": {
@@ -5293,7 +5353,7 @@
           "assign"
         ],
         "summary": "List People",
-        "description": "Contas com registro próprio e se aceitam receber tarefas (desde quando).\nConta com acesso bloqueado não aceita (`blocked`: a tela diz por quê). A\nfoto só de quem aceita (a mesma regra de GET /api/me/avatar/{id}); o admin vê todas.",
+        "description": "Contas com registro próprio e se podem receber tarefas agora (`accepts`,\na regra de assignable.py) e desde quando aceitaram (`accepts_assignments_at`;\ncom \"Todos recebem de quem atribui\" fica a escolha guardada da pessoa).\nConta com acesso bloqueado não recebe (`blocked`: a tela diz por quê).\n`everyone`: a instância está em \"Todos recebem\". A foto só de quem pode\nreceber (a mesma regra de GET /api/me/avatar/{id}); o admin vê todas.",
         "operationId": "list_people_api_assign_people_get",
         "responses": {
           "200": {
@@ -6860,7 +6920,7 @@
           "review"
         ],
         "summary": "Week Done",
-        "description": "Registra a revisão da semana (o assistente para de convidar) e devolve o\ntexto da semana pronto para copiar.",
+        "description": "Registra a revisão da semana (o assistente para de convidar) e devolve o\ntexto da semana pronto para copiar. As prioridades escolhidas (`next`)\ntambém viram o \"Primeiro amanhã\" do próximo dia útil (`first_day`): abrem o\nHoje desse dia, no topo das abertas (o mesmo campo, sem outra escolha).",
         "operationId": "week_done_api_review_week_done_post",
         "requestBody": {
           "content": {
@@ -7899,6 +7959,32 @@
         "type": "object",
         "title": "FinishIn"
       },
+      "FirstIn": {
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "maxItems": 3,
+            "title": "Ids"
+          },
+          "day": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day"
+          }
+        },
+        "type": "object",
+        "title": "FirstIn"
+      },
       "ForgotIn": {
         "properties": {
           "email": {
@@ -8335,6 +8421,21 @@
               }
             ],
             "title": "Team Visibility"
+          },
+          "assign_receive": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "self",
+                  "all"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assign Receive"
           },
           "identity_managed": {
             "anyOf": [

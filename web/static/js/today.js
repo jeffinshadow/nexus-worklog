@@ -16,6 +16,7 @@ import { todayRenewals } from "./renewals.js";
 import { packButton } from "./pacotes.js";
 import { prepareButton } from "./fila.js";
 import { markWithSteps } from "./passos.js";
+import { pickFirst, firstLabel } from "./primeiro.js";
 
 const LAST_PROJECT = "nexus.quick.project";
 const OPEN_FILTER = "nexus.today.filter";
@@ -44,7 +45,7 @@ export async function mount(root, ctx, opts = {}) {
   const today = b.today;
   ctx.setEyebrow(weekdayDate(today) + (b.work_day ? "" : " · não útil"));
   ctx.setActions(
-    h("button", { type: "button", class: "btn btn-ghost", title: "Texto pronto com o que fica aberto, o que está aguardando e o que foi concluído nas últimas 12 h", onClick: showHandoff }, icon("copy"), "Passagem de turno"),
+    h("button", { type: "button", class: "btn btn-ghost", title: "Texto pronto com o que fica aberto, o que está aguardando e o que foi concluído nas últimas 12 h", onClick: () => showHandoff(b, refresh) }, icon("copy"), "Passagem de turno"),
     h("button", { type: "button", class: "btn btn-primary", "data-fab": "", onClick: () => openWorklog(refresh) }, icon("add"), "Tarefa")
   );
 
@@ -321,8 +322,9 @@ function editEvidence(r, day, refresh) {
   input.focus();
 }
 
-// Passagem de turno/plantão: texto pronto (calculado no servidor) para colar no chat.
-async function showHandoff() {
+// Passagem de turno/plantão: texto pronto (calculado no servidor) para colar no
+// chat. É o fechamento do dia: dali também sai o "Primeiro amanhã".
+async function showHandoff(b, refresh) {
   let text;
   try { text = (await api.get("/summary/handoff")).text; } catch (e) { errorToast(e); return; }
   const area = h("textarea", { rows: "14", readonly: "readonly", class: "handoff-text", "aria-label": "Texto da passagem de turno" });
@@ -330,6 +332,11 @@ async function showHandoff() {
   const dlg = modal(h("h2", { text: "Passagem de turno" }),
     h("p", { class: "dialog-note", text: "O que fica aberto, o que está aguardando e por quê, o que foi concluído nas últimas 12 h. Cole no chat da equipe." }),
     area,
+    // Fechando o dia: até 3 tarefas para começar o próximo dia útil (abrem o Hoje e saem sozinhas depois).
+    b && b.first_day && b.in_progress.some((t) => t.status !== "blocked" && !t.pending)
+      ? h("div", { class: "handoff-first" },
+        h("button", { type: "button", class: "btn btn-ghost btn-sm", onClick: () => { dlg.close(); pickFirst(refresh, b); } }, icon("play"), firstLabel(b)))
+      : null,
     h("div", { class: "dialog-actions" },
       h("button", { type: "button", class: "btn btn-text", text: "Fechar", onClick: () => dlg.close() }),
       h("button", { type: "button", class: "btn btn-primary", onClick: async () => {

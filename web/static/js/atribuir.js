@@ -37,12 +37,15 @@ export async function assignDialog({ fromReturn = null, edit = null, onDone } = 
   }
   const accepting = people.filter((p) => p.accepts && p.id !== session.me.id);
   const others = people.filter((p) => !p.accepts && p.id !== session.me.id).length;
+  // "Todos recebem de quem atribui" (Admin › Para empresas): ninguém precisa aceitar.
+  const everyone = people.some((p) => p.everyone);
   const close = h("button", { type: "button", class: "btn btn-text", text: "Voltar", onClick: () => dlg.close() });
   const heading = h("h2", { text: edit ? "Alterar tarefa atribuída" : fromReturn ? "Atribuir de novo" : "Atribuir tarefa" });
 
   if (!edit && !accepting.length) {
     const dlg = modal(heading,
-      h("p", { text: "Ninguém aceitou receber tarefas ainda. Cada pessoa liga isso em Configurações > Conta, em “Permitir que me atribuam tarefas”." }),
+      h("p", { text: everyone ? "Ainda não há ninguém com o papel Usuário (e acesso liberado) para receber tarefas."
+        : "Ninguém aceitou receber tarefas ainda. Cada pessoa liga isso em Configurações > Conta, em “Permitir que me atribuam tarefas”." }),
       h("div", { class: "dialog-actions" }, h("div", { class: "spacer" }), h("button", { type: "button", class: "btn btn-primary", text: "Entendi", onClick: () => dlg.close() })));
     return;
   }
@@ -68,8 +71,12 @@ export async function assignDialog({ fromReturn = null, edit = null, onDone } = 
   after.checked = !!pre.after_hours;
   const err = h("p", { class: "error-text", role: "alert" });
 
-  const quemAceita = accepting.length === 1 ? "Aparece só quem aceita receber tarefas (1 pessoa)." : `Aparecem as ${accepting.length} pessoas que aceitam receber tarefas.`;
-  const outras = others ? (others === 1 ? " A outra pessoa ainda não aceita" : ` As outras ${others} ainda não aceitam`) + " (cada uma liga em Configurações > Conta)." : "";
+  const quemAceita = everyone
+    ? "Nesta instância, todos recebem tarefas de quem atribui (definido pela administração)."
+    : accepting.length === 1 ? "Aparece só quem aceita receber tarefas (1 pessoa)." : `Aparecem as ${accepting.length} pessoas que aceitam receber tarefas.`;
+  const outras = !others ? "" : everyone
+    ? (others === 1 ? " Fica de fora 1 conta com acesso bloqueado ou convite ainda não aceito." : ` Ficam de fora ${others} contas com acesso bloqueado ou convite ainda não aceito.`)
+    : (others === 1 ? " A outra pessoa ainda não aceita" : ` As outras ${others} ainda não aceitam`) + " (cada uma liga em Configurações > Conta).";
   const form = h("form", {},
     fromReturn ? h("p", { class: "eq-returned-note" }, icon("undo"),
       h("span", { text: `${fromReturn.to_name} devolveu: «${fromReturn.ended.reason || "sem motivo"}». Ajuste o que precisar e escolha quem recebe (a mesma pessoa ou outra).` })) : null,

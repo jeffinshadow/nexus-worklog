@@ -7,6 +7,7 @@ import { duration } from "./task.js";
 import { errorToast, modal, toast } from "./ui.js";
 import { followUpTask } from "./board.js";
 import { openReview } from "./review.js";
+import { pickFirst, firstLabel } from "./primeiro.js";
 
 export const enabled = (me) => !!(me && me.assistant && me.assistant.enabled);
 
@@ -268,7 +269,13 @@ export function todayCard(b, sum, ctx) {
   } else if (pendentes.length || open.length) {
     const partes = [pendentes.length ? plural(pendentes.length, "rotina pendente", "rotinas pendentes") : "", openLine(open.length, late)];
     resumo = `Para hoje: ${partes.filter(Boolean).join(" e ")}.`;
-    if (open.length) {
+    // "Primeiro amanhã": o que a pessoa deixou escolhido no fechamento do dia anterior vem antes da sugestão.
+    const escolhidas = open.filter((x) => x.first_on === today);
+    if (escolhidas.length) {
+      items.push({ key: "hoje:primeiro", lines: [{ line: h("p", {}, "Você deixou para começar hoje: ",
+        ...escolhidas.flatMap((x, i) => [i ? (i === escolhidas.length - 1 ? " e " : ", ") : "", h("strong", { text: q(x.title) })]), "."),
+        actions: [action("Abrir tarefa", () => ctx.openTask(escolhidas[0].id))] }] });
+    } else if (open.length) {
       const first = open[0];
       items.push({ key: "hoje:sugestao", lines: [{ line: h("p", {}, "Sugiro começar por ", h("strong", { text: q(first.title) }), `${why(first, today)}.`),
         actions: [action("Abrir tarefa", () => ctx.openTask(first.id))] }] });
@@ -344,7 +351,10 @@ export function todayCard(b, sum, ctx) {
   const ask = invite(me, ctx.onProfile);
   if (ask) items.push({ key: "hoje:nome", lines: [], extra: ask });
 
-  return stack("hoje", { hello: greeting(me.name), lines: [resumo, r.line && !r.act ? r.line : null, fechamento] }, items);
+  // No resumo do dia (o fechamento), a escolha do "Primeiro amanhã" (até 3, some sozinho depois do dia).
+  const podeEscolher = fechamento && b.day === today && open.some((x) => x.status !== "blocked") && b.first_day;
+  const fecha = podeEscolher ? { line: fechamento, actions: [action(firstLabel(b), () => pickFirst(ctx.onChanged, b))] } : fechamento;
+  return stack("hoje", { hello: greeting(me.name), lines: [resumo, r.line && !r.act ? r.line : null, fecha] }, items);
 }
 
 // ---------------------------------------------------------------- Tarefas --

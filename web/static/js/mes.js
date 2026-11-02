@@ -10,7 +10,7 @@
 // #/dashboard chega aqui pelo app.js.
 import { api } from "./api.js";
 import { h, icon, clear, addDays, localDay } from "./dom.js";
-import { errorToast, pager } from "./ui.js";
+import { errorToast, modal, pager, pageSlice, toast } from "./ui.js";
 import { projectChip, corProjeto, iconeProjeto } from "./projects.js";
 import { duration, openTask } from "./task.js";
 import * as reports from "./reports.js";
@@ -133,7 +133,7 @@ function screen(a, opts, reload) {
   const ov = a.overview;
   const mes = nameOf(a.period.month);
   const extras = extrasOf(ov);
-  const nodes = [hero(ov, mes, opts, extras)];
+  const nodes = [hero(ov, mes, opts, extras, reload)];
   // Mês sem nenhum registro (rotina, extra, tarefa ou tempo): a frase "Nada
   // registrado" e o MESMO painel, zerado (a geometria do dashboard não muda).
   const empty = isEmpty(ov.month, extras);
@@ -158,21 +158,144 @@ function sentence(m, mes, who, extras) {
   return `${quando}${sujeito} ${lista}.`;
 }
 
-function hero(ov, mes, opts, extras) {
+function hero(ov, mes, opts, extras, reload) {
   const m = ov.month;
   const empty = isEmpty(m, extras);
   const base = opts.exportBase || "/reports/export";
-  const btn = h("button", { type: "button", class: "btn btn-primary", onClick: async () => {
+  const download = async () => {
     btn.disabled = true;
     try { await api.download(`${base}?start=${m.start}&end=${m.end}`); }
     catch (e) { errorToast(e, "Não foi possível gerar o PDF."); } finally { btn.disabled = false; }
-  } }, icon("reports"), `Baixar o PDF de ${mes}`);
+  };
+  // "Antes do PDF" (só da própria pessoa): com concluídas sem tempo ou sem
+  // "como resolveu", o botão abre antes a lista para completar (dá para pular).
+  const falta = !opts.dashUrl && ov.incomplete_total ? ov.incomplete_total : 0;
+  const btn = h("button", { type: "button", class: "btn btn-primary",
+    onClick: () => (falta ? beforePdf(ov, mes, download, reload) : download()) }, icon("reports"), `Baixar o PDF de ${mes}`);
+  const hint = falta ? h("p", { class: "mes-incomplete" },
+    h("span", { text: `${plural(falta, "concluída", "concluídas")} sem tempo ou sem “como resolveu”.` }),
+    h("button", { type: "button", class: "btn btn-text btn-sm", text: "Completar", onClick: () => beforePdf(ov, mes, download, reload) })) : null;
   return h("section", { class: "mes-hero" },
     h("p", { class: "mes-sentence", text: sentence(m, mes, opts.who, extras) }),
     // O convite a registrar só no mês corrente da própria pessoa.
     empty ? (opts.dashUrl || !m.now ? null : h("p", { class: "mes-prev", text: "O que você registrar no Hoje (rotinas, tarefas e tempo) aparece aqui." }))
-      : h("div", { class: "mes-actions" }, btn));
+      : h("div", { class: "mes-actions" }, btn, hint));
 }
+
+// ------------------------------------------------------- antes do PDF --
+// As concluídas do mês (as mesmas do PDF) sem tempo apontado ou sem "como
+// resolveu", 5 por página, cada uma com o que falta ali mesmo: o tempo (15,
+// 30, 60 ou outro número; vai no dia da conclusão) e o como resolveu. Nada é
+// obrigatório: "Baixar assim mesmo" sai com o que tem.
+const PDF_PAGE = 5;
+const MINS = [15, 30, 60];
+
+function beforePdf(ov, mes, download, reload) {
+  const items = ov.incomplete.map((x) => ({ ...x }));
+  const extra = ov.incomplete_total - items.length; // passou de 300: o resto fica para depois
+  const missing = (x) => !x.minutes || !x.resolution;
+  let page = 1, changed = false;
+
+  const title = h("h2", { text: `Antes do PDF de ${mes}` });
+  title.tabIndex = -1;
+  const count = h("p", { class: "review-count", "aria-live": "polite" });
+  const box = h("div", { class: "review-list" });
+  const go = h("button", { type: "button", class: "btn btn-primary" }, icon("reports"));
+  const goText = h("span");
+  go.append(goText);
+  const close = h("button", { type: "button", class: "icon review-close", title: "Fechar", "aria-label": "Fechar sem baixar",
+    onClick: () => dlg.close() }, icon("close"));
+  const paintCount = () => {
+    const left = items.filter(missing).length + Math.max(0, extra);
+    count.textContent = left ? `Faltam ${plural(left, "tarefa", "tarefas")}` : "Tudo completo";
+    goText.textContent = left ? "Baixar assim mesmo" : "Baixar o PDF";
+  };
+
+  const row = (x) => {
+    const el = h("div", { class: "review-row pdf-row", "data-id": String(x.id) });
+    const paint = () => {
+      clear(el);
+      const chip = projectChip({ project_name: x.project, project_color: x.project_color, project_icon: x.project_icon });
+      const tags = [h("span", { class: "chip", text: `concluída ${shortDay(x.done_date)}` })];
+      if (!missing(x)) tags.push(h("span", { class: "chip pdf-done", text: "completa" }));
+      else {
+        if (!x.minutes) tags.push(h("span", { class: "chip", text: "sem tempo" }));
+        if (!x.resolution) tags.push(h("span", { class: "chip", text: "sem como resolveu" }));
+      }
+      el.append(h("div", { class: "review-t" }, h("span", { class: "review-title", text: x.title }),
+        h("span", { class: "card-meta" }, chip, ...tags)));
+      if (!missing(x)) return;
+      const fill = h("div", { class: "pdf-fill" });
+      let mins = null, res = null;
+      if (!x.minutes) {
+        mins = h("input", { type: "number", min: "1", max: "1440", inputmode: "numeric", placeholder: "min",
+          "aria-label": `Minutos em ${x.title}` });
+        const quick = MINS.map((n) => h("button", { type: "button", class: "btn btn-sm btn-ghost", "aria-pressed": "false",
+          text: `${n} min`, onClick: (ev) => {
+            mins.value = String(n);
+            for (const b of quick) b.setAttribute("aria-pressed", String(b === ev.currentTarget));
+          } }));
+        mins.addEventListener("input", () => { for (const b of quick) b.setAttribute("aria-pressed", String(b.textContent === `${mins.value} min`)); });
+        fill.append(h("div", { class: "pdf-mins", role: "group", "aria-label": `Tempo de ${x.title}` },
+          h("span", { class: "field-label", text: "Tempo" }), ...quick, mins));
+      }
+      if (!x.resolution) {
+        res = h("input", { type: "text", maxlength: "1000", placeholder: "Como resolveu (ex.: troquei o cabo e testei)",
+          "aria-label": `Como resolveu: ${x.title}` });
+        res.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); save.click(); } });
+        fill.append(res);
+      }
+      const save = h("button", { type: "button", class: "btn btn-sm btn-primary", text: "Salvar", onClick: async () => {
+        const n = mins && mins.value ? Number(mins.value) : null;
+        const text = res ? res.value.trim() : "";
+        if (!n && !text) { (mins || res).focus(); return; }
+        if (n !== null && !(n >= 1 && n <= 1440)) { toast("Tempo de 1 a 1440 minutos.", { error: true }); mins.focus(); return; }
+        save.disabled = true;
+        try {
+          // O tempo vai no dia da conclusão (conta no mesmo mês do PDF).
+          if (n) { await api.post(`/worklog/${x.id}/time`, { minutes: n, day: x.done_date }); x.minutes = n; changed = true; }
+          if (text) { await api.patch(`/worklog/${x.id}`, { resolution: text }); x.resolution = true; changed = true; }
+          paint();
+          paintCount();
+          // O foco segue para a próxima que falta (ou para o botão de baixar).
+          const next = box.querySelector(".pdf-row input");
+          (next || go).focus();
+        } catch (e) { save.disabled = false; errorToast(e, "Não foi possível salvar."); }
+      } });
+      fill.append(h("div", { class: "review-inline" }, save));
+      el.append(h("div", { class: "review-acts" }, fill));
+    };
+    paint();
+    return el;
+  };
+
+  const paintPage = () => {
+    clear(box);
+    const { rows, page: p } = pageSlice(items, page, PDF_PAGE);
+    page = p;
+    box.append(...rows.map(row));
+    if (extra > 0 && page === Math.ceil(items.length / PDF_PAGE))
+      box.append(h("p", { class: "review-res", text: `e mais ${extra}: complete estas e abra de novo para ver as outras.` }));
+    const nav = pager({ page, total: items.length, size: PDF_PAGE, label: "tarefas para completar", compact: true,
+      onPage: (n) => { page = n; paintPage(); }, focus: title });
+    if (nav) box.append(nav);
+  };
+
+  go.addEventListener("click", () => { dlg.close(); download(); });
+  const dlg = modal(h("div", { class: "review-form" }, close, title,
+    h("p", { class: "review-intro", text: "O PDF mostra o tempo e o como resolveu de cada tarefa. Estas concluídas do mês estão sem um deles: complete o que lembrar, ou baixe assim mesmo." }),
+    count,
+    h("div", { class: "review-body" }, box),
+    h("div", { class: "dialog-actions" },
+      h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }), go)));
+  dlg.classList.add("review-dialog", "pdf-dialog");
+  dlg.addEventListener("close", () => { if (changed) reload().catch(() => {}); });
+  paintCount();
+  paintPage();
+  (box.querySelector("input") || title).focus();
+}
+
+const shortDay = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 
 function card(title, sub, ...body) {
   return h("section", { class: "chart-card mes-card" },
