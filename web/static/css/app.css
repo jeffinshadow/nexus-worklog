@@ -1633,12 +1633,14 @@ dialog.review-dialog { position: relative; }
 .pdf-fill { display: flex; flex-direction: column; gap: 8px; width: 100%; }
 .pdf-mins { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .pdf-mins input[type=number] { width: 96px; min-height: 44px; }
-.pdf-fill input[type=text] { width: 100%; min-height: 44px; }
+.pdf-fill input[type=text] { min-height: 44px; }
 .pdf-fill .field-label { font-size: var(--type-body-s); color: var(--on-surface-variant); }
 .pdf-done { color: var(--on-success-container); background: var(--success-container); }
 .handoff-first { margin-top: 12px; }
 .handoff-first .btn { min-height: 44px; }
 .mes-incomplete { margin: 0; font-size: var(--type-body-s); color: var(--on-surface-variant); display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.mes-incomplete .btn-text { color: var(--primary); }
+@media (max-width: 560px) { .mes-incomplete .btn { margin-left: -12px; } }  /* quebrou a linha: o texto do botão alinha com a frase */
 @media (max-width: 560px) {
   .review-acts { width: 100%; }
   .review-acts.review-choices { display: grid; grid-template-columns: 1fr 1fr; }  /* as 4 escolhas em 2x2, mesma largura */

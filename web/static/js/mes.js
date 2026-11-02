@@ -243,7 +243,6 @@ function beforePdf(ov, mes, download, reload) {
         res = h("input", { type: "text", maxlength: "1000", placeholder: "Como resolveu (ex.: troquei o cabo e testei)",
           "aria-label": `Como resolveu: ${x.title}` });
         res.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); save.click(); } });
-        fill.append(res);
       }
       const save = h("button", { type: "button", class: "btn btn-sm btn-primary", text: "Salvar", onClick: async () => {
         const n = mins && mins.value ? Number(mins.value) : null;
@@ -262,7 +261,9 @@ function beforePdf(ov, mes, download, reload) {
           (next || go).focus();
         } catch (e) { save.disabled = false; errorToast(e, "Não foi possível salvar."); }
       } });
-      fill.append(h("div", { class: "review-inline" }, save));
+      // O Salvar fica na linha do como resolveu (ou, sem ele, ao lado do tempo).
+      if (res) fill.append(h("div", { class: "review-inline" }, res, save));
+      else fill.querySelector(".pdf-mins").append(save);
       el.append(h("div", { class: "review-acts" }, fill));
     };
     paint();
