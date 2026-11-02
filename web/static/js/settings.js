@@ -395,26 +395,21 @@ async function notices(push) {
     catch (e) { errorToast(e, "Não foi possível enviar."); }
     finally { setTimeout(() => { testWeek.disabled = false; }, 4000); }
   });
-  const KIND_PT = { morning: "seu dia", evening: "fim do dia", weekly: "semana", test: "teste" };
-  const recent = p.recent.filter((r) => r.ok !== null || r.error !== "nada a avisar");
+  // Só um alerta, e só quando o último envio falhou (o detalhe está em Admin › Saúde do Nexus).
+  const last = p.recent.find((r) => r.ok !== null || r.error !== "nada a avisar");
+  const failedMail = last && last.ok === false
+    ? warnBox(`O último e-mail não saiu (${dateTime(last.sent_at)}). Quem administra pode ver em Saúde do Nexus.`) : null;
   const mailPanel = h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Avisos por e-mail" })),
       h("p", { class: "help" }, "Enviados para ", h("strong", { class: "mono", text: p.email }),
         ". Sem rastreamento de abertura ou de cliques; só sai e-mail quando há algo a avisar."),
       p.mail_configured ? null : warnBox("O envio de e-mail ainda não está configurado neste servidor. Você pode deixar tudo escolhido; os avisos começam quando ele for ligado."),
-      mailRow, weeklyExtra,
+      failedMail, mailRow, weeklyExtra,
       h("label", { class: "check-line notice-titles" }, titles, h("span", { text: "Mostrar os títulos das tarefas no e-mail (desligado: só os números)" })),
       h("div", { class: "row-actions" }, test, testWeek));
   // Qualquer escolha dos dois painéis (a cópia, ao sair do campo) grava.
   for (const panel of [push, mailPanel]) panel.addEventListener("change", (e) => { if (e.target.matches("input, select")) save(); });
-  return h("div", { class: "settings-grid" },
-    push, mailPanel,
-    recent.length ? h("section", { class: "panel" },
-      h("div", { class: "panel-head" }, h("h2", { text: "Últimos envios" })),
-      ...recent.map((r) => h("div", { class: "token-row" },
-        h("span", { class: "token-name", text: `${KIND_PT[r.kind] || r.kind} · ${r.ref_date.split("-").reverse().slice(0, 2).join("/")}` }),
-        h("span", { class: "chip " + (r.ok ? "done" : "late"), text: r.ok ? "enviado" : "falhou" }),
-        h("span", { class: "token-meta", text: r.ok ? dateTime(r.sent_at) : (r.error || "") })))) : null);
+  return h("div", { class: "settings-grid" }, push, mailPanel);
 }
 
 // -------------------------------------------------------------- calendário --
@@ -725,8 +720,7 @@ async function webhooksPanel(rerender) {
       form),
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Meus webhooks" }), h("span", { class: "count", text: String(list.filter((w) => w.active).length) + " ativos" })),
-      ...rows),
-    recipesPanel());
+      ...rows, recipesLine()));
 }
 
 // Os eventos que dá para marcar (os nomes do histórico). "Tudo" e "… : tudo" cobrem os de dentro.
@@ -823,18 +817,10 @@ function editWebhook(w, rerender) {
   setTimeout(() => url.focus(), 0);
 }
 
-// Receitas prontas (no site): avisos e planilha usando o webhook e a API, sem conector para produto.
-function recipesPanel() {
-  const base = "https://shadow.tec.br/nexus-api";
-  const link = (hash, text) => h("a", { href: `${base}#${hash}`, target: "_blank", rel: "noopener noreferrer", text });
-  return h("section", { class: "panel" },
-    h("div", { class: "panel-head" }, h("h2", { text: "Receitas prontas" })),
-    h("p", { class: "help", text: "Passo a passo com o código mínimo (que confere a assinatura). O Nexus só avisa o endereço; quem fala com o chat, o e-mail ou a planilha é a sua automação ou um script curto. Depois de criar o webhook, use Testar para ver se o aviso chega." }),
-    h("ol", { class: "help" },
-      h("li", {}, link("r-telegram", "Avisar um grupo do Telegram"), " quando uma tarefa for concluída ou ficar aguardando."),
-      h("li", {}, link("r-email", "Mandar um e-mail"), " a alguém quando algo acontecer."),
-      h("li", {}, link("r-planilha", "Registrar cada tarefa concluída numa planilha"), " (Google Sheets)."),
-      h("li", {}, link("r-alerta", "Alerta do monitoramento vira tarefa"), ", sem duplicar.")));
+// Receitas prontas ficam no site (a página da API tem as completas): só um link.
+function recipesLine() {
+  return h("p", { class: "help" }, h("a", { href: "https://shadow.tec.br/nexus-api#r-alerta", target: "_blank", rel: "noopener noreferrer", text: "Receitas na página da API" }),
+    ": avisar o Telegram, mandar e-mail, registrar numa planilha, alerta que vira tarefa.");
 }
 
 function showNewSecret(res) {
@@ -881,7 +867,9 @@ function aiHelp() {
       h("p", { class: "help", text: "O aplicativo e o site do Gemini (gemini.google.com), o ChatGPT e o Claude no navegador (claude.ai) ainda não ligam no Nexus: os conectores deles pedem um tipo de login (OAuth) que o Nexus não tem. Do Gemini, só o Gemini CLI funciona; nos outros, use um dos programas acima ou a API." })),
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "O que a IA pode fazer" })),
-      h("p", { class: "help", text: "Ver o dia e como foi qualquer período (tempo por projeto), buscar, criar e editar tarefas (com projeto, prioridade e tempo apontado), concluir, criar e marcar rotinas (até 7 dias atrás), anotar progresso, montar checklist, apontar tempo e usar o cronômetro, montar projetos e objetivos, fazer a passagem de turno, ver vencimentos, achar como você resolveu algo parecido antes, consultar o histórico e desfazer um engano dela. Pelo MCP ela não exclui tarefas, rotinas, projetos nem objetivos. Mas a chave “ler e registrar” também vale para a API, que exclui (tudo volta pelo Histórico), e uma IA com terminal no seu computador (Claude Code, Gemini CLI) consegue usar a API. Se você só quer consultas, crie uma chave “só leitura”: com ela, a IA apenas consulta." }),
+      h("p", { class: "help", text: "Ver o dia e os períodos, buscar, criar, editar e concluir tarefas e rotinas, anotar, apontar tempo, montar projetos e objetivos e consultar ou desfazer o histórico." }),
+      h("p", { class: "help", text: "Pelo MCP ela não exclui nada; a chave “ler e registrar” também vale para a API, que exclui (volta pelo Histórico). Para só consultar, crie uma chave “só leitura”." }),
+      h("p", { class: "help" }, h("a", { href: "https://shadow.tec.br/nexus-api#mcp", target: "_blank", rel: "noopener noreferrer", text: "Lista completa na documentação" }), "."),
       h("p", { class: "dialog-note", text: "API REST direta (scripts, automações):" }),
       codeBox(`curl -H "Authorization: Bearer nxs_SUA_CHAVE" ${location.origin}/api/board`)),
     h("section", { class: "panel" },
