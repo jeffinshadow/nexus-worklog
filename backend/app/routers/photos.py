@@ -21,6 +21,7 @@ from psycopg.errors import UniqueViolation
 from pydantic import BaseModel, Field
 
 from .. import audit, db
+from ..config import config
 from ..visibility import visible_sql
 from ..deps import web_active, web_active_csrf
 from .board import check_board_day
@@ -59,7 +60,7 @@ def _decode(text: str, limit: int, what: str) -> tuple[bytes, str]:
 
 
 def _quota(uid: int, extra: int) -> None:
-    quota = db.query_one("SELECT photo_quota_mb FROM app_settings WHERE id = 1")["photo_quota_mb"] * 1024 * 1024
+    quota = config.PHOTO_QUOTA_MB * 1024 * 1024
     used = db.query_one("SELECT COALESCE(sum(bytes), 0)::bigint AS n FROM photos WHERE user_id = %s AND deleted_at IS NULL",
                         (uid,))["n"]
     if used + extra > quota:

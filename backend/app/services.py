@@ -37,13 +37,13 @@ def week_start(d: date) -> date:
 DEFAULT_WORK_DAYS = 62
 # Marcação retroativa de recorrentes: até RETRO_DAYS dias antes de hoje.
 RETRO_DAYS = 7
+TASK_RETRO_DAYS = 60
 
 
 def task_retro_days() -> int:
-    """Até quantos dias para trás uma tarefa pode ser criada ou concluída
-    (configurável pelo admin; a linha id=1 sempre existe: sql/010)."""
-    row = db.query_one("SELECT retro_days FROM app_settings WHERE id = 1")
-    return row["retro_days"] if row else 60
+    """Até quantos dias para trás uma tarefa pode ser criada ou concluída: fixo em 60
+    (saiu do Admin; a coluna app_settings.retro_days fica no banco, obsoleta e ignorada)."""
+    return TASK_RETRO_DAYS
 
 
 def work_mask(user_id: int) -> int:

@@ -11,6 +11,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS role_notice JSONB;
 
 -- Admin › Para empresas: tirar o "Solicitar convite" da tela de login.
 -- Desligado (padrão) = como sempre: aparece quando há e-mail configurado.
+-- OBSOLETA (sem uso desde a 042; a coluna sai numa versão maior, sem DROP antes disso).
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS invite_request_off BOOLEAN NOT NULL DEFAULT false;
 
 -- Origens do pedido de convite sem nomes de fora ("site da ShadowTec", "GitHub"):

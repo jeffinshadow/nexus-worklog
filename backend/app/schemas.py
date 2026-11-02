@@ -102,9 +102,11 @@ class RolesIn(BaseModel):
 
 
 class AppSettingsIn(BaseModel):
-    retro_days: int = Field(ge=1, le=366)  # tarefas: criar/concluir até N dias atrás
     support_contact: Optional[str] = Field(default=None, max_length=200)  # "Ajuda": a quem recorrer
-    photo_quota_mb: Optional[int] = Field(default=None, ge=0, le=100000)  # fotos por pessoa (MB); ausente = mantém
+    # Obsoletos (até a 3.0): aceitos e ignorados. O limite retroativo é fixo (60 dias) e a cota de fotos
+    # vem da variável PHOTO_QUOTA_MB.
+    retro_days: Optional[int] = None
+    photo_quota_mb: Optional[int] = None
 
 
 class DeleteUserIn(BaseModel):
@@ -355,12 +357,22 @@ class PushDeviceIn(BaseModel):
 
 
 class PushPrefsIn(BaseModel):
-    routine: bool = True
-    follow_up: bool = True
-    deadline: bool = True
-    assigned: bool = True
-    morning_hour: int = Field(default=8, ge=0, le=23)
+    """Notificações nos aparelhos: um só interruptor (`enabled`) liga ou desliga tudo (rotina e lembrete
+    na hora, cobrar, prazos, atribuídas). Os campos por tipo e morning_hour são obsoletos (até a 3.0):
+    aceitos; sem `enabled`, vale "ligado se algum tipo estava ligado"."""
+    enabled: Optional[bool] = None
     hide_content: bool = False
+    routine: Optional[bool] = None
+    follow_up: Optional[bool] = None
+    deadline: Optional[bool] = None
+    assigned: Optional[bool] = None
+    morning_hour: Optional[int] = None
+
+    def is_on(self) -> bool:
+        if self.enabled is not None:
+            return self.enabled
+        old = [v for v in (self.routine, self.follow_up, self.deadline, self.assigned) if v is not None]
+        return any(old) if old else True
 
 
 class SnoozeIn(BaseModel):
@@ -378,6 +390,7 @@ class InviteRequestIn(BaseModel):
     source_note: Optional[str] = Field(default=None, max_length=120)
     reason: str = Field(min_length=3, max_length=600)
     website: Optional[str] = Field(default=None, max_length=200)  # armadilha: gente não vê, robô preenche
+    form_t: Optional[str] = Field(default=None, max_length=100)   # carimbo de GET /auth/invite-request/form (3 s a 1 h)
 
 
 class TokenIn(BaseModel):
@@ -449,20 +462,15 @@ class ProfileIn(BaseModel):
 
 class AssistantIn(BaseModel):
     enabled: bool = True
-    idle_on: bool = True
-    idle_minutes: int = Field(default=30, ge=5, le=480)
-    idle_start: int = Field(default=480, ge=0, le=1439)  # minutos do dia
-    idle_end: int = Field(default=1080, ge=1, le=1440)
-    reopen_on: bool = True                                 # fala fechada no X volta sozinha
-    reopen_minutes: int = Field(default=10, ge=1, le=240)
-    summary_from: int = Field(default=840, ge=0, le=1439)  # resumo do dia sem nada concluído: a partir de (min do dia)
-    stale_days: int = Field(default=5, ge=1, le=60)        # aguardando há N dias sem data de cobrança: o assistente avisa
-
-    @model_validator(mode="after")
-    def _janela(self):
-        if self.idle_start >= self.idle_end:
-            raise ValueError("o início da janela precisa ser antes do fim")
-        return self
+    # Obsoletos (até a 3.0): aceitos e ignorados; os valores são fixos (people.ASSISTANT_DEFAULTS).
+    idle_on: Optional[bool] = None
+    idle_minutes: Optional[int] = None
+    idle_start: Optional[int] = None
+    idle_end: Optional[int] = None
+    reopen_on: Optional[bool] = None
+    reopen_minutes: Optional[int] = None
+    summary_from: Optional[int] = None
+    stale_days: Optional[int] = None
 
 
 def _not_past(v):
@@ -768,18 +776,25 @@ class TimeUpdate(BaseModel):
     note: Optional[str] = Field(default=None, max_length=200)
 
 
-# Avisos por e-mail: os padrões daqui valem também quando o usuário ainda não
-# salvou nada (notify.get_prefs).
+# Avisos por e-mail: um só interruptor (`email_on`) liga Seu dia, Antes de encerrar e o Resumo da semana.
+# Os campos por tipo e os horários são obsoletos (até a 3.0): aceitos; sem `email_on`, vale "ligado se
+# algum tipo estava ligado". Valem também os padrões daqui quando a pessoa ainda não salvou nada.
 class PrefsIn(BaseModel):
-    morning: bool = False
-    morning_hour: int = Field(default=8, ge=0, le=23)
-    evening: bool = False
-    evening_hour: int = Field(default=17, ge=0, le=23)
-    weekly: bool = False
-    weekly_hour: int = Field(default=8, ge=0, le=23)
+    email_on: Optional[bool] = None
     show_titles: bool = True
     weekly_pdf: bool = False                 # o relatório da semana em PDF, anexado
     weekly_cc: Optional[EmailStr] = None     # cópia do resumo semanal (gestor, cliente)
+    morning: Optional[bool] = None           # obsoletos
+    morning_hour: Optional[int] = None
+    evening: Optional[bool] = None
+    evening_hour: Optional[int] = None
+    weekly: Optional[bool] = None
+    weekly_hour: Optional[int] = None
+
+    def is_on(self) -> bool:
+        if self.email_on is not None:
+            return self.email_on
+        return any(v for v in (self.morning, self.evening, self.weekly))
 
 
 class FeedIn(BaseModel):

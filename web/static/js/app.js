@@ -24,7 +24,7 @@ import { session } from "./session.js";
 import { initTimer, stopTimer, timerState } from "./timer.js";
 import { openWorklog } from "./board.js";
 import { openTask, closeSidePanel } from "./task.js";
-import { startTour, visibilityNotice, assignNotice, roleNotice } from "./tour.js";
+import { startTour, changesNotice } from "./tour.js";
 import { openReview } from "./review.js";
 import { modal, busy, initTooltips, initRailPeek, syncRail, calmMotion, toast, singleKeysOn, repaintBadges } from "./ui.js";
 
@@ -240,7 +240,7 @@ function mountMore(el) {
       h("span", { class: "who-text" }, h("span", { class: "who-name", text: me.name, title: me.name }), h("span", { class: "who-email", text: me.email, title: me.email }))),
     h("div", { class: "menu-list" },
       ...items.map(([v, ic, label]) => h("a", { href: "#/" + v, "data-view": v }, icon(ic), h("span", { text: label }))),
-      // A revisão guiada da semana (também no card "Esta semana" do Hoje).
+      // A revisão guiada da semana (também no convite do assistente, no último dia útil).
       has("user") ? h("button", { type: "button", class: "nav-btn", onClick: () => openReview() }, icon("check"), h("span", { text: "Revisão da semana" })) : null,
       // Quem vai para o campo: com texto e à vista (no Hoje é só um ícone, lá embaixo).
       has("user") ? h("button", { type: "button", class: "nav-btn", onClick: () => prepareButton().click() }, icon("download"), h("span", { text: "Deixar pronto para sem sinal" })) : null,
@@ -275,7 +275,7 @@ function showHelp(focus) {
       ...(has("viewer") ? [["Equipe", "Do papel “Vê a equipe”. Um painel para coordenar, não para comparar: os números da equipe somados (rotinas em dia, tarefas concluídas, horas, aguardando), o que precisa de atenção, o tempo por projeto e as pessoas em ordem alfabética. Tocar numa pessoa abre o mês e o quadro dela, só para ver. Entra só quem permitiu (cada pessoa decide em Configurações > Conta). No topo: Horas da equipe (CSV) e PDF."]] : []),
       ...(has("assigner") ? [["Atribuir (na Equipe)", "Do papel “Manda tarefas”. “Atribuir tarefa”, no alto da tela Equipe, manda uma tarefa para quem aceitou receber. Logo abaixo ficam as Tarefas que atribuí: enquanto ela está a fazer, você ainda altera ou cancela; depois, é da pessoa. Quem recebeu pode devolver com o motivo: aí você atribui de novo (a ela ou a outra pessoa) ou encerra."]] : []),
       ...(has("admin") ? [["Admin", "Convites e pedidos de convite, contas (senha, bloquear, excluir), papéis, configurações gerais e identidade visual."]] : []),
-      ["Configurações", user ? "A sua conta (dias úteis, projeto padrão, quem vê e quem manda tarefas), modelos, avisos, calendário e IA." : "A sua conta, e IA e API."],
+      ["Configurações", user ? "A sua conta (dias úteis, projeto padrão, quem vê e quem manda tarefas), avisos, calendário e IA." : "A sua conta, e IA e API."],
     ])),
     user ? sec("add", "Registro rápido (no Hoje)",
       h("p", { class: "help", text: "Escreva o que fez e aperte Enter. Marcadores opcionais no fim, em qualquer ordem:" }),
@@ -550,16 +550,8 @@ async function boot() {
   startQueue(route);  // sem sinal: a fila do aparelho vai quando a conexão voltar
   // Primeiro acesso: o tour guiado abre sozinho (uma vez; a Ajuda reabre).
   if (has("user") && !me.tour_done_at) setTimeout(() => startTour(me), 700);
-  // Avisos únicos, um depois do outro (o próximo abre quando o anterior fecha):
-  // quem já usava quando a administração ligou "Visível para quem gerencia" ou
-  // "Todos recebem de quem atribui", e papel ganho ou retirado (Admin › Contas › Papéis).
-  else setTimeout(async () => {
-    for (const [on, show] of [[me.visibility_notice, visibilityNotice], [me.assign_notice, assignNotice], [me.role_notice, roleNotice]]) {
-      if (!on) continue;
-      const dlg = await show(me);
-      if (dlg) await new Promise((ok) => dlg.addEventListener("close", ok, { once: true }));
-    }
-  }, 700);
+  // Avisos únicos (visibilidade, receber tarefas, papéis): um só diálogo, "O que mudou para você".
+  else if (me.visibility_notice || me.assign_notice || me.role_notice) setTimeout(() => changesNotice(me), 700);
 }
 
 boot();

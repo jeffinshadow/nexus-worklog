@@ -50,6 +50,7 @@ O backend lê tudo de `backend/app/config.py`; o compose repassa o `.env`. Valor
 | `SESSION_TTL_DAYS` | Prazo fixo da sessão, em dias | `7` |
 | `COOKIE_SECURE` | `true` exige HTTPS (cookie `__Host-session`); `false` só em teste local | `true` |
 | `APP_TZ` | Fuso que define "hoje", semana (começa no domingo) e mês, no backend e na tela | `America/Sao_Paulo` |
+| `PHOTO_QUOTA_MB` | Cota de fotos por pessoa, em MB (0 = sem fotos novas) | `500` |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | Servidor de e-mail. Sem `SMTP_HOST`, tudo que depende de e-mail fica desligado. Porta 465 = TLS direto, 587 = STARTTLS, outra (ex.: 1025 do Mailpit) = sem TLS | vazio / `465` |
 | `MAIL_FROM` | Remetente | `Nexus Worklog <nexus@localhost>` |
 | `APP_URL` | Endereço público do app, usado nos links dos e-mails (sem `/` no fim) | **`https://nexus.shadow.tec.br`: troque** |
@@ -137,8 +138,10 @@ a data de criação e o último acesso, e filtra por papel e situação.
 
 ## 7. Opções do Admin
 
-**Admin > Geral:** limite de **lançamento retroativo** (dias para trás; padrão 60), **contato de suporte** (texto
-mostrado à pessoa), **cota de fotos por pessoa** (MB; padrão 500) e a **Saúde do Nexus** (seção 8).
+**Admin > Geral:** **contato de suporte** (texto mostrado à pessoa) e a **Saúde do Nexus** (seção 8). Dois
+valores deixaram de ser opção da tela (2.0): o limite de **lançamento retroativo** é fixo em **60 dias** e a **cota
+de fotos por pessoa** vem da variável de ambiente `PHOTO_QUOTA_MB` (MB; padrão 500; 0 = ninguém envia fotos novas).
+Os campos `retro_days` e `photo_quota_mb` de `PUT /api/admin/settings` são obsoletos (aceitos e ignorados; saem na 3.0).
 
 **Admin > Identidade visual:** logo e as duas linhas do lockup (menu e login).
 

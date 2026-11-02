@@ -1,22 +1,15 @@
-"""Revisão semanal guiada e tarefa aguardando parada.
+"""Revisão semanal guiada.
 
 Revisão: no último dia útil da semana (domingo a sábado, a mesma do resumo do
 Hoje) o assistente convida, uma vez, para três passos curtos: o que fechou, o
 que ficou e o que vem. Nada é obrigatório; feita ou dispensada, o convite não
 volta naquela semana. O texto final reaproveita o formato da passagem de turno.
-
-Parada: tarefa aguardando há N dias (padrão 5, Configurações > Conta) sem dia
-combinado para cobrar. O Hoje pergunta se a pessoa quer marcar quando cobrar;
-o aviso da manhã (push/e-mail) só lembra no dia N e a cada 7 dias depois, para
-não virar cobrança diária.
 """
 from datetime import date, datetime, time, timedelta
 
 from . import db, people
 from .services import app_today, app_tz, get_board, is_work_day, week_start, work_mask
 
-STALE_DAYS = 5      # padrão de assistant_prefs.stale_days
-STALE_REPEAT = 7    # aviso da manhã: no dia N e de 7 em 7 dias depois
 NEXT_MAX = 3        # prioridades da próxima semana
 DONE_MAX = 100      # concluídas listadas na revisão
 
@@ -42,26 +35,6 @@ def waiting_days(t: dict, today: date) -> int:
     return max(0, (today - ts.astimezone(app_tz()).date()).days) if ts else 0
 
 
-def stale_days(uid: int) -> int:
-    return people.assistant_prefs(uid).get("stale_days") or STALE_DAYS
-
-
-def stale_waiting(abertas: list, today: date, n: int) -> list[dict]:
-    """Aguardando há n dias ou mais e sem dia para cobrar, da mais antiga à mais nova."""
-    out = [{"id": t["id"], "title": t["title"], "blocked_reason": t.get("blocked_reason"), "days": waiting_days(t, today)}
-           for t in abertas if t["status"] == "blocked" and not t.get("follow_up_on")]
-    return sorted((x for x in out if x["days"] >= n), key=lambda x: -x["days"])
-
-
-def stale_to_remind(abertas: list, today: date, n: int) -> list[dict]:
-    """O que o aviso da manhã lembra hoje: dia n, n+7, n+14..."""
-    return [x for x in stale_waiting(abertas, today, n) if (x["days"] - n) % STALE_REPEAT == 0]
-
-
-def stale_line(x: dict) -> str:
-    return f"«{x['title']}» está aguardando há {x['days']} dias. Quer marcar quando cobrar?"
-
-
 def state(uid: int, ws: date) -> dict:
     r = db.query_one("SELECT done_at, dismissed_at FROM week_reviews WHERE user_id = %s AND week_start = %s", (uid, ws))
     return dict(r) if r else {"done_at": None, "dismissed_at": None}
@@ -76,17 +49,13 @@ def mark(uid: int, column: str) -> dict:
 
 
 def hints(uid: int) -> dict:
-    """O que o assistente do Hoje precisa: convidar para a revisão? tarefas paradas?"""
+    """O que o assistente do Hoje precisa: convidar para a revisão?"""
     today = app_today()
     mask = work_mask(uid)
     ws, _ = week_bounds(today)
     st = state(uid, ws)
-    n = stale_days(uid)
-    abertas = db.query_all(  # só as aguardando: leve, o resumo do Hoje já pesa
-        """SELECT id, title, status, blocked_reason, blocked_at, follow_up_on FROM worklog_tasks
-            WHERE user_id = %s AND status = 'blocked'""", (uid,))
     return {"invite": review_day(today, mask) == today and not st["done_at"] and not st["dismissed_at"],
-            "reviewed": bool(st["done_at"]), "stale_days": n, "stale": stale_waiting(abertas, today, n)}
+            "reviewed": bool(st["done_at"])}
 
 
 def _task(t: dict, today: date) -> dict:
@@ -115,7 +84,6 @@ def week_review(uid: int) -> dict:
     open_ = [_task(t, today) for t in abertas if t["status"] != "blocked"]
     waiting = [_task(t, today) for t in abertas if t["status"] == "blocked"]
     st = state(uid, ws)
-    n = stale_days(uid)
     rd = review_day(today, mask)
     return {
         "today": today, "week_start": ws, "week_end": we, "review_day": rd, "is_review_day": rd == today,
@@ -124,7 +92,6 @@ def week_review(uid: int) -> dict:
                   "completed_at": t["completed_at"]} for t in done],
         "open": open_, "waiting": waiting,
         "suggestions": [t["id"] for t in open_[:NEXT_MAX]],
-        "stale_days": n, "stale": stale_waiting(abertas, today, n),
     }
 
 

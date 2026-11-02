@@ -50,6 +50,13 @@ def _app():
 
 
 @pytest.fixture(autouse=True)
+def _pedido_sem_tempo_minimo(monkeypatch):
+    """Os testes enviam pedidos de convite na hora; o tempo mínimo tem o seu próprio teste."""
+    import app.routers.invite_requests as ir
+    monkeypatch.setattr(ir, "form_ok", lambda token: True)
+
+
+@pytest.fixture(autouse=True)
 def _banco_limpo():
     existentes = {r["tablename"] for r in db.query_all(
         "SELECT tablename FROM pg_tables WHERE schemaname = 'public'")}

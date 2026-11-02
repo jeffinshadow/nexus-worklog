@@ -43,7 +43,7 @@ ALLOWED_SUFFIXES = (".push.apple.com", ".notify.windows.com")
 STEPS = (0, 10, 30)       # minutos depois do horário da rotina
 LATE_MIN = 15             # passou disso do disparo (backend fora do ar): não manda mais
 MORNING_CATCH_UP_H = 2    # como nos e-mails: "bom dia" às 15h não serve
-DEFAULT_PREFS = {"routine": True, "follow_up": True, "deadline": True, "assigned": True,
+DEFAULT_PREFS = {"enabled": True, "routine": True, "follow_up": True, "deadline": True, "assigned": True,
                  "morning_hour": 8, "hide_content": False}
 
 
@@ -153,7 +153,11 @@ def send(uid: int, message: dict, urgency: str = "normal", ttl: int = 3600, only
 def prefs(uid: int) -> dict:
     row = db.query_one("""SELECT routine, follow_up, deadline, assigned, morning_hour, hide_content
                             FROM push_prefs WHERE user_id = %s""", (uid,))
-    return dict(row) if row else dict(DEFAULT_PREFS)
+    if not row:
+        return dict(DEFAULT_PREFS)
+    # Um interruptor só: ligado se algum dos tipos antigos estava ligado (rotina e lembrete na hora seguem).
+    on = bool(row["routine"] or row["follow_up"] or row["deadline"] or row["assigned"])
+    return {**row, "enabled": on, "routine": on, "follow_up": on, "deadline": on, "assigned": on}
 
 
 # ------------------------------------------------------------- mensagens --
@@ -283,17 +287,6 @@ def _morning(uid: int, p: dict, now: datetime, mask: int) -> list[str]:
             title = "Cobrar hoje" if len(cobrar) == 1 else f"Cobrar hoje: {len(cobrar)} tarefas"
             send(uid, _msg(title, body, "/#/tarefas", f"cobrar-{today}", "cobrar", hide, "Cobranças de hoje"))
             done.append("cobrar")
-        # Aguardando há N dias sem dia para cobrar: no dia N e de 7 em 7 (não todo dia).
-        from .review import stale_days, stale_line, stale_to_remind
-        paradas = stale_to_remind(abertas, today, stale_days(uid))
-        if paradas and _claim(uid, "parada", "manha", today):
-            if len(paradas) == 1:
-                title, body = "Aguardando faz tempo", stale_line(paradas[0])
-            else:
-                title = f"{len(paradas)} tarefas aguardando faz tempo"
-                body = ", ".join(x["title"] for x in paradas[:3]) + ("…" if len(paradas) > 3 else "") + ". Quer marcar quando cobrar?"
-            send(uid, _msg(title, body, "/#/hoje", f"parada-{today}", "parada", hide, "Tarefa aguardando"))
-            done.append("parada")
     return done
 
 

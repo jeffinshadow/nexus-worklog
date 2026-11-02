@@ -72,7 +72,7 @@ def admin_health(admin=Depends(require_admin)):
                   max(last_ok_at) AS last_ok_at FROM push_subscriptions""")
     vapid = bool(db.query_one("SELECT 1 FROM app_secrets WHERE name = 'vapid_private_pem'"))
 
-    quota_mb = db.query_one("SELECT photo_quota_mb FROM app_settings WHERE id = 1")["photo_quota_mb"]
+    quota_mb = config.PHOTO_QUOTA_MB
     photos = db.query_one(
         """SELECT COALESCE(sum(n), 0)::bigint AS used, COALESCE(max(n), 0)::bigint AS top,
                   count(*) FILTER (WHERE %s > 0 AND n >= %s)::int AS near

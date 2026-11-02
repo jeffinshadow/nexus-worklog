@@ -1,9 +1,9 @@
-// Configurações: uma página só, com seções (Conta, Avisos, Modelos, Calendário, IA e API) e atalhos no topo.
+// Configurações: uma página só, com seções (Conta, Avisos, Calendário, IA e API) e atalhos no topo.
 // Cada campo salva ao mudar (sem botão Salvar). Links antigos (#/config?aba=avisos) rolam até a seção.
 import { api } from "./api.js";
 import { h, icon, clear, dateTime, field, matchPasswords } from "./dom.js";
 import { codeBox, confirmDialog, errorToast, modal, toast, warnBox, busy, singleKeysOn, setSingleKeys, calmMotion, hashPage, pager, pageSlice, setHashPage } from "./ui.js";
-import { defaultProjectPanel, fillProjectSelect } from "./projects.js";
+import { defaultProjectPanel } from "./projects.js";
 import { avatar, squarePhoto } from "./profile.js";
 import { pushPanel } from "./notificacoes.js";
 import { cancelled, register as registerPasskey, supported as passkeySupported } from "./passkey.js";
@@ -11,7 +11,6 @@ import { cancelled, register as registerPasskey, supported as passkeySupported }
 const SECTIONS = [
   ["conta", "Conta"],
   ["avisos", "Avisos"],
-  ["modelos", "Modelos"],
   ["calendario", "Calendário"],
   ["ia", "IA e API"],
 ];
@@ -102,7 +101,6 @@ export async function mount(root, ctx) {
       : [profilePanel(ctx.me, again), themePanel(ctx.me), account(ctx.me), await otherDevicesPanel(), await passkeysPanel(again)],
     // Notificações dos aparelhos primeiro; e-mail depois.
     avisos: async (again) => [...(await notices(await pushPanel(again))).childNodes],
-    modelos: async (again) => [...(await templatesPanel(again)).childNodes],
     calendario: async (again) => [...(await calendarFeed(again)).childNodes],
     ia: async (again) => [...(await tokens(again)).childNodes, ...aiHelp(), ...(await webhooksPanel(again)).childNodes],
   };
@@ -228,152 +226,25 @@ function profilePanel(me, rerender) {
 
 // ------------------------------------------------------------- assistente --
 
-const hhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
-const toMin = (v) => { const [a, b] = v.split(":").map(Number); return a * 60 + (b || 0); };
-
 function assistantPanel(me) {
-  const a = me.assistant;
+  // Um só interruptor; o resto (lembrete de inatividade, reabrir fala fechada) é fixo.
   const falas = h("input", { type: "checkbox" });
-  falas.checked = a.enabled;
-  const idle = h("input", { type: "checkbox" });
-  idle.checked = a.idle_on;
-  const mins = h("input", { type: "number", min: "5", max: "480", step: "5", value: String(a.idle_minutes), class: "input-sm", "aria-label": "Minutos sem registro" });
-  const from = h("input", { type: "time", value: hhmm(a.idle_start), class: "input-sm", "aria-label": "Início do horário" });
-  const to = h("input", { type: "time", value: hhmm(Math.min(a.idle_end, 1439)), class: "input-sm", "aria-label": "Fim do horário" });
-  const reopen = h("input", { type: "checkbox" });
-  reopen.checked = a.reopen_on;
-  const reopenMins = h("input", { type: "number", min: "1", max: "240", value: String(a.reopen_minutes), class: "input-sm", "aria-label": "Minutos até reabrir" });
-  const summaryFrom = h("input", { type: "time", value: hhmm(a.summary_from ?? 840), class: "input-sm", "aria-label": "Horário do resumo do dia" });
-  const staleDays = h("input", { type: "number", min: "1", max: "60", value: String(a.stale_days ?? 5), class: "input-sm", "aria-label": "Dias aguardando sem data de cobrança" });
-  const sync = () => {
-    for (const el of [mins, from, to]) el.disabled = !idle.checked;
-    reopen.disabled = !falas.checked;
-    summaryFrom.disabled = !falas.checked;
-    staleDays.disabled = !falas.checked;
-    reopenMins.disabled = !falas.checked || !reopen.checked;
-  };
-  for (const el of [idle, falas, reopen]) el.addEventListener("change", sync);
-  sync();
-  // Salva a cada mudança (o número e a hora, ao sair do campo); o painel inteiro vai junto.
-  const err = errorLine();
-  const nums = [mins, reopenMins, staleDays];
-  const save = saver(async () => {
-    const bad = nums.find((el) => !el.disabled && !el.checkValidity());
-    if (bad) { fieldError(err, bad, `Use um número entre ${bad.min} e ${bad.max}.`); return; }
-    const body = { enabled: falas.checked, idle_on: idle.checked, idle_minutes: Number(mins.value),
-      idle_start: toMin(from.value || "08:00"), idle_end: toMin(to.value || "18:00"),
-      reopen_on: reopen.checked, reopen_minutes: Number(reopenMins.value),
-      summary_from: Math.min(toMin(summaryFrom.value || "14:00"), 1439),
-      stale_days: Math.min(Math.max(Number(staleDays.value) || 5, 1), 60) };
-    if (body.idle_start >= body.idle_end) { fieldError(err, [from, to], "O início do horário precisa ser antes do fim."); return; }
-    fieldError(err, [...nums, from, to], "");
+  falas.checked = me.assistant.enabled;
+  const guard = lockWhileSaving(falas);
+  falas.addEventListener("change", () => guard(async () => {
     try {
-      meChanged(me, { assistant: await api.put("/me/assistant", body) });
+      meChanged(me, { assistant: await api.put("/me/assistant", { enabled: falas.checked }) });
       toast("Assistente salvo.");
-    } catch (e) { errorToast(e, "Não foi possível salvar o assistente."); }
-  }, 300);
-  for (const el of [falas, idle, reopen, mins, from, to, reopenMins, summaryFrom, staleDays]) el.addEventListener("change", save);
+    } catch (e) { falas.checked = !falas.checked; errorToast(e, "Não foi possível salvar o assistente."); }
+  }));
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Assistente" })),
     h("div", { class: "notice-row" },
       h("label", { class: "notice-main" }, falas, h("span", {}, h("strong", { text: "Falas do assistente" }),
-        h("small", { text: "A saudação e o resumo do Hoje, a prévia do PDF em Meu mês, e as notas em Tarefas e Busca. Tudo calculado a partir dos seus próprios registros." })))),
-    h("div", { class: "idle-config" },
-      h("label", {}, reopen, "Reabrir uma fala fechada no X depois de", reopenMins, "min"),
-      h("small", { class: "muted", text: "Desligado: a fala fechada só volta ao recarregar a página." })),
-    h("div", { class: "idle-config" },
-      h("label", {}, "Resumo do dia a partir de", summaryFrom),
-      h("small", { class: "muted", text: "Ou antes, assim que a primeira tarefa ou rotina do dia for concluída." })),
-    h("div", { class: "idle-config" },
-      h("label", {}, "Perguntar quando cobrar após", staleDays, "dias aguardando"),
-      h("small", { class: "muted", text: "Só para tarefas aguardando sem dia marcado para cobrar." })),
-    h("div", { class: "notice-row" },
-      h("label", { class: "notice-main" }, idle, h("span", {}, h("strong", { text: "Lembrete quando passar um tempo sem registro" }),
-        h("small", { text: "Só com o app aberto, nos seus dias úteis e dentro do horário abaixo. Vale registro de qualquer origem: app, celular ou IA." })))),
-    h("div", { class: "idle-config" },
-      h("label", {}, "Avisar após", mins, "min sem registro"),
-      h("label", {}, "entre", from, "e", to)),
-    err);
+        h("small", { text: "A saudação e os avisos do Hoje, o lembrete quando passa um tempo sem registro, a prévia do PDF em Meu mês e as notas em Tarefas e Busca. Tudo calculado a partir dos seus próprios registros." })))));
 }
 
-// ---------------------------------------------------------------- modelos --
-
-const PRIO = [["1", "Alta"], ["2", "Normal"], ["3", "Baixa"]];
-
-const TEMPLATES_PAGE = 15; // linha curta
 const TOKENS_OFF_PAGE = 10; // chaves revogadas e vencidas, recolhidas
-
-async function templatesPanel(rerender) {
-  const list = await api.get("/templates");
-  const rowOf = (t) => h("div", { class: "token-row" },
-    h("span", { class: "token-name", text: t.name }),
-    h("div", { class: "actions" },
-      // Lápis e lixeira, como nas outras listas (Vencimentos, checklist).
-      h("button", { type: "button", class: "icon", title: "Editar", "aria-label": "Editar " + t.name, onClick: () => editTemplate(t, rerender) }, icon("edit")),
-      h("button", { type: "button", class: "icon", title: "Excluir", "aria-label": "Excluir " + t.name, onClick: async () => {
-        if (!(await confirmDialog({ title: `Excluir o modelo “${t.name}”?`, text: "As tarefas já criadas com ele continuam.", confirm: "Excluir", danger: true }))) return;
-        try { await api.del(`/templates/${t.id}`); toast("Modelo excluído."); rerender(); } catch (e) { errorToast(e); }
-      } }, icon("trash"))),
-    h("span", { class: "token-meta", text: [t.title, t.checklist.length ? `${t.checklist.length} itens no checklist` : "sem checklist", t.after_hours ? "plantão" : ""].filter(Boolean).join(" · ") }));
-  const box = h("div");
-  let page = hashPage("p");
-  const paint = () => {
-    clear(box);
-    if (!list.length) { box.append(h("p", { class: "empty", text: "Nenhum modelo ainda. Salve como modelo uma tarefa que se repete (com checklist) para criá-la em um toque." })); return; }
-    const slice = pageSlice(list, page, TEMPLATES_PAGE);
-    page = slice.page;
-    setHashPage("p", page, "config");
-    box.append(...slice.rows.map(rowOf));
-    const nav = pager({ page, total: list.length, size: TEMPLATES_PAGE, label: "modelos",
-      onPage: (n) => { page = n; paint(); }, focus: () => box.closest(".panel")?.querySelector("h2, h3") });
-    if (nav) box.append(nav);
-  };
-  paint();
-  const rows = [box];
-  return h("div", { class: "settings-grid" },
-    h("section", { class: "panel" },
-      h("div", { class: "panel-head" }, h("h2", { text: "Modelos de tarefa" }),
-        h("button", { type: "button", class: "btn btn-primary btn-sm", onClick: () => editTemplate(null, rerender) }, icon("add"), "Novo modelo")),
-      h("p", { class: "help", text: "Procedimentos que se repetem (entrada de colaborador novo, troca de equipamento, servidor novo) viram um modelo com checklist pronto. Use em “+ Tarefa”, escolhendo o modelo, ou salve uma tarefa existente como modelo pelo detalhe dela." })),
-    h("section", { class: "panel" },
-      h("div", { class: "panel-head" }, h("h2", { text: "Meus modelos" }), h("span", { class: "count", text: String(list.length) })),
-      ...rows));
-}
-
-function editTemplate(t, rerender) {
-  const name = h("input", { type: "text", maxlength: "60", required: "required", value: t ? t.name : "" });
-  const title = h("input", { type: "text", maxlength: "200", required: "required", value: t ? t.title : "" });
-  const desc = h("input", { type: "text", maxlength: "300", value: t && t.description ? t.description : "" });
-  const prio = h("select", {}, ...PRIO.map(([v, l]) => h("option", { value: v, text: l })));
-  prio.value = String(t ? t.priority : 2);
-  const proj = h("select", {});
-  fillProjectSelect(proj, t ? t.project_id : null).catch(() => {});
-  const after = h("input", { type: "checkbox" });
-  after.checked = !!(t && t.after_hours);
-  const items = h("textarea", { rows: "6", maxlength: "6200", placeholder: "Um item por linha" });
-  items.value = t ? t.checklist.join("\n") : "";
-  const err = h("p", { class: "error-text" });
-  const form = h("form", {}, h("h2", { text: t ? "Editar modelo" : "Novo modelo" }),
-    field("Nome do modelo", name), field("Título da tarefa", title), field("Descrição (uma linha)", desc),
-    h("div", { class: "field-row" }, field("Prioridade", prio), field("Projeto", proj)),
-    h("label", { class: "check-line" }, after, h("span", { text: "Plantão / fora do horário" })),
-    field("Checklist (um item por linha, até 30)", items), err,
-    h("div", { class: "dialog-actions" },
-      h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
-      h("button", { type: "submit", class: "btn btn-primary", text: "Salvar modelo" })));
-  const dlg = modal(form);
-  form.addEventListener("submit", busy(async (ev) => {
-    ev.preventDefault();
-    const body = { name: name.value.trim(), title: title.value.trim(), description: desc.value.trim() || null,
-      priority: Number(prio.value), project_id: proj.value && proj.value !== "__new" ? Number(proj.value) : null,
-      after_hours: after.checked, checklist: items.value.split("\n").map((x) => x.trim()).filter(Boolean).slice(0, 30) };
-    try {
-      if (t) await api.put(`/templates/${t.id}`, body); else await api.post("/templates", body);
-      dlg.close(); toast("Modelo salvo."); rerender();
-    } catch (e) { err.textContent = e.message || "Não foi possível salvar."; }
-  }));
-  setTimeout(() => (t ? title : name).focus(), 0);
-}
 
 // --------------------------------------------------------------- chamados --
 
@@ -465,32 +336,16 @@ function workDays(me) {
 
 // ------------------------------------------------------------------ avisos --
 
-const KINDS = [
-  ["morning", "Seu dia", "De manhã: atrasadas, o que vence hoje, rotinas do dia e prioridades altas. Só nos dias úteis."],
-  ["evening", "Antes de encerrar", "No fim do dia, se ainda faltar alguma rotina de hoje. Não sai se você já fez tudo."],
-  ["weekly", "Resumo da semana", "Às segundas: rotinas, tarefas concluídas, tempo por projeto e o que ficou para trás na semana anterior."],
-];
-const HOURS = Array.from({ length: 24 }, (_, i) => i);
-
-// push: o painel das notificações (o mesmo Salvar e o mesmo horário da manhã valem para ele).
+// push: o painel das notificações dos aparelhos (grava junto, a cada mudança).
 async function notices(push) {
   const p = await api.get("/notifications");
-  const rows = KINDS.map(([key, title, help]) => {
-    const on = h("input", { type: "checkbox", "aria-label": title });
-    on.checked = p[key];
-    const hour = h("select", { class: "select-sm", "aria-label": `Horário de ${title}` },
-      ...HOURS.map((x) => h("option", { value: String(x), text: `${String(x).padStart(2, "0")}:00` })));
-    hour.value = String(p[`${key}_hour`]);
-    // O horário da manhã vale também para as notificações (cobranças e prazos): fica sempre editável.
-    const sync = () => { hour.disabled = !on.checked && key !== "morning"; };
-    on.addEventListener("change", sync);
-    sync();
-    return { key, on, hour, el: h("div", { class: "notice-row" },
-      h("label", { class: "notice-main" }, on, h("span", {}, h("strong", { text: title }), h("small", { text: help }))),
-      key === "morning" ? h("span", { class: "hour-shared" }, hour, h("small", { text: "horário da manhã: e-mail e notificações" })) : hour) };
-  });
+  // Um só interruptor: Seu dia (manhã, dias úteis), Antes de encerrar (se faltar rotina) e o Resumo da semana (segunda).
+  const mailOn = h("input", { type: "checkbox", "aria-label": "Receber avisos por e-mail" });
+  mailOn.checked = p.email_on;
+  const mailRow = h("div", { class: "notice-row" }, h("label", { class: "notice-main" }, mailOn, h("span", {},
+    h("strong", { text: "Receber avisos por e-mail" }),
+    h("small", { text: "De manhã (nos dias úteis): atrasadas, o que vence hoje, rotinas e prioridades. No fim do dia, se faltar alguma rotina. Às segundas, o resumo da semana. Só sai e-mail quando há algo a avisar." }))));
   // Semanal: o PDF anexado e uma cópia (quem acompanha o trabalho) — só valem com o resumo da semana ligado.
-  const weekly = rows.find((r) => r.key === "weekly");
   const pdf = h("input", { type: "checkbox" });
   pdf.checked = !!p.weekly_pdf;
   const cc = h("input", { type: "email", maxlength: "254", value: p.weekly_cc || "", placeholder: "ex.: colega@empresa.com.br",
@@ -499,23 +354,23 @@ async function notices(push) {
     h("label", { class: "check-line" }, pdf, h("span", { text: "Anexar o relatório da semana em PDF (o mesmo de Meu mês, com os títulos das tarefas)" })),
     field("Mandar cópia para quem acompanha meu trabalho (opcional)", cc),
     h("p", { class: "dialog-note", text: "A cópia recebe o mesmo e-mail, com o PDF se estiver ligado. Use só com quem já acompanha o seu trabalho." }));
-  const syncWeekly = () => { pdf.disabled = cc.disabled = !weekly.on.checked; weeklyExtra.classList.toggle("off", !weekly.on.checked); };
-  weekly.on.addEventListener("change", syncWeekly);
+  const syncWeekly = () => { pdf.disabled = cc.disabled = !mailOn.checked; weeklyExtra.classList.toggle("off", !mailOn.checked); };
+  mailOn.addEventListener("change", syncWeekly);
   syncWeekly();
   const titles = h("input", { type: "checkbox" });
   titles.checked = p.show_titles;
-  // Salva a cada mudança (e-mail e notificações juntos: o horário da manhã é um só).
+  // Salva a cada mudança (e-mail e notificações juntos).
   // O e-mail da cópia salva ao sair do campo; inválido, fica marcado com a frase embaixo.
   const ccErr = errorLine();
   weeklyExtra.children[1].after(ccErr);
   const save = saver(async () => {
     const body = { show_titles: titles.checked, weekly_pdf: pdf.checked, weekly_cc: cc.value.trim() || null };
-    for (const r of rows) { body[r.key] = r.on.checked; body[`${r.key}_hour`] = Number(r.hour.value); }
+    body.email_on = mailOn.checked;
     if (body.weekly_cc && !cc.checkValidity()) { fieldError(ccErr, cc, "O e-mail da cópia não parece válido."); body.weekly_cc = p.weekly_cc || null; }
     else fieldError(ccErr, cc, "");
     try {
       await api.put("/notifications", body);
-      await api.put("/push/prefs", { ...push.collect(), morning_hour: body.morning_hour });
+      await api.put("/push/prefs", push.collect());
       p.weekly_cc = body.weekly_cc;
       toast("Avisos salvos.");
     }
@@ -547,7 +402,7 @@ async function notices(push) {
       h("p", { class: "help" }, "Enviados para ", h("strong", { class: "mono", text: p.email }),
         ". Sem rastreamento de abertura ou de cliques; só sai e-mail quando há algo a avisar."),
       p.mail_configured ? null : warnBox("O envio de e-mail ainda não está configurado neste servidor. Você pode deixar tudo escolhido; os avisos começam quando ele for ligado."),
-      ...rows.flatMap((r) => (r === weekly ? [r.el, weeklyExtra] : [r.el])),
+      mailRow, weeklyExtra,
       h("label", { class: "check-line notice-titles" }, titles, h("span", { text: "Mostrar os títulos das tarefas no e-mail (desligado: só os números)" })),
       h("div", { class: "row-actions" }, test, testWeek));
   // Qualquer escolha dos dois painéis (a cópia, ao sair do campo) grava.

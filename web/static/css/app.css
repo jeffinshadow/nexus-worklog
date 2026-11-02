@@ -610,9 +610,6 @@ mark { background: var(--primary-container); color: var(--on-primary-container);
 @media (max-width: 900px) { #view-busca { grid-template-columns: 1fr; } }
 
 .today-grid > .t-sum { grid-column: 1 / -1; }
-.sum-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
-@media (max-width: 900px) { .sum-grid { grid-template-columns: 1fr; } }
-.sum-one .sum-grid { grid-template-columns: 1fr; }  /* só a semana (o último dia útil sem nada): uma coluna */
 .sum-title { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
 .sum-title h3 { font-size: var(--type-title); font-weight: var(--weight-title); }
 .sum-title .mono { font-size: var(--type-label); }
@@ -628,7 +625,6 @@ mark { background: var(--primary-container); color: var(--on-primary-container);
 .sum-track { height: 6px; border-radius: var(--radius-full); background: var(--surface-container-high); overflow: hidden; }
 .sum-track > span { display: block; height: 100%; border-radius: var(--radius-full); }
 .sum-bar-v { font-size: var(--type-label); color: var(--on-surface-variant); }
-.missed { display: flex; flex-wrap: wrap; gap: 6px; }
 .small { font-size: var(--type-caption); }
 
 .notice-row { display: flex; align-items: center; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--outline-variant); }
@@ -1152,8 +1148,18 @@ body.rail .nav a:active, body.rail .sidebar .nav-link:active { transform: scale(
 .chip-x .ico { width: 16px; height: 16px; }
 
 /* ------------------------------------------------------------ tour guiado -- */
-dialog.tour-dialog { max-width: 560px; width: min(560px, calc(100vw / var(--ui-zoom) - 32px)); }
 .tour-step { display: block; font-size: var(--type-label); letter-spacing: .08em; text-transform: uppercase; color: var(--primary); margin: 0 0 8px; }
+/* Diálogos com largura própria: uma regra só, e cada um diz a sua (--dlg-w). */
+dialog:is(.tour-dialog, .proj-dialog, .pack-dialog, .help-dialog, .review-dialog),
+:is(.reorder-dialog, .wh-dialog, .paste-dialog) {  /* os três últimos: sem peso extra, para o celular (tela cheia) vencer */
+  max-width: var(--dlg-w); width: min(var(--dlg-w), calc(100vw / var(--ui-zoom) - 32px));
+}
+dialog.proj-dialog { --dlg-w: 480px; }
+dialog.reorder-dialog { --dlg-w: 520px; }
+dialog.pack-dialog { --dlg-w: 540px; }
+dialog:is(.tour-dialog, .paste-dialog) { --dlg-w: 560px; }
+dialog.help-dialog { --dlg-w: 600px; }
+dialog:is(.review-dialog, .wh-dialog) { --dlg-w: 640px; }
 dialog .tour-intro { margin: 0 0 14px; line-height: 1.5; }
 .tour-hero { display: flex; justify-content: center; margin: 4px 0 14px; }
 .tour-actions .tour-skip { margin-right: auto; }
@@ -1189,7 +1195,7 @@ dialog .tour-intro { margin: 0 0 14px; line-height: 1.5; }
 .venc-row > .chip, .venc-row > .btn { white-space: nowrap; }
 
 /* ------------------------------------------------------------------ ajuda -- */
-dialog.help-dialog { max-width: 600px; width: min(600px, calc(100vw / var(--ui-zoom) - 32px)); max-height: min(88vh / var(--ui-zoom), 900px); overflow: hidden; padding-bottom: 0; }
+dialog.help-dialog { max-height: min(88vh / var(--ui-zoom), 900px); overflow: hidden; padding-bottom: 0; }
 dialog.help-dialog[open] { display: flex; flex-direction: column; }
 .help-body { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -24px; padding: 0 24px; scrollbar-width: thin; }
 .help-sec { padding: 14px 0; border-top: 1px solid var(--outline-variant); }
@@ -1416,7 +1422,6 @@ li.mes-res { padding-top: 10px; border-top: 1px solid var(--outline-variant); }
 .proj-ex-btn:hover { border-color: var(--card-border-hover); background-image: linear-gradient(var(--hover), var(--hover)); }
 .proj-ex-btn .proj-tile-sm { border-radius: 50%; }
 /* Diálogo do projeto: prévia do cartão, cor e a grade de ícones (alvos de 44 px). */
-dialog.proj-dialog { max-width: 480px; width: min(480px, calc(100vw / var(--ui-zoom) - 24px)); }
 .proj-preview { display: flex; align-items: center; gap: 14px; padding: 12px 14px; margin: 0 0 16px; border: 1px solid var(--card-border); border-radius: var(--radius-l); background: var(--surface-container); }
 .proj-preview-name { font-size: var(--type-title); font-weight: var(--weight-title); color: var(--on-surface); min-width: 0; overflow-wrap: anywhere; }
 .swatches-lg { display: grid; grid-template-columns: repeat(auto-fill, 44px); gap: 6px; }
@@ -1597,7 +1602,7 @@ dialog.proj-dialog { max-width: 480px; width: min(480px, calc(100vw / var(--ui-z
 
 /* ---------------------------------------------------- revisão da semana -- */
 /* Três passos num diálogo só (como a Ajuda): cabeçalho e botões fixos, a lista rola. */
-dialog.review-dialog { max-width: 640px; width: min(640px, calc(100vw / var(--ui-zoom) - 32px)); max-height: min(88vh / var(--ui-zoom), 900px); overflow: hidden; }
+dialog.review-dialog { max-height: min(88vh / var(--ui-zoom), 900px); overflow: hidden; }
 dialog.review-dialog[open] { display: flex; flex-direction: column; }
 dialog.review-dialog h2 { margin-bottom: 6px; outline: none; }
 dialog .review-intro { margin: 0 0 12px; line-height: 1.5; }
@@ -1625,7 +1630,6 @@ dialog .review-count { margin: 0 0 4px; font-family: var(--font-label); font-siz
   .review-dialog > form.review-form, .review-dialog > .review-form { display: block; }
   .review-body { overflow: visible; }
 }
-.sum-review { margin-top: 12px; }
 /* Primeiro amanhã e Antes do PDF: o mesmo diálogo, com um formulário em volta. */
 .review-dialog > form.review-form, .review-dialog > .review-form { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .first-dialog h2, .pdf-dialog h2 { padding-right: 40px; }
@@ -1654,7 +1658,6 @@ dialog .review-count { margin: 0 0 4px; font-family: var(--font-label); font-siz
   border-radius: var(--radius-m); background: var(--surface-container); font-size: var(--type-body-s); }
 .rec-pack span { flex: 1 1 200px; color: var(--on-surface-variant); }
 .rec-pack .btn { min-height: 44px; }
-dialog.pack-dialog { max-width: 540px; width: min(540px, calc(100vw / var(--ui-zoom) - 24px)); }
 dialog.pack-dialog .dialog-actions { flex-wrap: wrap; }
 dialog.pack-dialog .btn { white-space: nowrap; }
 @media (max-width: 420px) { dialog.pack-dialog .pack-items .dialog-actions .btn-text:not(:first-child) { display: none; } }
@@ -1679,7 +1682,6 @@ dialog .pack-intro { margin: -8px 0 14px; }
 .pack-offer { margin-top: 20px; }
 
 /* Ordem das rotinas (Hoje): setas Subir/Descer com alvo de 44px; alça para arrastar no computador */
-.reorder-dialog { width: min(520px, calc(100vw - 32px)); }
 .reorder-list { list-style: none; margin: 8px 0 4px; padding: 0; display: grid; gap: 4px; max-height: 60vh; overflow-y: auto; }
 .reorder-row { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 8px; border-radius: var(--radius-m); background: var(--surface-container-high); border: 1px solid var(--card-border); }
 .reorder-row.dragging { opacity: .45; }
@@ -1699,7 +1701,6 @@ dialog .pack-intro { margin: -8px 0 14px; }
 .wh-ev > span { display: flex; flex-direction: column; }
 .wh-ev small { color: var(--on-surface-variant); font-size: var(--type-label); }
 .wh-ev.covered > span { color: var(--on-surface-variant); }
-.wh-dialog { width: min(640px, calc(100vw - 32px)); }
 
 /* ---------------------------------------- Para empresas e instituições -- */
 /* Motivo de um campo bloqueado pela administração: cadeado + texto, à vista. */
@@ -1743,14 +1744,13 @@ input:disabled { cursor: not-allowed; }
 .role-notice-list { margin: 8px 0 0; padding: 0; list-style: none; }
 .role-notice-list li { margin: 0 0 10px; }
 .role-notice-list strong { display: block; color: var(--on-surface); }
-.role-notice-list span { color: var(--on-surface-variant); font-size: var(--type-body-s); }
+.role-notice-list span { display: block; margin-top: 2px; color: var(--on-surface-variant); font-size: var(--type-body-s); }
 /* Detalhe da tarefa: chamado sem endereço configurado (o número fica só texto). */
 .ticket-hint { display: block; margin-top: 4px; color: var(--on-surface-variant); font-size: var(--type-caption); }
 .ticket-hint a, #tickets-locked a { text-decoration: underline; }
 .org-ticket .row-actions { margin-top: 8px; }
 
 /* ------------------------------------------- R5-A: colar lista, passos -- */
-.paste-dialog { width: min(560px, calc(100vw - 32px)); }
 .paste-count { margin: 4px 0; font-size: var(--type-caption); color: var(--dim); }
 .paste-list, .steps-list { list-style: none; margin: 0 0 8px; padding: 0; max-height: min(50vh, 420px); overflow: auto; }
 .paste-list li + li, .steps-list li + li { border-top: 1px solid var(--outline-variant); }

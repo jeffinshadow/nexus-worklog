@@ -32,6 +32,32 @@ e lotes de correção).
   × completa), trazem a versão do Nexus, e sessão antiga com ferramenta ou argumento velho recebe erro
   em português ("use /mcp, reconectar"); `listChanged` ligado em ferramentas e comandos.
 
+### Simplificações
+Menos opções e menos avisos; o que saiu continua aceito pela API até a 3.0 (marcado como obsoleto).
+- **Assistente**: sem a frase "resumo do dia" (só avisos acionáveis) e **sem aviso de tarefa parada**. Ao
+  marcar **Aguardando**, o "Dia para cobrar" já vem sugerido para 5 dias úteis à frente (editável, pode limpar).
+  Um só interruptor em Configurações; os demais valores são fixos.
+- **Hoje**: sai o cartão "Esta semana" (a semana vive em Meu mês e na Revisão da semana); fica "Desde o último dia útil".
+- **O que mudou para você**: os avisos únicos (visibilidade, receber tarefas, papéis, master, equipe) viram um
+  só diálogo com um "Entendi" (`PUT /api/me/notices-seen`).
+- **Avisos por canal**: e-mail liga/desliga (Seu dia, Antes de encerrar e Resumo da semana, em horários fixos) e
+  notificações dos aparelhos liga/desliga (rotina e lembrete na hora seguem). Quem tinha algum tipo ligado
+  fica com o canal ligado.
+- **Fixos**: limite retroativo em 60 dias; cota de fotos pela variável `PHOTO_QUOTA_MB` (padrão 500); ambos
+  saem de Admin > Geral.
+- **Modelos de tarefa** saem da interface (Duplicar tarefa e os Pacotes de rotina cobrem o uso).
+- **Pedido de convite**: além do campo-armadilha, tempo mínimo de preenchimento (3 s a 1 h, carimbo assinado
+  pelo servidor; `GET /api/auth/invite-request/form`).
+- Menos código: diálogos com largura por variável, avisos únicos num componente só, restos de Configurações removidos.
+
+### Obsoleto: sai na 3.0
+- Campos ignorados: `PUT /api/me/assistant` (`idle_*`, `reopen_*`, `summary_from`, `stale_days`);
+  `PUT /api/notifications` (`morning`, `evening`, `weekly` e `*_hour`); `PUT /api/push/prefs` (`routine`,
+  `follow_up`, `deadline`, `assigned`, `morning_hour`); `PUT /api/admin/settings` (`retro_days`, `photo_quota_mb`).
+  As colunas ficam no banco (sem DROP), inclusive `app_settings.invite_request_off`, sem uso desde a sql/042.
+- Rotas `/api/templates` e as ferramentas MCP `list_templates` e `create_from_template` (sem interface).
+- `GET /api/auth/link` (use `POST`) será **removido** na 3.0.
+
 ### Navegação e telas
 - **Equipe** absorve Atribuir (diálogo por cima da tela, "Tarefas que atribuí" logo abaixo) e vira um
   painel para coordenar, sem ranking nem comparação, só de quem aceitou ser visto.

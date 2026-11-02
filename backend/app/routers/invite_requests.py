@@ -5,15 +5,20 @@ convida (o convite por link de sempre) ou recusa.
 
 Público e sem revelar nada: a resposta é a mesma com conta existente, pedido
 já aberto ou e-mail novo; limites por IP e por e-mail e um campo-armadilha
-para robôs. Quem pediu recebe a confirmação de que o pedido chegou; recusado,
+para robôs (e um tempo mínimo de preenchimento, de 3 s a 1 h, com carimbo assinado pelo servidor, sem
+terceiros). Quem pediu recebe a confirmação de que o pedido chegou; recusado,
 nada é enviado.
 """
+import hashlib
+import hmac
 import logging
 import threading
+import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from .. import audit, db, mailer, push
+from ..config import config
 from ..deps import client_ip, require_admin, require_admin_csrf
 from ..schemas import InviteChoiceIn, InviteIn, InviteRequestIn
 from ..security import invite_req_email_limiter, invite_req_limiter
@@ -27,6 +32,38 @@ router = APIRouter(tags=["invite-requests"])
 # só aparecem em pedidos antigos (saem sozinhos em até 180 dias).
 SOURCES = {"colega": "indicação de colega", "empresa": "pela empresa ou equipe", "internet": "internet ou redes sociais",
            "outro": "outro", "site": "site", "github": "GitHub"}
+
+
+# Tempo mínimo e máximo entre mostrar o formulário e enviar (humano leva mais de 3 s para preencher e
+# enviar; robô manda na hora, ou com um carimbo velho guardado).
+FILL_MIN, FILL_MAX = 3, 3600
+
+
+def _sign(ts: int) -> str:
+    return hmac.new(config.SECRET_KEY.encode(), f"invite-form:{ts}".encode(), hashlib.sha256).hexdigest()[:32]
+
+
+def form_token(ts: int | None = None) -> str:
+    ts = int(time.time()) if ts is None else ts
+    return f"{ts}.{_sign(ts)}"
+
+
+def _form_ok(token: str | None) -> bool:
+    try:
+        ts_s, sig = (token or "").split(".", 1)
+        ts = int(ts_s)
+    except ValueError:
+        return False
+    return hmac.compare_digest(sig, _sign(ts)) and FILL_MIN <= time.time() - ts <= FILL_MAX
+
+
+form_ok = _form_ok  # os testes trocam este nome
+
+
+@router.get("/api/auth/invite-request/form")
+def request_form():
+    """Carimbo de quando o formulário foi mostrado (assinado); volta no envio como `form_t`."""
+    return {"t": form_token()}
 
 
 # Pedidos por dia, somando todos (cada um manda e-mail e push aos admins).
@@ -78,6 +115,8 @@ def request_invite(data: InviteRequestIn, request: Request):
     email = data.email.lower()
     if not invite_req_limiter.allow(f"ip:{client_ip(request)}") or not invite_req_email_limiter.allow(f"em:{email}"):
         raise HTTPException(status_code=429, detail="muitos pedidos; tente mais tarde")
+    if not form_ok(data.form_t):  # rápido demais, velho demais ou sem carimbo: mensagem genérica
+        raise HTTPException(status_code=400, detail="Não foi possível enviar agora. Tente de novo.")
     resposta = {"ok": True}
     # Teto global: com IPs variados, os limites por IP e por e-mail não seguram a
     # caixa dos admins nem o SMTP. Conta no banco (vale depois de reiniciar).

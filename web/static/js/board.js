@@ -236,18 +236,23 @@ export function followUpDay(day) {
   return fd;
 }
 
+// Ao marcar Aguardando, o "Dia para cobrar" já vem sugerido: 5 dias úteis à frente (a pessoa muda ou limpa).
+export const FOLLOW_UP_DAYS = 5;
+export const suggestedFollowUp = () =>
+  addWorkDays(localDateTime(Date.now()).slice(0, 10), FOLLOW_UP_DAYS, (session.me && session.me.work_days) || 62);
+
 export const canBlock = (t) => t.status !== "done" && t.status !== "blocked";
 
 // "Marcar como aguardando…" direto do menu: pergunta o que falta e, se quiser, quando cobrar.
 export function blockTask(t, onDone) {
   const back = keepFocus(); // depois do redesenho, o foco volta ao cartão
   const reason = h("input", { type: "text", maxlength: "120", required: "required", placeholder: "Ex.: peça do fornecedor, acesso à sala, aprovação" });
-  const follow = h("input", { type: "date", min: localDateTime(Date.now()).slice(0, 10) });
+  const follow = h("input", { type: "date", min: localDateTime(Date.now()).slice(0, 10), value: suggestedFollowUp() });
   const err = h("p", { class: "error-text", role: "alert" });
   const form = h("form", {},
     h("h2", { text: "Aguardando" }),
     h("p", { class: "dialog-note", text: t.title }),
-    field("Aguardando o quê?", reason), field("Dia para cobrar (opcional)", follow), err,
+    field("Aguardando o quê?", reason), field("Dia para cobrar (pode limpar)", follow), err,
     h("div", { class: "dialog-actions" },
       h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
       h("button", { type: "submit", class: "btn btn-primary", text: "Marcar como aguardando" })));
@@ -376,6 +381,8 @@ export function openWorklog(onDone, opts = {}) {
   const followUp = document.getElementById("wl-followup");
   followUp.value = "";
   followUp.min = now.slice(0, 10);
+  delete followUp.dataset.touched;
+  followUp.oninput = () => { followUp.dataset.touched = "1"; };  // limpou de propósito: não sugere de novo
   const resolution = document.getElementById("wl-resolution");
   resolution.value = "";
   // Lembrar em (data e hora): só em tarefa que fica aberta.
@@ -388,6 +395,7 @@ export function openWorklog(onDone, opts = {}) {
     blockedWrap.classList.toggle("hidden", statusSel.value !== "blocked");
     document.getElementById("wl-remind-wrap").classList.toggle("hidden", statusSel.value === "done");
     followUp.disabled = statusSel.value !== "blocked"; // escondido e desabilitado: o navegador não valida
+    if (statusSel.value === "blocked" && !followUp.value && !followUp.dataset.touched) followUp.value = suggestedFollowUp();
   };
   statusSel.onchange = syncDates;
   syncDates();
@@ -421,33 +429,6 @@ export function openWorklog(onDone, opts = {}) {
           h("p", { text: s.resolution.length > 160 ? s.resolution.slice(0, 159) + "…" : s.resolution }))));
     }, 400);
   };
-
-  // Modelo: preenche o formulário; o checklist dele entra depois de criar.
-  let checklist = [];
-  const tplWrap = document.getElementById("wl-template-wrap");
-  const tplSel = document.getElementById("wl-template");
-  tplWrap.classList.add("hidden");
-  api.get("/templates").then((list) => {
-    if (!list.length) return;
-    clear(tplSel);
-    tplSel.append(h("option", { value: "", text: "Nenhum (tarefa em branco)" }),
-      ...list.map((t) => h("option", { value: String(t.id), text: t.name + (t.checklist.length ? ` · ${t.checklist.length} itens` : "") })));
-    tplSel.onchange = async () => {
-      const t = list.find((x) => String(x.id) === tplSel.value);
-      checklist = t ? t.checklist : [];
-      if (!t) return;
-      document.getElementById("wl-title").value = t.title;
-      titleInput.oninput && titleInput.oninput(); // título do modelo também procura "já resolvido antes"
-      document.getElementById("wl-desc").value = t.description || "";
-      document.getElementById("wl-prio").value = String(t.priority);
-      after.checked = t.after_hours;
-      await projReady;
-      if (t.project_id && [...projSel.options].some((o) => o.value === String(t.project_id))) projSel.value = String(t.project_id);
-      extras.sync();
-      syncObjectives();
-    };
-    tplWrap.classList.remove("hidden");
-  }).catch(() => {});
 
   document.getElementById("wl-cancel").onclick = () => dlg.close();
   document.getElementById("wl-close").onclick = () => dlg.close();
@@ -508,8 +489,7 @@ export function openWorklog(onDone, opts = {}) {
       const created = await api.post("/worklog", payload);
       if (payload.remind_at) refreshReminders();  // o aviso da tela já conta com o lembrete
       if (created && created.queued) {
-        // Sem sinal: o resto (checklist, tempo, anotação, fotos) vai junto quando a tarefa for criada.
-        for (const label of checklist) await api.after(created.qid, "POST", "/worklog/{id}/checklist", { label });
+        // Sem sinal: o resto (tempo, anotação, fotos) vai junto quando a tarefa for criada.
         if (minutes) await api.after(created.qid, "POST", "/worklog/{id}/time", { minutes });
         if (opts.note) await api.after(created.qid, "POST", "/worklog/{id}/notes", { body: opts.note });
         for (const f of opts.files || []) await api.after(created.qid, "POST", "/worklog/{id}/photos", await prepare(f));
@@ -518,15 +498,14 @@ export function openWorklog(onDone, opts = {}) {
         onDone && onDone();
         return;
       }
-      // A tarefa já existe: se checklist ou tempo falharem, não reenviar (duplicaria).
+      // A tarefa já existe: se o tempo falhar, não reenviar (duplicaria).
       try {
-        for (const label of checklist) await api.post(`/worklog/${created.id}/checklist`, { label });
         if (minutes) await api.post(`/worklog/${created.id}/time`, { minutes });
         // Texto compartilhado de outro app que não coube na descrição: vira anotação.
         if (opts.note) await api.post(`/worklog/${created.id}/notes`, { body: opts.note });
         if (opts.files && opts.files.length) await upload(`/worklog/${created.id}/photos`, opts.files);
       } catch (e) {
-        toast(`Tarefa criada, mas ${minutes ? "o tempo ou " : ""}o checklist não foi salvo: ${e.message || "tente pelo detalhe"}.`, { error: true });
+        toast(`Tarefa criada, mas ${minutes ? "o tempo" : "algum item"} não foi salvo: ${e.message || "tente pelo detalhe"}.`, { error: true });
       }
       dlg.close();
       onDone && onDone();

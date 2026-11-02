@@ -32,6 +32,9 @@ class Config:
     # O agendador roda só se houver SMTP e não estiver desligado (testes).
     MAIL_SCHEDULER = os.environ.get("MAIL_SCHEDULER", "true").lower() == "true"
 
+    # Cota de fotos por pessoa (MB): fixa, só por variável de ambiente (saiu do Admin; 0 = sem fotos novas).
+    PHOTO_QUOTA_MB = int(os.environ.get("PHOTO_QUOTA_MB", "500"))
+
     # Pasta (só leitura no container) onde o deploy.sh grava deploy.json e
     # backup.json: a Saúde do Nexus (Admin > Geral) lê versão e último backup.
     STATE_DIR = os.environ.get("STATE_DIR", "/app/estado")

@@ -164,18 +164,11 @@ def put_assistant(data: AssistantIn, user=Depends(web_active_csrf)):
     uid = user["user_id"]
     before = people.assistant_prefs(uid)
     db.execute(
-        """INSERT INTO assistant_prefs (user_id, enabled, idle_on, idle_minutes, idle_start, idle_end,
-                                        reopen_on, reopen_minutes, summary_from, stale_days)
-           VALUES (%(uid)s, %(enabled)s, %(idle_on)s, %(idle_minutes)s, %(idle_start)s, %(idle_end)s,
-                   %(reopen_on)s, %(reopen_minutes)s, %(summary_from)s, %(stale_days)s)
-           ON CONFLICT (user_id) DO UPDATE SET
-             enabled = EXCLUDED.enabled, idle_on = EXCLUDED.idle_on, idle_minutes = EXCLUDED.idle_minutes,
-             idle_start = EXCLUDED.idle_start, idle_end = EXCLUDED.idle_end,
-             reopen_on = EXCLUDED.reopen_on, reopen_minutes = EXCLUDED.reopen_minutes,
-             summary_from = EXCLUDED.summary_from, stale_days = EXCLUDED.stale_days, updated_at = now()""",
-        {"uid": uid, **data.model_dump()},
+        """INSERT INTO assistant_prefs (user_id, enabled) VALUES (%s, %s)
+           ON CONFLICT (user_id) DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = now()""",
+        (uid, data.enabled),
     )
-    audit.record(user, "assistant.update", "assistant", uid, before=before, after=data.model_dump())
+    audit.record(user, "assistant.update", "assistant", uid, before=before, after={"enabled": data.enabled})
     return people.assistant_prefs(uid)
 
 
@@ -277,6 +270,15 @@ def put_tour(data: TourIn, user=Depends(web_active_csrf)):
         {"d": data.done, "u": user["user_id"]})
     return {"tour_done_at": row["tour_done_at"], **{k: v for k, v in org.for_user(user["user_id"]).items()
                                                    if k in ("tour_required", "visibility_notice", "assign_notice")}}
+
+
+@router.put("/notices-seen")
+def seen_notices(user=Depends(web_active_csrf)):
+    """"Entendi" em "O que mudou para você": dá como vistos, de uma vez, os avisos únicos de visibilidade,
+    de receber tarefas e de papéis."""
+    db.execute("""UPDATE users SET visibility_notice_at = now(), assign_notice_at = now(), role_notice = NULL
+                   WHERE id = %s""", (user["user_id"],))
+    return {"visibility_notice": False, "assign_notice": False, "role_notice": None}
 
 
 @router.put("/visibility-notice")

@@ -5,7 +5,6 @@ import { api } from "./api.js";
 import { h, icon, nowInTz, localDay, daysBetween, shortDate, addDays, addWorkDays } from "./dom.js";
 import { duration } from "./task.js";
 import { errorToast, toast } from "./ui.js";
-import { followUpTask } from "./board.js";
 import { openReview } from "./review.js";
 
 export const enabled = (me) => !!(me && me.assistant && me.assistant.enabled);
@@ -156,23 +155,12 @@ function notes(open, today) {
       nota(t.follow_up_on < today
         ? `A cobrança de ${q(t.title)}${t.blocked_reason ? ` (${t.blocked_reason})` : ""} está atrasada desde ${shortDate(t.follow_up_on)}.`
         : `Hoje é dia de cobrar ${t.blocked_reason ? t.blocked_reason + " sobre " : ""}${q(t.title)}.`);
-    // Aguardando sem dia para cobrar: aviso próprio, de /summary (review.stale), com N dias da Conta.
+    // Aguardando sem dia para cobrar: sem aviso (o "Dia para cobrar" já vem sugerido ao marcar Aguardando).
     else if (t.status === "blocked") continue;
     else if (t.status === "in_progress" && d >= 7) nota(`${q(t.title)} está em andamento sem movimento há ${d} dias.`);
     else if (t.due_date && daysBetween(today, t.due_date) === 1) nota(`${q(t.title)} vence amanhã.`);
   }
   return out;
-}
-
-// Resumo do dia: o que saiu hoje e o que falta (quando aparece: ver todayCard).
-function closing(sum, pendentes) {
-  const s = sum && sum.today_stats;
-  if (!s) return null;
-  const tempo = s.minutes ? ` e ${duration(s.minutes)} apontadas` : ", sem tempo apontado";
-  const falta = pendentes.length
-    ? `; ainda ${pendentes.length === 1 ? "falta" : "faltam"} ${pendentes.length <= 3 ? pendentes.map((r) => r.label).join(", ") : plural(pendentes.length, "rotina", "rotinas")}`
-    : "";
-  return `Resumo do dia: ${plural(s.pontual_done, "tarefa concluída", "tarefas concluídas", "nenhuma tarefa concluída")}${tempo} hoje${falta}.`;
 }
 
 // O que aconteceu desde o último dia útil (manhã) e o fechamento da sexta (tarde).
@@ -268,14 +256,6 @@ export function todayCard(b, sum, ctx) {
       })] }]
     : [n.text] });
 
-  // Aguardando há N dias (Configurações > Conta) sem dia para cobrar: uma pergunta, não cobrança.
-  const rv = sum && sum.review;
-  if (rv && b.work_day) for (const x of rv.stale.slice(0, 2)) {
-    const task = open.find((o) => o.id === x.id) || { ...x, status: "blocked" };
-    items.push({ key: `hoje:parada:${x.id}`, lines: [{
-      line: h("p", {}, h("strong", { text: q(x.title) }), ` está aguardando há ${x.days} dias. Quer marcar quando cobrar?`),
-      actions: [action("Marcar quando cobrar", () => followUpTask(task, () => ctx.onChanged && ctx.onChanged()), true)] }] });
-  }
   // Quem atribui: o retorno das que mandou desde o último aviso visto (só
   // concluídas e devolvidas; nunca "fulano está atrasado"). "Ver" leva à Equipe.
   const an = sum && sum.assigned_news;
@@ -303,12 +283,6 @@ export function todayCard(b, sum, ctx) {
       ...semTempo.slice(0, 3).flatMap((x, i) => [i ? ", " : "", h("strong", { text: q(x.title) })]), semTempo.length > 3 ? " e outras." : "."),
       actions: semTempo.slice(0, 2).map((x) => action(`Apontar em ${q(x.title.length > 24 ? x.title.slice(0, 23) + "…" : x.title)}`, () => ctx.openTask(x.id))) }] });
   }
-  // Resumo do dia: com a primeira tarefa ou rotina concluída hoje; sem nada
-  // concluído, a partir do horário escolhido em Conta (padrão 14:00), em dia útil.
-  const st = sum && sum.today_stats;
-  const algo = st && (st.pontual_done || st.recurring_done || st.recurring_extra);
-  const desde = me.assistant.summary_from ?? 840;
-  const fechamento = algo || (b.work_day && t.hour * 60 + t.minute >= desde) ? closing(sum, pendentes) : null;
   // Recapitulação: "Ontem, você concluiu…" vai no texto principal; o fechamento
   // da sexta (com o botão do relatório) é um aviso.
   const r = recap(sum, t, ctx.go);
@@ -318,7 +292,7 @@ export function todayCard(b, sum, ctx) {
 
   // O "Primeiro amanhã" se escolhe só na Passagem de turno e na revisão da semana (decisão do dono, 02/11):
   // o texto do dia é a Passagem; o resumo para a equipe saiu daqui.
-  return stack("hoje", { hello: greeting(me.name), lines: [resumo, r.line && !r.act ? r.line : null, fechamento] }, items);
+  return stack("hoje", { hello: greeting(me.name), lines: [resumo, r.line && !r.act ? r.line : null] }, items);
 }
 
 // ---------------------------------------------------------------- Tarefas --

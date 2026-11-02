@@ -45,13 +45,14 @@ def remove_device(device_id: int, user=Depends(web_active_csrf)):
 
 @router.put("/prefs")
 def put_prefs(data: PushPrefsIn, user=Depends(web_active_csrf)):
-    v = data.model_dump()
+    on = data.is_on()
     db.execute(
-        """INSERT INTO push_prefs (user_id, routine, follow_up, deadline, assigned, morning_hour, hide_content)
-           VALUES (%(uid)s, %(routine)s, %(follow_up)s, %(deadline)s, %(assigned)s, %(morning_hour)s, %(hide_content)s)
+        """INSERT INTO push_prefs (user_id, routine, follow_up, deadline, assigned, hide_content)
+           VALUES (%(uid)s, %(on)s, %(on)s, %(on)s, %(on)s, %(hide)s)
            ON CONFLICT (user_id) DO UPDATE SET routine = EXCLUDED.routine, follow_up = EXCLUDED.follow_up,
-                  deadline = EXCLUDED.deadline, assigned = EXCLUDED.assigned, morning_hour = EXCLUDED.morning_hour,
-                  hide_content = EXCLUDED.hide_content, updated_at = now()""", {"uid": user["user_id"], **v})
+                  deadline = EXCLUDED.deadline, assigned = EXCLUDED.assigned,
+                  hide_content = EXCLUDED.hide_content, updated_at = now()""",
+        {"uid": user["user_id"], "on": on, "hide": data.hide_content})
     return push.prefs(user["user_id"])
 
 

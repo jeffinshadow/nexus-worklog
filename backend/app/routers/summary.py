@@ -12,7 +12,7 @@ router = APIRouter(prefix="/api/summary", tags=["summary"])
 @router.get("")
 def summary(user=Depends(active_user)):
     out = get_summary(user["user_id"])
-    # Para o assistente do Hoje: convite da revisão semanal e tarefas paradas.
+    # Para o assistente do Hoje: convite da revisão semanal.
     from ..review import hints
     out["review"] = hints(user["user_id"])
     # Quem atribui: "Das que você atribuiu: 2 concluídas, 1 devolvida" desde o último aviso visto.

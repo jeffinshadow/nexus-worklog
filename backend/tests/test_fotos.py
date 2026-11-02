@@ -51,14 +51,15 @@ def test_tipo_tamanho_e_limite(usuario):
     assert usuario.post(f"/worklog/{tid}/photos", _foto()).status_code == 409
 
 
-def test_cota_do_admin(usuario, admin):
+def test_cota_fixa_por_variavel_de_ambiente(usuario, admin, monkeypatch):
+    from app.config import config
     tid = _tarefa(usuario)
-    cfg = admin.get("/admin/settings").json()
-    assert cfg["photo_quota_mb"] == 500
-    admin.put("/admin/settings", {"retro_days": cfg["retro_days"], "support_contact": None, "photo_quota_mb": 0})
+    assert admin.get("/admin/settings").json()["photo_quota_mb"] == 500       # padrão = o antigo padrão do banco
+    # O campo antigo do Admin é aceito e ignorado.
+    admin.put("/admin/settings", {"support_contact": None, "photo_quota_mb": 0})
+    assert usuario.post(f"/worklog/{tid}/photos", _foto()).status_code == 201
+    monkeypatch.setattr(config, "PHOTO_QUOTA_MB", 0)
     assert usuario.post(f"/worklog/{tid}/photos", _foto()).status_code == 413
-    admin.put("/admin/settings", {"retro_days": cfg["retro_days"], "support_contact": None})  # sem o campo: mantém
-    assert admin.get("/admin/settings").json()["photo_quota_mb"] == 0
 
 
 def test_excluir_e_desfazer(usuario):

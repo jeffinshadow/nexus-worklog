@@ -22,7 +22,6 @@ from .labels import DIAS, MESES
 from .labels import dur as _dur
 from .people import profile
 from .routers.branding import branding
-from .schemas import PrefsIn
 from .services import rotinas, week_start, get_board, get_report_range, is_pending, is_work_day, work_mask
 
 log = logging.getLogger("uvicorn.error")
@@ -37,7 +36,12 @@ def get_prefs(uid: int) -> dict:
     row = db.query_one(
         """SELECT morning, morning_hour, evening, evening_hour, weekly, weekly_hour, show_titles, weekly_pdf, weekly_cc
              FROM notification_prefs WHERE user_id = %s""", (uid,))
-    return dict(row) if row else PrefsIn().model_dump()
+    if not row:
+        return {"email_on": False, "show_titles": True, "weekly_pdf": False, "weekly_cc": None}
+    r = dict(row)
+    # Um interruptor só: ligado se algum dos três avisos antigos estava ligado.
+    r["email_on"] = bool(r["morning"] or r["evening"] or r["weekly"])
+    return r
 
 
 def _day(d: date) -> str:
@@ -131,9 +135,6 @@ def build_morning(uid: int, today: date, show: bool) -> Mail:
     m.block("Atrasadas", atrasadas, show)
     m.block("Vencem hoje", hoje, show)
     m.block("Cobrar hoje", cobrar, show)
-    # Aguardando há N dias sem dia para cobrar (no dia N e de 7 em 7): uma pergunta, não cobrança.
-    from .review import stale_days, stale_line, stale_to_remind
-    m.block("Aguardando faz tempo", [stale_line(x) for x in stale_to_remind(abertas, today, stale_days(uid))], show)
     from .routers.renewals import list_for
     vence = [f"{r['label']} — " + ("VENCIDO" if r["days_left"] < 0 else "vence hoje" if r["days_left"] == 0
                                    else f"vence em {r['days_left']} d ({r['expires_on']:%d/%m})")
@@ -252,7 +253,7 @@ def run_once(now: datetime, send=None) -> list[tuple[int, str, str]]:
     for u in users:
         mask = work_mask(u["id"])
         for kind in KINDS:
-            if not u[kind] or now.hour < u[f"{kind}_hour"]:
+            if now.hour < u[f"{kind}_hour"]:
                 continue
             if kind == "weekly":
                 if today.weekday() != 0:  # segunda
