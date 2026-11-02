@@ -400,6 +400,10 @@ def _restore_worklog(uid: int, snap: dict) -> None:
          snap.get("priority") or 2, snap.get("ticket"), bool(snap.get("after_hours")),
          snap.get("blocked_reason"), snap.get("blocked_at"), snap.get("follow_up_on"), snap.get("resolution"), snap["id"], uid),
     )
+    if "remind_at" in snap:  # registros de antes do lembrete não têm o campo (não apagam o atual)
+        db.execute("""UPDATE worklog_tasks SET remind_at = %s, remind_snoozed_until = NULL, remind_seen_at = NULL
+                       WHERE id = %s AND user_id = %s AND remind_at IS DISTINCT FROM %s::timestamptz""",
+                   (snap["remind_at"], snap["id"], uid, snap["remind_at"]))
     if "extra_project_ids" in snap:  # registros de antes dos projetos extras não têm a lista
         set_extra_projects(uid, snap["id"], snap["extra_project_ids"])
     if "objective_id" in snap:  # idem para os objetivos
@@ -418,6 +422,8 @@ def _restore_recurring(uid: int, snap: dict) -> None:
          snap["deactivated_at"], snap.get("freq") or "daily", snap.get("weekdays"),
          snap.get("month_day"), snap.get("interval_days"), bool(snap.get("require_note")), snap.get("remind_at"), snap["id"], uid),
     )
+    if "steps" in snap:  # registros de antes dos passos não têm o campo
+        db.execute("UPDATE recurring_tasks SET steps = %s WHERE id = %s AND user_id = %s", (snap["steps"], snap["id"], uid))
 
 
 def _need_task(uid: int, task_id: int) -> None:
@@ -558,6 +564,8 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
              before.get("follow_up_on"), before.get("resolution")),
         )
         set_extra_projects(uid, eid, before.get("extra_project_ids"))
+        if before.get("remind_at"):
+            db.execute("UPDATE worklog_tasks SET remind_at = %s WHERE id = %s", (before["remind_at"], eid))
         if before.get("objective_id"):
             proj = _projeto_existente(uid, before.get("project_id"))
             db.execute("UPDATE worklog_tasks SET objective_id = %s, exec_position = %s WHERE id = %s",

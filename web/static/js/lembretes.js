@@ -2,11 +2,14 @@
 // tela (sem som); no horário, o aviso toca a cada poucos segundos até a rotina
 // ser marcada (aqui, no Hoje, no celular ou pela IA) ou adiada. O som é deste
 // aparelho: dá para desligar no próprio aviso (fica salvo no navegador).
+// O "Lembrar em" das tarefas entra no mesmo aviso: Concluir, Abrir, Ok (visto,
+// não toca mais) e o mesmo Adiar 10 min, que vale nos outros aparelhos também.
 import { api } from "./api.js";
-import { h, icon, nowInTz } from "./dom.js";
+import { h, icon, nowInTz, localDateTime } from "./dom.js";
 import { errorToast, toast } from "./ui.js";
 import { appBadge } from "./instalar.js";
 import { closeRoutine } from "./notificacoes.js";
+import { markWithSteps } from "./passos.js";
 
 const SOON_MIN = 10;          // aviso silencioso antes do horário
 const SNOOZE_MS = 10 * 60000; // "Adiar 10 min"
@@ -14,6 +17,7 @@ const RING_MS = 5000;         // intervalo entre os toques
 const SOUND_KEY = "nexus.lembrete.som";
 
 let items = [];
+let tasks = [];               // lembretes com hora das tarefas: {id, title, remind_at, snoozed_until}
 let today = "";
 let onChange = null;
 let tick = null, ring = null, lastFetch = 0;
@@ -35,7 +39,7 @@ export function startReminders(refresh) {
 // Chamado quando uma rotina muda (marcou, editou o horário) para o aviso acompanhar.
 export async function refreshReminders() {
   lastFetch = Date.now(); // falhou: tenta de novo no próximo intervalo, sem martelar
-  try { ({ items, today } = await api.get("/recurring/reminders")); } catch { return; }
+  try { ({ items, today, tasks = [] } = await api.get("/recurring/reminders")); } catch { return; }
   // Marcada (aqui, no celular ou pela IA): a notificação deste aparelho sai da bandeja.
   for (const r of items) if (r.done) closeRoutine(r.id, today);
   check();
@@ -58,20 +62,32 @@ export function reminderState(r, now = minutesNow()) {
   return at - now <= SOON_MIN ? "soon" : null;
 }
 
+// Lembrete de tarefa agora: "soon" (até 10 min antes), "due" (passou) ou null.
+const taskSnoozed = new Map(); // id → até quando (ms), deste aparelho (o servidor também guarda)
+export function taskState(t, nowMs = Date.now()) {
+  const at = new Date(t.remind_at).getTime();
+  if (nowMs >= at) return "due";
+  return at - nowMs <= SOON_MIN * 60000 ? "soon" : null;
+}
+const taskWaiting = (t) => Math.max(taskSnoozed.get(t.id) || 0, t.snoozed_until ? new Date(t.snoozed_until).getTime() : 0) > Date.now();
+
 function check(force = false) {
   // Tocando, confere no servidor a cada minuto (marcada em outro aparelho para o som).
-  const ringing = items.some((r) => reminderState(r) === "due");
+  const ringing = items.some((r) => reminderState(r) === "due") || tasks.some((t) => taskState(t) === "due" && !taskWaiting(t));
   if (Date.now() - lastFetch > (ringing ? 60000 : 5 * 60000)) { refreshReminders(); return; }
   const now = minutesNow();
   const due = items.filter((r) => reminderState(r, now) === "due" && !(snoozed.get(r.id) > Date.now()));
-  appBadge("rotinas", items.filter((r) => reminderState(r, now) === "due").length); // no ícone, mesmo adiadas
+  const dueT = tasks.filter((t) => taskState(t) === "due" && !taskWaiting(t));
+  appBadge("rotinas", items.filter((r) => reminderState(r, now) === "due").length + tasks.filter((t) => taskState(t) === "due").length); // no ícone, mesmo adiadas
   const soon = items.filter((r) => reminderState(r, now) === "soon" && !seenSoon.has(`${r.id}:${r.remind_at}`));
-  const key = (due.length ? "due:" + due.map((r) => r.id).join(",") : soon.length ? "soon:" + soon.map((r) => r.id).join(",") : "") + (soundOn() ? "" : ":mudo");
+  const soonT = tasks.filter((t) => taskState(t) === "soon" && !seenSoon.has(`t${t.id}:${t.remind_at}`));
+  const ids = (rs, ts) => [...rs.map((r) => r.id), ...ts.map((t) => "t" + t.id)].join(",");
+  const key = (due.length || dueT.length ? "due:" + ids(due, dueT) : soon.length || soonT.length ? "soon:" + ids(soon, soonT) : "") + (soundOn() ? "" : ":mudo");
   if (key === boxKey && !force) return;
   boxKey = key;
   close();
-  if (due.length) show(due, true);
-  else if (soon.length) show(soon, false);
+  if (due.length || dueT.length) show(due, true, dueT);
+  else if (soon.length || soonT.length) show(soon, false, soonT);
 }
 
 function close() {
@@ -83,6 +99,7 @@ function close() {
 }
 
 async function markDone(r, note) {
+  if (r.steps && r.steps.length) { markWithSteps(r, null, () => { r.done = true; check(true); if (onChange) onChange(); }); return; }
   try {
     await api.post(`/recurring/${r.id}/toggle`, note ? { done: true, note } : { done: true });
     r.done = true;
@@ -109,10 +126,54 @@ function row(r, ringing) {
   return line;
 }
 
-function show(list, ringing) {
+// ------------------------------------------------- lembrete de tarefa --
+const hhmm = (iso) => localDateTime(iso).slice(11, 16);
+
+async function finishTaskHere(t) {
+  try {
+    const r = await api.post(`/worklog/${t.id}/finish`);
+    tasks = tasks.filter((x) => x.id !== t.id);
+    closeTask(t.id);
+    toast(r && r.queued ? `Concluída sem conexão: ${t.title}. Vai quando a conexão voltar.` : `Concluída: ${t.title}`);
+    check(true);
+    if (onChange) onChange();
+  } catch (e) { errorToast(e, "Não foi possível concluir."); }
+}
+
+async function seenTask(t) {
+  tasks = tasks.filter((x) => x.id !== t.id);
+  closeTask(t.id);
+  check(true);
+  try { await api.post(`/worklog/${t.id}/reminder-seen`); } catch { /* sem rede: some daqui; volta na próxima leitura */ }
+}
+
+// A notificação do sistema desta tarefa sai da bandeja (resolvida aqui).
+async function closeTask(id) {
+  try {
+    const reg = await navigator.serviceWorker?.getRegistration();
+    for (const n of (await reg?.getNotifications({ tag: `lembrete-${id}` })) || []) n.close();
+  } catch { /* sem service worker */ }
+}
+
+function taskRow(t, ringing) {
+  const at = hhmm(t.remind_at);
+  const late = Date.now() - new Date(t.remind_at).getTime() > 60000;
+  const when = ringing ? (late ? `lembrete, era às ${at}` : `lembrete, agora, ${at}`) : `lembrete às ${at}`;
+  const open = () => import("./task.js").then((m) => m.openTask(t.id, onChange));
+  return h("div", { class: "rem-row" },
+    h("p", {}, h("strong", { text: t.title }), h("small", { text: when })),
+    h("div", { class: "rem-acts" },
+      h("button", { type: "button", class: "btn btn-text btn-sm", text: "Abrir", onClick: open }),
+      ringing ? h("button", { type: "button", class: "btn btn-text btn-sm", text: "Ok", title: "Visto: não lembra mais", onClick: () => seenTask(t) }) : null,
+      h("button", { type: "button", class: "btn btn-primary btn-sm", onClick: () => finishTaskHere(t) }, icon("check"), "Concluir")));
+}
+
+function show(list, ringing, tlist = []) {
+  const n = list.length + tlist.length;
+  const what = !list.length ? (n > 1 ? "lembretes" : "Lembrete") : !tlist.length ? (n > 1 ? "rotinas" : "Rotina") : "avisos";
   const head = ringing
-    ? (list.length > 1 ? `${list.length} rotinas na hora` : "Rotina na hora")
-    : `Daqui a pouco${list.length > 1 ? ` (${list.length} rotinas)` : ""}`;
+    ? (n > 1 ? `${n} ${what} na hora` : `${what} na hora`)
+    : `Daqui a pouco${n > 1 ? ` (${n} ${what})` : ""}`;
   const mute = h("button", { type: "button", class: "icon", title: soundOn() ? "Desligar o som neste aparelho" : "Ligar o som neste aparelho",
     "aria-label": soundOn() ? "Desligar o som neste aparelho" : "Ligar o som neste aparelho", onClick: () => setSound(!soundOn()) },
   icon(soundOn() ? "bell" : "bell-off"));
@@ -122,10 +183,16 @@ function show(list, ringing) {
         snoozed.set(r.id, Date.now() + SNOOZE_MS);
         api.post(`/recurring/${r.id}/snooze`, { minutes: SNOOZE_MS / 60000 }).catch(() => {}); // os aparelhos também esperam
       }
+      for (const t of tlist) {
+        taskSnoozed.set(t.id, Date.now() + SNOOZE_MS);
+        closeTask(t.id);
+        api.post(`/worklog/${t.id}/snooze`, { minutes: SNOOZE_MS / 60000 }).catch(() => {});
+      }
       check(true);
     } })
     : h("button", { type: "button", class: "btn btn-ghost btn-sm", text: "Ok", onClick: () => {
       for (const r of list) seenSoon.add(`${r.id}:${r.remind_at}`);
+      for (const t of tlist) seenSoon.add(`t${t.id}:${t.remind_at}`);
       check(true);
     } });
   box = h("section", { class: "idle-card rem-card" + (ringing ? " ringing" : ""), role: ringing ? "alert" : "status", "aria-live": ringing ? "assertive" : "polite" },
@@ -134,6 +201,7 @@ function show(list, ringing) {
       h("p", {}, h("strong", { text: head })),
       ringing ? mute : null),
     ...list.map((r) => row(r, ringing)),
+    ...tlist.map((t) => taskRow(t, ringing)),
     h("div", { class: "assist-actions" }, later));
   document.body.append(box);
   if (!ringing) return;

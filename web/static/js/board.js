@@ -7,11 +7,12 @@ import { extraProjectsField, fillObjectiveSelect, fillProjectSelect, listProject
 import { openTask, openTaskId, editingTaskId, duration, parseDuration } from "./task.js";
 import { boardLine } from "./assistant.js";
 import { session } from "./session.js";
-import { timerButton, timerState, startTimer, stopTimer } from "./timer.js";
+import { timerButton, timerState, startTimer, stopTimer, backAction, finishedTask } from "./timer.js";
 import { refreshReminders } from "./lembretes.js";
 import { appBadge } from "./instalar.js";
 import { prepare, upload } from "./fotos.js";
 import { openPacks } from "./pacotes.js";
+import { pasteHandler, remindLabel } from "./quick.js";
 
 const WEEKDAYS_SHORT = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 // Páginas do quadro: a lista de trabalho cabe numa olhada até 25; as concluídas
@@ -63,6 +64,11 @@ export function taskChips(t, today) {
     if (t.due_date < today) chips.push(h("span", { class: "chip late", text: "atrasada · " + shortDate(t.due_date) }));
     else if (t.due_date === today) chips.push(h("span", { class: "chip today", text: "vence hoje" }));
     else chips.push(h("span", { class: "chip", text: "prazo " + shortDate(t.due_date) }));
+  }
+  // Lembrete com hora: o relógio e quando ("15:00", "amanhã 08:00").
+  if (t.remind_at && t.status !== "done") {
+    const quando = remindLabel(localDateTime(t.remind_at));
+    chips.push(h("span", { class: "chip rem-at", title: "Lembrar em " + quando }, icon("bell"), h("span", { class: "sr-only", text: "lembrete " }), quando));
   }
   // Contexto (projeto, objetivo, chamado, quem mandou, plantão): uma linha de texto
   // com o ponto de cor, sem borda; em pílula fica só o estado (atrasada, aguardando...).
@@ -369,10 +375,15 @@ export function openWorklog(onDone, opts = {}) {
   followUp.min = now.slice(0, 10);
   const resolution = document.getElementById("wl-resolution");
   resolution.value = "";
+  // Lembrar em (data e hora): só em tarefa que fica aberta.
+  const remind = document.getElementById("wl-remind");
+  remind.value = "";
+  remind.min = now;
   const syncDates = () => {
     dates.classList.toggle("hidden", statusSel.value !== "done");
     document.getElementById("wl-resolution-wrap").classList.toggle("hidden", statusSel.value !== "done");
     blockedWrap.classList.toggle("hidden", statusSel.value !== "blocked");
+    document.getElementById("wl-remind-wrap").classList.toggle("hidden", statusSel.value === "done");
     followUp.disabled = statusSel.value !== "blocked"; // escondido e desabilitado: o navegador não valida
   };
   statusSel.onchange = syncDates;
@@ -388,6 +399,8 @@ export function openWorklog(onDone, opts = {}) {
   similarBox.classList.add("hidden");
   let simTimer = null, simSeq = 0;
   dlg.onclose = () => { clearTimeout(simTimer); simSeq++; }; // nada pendente entre aberturas
+  // Colou uma lista no título (várias linhas): fecha esta janela e abre a prévia, uma tarefa por linha.
+  titleInput.onpaste = opts.title || opts.description ? null : pasteHandler({ project: pickedProject, onDone, before: () => dlg.close() });
   titleInput.oninput = () => {
     clearTimeout(simTimer);
     simTimer = setTimeout(async () => {
@@ -458,6 +471,7 @@ export function openWorklog(onDone, opts = {}) {
     if (payload.status === "done" && doneAt.value) payload.completed_at = doneAt.value;
     if (createdAt.value) payload.created_at = createdAt.value;
     if (payload.status === "done" && resolution.value.trim()) payload.resolution = resolution.value.trim();
+    if (payload.status !== "done" && remind.value) payload.remind_at = remind.value;
     if (payload.status === "blocked") {
       payload.blocked_reason = blocked.value.trim() || null;
       payload.follow_up_on = followUpDay(followUp.value || null);
@@ -471,6 +485,7 @@ export function openWorklog(onDone, opts = {}) {
     if (btn) btn.disabled = true; // duplo clique criava a tarefa duas vezes
     try {
       const created = await api.post("/worklog", payload);
+      if (payload.remind_at) refreshReminders();  // o aviso da tela já conta com o lembrete
       if (created && created.queued) {
         // Sem sinal: o resto (checklist, tempo, anotação, fotos) vai junto quando a tarefa for criada.
         for (const label of checklist) await api.after(created.qid, "POST", "/worklog/{id}/checklist", { label });
@@ -514,6 +529,8 @@ export function openRecurring(item, onDone) {
   requireNote.checked = !!(item && item.require_note);
   const time = document.getElementById("rec-time");
   time.value = item && item.remind_at ? item.remind_at.slice(0, 5) : "";
+  const steps = document.getElementById("rec-steps");
+  steps.value = item && item.steps ? item.steps.join("\n") : "";
 
   // Nova rotina: oferece os pacotes por área (projeto + rotinas num toque).
   document.getElementById("rec-pack").classList.toggle("hidden", !!item);
@@ -547,8 +564,11 @@ export function openRecurring(item, onDone) {
     if (!label) return;
     const agenda = sched.value();
     if (!agenda) return;
+    const stepList = steps.value.split("\n").map((x) => x.trim()).filter(Boolean);
+    if (stepList.length > 12) { toast("No máximo 12 passos por rotina.", { error: true }); steps.focus(); return; }
+    if (stepList.some((x) => x.length > 80)) { toast("Cada passo com até 80 caracteres.", { error: true }); steps.focus(); return; }
     try {
-      const body = { label, ...agenda, require_note: requireNote.checked, remind_at: time.value || null };
+      const body = { label, ...agenda, require_note: requireNote.checked, remind_at: time.value || null, steps: stepList.length ? stepList : null };
       if (item) await api.patch(`/recurring/${item.id}`, body);
       else await api.post("/recurring", body);
       dlg.close();
@@ -650,13 +670,16 @@ export async function finishTask(t, onDone, { fromEdit = false } = {}) {
   const refocus = focusAfterRemoval(); // o foco vai para a tarefa que ficar no lugar
   try {
     const r = await api.post(`/worklog/${t.id}/finish`);
+    finishedTask(t.id);  // com o cronômetro nela, o servidor já parou e apontou
+    const back = backAction(t.id, onDone);  // fim de uma interrupção: voltar para a que ficou parada
     Promise.resolve(onDone && onDone()).then(refocus);
-    if (r && r.queued) { toast(`Concluída sem conexão: ${t.title}. Vai quando a conexão voltar.`); return; }
+    if (r && r.queued) { toast(`Concluída sem conexão: ${t.title}. Vai quando a conexão voltar.`, back ? { actions: [back] } : {}); return; }
     // A base de conhecimento só cresce se for perguntada na hora de concluir.
     toast(`Concluída: ${t.title}`, { actions: [
+      back,
       ["Como resolveu?", () => askResolution(t, onDone)],
       ["Desfazer", () => undoLatest("worklog", t.id, onDone)],
-    ] });
+    ].filter(Boolean) });
   } catch (e) {
     errorToast(e, "Não foi possível concluir.");
   }

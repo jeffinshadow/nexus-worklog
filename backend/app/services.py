@@ -287,7 +287,7 @@ def board_day_range(today: date) -> tuple[date, date]:
 # que conta da última vez).
 _ROTINAS_SQL = """
     SELECT r.id, r.label, r.position, r.freq, r.weekdays, r.month_day, r.interval_days, r.require_note, r.remind_at,
-           r.after_from,
+           r.steps, r.after_from,
            ARRAY(SELECT ARRAY[p.start_d, p.end_d] FROM recurring_pauses p
                   WHERE p.recurring_id = r.id AND p.start_d <= p.end_d ORDER BY p.start_d) AS pauses,
            CASE WHEN r.freq = 'after' THEN ARRAY(SELECT x.completed_date FROM recurring_completions x
@@ -352,7 +352,7 @@ def get_board(user_id: int, day: date | None = None, project: int | None = None,
         return """
         SELECT w.id, w.title, w.description, w.status, w.due_date, w.created_at, w.completed_at,
                w.priority, w.project_id, w.ticket, w.after_hours, w.assigned_by, w.blocked_reason, w.blocked_at, w.follow_up_on,
-               p.name AS project_name, p.color AS project_color, """ + PROJECT_ICON + ", " + ASSIGNER_NAME + """,
+               w.remind_at, p.name AS project_name, p.color AS project_color, """ + PROJECT_ICON + ", " + ASSIGNER_NAME + """,
                """ + TASK_COUNTS + extra + """
           FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
          WHERE w.user_id = %s"""

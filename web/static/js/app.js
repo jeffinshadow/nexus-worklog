@@ -18,7 +18,7 @@ import { startIdle } from "./idle.js";
 import { startReminders } from "./lembretes.js";
 import { canOfferInstall, install, offerInstall, sharedTask, stashShare, takeShortcut } from "./instalar.js";
 import { offerNotifications, syncOnBoot } from "./notificacoes.js";
-import { pendingCount, startQueue, wipe } from "./fila.js";
+import { pendingCount, prepareButton, startQueue, wipe } from "./fila.js";
 import { configure as configureAssistant } from "./assistant.js";
 import { session } from "./session.js";
 import { initTimer, stopTimer, timerState } from "./timer.js";
@@ -279,10 +279,15 @@ function showHelp(focus) {
         ["!alta", "prioridade alta", true],
         ["!plantão", "fora do horário", true],
         ["^amanhã", "prazo: ^hoje, ^sex, ^25/10…", true],
+        ["^15h", "lembrete com hora: ^15h, ^amanhã 8h, ^sex 9h30", true],
         ["!aguarda motivo", "fica aguardando o motivo (sempre por último)", true],
         ["— 45min", "já conclui, com o tempo apontado", true],
       ]),
-      h("p", { class: "help-example" }, "Ex.: ", h("code", { text: "Troca do switch @Matriz #4821 — 45min" }))) : null,
+      h("p", { class: "help-example" }, "Ex.: ", h("code", { text: "Troca do switch @Matriz #4821 — 45min" })),
+      h("p", { class: "help-example" }, "Colou uma lista (uma por linha)? Vira uma tarefa por linha, com prévia antes de criar.")) : null,
+    user ? sec("alert", "Sem sinal",
+      h("p", { class: "help", text: "O app abre com as telas da última visita e guarda o que for feito (registrar, concluir, anotar, rotina, fotos, cronômetro); vai sozinho quando a conexão voltar. Antes de ir para onde não há sinal, guarde o detalhe das tarefas em aberto (checklist e anotações):" }),
+      h("div", { class: "help-start" }, prepareButton())) : null,
     user && desk ? sec("key", "Atalhos de teclado", list([
       ["n", "nova tarefa", true], ["q", "registro rápido", true], ["/", "buscar", true], ["h t", "Hoje, Tarefas", true], ["r l", "Meu mês: números, relatórios", true],
       ["s", "parar o cronômetro", true], ["?", "ver todos os atalhos", true],

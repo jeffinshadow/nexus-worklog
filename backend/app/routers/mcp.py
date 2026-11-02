@@ -175,6 +175,8 @@ def _task_line(t: dict, today: date) -> str:
         parts.append("{" + " + ".join(nomes) + "}")
     if t.get("objective_title"):
         parts.append(f"[objetivo: {t['objective_title']}]")
+    if t.get("remind_at") and t["status"] != "done":
+        parts.append(f"(lembrar em {t['remind_at'].astimezone(services.app_tz()):%d/%m %H:%M})")
     if t.get("due_date") and t["status"] != "done":
         due = t["due_date"]
         parts.append(f"prazo {due.isoformat()}" + (" (ATRASADA)" if due < today else ""))
@@ -250,7 +252,7 @@ def _task_args(uid: int, args: dict) -> dict:
 def _find_task(uid: int, task_id: int) -> dict:
     t = db.query_one(
         """SELECT w.id, w.title, w.description, w.status, w.due_date, w.completed_at, w.priority,
-                  w.ticket, w.after_hours, w.external_ref, w.blocked_reason, w.follow_up_on, p.name AS project_name,
+                  w.ticket, w.after_hours, w.external_ref, w.blocked_reason, w.follow_up_on, w.remind_at, p.name AS project_name,
                   """ + services.ASSIGNER_NAME + ", " + services.TASK_COUNTS + """
              FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
             WHERE w.id = %s AND w.user_id = %s""", (task_id, uid))
@@ -629,6 +631,7 @@ def _recurring_rows(rows: list, day: date | None = None) -> list[str]:
             + (f" (pausada até {r['paused_until']:%d/%m})" if r.get("paused_until") else "" if r["due"] else " (fora da agenda)")
             + (f" ({_agenda_text(r)}{_next_text(r, day)})" if r.get("next_due") else "")
             + (" (exige evidência)" if r.get("require_note") else "")
+            + (f" (passos: {'; '.join(r['steps'])})" if r.get("steps") else "")
             for r in rows]
 
 
@@ -659,13 +662,13 @@ def _agenda_text(r: dict) -> str:
 
 def t_create_recurring(ctx, args):
     uid = ctx["user_id"]
-    fields = _fields(args, ("label", "freq", "month_day", "interval_days", "remind_at", "require_note"))
+    fields = _fields(args, ("label", "freq", "month_day", "interval_days", "remind_at", "require_note", "steps"))
     if "weekdays" in args:
         fields["weekdays"] = _weekdays_mask(args["weekdays"]) or None
     data = _call(RecurringIn, **fields)
     if args.get("paused_until"):
         _pause_in(args["paused_until"])  # data errada: erro antes de criar (senão a rotina nasceria sem a pausa)
-    found = db.query_one("""SELECT id, label, freq, weekdays, month_day, interval_days, require_note, remind_at
+    found = db.query_one("""SELECT id, label, freq, weekdays, month_day, interval_days, require_note, remind_at, steps
                               FROM recurring_tasks WHERE user_id = %s AND active AND nx_fold(label) = nx_fold(%s)""",
                          (uid, data.label.strip()))
     if found:
@@ -723,8 +726,10 @@ def _pause_in(until) -> PauseIn:
 
 
 def _routine_line(r: dict) -> str:
+    passos = r.get("steps") or []
     return (f"R{r['id']} {r['label']} ({_agenda_text(r)})" + (f" às {r['remind_at']:%H:%M}" if r.get("remind_at") else "")
-            + (" (exige evidência)" if r.get("require_note") else ""))
+            + (" (exige evidência)" if r.get("require_note") else "")
+            + (f" (passos: {'; '.join(passos)})" if passos else ""))
 
 
 def t_get_period(ctx, args):
@@ -1097,9 +1102,9 @@ def t_update_recurring(ctx, args):
         if str(e).startswith("rotina não encontrada"):
             raise ToolError(f"rotina R{rid} não encontrada (veja list_recurring)") from None
         if str(e) == "nada mudou na rotina":
-            raise ToolError("nada a mudar: envie label, freq (com o parâmetro dela), remind_at ou require_note") from None
+            raise ToolError("nada a mudar: envie label, freq (com o parâmetro dela), remind_at, require_note ou steps") from None
         raise
-    row = db.query_one("""SELECT id, label, freq, weekdays, month_day, interval_days, require_note, remind_at
+    row = db.query_one("""SELECT id, label, freq, weekdays, month_day, interval_days, require_note, remind_at, steps
                             FROM recurring_tasks WHERE id = %s AND user_id = %s""", (res["id"], uid))
     novo = (f" A agenda mudou a partir de hoje: a rotina agora é R{res['id']} (R{rid} fica no histórico com os dias "
             "anteriores; use o id novo daqui em diante).") if res.get("replaced") else ""
@@ -1157,6 +1162,9 @@ TOOLS = {
                                            "description": "Com status blocked: o que se está aguardando"},
                         "follow_up_on": {**DATE, "type": ["string", "null"], "description": "Com status blocked: dia combinado para cobrar"},
                         "resolution": {"type": "string", "maxLength": 1000, "description": "Com status done: como foi resolvido (entra na busca)"},
+                        "remind_at": {"type": ["string", "null"], "description": "Lembrar em: data e hora (AAAA-MM-DDTHH:MM, fuso da app) ou como se fala "
+                                      "(15h, 7h30, amanhã 8h, hoje 15h; só a hora = a próxima vez que der essa hora). O app avisa na hora, "
+                                      "com Concluir e Adiar, e a notificação do aparelho também. Não é o prazo (due_date)"},
                         "minutes": {"type": "integer", "minimum": 1, "maximum": 1440,
                                     "description": "Tempo, em minutos: já fica apontado (no dia da conclusão ou do início)"},
                         "external_ref": {"type": "string", "maxLength": 120,
@@ -1182,7 +1190,10 @@ TOOLS = {
                         "follow_up_on": {**DATE, "type": ["string", "null"], "description": "Dia combinado para cobrar (AAAA-MM-DD); "
                                          "mesma regra do blocked_reason: só em tarefa aguardando ou com status blocked junto"},
                         "resolution": {"type": ["string", "null"], "maxLength": 1000,
-                                       "description": "Como foi resolvido (tarefa concluída; null apaga)"}}}),
+                                       "description": "Como foi resolvido (tarefa concluída; null apaga)"},
+                        "remind_at": {"type": ["string", "null"], "description": "Lembrar em: data e hora (AAAA-MM-DDTHH:MM, fuso da app) ou como se fala "
+                                      "(15h, 7h30, amanhã 8h, hoje 15h; só a hora = a próxima vez que der essa hora). O app avisa na hora, "
+                                      "com Concluir e Adiar, e a notificação do aparelho também. null tira o lembrete. Não é o prazo (due_date)"}}}),
     "get_summary": (t_get_summary, False, "Resumo para a daily/retro: o último dia útil e a semana até hoje (rotinas, tarefas concluídas, tempo por projeto, o que ficou para trás).",
                     {"type": "object", "properties": {}}),
     "get_week": (t_get_week, False, "Resumo de uma semana passada (domingo a sábado), comparada com a anterior: "
@@ -1311,7 +1322,10 @@ TOOLS = {
                                               "description": "Já cria pausada até esta data AAAA-MM-DD (opcional)"},
                              "remind_at": {"type": ["string", "null"], "description": "Horário HH:MM ou como se fala (07:30, 7h30, 7h; o app lembra perto dele)"},
                              "require_note": {"type": "boolean", "default": False,
-                                              "description": "Marcar exige evidência (note em set_recurring)"}}}),
+                                              "description": "Marcar exige evidência (note em set_recurring)"},
+                             "steps": {"type": ["array", "null"], "items": {"type": "string", "maxLength": 80}, "maxItems": 12,
+                                       "description": "Passos da rotina (ronda com itens: casa de máquinas, bombas...). Marcar a rotina "
+                                                      "conta uma vez; no app, os passos não feitos vão para a evidência. null ou [] tira"}}}),
     "list_routine_packs": (t_list_routine_packs, False,
                            "Pacotes prontos de rotinas por área (manutenção predial, suporte de TI, atendimento, redes e "
                            "campo, segurança da informação): cada um com o projeto da área e as rotinas com agenda e "
@@ -1387,8 +1401,8 @@ TOOLS = {
 # Mesmos campos do create_recurring (sem padrões: o que não vier não muda), mais o id.
 TOOLS["update_recurring"] = (
     t_update_recurring, True,
-    "Edita uma rotina: nome, agenda (freq com o parâmetro dela), horário do lembrete (remind_at; null tira) ou se "
-    "exige evidência. Envie só o que muda. Mudar a agenda de uma rotina que já tem dias passados cria um id novo "
+    "Edita uma rotina: nome, agenda (freq com o parâmetro dela), horário do lembrete (remind_at; null tira), se "
+    "exige evidência ou os passos (steps). Envie só o que muda. Mudar a agenda de uma rotina que já tem dias passados cria um id novo "
     "a partir de hoje (o passado fica como estava). A IA não remove rotinas.",
     {"type": "object", "required": ["recurring_id"], "properties": {
         "recurring_id": {"type": "integer", "description": "id da rotina (R<n> em get_today/list_recurring), não de tarefa"},

@@ -145,6 +145,19 @@ def build_ics(uid: int, include_recurring: bool, cal_name: str) -> str:
               "Tarefa aguardando, com dia combinado para cobrar.",
               [f"URL:{config.APP_URL}/#/tarefas?id={t['id']}"])
 
+    # Lembrete com hora ("me lembra às 15h"): evento de 15 min com alarme, não o dia inteiro.
+    for t in db.query_all(
+        """SELECT id, title, remind_at FROM worklog_tasks
+            WHERE user_id = %s AND status <> 'done' AND remind_at IS NOT NULL
+              AND remind_at > now() - interval '7 days'""", (uid,)):
+        ini = t["remind_at"].astimezone(timezone.utc)
+        lines.extend(["BEGIN:VEVENT", f"UID:remind-{t['id']}@nexus-worklog", f"DTSTAMP:{now}",
+                      f"DTSTART:{ini:%Y%m%dT%H%M%SZ}", f"DTEND:{ini + timedelta(minutes=15):%Y%m%dT%H%M%SZ}",
+                      f"SUMMARY:{_esc('Lembrete: ' + t['title'])}", f"DESCRIPTION:{_esc('Lembrete de tarefa do Nexus.')}",
+                      "TRANSP:TRANSPARENT", f"URL:{config.APP_URL}/#/tarefas?id={t['id']}",
+                      "BEGIN:VALARM", "ACTION:DISPLAY", f"DESCRIPTION:{_esc(t['title'])}", "TRIGGER:PT0M", "END:VALARM",
+                      "END:VEVENT"])
+
     # Vencimentos: no dia de vencer e no dia de começar a avisar.
     from .renewals import list_for
     link = [f"URL:{config.APP_URL}/#/vencimentos"]  # onde se clica "Renovei"

@@ -328,6 +328,13 @@ export async function openTask(taskId, onChange, opts = {}) {
       save({ due_date: due.value || null });
     });
 
+    // Lembrar em: data e hora do aviso (na tela e no aparelho). Vazio tira.
+    const remind = h("input", { type: "datetime-local", "aria-label": "Lembrar em" });
+    const nowLocal = localDateTime(Date.now());
+    remind.value = t.remind_at ? localDateTime(t.remind_at) : "";
+    remind.min = remind.value && remind.value < nowLocal ? remind.value : nowLocal;  // um lembrete já passado fica como está
+    remind.addEventListener("change", () => save({ remind_at: remind.value || null }).then(() => import("./lembretes.js").then((m) => m.refreshReminders())));
+
     const proj = h("select", { "aria-label": "Projeto" });
     // Demanda que atende mais de uma frente: outros projetos além do principal.
     const extras = extraProjectsField((t.extra_projects || []).map((p) => p.id), () => cur.project_id || null,
@@ -365,7 +372,8 @@ export async function openTask(taskId, onChange, opts = {}) {
     afterHours.checked = !!t.after_hours;
     afterHours.addEventListener("change", () => save({ after_hours: afterHours.checked }));
 
-    grid.append(field("Situação", status), field("Prazo", due), field("Projeto", proj), field("Prioridade", prio),
+    grid.append(field("Situação", status), field("Prazo", due),
+      ...(t.status !== "done" ? [field("Lembrar em", remind)] : []), field("Prioridade", prio), field("Projeto", proj, t.status !== "done" ? "wide" : ""),
       objField,
       h("div", { class: "field wide" }, h("span", { class: "field-label", text: "Outros projetos" }), extras.el),
       h("div", { class: "field" }, h("label", { for: ticket.id, text: "Nº do chamado ou OS" }),

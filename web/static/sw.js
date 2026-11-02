@@ -115,6 +115,15 @@ self.addEventListener('notificationclick', (event) => {
         await call(`/recurring/${d.id}/snooze`, { minutes: 10 });
         return;
       }
+      // Lembrete com hora de uma tarefa ("Lembrar em"): Concluir e Adiar direto da notificação.
+      if (event.action === 'concluir' && d.kind === 'lembrete') {
+        await call(`/worklog/${d.id}/finish`, {});
+        return;
+      }
+      if (event.action === 'adiar' && d.kind === 'lembrete') {
+        await call(`/worklog/${d.id}/snooze`, { minutes: 10 });
+        return;
+      }
     } catch {
       // Sem sessão (saiu, senha trocada) ou sem rede: abre o app, que resolve.
     }
