@@ -1533,6 +1533,12 @@ dialog.proj-dialog { max-width: 480px; width: min(480px, calc(100vw / var(--ui-z
   background: var(--secondary-container); color: var(--on-secondary-container); font-size: var(--type-body-s); line-height: 1.45; overflow-wrap: anywhere; }
 .eq-returned-note .ico { flex: none; width: 18px; height: 18px; margin-top: 1px; }
 .assigned-note .btn-text { margin-left: auto; }
+/* Título ocupa a linha; as ações descem quando não cabem (celular). */
+.eq-sent .list-row { flex-wrap: wrap; }
+.eq-sent .list-row .t { flex: 1 1 260px; min-width: 0; }
+.eq-sent .list-row .request-actions { margin-left: auto; }
+.assign-who-help { margin: -4px 0 16px; }
+.return-intro { margin: 0 0 16px; }
 
 /* Celular: áreas de toque de pelo menos 44 px (Material 3 pede 48 de alvo). Controles
    crescem de verdade; o que precisa continuar pequeno (x do chip, link do chamado,

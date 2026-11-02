@@ -16,7 +16,7 @@ export function returnTask(t, onDone) {
       placeholder: "ex.: não é da minha área; estou de férias até dia 10" });
     const err = h("p", { class: "error-text", role: "alert" });
     const form = h("form", {},
-      h("p", { text: `“${t.title}” volta para ${quem}, com o motivo, e sai das suas tarefas. Dá para desfazer pelo Histórico enquanto ${quem} não decidir o que fazer com ela.` }),
+      h("p", { class: "return-intro", text: `“${t.title}” volta para ${quem}, com o motivo, e sai das suas tarefas. Dá para desfazer pelo Histórico enquanto ${quem} não decidir o que fazer com ela.` }),
       field("Por quê? (até 120 caracteres)", reason),
       err,
       h("div", { class: "dialog-actions" },

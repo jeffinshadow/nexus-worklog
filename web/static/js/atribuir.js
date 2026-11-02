@@ -74,7 +74,7 @@ export async function assignDialog({ fromReturn = null, edit = null, onDone } = 
     fromReturn ? h("p", { class: "eq-returned-note" }, icon("undo"),
       h("span", { text: `${fromReturn.to_name} devolveu: «${fromReturn.ended.reason || "sem motivo"}». Ajuste o que precisar e escolha quem recebe (a mesma pessoa ou outra).` })) : null,
     edit ? h("p", { class: "dialog-note", text: `Para ${edit.to_name}` }) : field("Para", who),
-    who ? h("p", { class: "help", text: quemAceita + outras }) : null,
+    who ? h("p", { class: "help assign-who-help", text: quemAceita + outras }) : null,
     field("Título", title),
     field("Descrição (opcional, até 300 caracteres)", desc),
     h("div", { class: "field-row" }, field("Prazo (opcional)", due), field("Prioridade", prio)),
