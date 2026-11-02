@@ -86,6 +86,8 @@ async function route() {
   if (MOVED[name]) { window.history.replaceState(null, "", "#/" + MOVED[name]); name = MOVED[name].split("?")[0]; }
   if (!allowed(name)) name = home();
   const view = VIEWS[name];
+  const sameHash = lastHash === location.hash;
+  lastHash = location.hash;
 
   for (const key of Object.keys(VIEWS)) {
     document.getElementById("view-" + key).classList.toggle("hidden", key !== name);
@@ -155,7 +157,8 @@ async function route() {
       if (!acted) setActions();
     }
   }
-  window.scrollTo(0, 0);
+  // A mesma tela redesenhada (parar o cronômetro, voltar à interrompida, lembrete): fica onde estava.
+  if (!sameHash) window.scrollTo(0, 0);
   if (wantFocus && seq === routeSeq) document.getElementById("page-title").focus({ preventScroll: true });
   // Link direto para uma tarefa (#/tarefas?id=N: e-mail de atribuição, calendário).
   const taskId = Number(new URLSearchParams(location.hash.split("?")[1] || "").get("id"));
@@ -175,6 +178,7 @@ function enter(el) {
 }
 
 let routeSeq = 0;
+let lastHash = null; // o endereço do último desenho: igual, é só atualizar a tela
 let shownView = null;
 const kept = {};
 function setAssist(node) {

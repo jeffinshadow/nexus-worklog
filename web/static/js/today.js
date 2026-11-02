@@ -9,7 +9,7 @@ import { openRecurring, pauseRecurring, openWorklog, finishTask, askResolution, 
 import { openTask } from "./task.js";
 import { fillProjectSelect } from "./projects.js";
 import { summaryPanel } from "./summary.js";
-import { quickRegister, lastDone, pasteHandler } from "./quick.js";
+import { quickRegister, lastDone, lastUnknown, projectOffer, pasteHandler } from "./quick.js";
 import { todayCard } from "./assistant.js";
 import { timerButton } from "./timer.js";
 import { todayRenewals } from "./renewals.js";
@@ -24,8 +24,8 @@ const OPEN_MAX = 10; // em aberto no Hoje; o resto, em Tarefas
 // Filtro das abertas: todas, as que vencem até hoje (atrasadas inclusas) ou só as de prioridade alta.
 const FILTERS = [
   ["all", "Todas", () => true, "Nada em aberto."],
-  ["due", "Vence hoje", (t, today) => !!t.due_date && t.due_date <= today, "Nada vencendo hoje nem atrasado."],
-  ["prio", "Prioritárias", (t) => t.priority === 1, "Nenhuma tarefa de prioridade alta em aberto."],
+  ["due", "Até hoje", (t, today) => !!t.due_date && t.due_date <= today, "Nada vencendo hoje nem atrasado."],
+  ["prio", "Prioridade alta", (t) => t.priority === 1, "Nenhuma tarefa de prioridade alta em aberto."],
 ];
 
 // opts.day: dia das rotinas (padrão hoje); opts.focusQuick: volta o cursor ao
@@ -192,10 +192,11 @@ export async function mount(root, ctx, opts = {}) {
     try {
       // "Ver": a linha nova fica abaixo da dobra no celular (concluídas ou abertas).
       const msg = await quickRegister(quick.value, project_id);
-      const done = lastDone; // registrada já concluída ("— 30min"): pergunta como resolveu, como o Concluir
+      const done = lastDone, unknown = lastUnknown; // registrada já concluída ("— 30min"): pergunta como resolveu, como o Concluir
       toast(msg, { actions: [
         ["Ver", () => document.querySelector(/conclu/i.test(msg) ? ".t-done" : ".t-open")?.scrollIntoView({ behavior: calmMotion() ? "auto" : "smooth", block: "start" })],
         done ? ["Como resolveu?", () => askResolution(done, refresh)] : null,
+        unknown ? projectOffer(unknown, refresh) : null,  // "@Manutenção" que não é projeto: cria e põe a tarefa nele
       ].filter(Boolean) });
     } catch (e) {
       quick.disabled = false;

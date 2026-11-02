@@ -213,6 +213,9 @@ export async function openTask(taskId, onChange, opts = {}) {
           ? h("button", { type: "button", class: "icon", title: editing ? EDIT_HINT : "Concluir", "aria-label": "Concluir", disabled: editing ? "disabled" : null,
               onClick: () => finishTask(t, after) }, icon("check"))
           : off ? null : h("button", { type: "button", class: "icon", title: "Reabrir", "aria-label": "Reabrir", onClick: async () => { await pending; reopenTask(cur, after); } }, icon("undo")),
+        // Aguardando à vista (decisão do dono, 02/11): o mesmo diálogo do menu do cartão.
+        !off && canBlock(t) ? h("button", { type: "button", class: "icon", title: "Marcar como aguardando", "aria-label": "Marcar como aguardando",
+          onClick: async () => { await pending; blockTask(cur, after); } }, icon("clock")) : null,
         ...(off ? [] : [
           h("button", { type: "button", class: "icon", title: "Copiar resumo (para o chamado ou o cliente)", "aria-label": "Copiar resumo", onClick: async () => { await pending; copySummary(cur); } }, icon("copy")),
           h("button", { type: "button", class: "icon", title: "Salvar como modelo", "aria-label": "Salvar como modelo", onClick: async () => { await pending; saveAsTemplate(cur); } }, icon("list")),
@@ -232,7 +235,6 @@ export async function openTask(taskId, onChange, opts = {}) {
       off ? null : h("button", { type: "button", class: "icon", title: "Mais ações", "aria-label": "Mais ações", onClick: (ev) => {
         const items = [
           t.status === "done" ? ["Reabrir", "undo", async () => { await pending; reopenTask(cur, after); }] : null,
-          canBlock(t) ? ["Marcar como aguardando…", "clock", async () => { await pending; blockTask(cur, after); }] : null,
           ["Copiar resumo (para o chamado ou o cliente)", "copy", async () => { await pending; copySummary(cur); }],
           ["Salvar como modelo", "list", async () => { await pending; saveAsTemplate(cur); }],
           ["Duplicar tarefa", "add", dup],
@@ -249,8 +251,11 @@ export async function openTask(taskId, onChange, opts = {}) {
       : h("div", { class: "task-main-actions" },
       h("button", { type: "button", class: "btn btn-ghost" + (running ? " timer-on" : ""), onClick: () => (running ? stopTimer(after) : startTimer(t, after)) },
         icon(running ? "stop" : "play"), running ? "Parar cronômetro" : "Cronômetro"),
+      !off && canBlock(t) ? h("button", { type: "button", class: "btn btn-ghost", onClick: async () => { await pending; blockTask(cur, after); } },
+        icon("clock"), "Aguardando") : null,
       h("button", { type: "button", class: "btn btn-primary", title: editing ? EDIT_HINT : null, disabled: editing ? "disabled" : null,
         onClick: () => finishTask(t, after) }, icon("check"), "Concluir"));
+    if (mainActs && mainActs.children.length === 3) mainActs.classList.add("three");
 
     const offNote = off ? h("p", { class: "offline-note", role: "status" }, icon("alert"),
       h("span", { text: "Sem conexão: os detalhes desta tarefa aparecem quando a conexão voltar. Anotação, foto, concluir e cronômetro ficam guardados e vão sozinhos." })) : null;

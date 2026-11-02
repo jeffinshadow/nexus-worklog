@@ -112,8 +112,8 @@ const TYPES = [
   ["deadline", "Prazos de hoje", "No horário da manhã (em Seu dia, abaixo), as atrasadas e o que vence hoje."],
   ["assigned", "Tarefas atribuídas", "Quando alguém manda uma tarefa para você, ou devolve uma que você mandou."],
 ];
-// O horário da manhã e o Salvar ficam um só na aba: o painel devolve `collect()`
-// (o corpo de PUT /push/prefs, sem o horário) e o Salvar do e-mail grava os dois.
+// O horário da manhã é um só para e-mail e notificações: o painel devolve `collect()`
+// (o corpo de PUT /push/prefs, sem o horário) e Configurações grava os dois a cada mudança.
 export async function pushPanel(rerender) {
   const sub = await currentSubscription();
   const p = await api.get("/push" + (sub ? "?endpoint=" + encodeURIComponent(sub.endpoint) : ""));
@@ -165,7 +165,6 @@ export async function pushPanel(rerender) {
     h("div", { class: "push-here" }, h("p", { text: status }), action),
     ...checks.map((c) => c.el),
     h("label", { class: "check-line notice-titles" }, hide, h("span", { text: "Esconder nomes de tarefas e rotinas na tela bloqueada (só o tipo do aviso)" })),
-    h("p", { class: "dialog-note", text: "Escolhas daqui são gravadas pelo “Salvar avisos”, no fim da aba." }),
     h("div", { class: "row-actions" }, test),
     p.devices.length ? h("div", { class: "push-devices" },
       h("h3", { text: "Aparelhos ligados" }),
@@ -173,7 +172,11 @@ export async function pushPanel(rerender) {
         h("span", { class: "token-name", text: (d.label || "Aparelho") + (d.current ? " (este)" : "") }),
         h("span", { class: "token-meta", text: d.last_ok_at ? "último aviso " + dateTime(d.last_ok_at) : "ligado " + dateTime(d.created_at) }),
         h("button", { type: "button", class: "icon", title: "Remover este aparelho", "aria-label": "Remover " + (d.label || "aparelho"),
-          onClick: async () => { if (d.current) await disable(d.id); else await api.del(`/push/devices/${d.id}`); rerender(); } }, icon("trash"))))) : null);
+          onClick: async (ev) => {
+            const b = ev.currentTarget; if (b.dataset.busy) return; b.dataset.busy = "1"; // toque duplo não manda duas vezes
+            try { if (d.current) await disable(d.id); else await api.del(`/push/devices/${d.id}`); toast("Aparelho removido."); rerender(); }
+            catch (e) { delete b.dataset.busy; errorToast(e, "Não foi possível remover o aparelho."); }
+          } }, icon("trash"))))) : null);
   panel.collect = collect;
   return panel;
 }

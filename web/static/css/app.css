@@ -327,6 +327,16 @@ button.column-toggle { display: none; }
   transition: background-color var(--dur-short) var(--ease-standard), color var(--dur-short) var(--ease-standard); }
 .seg button.chip-btn[aria-selected="true"], .seg button.chip-btn[aria-checked="true"] { background-color: var(--primary-container); color: var(--on-primary-container); }
 .settings-grid { display: grid; gap: var(--gap); grid-template-columns: minmax(0, 1fr); }  /* nada passa da tela no celular */
+/* Configurações numa página só: atalhos para as seções no topo; cada seção com o seu título. */
+.settings-index { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 4px; }
+.settings-index a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border-radius: var(--radius-full); border: 1px solid var(--outline-variant);
+  background: var(--surface-card); color: var(--on-surface); font-family: var(--font-label); font-size: var(--type-body-s); font-weight: var(--weight-label); text-decoration: none; }
+.settings-index a:hover { background-image: linear-gradient(var(--hover), var(--hover)); }
+.settings-group-title { font-size: var(--type-headline); font-weight: var(--weight-title); letter-spacing: -.02em; margin: 28px 0 12px; scroll-margin-top: 16px; outline: none; }
+.settings-group-title:focus-visible { outline: 2px solid var(--primary); outline-offset: 4px; border-radius: 4px; }
+.settings-danger { margin-top: 28px; }
+.panel-head h3 { font-size: var(--type-title); font-weight: var(--weight-title); letter-spacing: -.01em; flex: 1; }
+@media (max-width: 860px) { .settings-group-title { scroll-margin-top: 72px; } }  /* a barra do topo do celular não cobre o título */
 /* Saúde do Nexus (Admin > Geral): título à esquerda, situação à direita; no celular, um embaixo do outro. */
 .health-list { display: grid; grid-template-columns: minmax(120px, max-content) minmax(0, 1fr); gap: 10px 18px; margin: 4px 0 8px; }
 .health-list dt { display: flex; align-items: flex-start; gap: 6px; font-weight: var(--weight-title); color: var(--on-surface); }
@@ -414,6 +424,8 @@ dialog p { color: var(--on-surface-variant); font-size: var(--type-body); }
 /* left/right fixos (não left: 50% + translate): o toast pode usar a largura toda, não só metade. */
 .toasts { position: fixed; left: 16px; right: 16px; bottom: 24px; z-index: 100; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; }
 @media (max-width: 860px) { .toasts { bottom: calc(86px + env(safe-area-inset-bottom)); } }
+/* Dentro de um diálogo aberto (o resto da página fica atrás do véu): sem a barra de baixo para desviar. */
+@media (max-width: 860px) { .toasts.toasts-dialog { bottom: calc(24px + env(safe-area-inset-bottom)); } }
 /* Aviso no estilo snackbar do Material 3: no escuro o contêiner mais alto (como no desktop), no claro a superfície invertida. */
 .toast { pointer-events: auto; display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 6px 8px 6px 16px; border-radius: var(--radius-s);
   background: var(--snackbar-bg); color: var(--snackbar-fg); box-shadow: var(--elev-2); font-size: var(--type-body);
@@ -786,7 +798,6 @@ a.chip.ticket:hover { background-image: linear-gradient(var(--hover), var(--hove
 .shortcuts dd { margin: 0; color: var(--on-surface-variant); font-size: var(--type-body); }
 .shortcuts kbd { display: inline-grid; place-items: center; min-width: 26px; height: 26px; padding: 0 6px; border-radius: var(--radius-s);
   border: 1px solid var(--line-2); background: var(--surface); font: 600 var(--type-body-s) var(--font-label); color: var(--on-surface); }
-.daily-text { width: 100%; font: var(--type-body-s)/1.5 var(--font-label); font-variant-numeric: tabular-nums; resize: vertical; }
 
 /* Admin > Permissões: uma linha por conta, papéis como caixas. */
 .roles-legend { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0 0 14px; font-size: var(--type-body-s); }
@@ -1566,8 +1577,11 @@ dialog.proj-dialog { max-width: 480px; width: min(480px, calc(100vw / var(--ui-z
 
 /* Chave criada: as quatro IAs em grade 2x2 (numa linha só não cabem no diálogo). */
 .ai-tabs-note { margin-top: 16px; }
-.seg.ai-tabs { display: grid; grid-template-columns: 1fr 1fr; border-radius: var(--radius-m); margin: 8px 0 12px; }
-.seg.ai-tabs button.chip-btn { border-radius: var(--radius-s); text-align: center; }
+.ai-config { border: 1px solid var(--outline-variant); border-radius: var(--radius-m); padding: 0 12px; margin: 8px 0 0; }
+.ai-config > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; color: var(--on-surface); font-weight: var(--weight-label); }
+.ai-config[open] { padding-bottom: 12px; }
+.ai-config[open] > summary { color: var(--primary-hi); }
+.ai-config + .warnbox { margin-top: 12px; }
 
 /* ---------------------------------------------------- revisão da semana -- */
 /* Três passos num diálogo só (como a Ajuda): cabeçalho e botões fixos, a lista rola. */
@@ -1591,9 +1605,14 @@ dialog .review-intro { margin: 0 0 12px; line-height: 1.5; }
 dialog .review-count { margin: 0 0 4px; font-family: var(--font-label); font-size: max(var(--type-label), calc(12px / var(--ui-zoom))); color: var(--on-surface-variant); }
 .review-dialog .btn[aria-pressed="true"] { background: var(--primary-container); color: var(--on-primary-container); border-color: transparent; }
 .review-dialog .dialog-actions { flex-wrap: wrap; margin-top: 16px; }
-dialog.review-dialog { position: relative; }
 .review-close { position: absolute; top: 12px; right: 12px; }
 .review-dialog .tour-step { padding-right: 40px; }
+/* Janela baixa (zoom 400%, celular deitado): o diálogo inteiro rola, e não só a lista (que ficaria com 0 px). */
+@media (max-height: 600px) {
+  dialog.review-dialog[open] { display: block; overflow-y: auto; }
+  .review-dialog > form.review-form, .review-dialog > .review-form { display: block; }
+  .review-body { overflow: visible; }
+}
 .sum-review { margin-top: 12px; }
 /* Primeiro amanhã e Antes do PDF: o mesmo diálogo, com um formulário em volta. */
 .review-dialog > form.review-form, .review-dialog > .review-form { display: flex; flex-direction: column; flex: 1; min-height: 0; }
@@ -1727,3 +1746,8 @@ input:disabled { cursor: not-allowed; }
 .paste-title { overflow-wrap: anywhere; }
 .paste-row small { font-size: var(--type-label); color: var(--dim); }
 .steps-list .check-line { min-height: 44px; }
+/* Painel da tarefa (celular e ao lado): Cronômetro, Aguardando e Concluir lado a lado, do mesmo tamanho. */
+.task-dialog .task-main-actions.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.task-dialog.side.expanded .task-main-actions.three { grid-template-columns: repeat(3, minmax(0, 200px)); }
+.task-main-actions.three .btn { padding: 0 8px; gap: 6px; line-height: 1.15; text-align: center; }
+@media (max-width: 380px) { .task-main-actions.three .btn .ico { display: none; } }  /* tela estreita: só o texto, sem cortar */

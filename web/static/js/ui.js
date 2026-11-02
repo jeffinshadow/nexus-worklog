@@ -16,7 +16,27 @@ export function modal(...children) {
   document.body.appendChild(dlg);
   dlg.addEventListener("close", () => dlg.remove());
   dlg.showModal();
+  layerBox(dlg); // os avisos já têm onde aparecer (e ser lidos) dentro dele
   return dlg;
+}
+
+// Com um diálogo modal aberto, o resto da página fica inerte: avisos e a
+// região viva que ficam no <body> não são vistos (ficam atrás do véu) nem
+// lidos. Eles vão para dentro do diálogo de cima.
+function topDialog() {
+  const open = [...document.querySelectorAll("dialog[open]")].filter((d) => d.matches(":modal"));
+  return open[open.length - 1] || null;
+}
+// A caixa dos avisos e a região viva de um diálogo; `fresh`: acabou de ser
+// criada (uma região viva nova só fala da próxima mudança em diante).
+function layerBox(dlg) {
+  let toasts = dlg.querySelector(":scope > .toasts"), fresh = false;
+  if (!toasts) {
+    fresh = true;
+    toasts = h("div", { class: "toasts toasts-dialog", "aria-live": "polite" });
+    dlg.append(toasts, h("div", { class: "sr-only dlg-live", role: "status", "aria-live": "polite" }));
+  }
+  return { toasts, live: dlg.querySelector(":scope > .dlg-live"), fresh };
 }
 
 // Celular: menu que sobe de baixo (bottom sheet). items: [rótulo, ícone, fn];
@@ -249,7 +269,9 @@ export function confirmDialog({ title, text, confirm = "Confirmar", danger = fal
 // depois que o foco sai). Não puxa o foco: "Desfazer" também vai pelo Ctrl+Z.
 let undoAction = null;
 export function toast(message, opts = {}) {
-  const box = document.getElementById("toasts");
+  const dlg = topDialog();
+  const layer = dlg ? layerBox(dlg) : null;
+  const box = layer ? layer.toasts : document.getElementById("toasts");
   if (!box) return;
   // Uma ação (action/onAction) ou várias (actions: [[rótulo, fn], ...]).
   const actions = opts.actions || (opts.action ? [[opts.action, opts.onAction]] : []);
@@ -273,7 +295,8 @@ export function toast(message, opts = {}) {
     }));
   }
   if (undo) { undoAction = undo; el.append(h("span", { class: "sr-only", text: "Ctrl+Z desfaz." })); }
-  box.append(el);
+  // Caixa recém-criada dentro de um diálogo: o aviso entra um instante depois, para ser lido.
+  if (layer && layer.fresh) setTimeout(() => box.append(el), 80); else box.append(el);
   const ms = actions.length ? 12000 : 3500;
   let timer = setTimeout(remove, ms), hover = false;
   const hold = () => { clearTimeout(timer); timer = null; };
@@ -323,8 +346,11 @@ export function setSingleKeys(on) {
 let liveRegion = null;
 export function announce(text) {
   if (!liveRegion) { liveRegion = h("div", { class: "sr-only", role: "status", "aria-live": "polite" }); document.body.append(liveRegion); }
-  liveRegion.textContent = "";
-  setTimeout(() => { liveRegion.textContent = text; }, 60);
+  // Diálogo aberto: o <body> está inerte; a região viva é a de dentro dele.
+  const dlg = topDialog(), layer = dlg ? layerBox(dlg) : null;
+  const region = layer ? layer.live : liveRegion;
+  region.textContent = "";
+  setTimeout(() => { region.textContent = text; }, layer && layer.fresh ? 150 : 60);
 }
 
 // Setas de período (dia no Hoje, semana, mês, Equipe): a tela se redesenha e o

@@ -3,7 +3,8 @@
 // Usado no Hoje e no lembrete de inatividade.
 import { api } from "./api.js";
 import { parseDuration } from "./task.js";
-import { listProjects } from "./projects.js";
+import { listProjects, invalidateProjects } from "./projects.js";
+import { toast, errorToast } from "./ui.js";
 import { addDays, localDay, localDateTime, h } from "./dom.js";
 
 // "^sex" = próxima sexta (hoje, se for sexta); "^25/10" = esse dia (ano que vem, se já passou).
@@ -114,8 +115,12 @@ export function remindLabel(local) {
 // erro só no tempo = a tarefa fica e a frase avisa.
 // lastDone: a tarefa que o último registro já concluiu (para o "Como resolveu?").
 export let lastDone = null;
+// lastUnknown: o "@Nome" do fim que não é projeto seu e ficou no título
+// ({ id, title, name }); a confirmação oferece criar o projeto (projectOffer).
+export let lastUnknown = null;
 export async function quickRegister(text, project_id = null) {
   lastDone = null;
+  lastUnknown = null;
   const { payload, minutes, durText, marks, extras } = await parseLine(text, project_id);
   if (!marks.title) throw Object.assign(new Error("Escreva o que foi feito antes dos marcadores."), { status: 400 });
   const created = await api.post("/worklog", payload);
@@ -125,14 +130,48 @@ export async function quickRegister(text, project_id = null) {
     if (minutes) await api.after(created.qid, "POST", "/worklog/{id}/time", { minutes });
     return `Sem conexão: tarefa guardada${com}. Vai sozinha quando a conexão voltar.`;
   }
-  if (!minutes) return `Tarefa registrada${com}.`;
+  const unknown = unknownProject(marks.title);
+  if (unknown && !payload.project_id) lastUnknown = { id: created.id, ...unknown };
+  const also = lastUnknown ? ` «${lastUnknown.name}» não é um projeto seu: ficou no título.` : "";
+  if (!minutes) return `Tarefa registrada${com}.${also}`;
   try {
     await api.post(`/worklog/${created.id}/time`, { minutes });
     if (marks.blocked === null) lastDone = { id: created.id, title: marks.title };
-    return `${marks.blocked !== null ? "Registrada" : "Registrada e concluída"} com ${durText}${com}.`;
+    return `${marks.blocked !== null ? "Registrada" : "Registrada e concluída"} com ${durText}${com}.${also}`;
   } catch {
     return "Tarefa registrada, mas o tempo não entrou. Abra a tarefa e use Apontar.";
   }
+}
+
+// "… @Manutenção" no fim, sem projeto com esse nome: { title sem ele, name }.
+function unknownProject(title) {
+  const at = title.lastIndexOf(" @");
+  const name = at > 0 ? title.slice(at + 2).trim() : "";
+  if (!name || name.length > 60 || /[@#^!]/.test(name)) return null;
+  return { title: title.slice(0, at).trim(), name };
+}
+
+// A ação "Criar projeto" do aviso: cria o projeto com o nome do "@" e já põe a
+// tarefa nele, com o título sem o marcador.
+export function projectOffer(info, onDone) {
+  return ["Criar projeto", async () => {
+    try {
+      const p = await api.post("/projects", { name: info.name });
+      invalidateProjects();
+      await api.patch(`/worklog/${info.id}`, { title: info.title, project_id: p.id });
+      toast(`Projeto “${p.name}” criado, com a tarefa dentro.`);
+      if (onDone) await onDone();
+    } catch (e) {
+      errorToast(e, "Não foi possível criar o projeto.");
+    }
+  }];
+}
+
+// Nova tarefa (botão "Tarefa"): o título passa pelo mesmo leitor do registro
+// rápido. Devolve o título limpo e os marcadores lidos (sem enviar nada).
+export async function titleMarks(text) {
+  const { payload, minutes, marks, extras } = await parseLine(text);
+  return { payload, minutes, title: marks.title, extras, unknown: payload.project_id ? null : unknownProject(marks.title) };
 }
 
 // ------------------------------------------------- colar uma lista → várias --

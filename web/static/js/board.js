@@ -12,7 +12,7 @@ import { refreshReminders } from "./lembretes.js";
 import { appBadge } from "./instalar.js";
 import { prepare, upload } from "./fotos.js";
 import { openPacks } from "./pacotes.js";
-import { pasteHandler, remindLabel } from "./quick.js";
+import { pasteHandler, remindLabel, titleMarks, projectOffer } from "./quick.js";
 
 const WEEKDAYS_SHORT = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 // Páginas do quadro: a lista de trabalho cabe numa olhada até 25; as concluídas
@@ -471,6 +471,24 @@ export function openWorklog(onDone, opts = {}) {
       after_hours: after.checked,
     };
     if (!payload.title) return;
+    // Marcadores no título ("Ligar para a Intelbras ^16h @Matriz"), como no registro rápido:
+    // preenchem só o que ficou vazio no formulário; o título fica sem eles.
+    let read = null;
+    try { read = await titleMarks(payload.title); } catch { /* sem projetos à mão: o título vai como está */ }
+    let timeFromTitle = null;
+    if (read && read.title && read.title !== payload.title) {
+      const m = read.payload;
+      payload.title = read.title;
+      if (!payload.project_id && m.project_id) { payload.project_id = m.project_id; if (!payload.extra_project_ids.length) payload.extra_project_ids = m.extra_project_ids; }
+      if (!payload.due_date && m.due_date) payload.due_date = m.due_date;
+      if (!payload.ticket && m.ticket) payload.ticket = m.ticket;
+      if (m.after_hours) payload.after_hours = true;
+      if (m.priority === 1 && payload.priority === 2) payload.priority = 1;
+      if (payload.status === "todo" && m.status !== "todo") payload.status = m.status; // "!aguarda", "— 30min" (concluída)
+      if (m.status === "blocked" && payload.status === "blocked" && !blocked.value.trim()) blocked.value = m.blocked_reason || "";
+      if (!remind.value && m.remind_at) remind.value = m.remind_at;
+      if (read.minutes && !timeInput.value.trim()) timeFromTitle = read.minutes;
+    }
     if (payload.status === "done" && doneAt.value) payload.completed_at = doneAt.value;
     if (createdAt.value) payload.created_at = createdAt.value;
     if (payload.status === "done" && resolution.value.trim()) payload.resolution = resolution.value.trim();
@@ -479,7 +497,7 @@ export function openWorklog(onDone, opts = {}) {
       payload.blocked_reason = blocked.value.trim() || null;
       payload.follow_up_on = followUpDay(followUp.value || null);
     }
-    const minutes = timeInput.value.trim() ? parseDuration(timeInput.value) : null;
+    const minutes = timeInput.value.trim() ? parseDuration(timeInput.value) : timeFromTitle;
     if (minutes === null && timeInput.value.trim()) {
       // Erro no próprio campo (balão nativo + aria-invalid), como o "Preencha este campo".
       timeInput.setCustomValidity("Tempo inválido. Ex.: 45, 1h30, 2:15."); timeInput.reportValidity(); return;
@@ -512,6 +530,12 @@ export function openWorklog(onDone, opts = {}) {
       }
       dlg.close();
       onDone && onDone();
+      // Disse o que leu do título; um "@Nome" que não é projeto fica no título, com a oferta de criar.
+      const unknown = read && read.unknown ? { id: created.id, ...read.unknown } : null;
+      if (read && (read.extras.length || unknown)) {
+        toast(`Tarefa criada${read.extras.length ? ` (${read.extras.join(", ")})` : ""}.${unknown ? ` «${unknown.name}» não é um projeto seu: ficou no título.` : ""}`,
+          unknown ? { actions: [projectOffer(unknown, onDone)] } : {});
+      }
     } catch (e) {
       errorToast(e, "Não foi possível salvar.");
     } finally {

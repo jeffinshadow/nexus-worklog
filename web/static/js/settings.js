@@ -1,4 +1,5 @@
-// Configurações: projetos, modelos, avisos, calendário, IA e API (chaves e webhooks), conta (perfil, assistente, chamados, dias úteis e senha).
+// Configurações: uma página só, com seções (Conta, Avisos, Modelos, Calendário, IA e API) e atalhos no topo.
+// Cada campo salva ao mudar (sem botão Salvar). Links antigos (#/config?aba=avisos) rolam até a seção.
 import { api } from "./api.js";
 import { h, icon, clear, dateTime, field, matchPasswords } from "./dom.js";
 import { codeBox, confirmDialog, errorToast, modal, toast, warnBox, busy, singleKeysOn, setSingleKeys, calmMotion, hashPage, pager, pageSlice, setHashPage } from "./ui.js";
@@ -7,10 +8,10 @@ import { avatar, squarePhoto } from "./profile.js";
 import { pushPanel } from "./notificacoes.js";
 import { cancelled, register as registerPasskey, supported as passkeySupported } from "./passkey.js";
 
-const TABS = [
+const SECTIONS = [
   ["conta", "Conta"],
-  ["modelos", "Modelos"],
   ["avisos", "Avisos"],
+  ["modelos", "Modelos"],
   ["calendario", "Calendário"],
   ["ia", "IA e API"],
 ];
@@ -24,72 +25,132 @@ const DAYS = [
   [1, "Seg"], [2, "Ter"], [3, "Qua"], [4, "Qui"], [5, "Sex"], [6, "Sáb"], [0, "Dom"],
 ];
 
+// Salvar ao mudar: as gravações saem uma de cada vez, na ordem (a última vale);
+// com `delay`, mudanças seguidas (vários dias marcados) viram uma gravação só.
+// Sair da tela antes do prazo grava na hora (no hashchange).
+const pendingSaves = new Set();
+function saver(run, delay = 0) {
+  let timer = null, chain = Promise.resolve();
+  const go = () => { timer = null; pendingSaves.delete(trigger); chain = chain.then(run).catch(() => {}); return chain; };
+  const trigger = () => {
+    clearTimeout(timer);
+    if (!delay) return go();
+    pendingSaves.add(trigger);
+    timer = setTimeout(go, delay);
+    return chain;
+  };
+  trigger.flush = () => (timer ? (clearTimeout(timer), go()) : chain);
+  return trigger;
+}
+addEventListener("hashchange", () => { for (const s of [...pendingSaves]) s.flush(); });
+
+// Erro de um campo: a frase embaixo dele (role=alert) e o campo marcado.
+let errSeq = 0;
+const errorLine = () => h("p", { class: "error-text", role: "alert", id: "cfg-err-" + ++errSeq });
+function fieldError(err, inputs, text) {
+  err.textContent = text || "";
+  for (const el of [].concat(inputs || [])) {
+    if (text) { el.setAttribute("aria-invalid", "true"); el.setAttribute("aria-errormessage", err.id); }
+    else el.removeAttribute("aria-invalid");
+  }
+}
+
+// Chave (checkbox) que grava no servidor: durante a gravação fica aria-disabled
+// (e não disabled), para o foco não cair no <body>; cliques nesse meio são ignorados.
+function lockWhileSaving(cb) {
+  let saving = false;
+  cb.addEventListener("click", (ev) => { if (saving) ev.preventDefault(); });
+  return async (fn) => {
+    saving = true;
+    cb.setAttribute("aria-disabled", "true");
+    try { await fn(); } finally { saving = false; cb.removeAttribute("aria-disabled"); }
+  };
+}
+
+// Os títulos dos painéis viram h3 (o h2 é o da seção), com o mesmo desenho.
+function demote(nodes) {
+  for (const n of nodes) {
+    if (!n || !n.querySelectorAll) continue;
+    for (const t of n.querySelectorAll(".panel-head > h2")) {
+      const h3 = h("h3", {});
+      for (const a of t.attributes) h3.setAttribute(a.name, a.value);
+      h3.append(...t.childNodes);
+      t.replaceWith(h3);
+    }
+  }
+  return nodes;
+}
+
 export async function mount(root, ctx) {
   // Vencimentos e Projetos viraram itens do menu: link antigo vai para a tela nova.
   if (/aba=vencimentos/.test(location.hash)) { location.hash = "#/vencimentos"; return; }
   if (/aba=projetos/.test(location.hash)) { location.hash = "#/projetos"; return; }
-  // Conta sem registro próprio (só Admin/Visualizador/Atribuidor): só IA/API e Conta.
+  // Conta sem registro próprio (só Admin/Visualizador/Atribuidor): só Conta e IA e API.
   const isUser = (ctx.me.roles || []).includes("user");
-  const tabs = isUser ? TABS : TABS.filter(([k]) => k === "ia" || k === "conta");
-  let active = (location.hash.split("?")[1] || "").replace("aba=", "") || tabs[0][0];
-  active = OLD_TABS[active] || active;
-  if (!tabs.some(([k]) => k === active)) active = tabs[0][0];
+  const sections = isUser ? SECTIONS : SECTIONS.filter(([k]) => k === "ia" || k === "conta");
+  let want = new URLSearchParams(location.hash.split("?")[1] || "").get("aba") || "";
+  want = OLD_TABS[want] || want;
+  if (!sections.some(([k]) => k === want)) want = "";
+
+  // Cada seção se carrega e se redesenha sozinha; uma que falhar não derruba as outras.
+  const builders = {
+    // Quem é (nome, foto, tema), o que muda o dia (dias úteis, projeto padrão), quem vê e manda tarefas, o resto.
+    conta: async (again) => isUser
+      ? [profilePanel(ctx.me, again), themePanel(ctx.me), workDays(ctx.me), defaultProjectPanel(ctx.me, (r) => meChanged(ctx.me, r)),
+        privacyPanel(ctx.me), assistantPanel(ctx.me), ticketsPanel(ctx.me), shortcutsPanel(), account(ctx.me),
+        await otherDevicesPanel(), await passkeysPanel(again)]
+      : [profilePanel(ctx.me, again), themePanel(ctx.me), account(ctx.me), await otherDevicesPanel(), await passkeysPanel(again)],
+    // Notificações dos aparelhos primeiro; e-mail depois.
+    avisos: async (again) => [...(await notices(await pushPanel(again))).childNodes],
+    modelos: async (again) => [...(await templatesPanel(again)).childNodes],
+    calendario: async (again) => [...(await calendarFeed(again)).childNodes],
+    ia: async (again) => [...(await tokens(again)).childNodes, ...aiHelp(), ...(await webhooksPanel(again)).childNodes],
+  };
 
   clear(root);
-  const seg = h("div", { class: "seg", role: "tablist", "aria-label": "Configurações" });
-  const body = h("div", { class: "settings-grid" });
-  for (const [key, label] of tabs) {
-    seg.append(h("button", {
-      type: "button", class: "chip-btn", role: "tab", "aria-selected": key === active ? "true" : "false", text: label,
-      onClick: () => {
-        active = key;
-        for (const b of seg.children) b.setAttribute("aria-selected", b.textContent === label ? "true" : "false");
-        showActive(true);
-        window.history.replaceState(null, "", "#/config?aba=" + key); // recarregar volta à mesma aba
-        render();
-      },
-    }));
+  const index = h("nav", { class: "settings-index", "aria-label": "Seções de Configurações" });
+  const groups = {};
+  root.append(index);
+  for (const [key, label] of sections) {
+    const title = h("h2", { class: "settings-group-title", id: "cfg-" + key, tabindex: "-1", text: label });
+    const body = h("div", { class: "settings-grid", "aria-busy": "true" });
+    groups[key] = { title, body, seq: 0 };
+    root.append(h("section", { class: "settings-group", "aria-labelledby": title.id }, title, body));
+    index.append(h("a", { href: "#/config?aba=" + key, text: label, onClick: (ev) => {
+      if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.button) return; // nova aba: o link normal
+      ev.preventDefault();
+      window.history.replaceState(null, "", "#/config?aba=" + key); // recarregar volta à mesma seção
+      goTo(key, true);
+    } }));
   }
-  root.append(seg, body);
-  // Celular: as abas rolam de lado; a ativa fica à vista (depois do desenho da tela).
-  const showActive = (smooth) => requestAnimationFrame(() => {
-    const tab = seg.querySelector('[aria-selected="true"]');
-    if (!tab || seg.scrollWidth <= seg.clientWidth) return;
-    const a = tab.getBoundingClientRect(), r = seg.getBoundingClientRect();
-    seg.scrollTo({ left: seg.scrollLeft + (a.left - r.left) - (r.width - a.width) / 2, behavior: smooth && !calmMotion() ? "smooth" : "auto" });
-  });
-  // A tela pode ser montada fora da página e entrar depois: rola quando aparecer.
-  const seen = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { seen.disconnect(); showActive(false); } });
-  seen.observe(seg);
+  // Excluir a conta: no fim da página, longe do resto.
+  root.append(h("div", { class: "settings-grid settings-danger" }, deleteAccount(isUser)));
 
-  // Troca rápida de aba: só a última resposta entra na tela.
-  let seq = 0;
-  async function render() {
-    const my = ++seq;
-    const out = h("div", { class: "settings-grid" });
-    try {
-      await fill(out);
-    } catch (e) {
-      clear(out);
-      out.append(h("p", { class: "empty", text: e && e.status === 0 ? e.message : "Não foi possível carregar. Tente de novo." }));
-    }
-    if (my !== seq) return;
-    clear(body);
-    body.append(...out.childNodes);
-  }
+  const fill = async (key) => {
+    const g = groups[key], my = ++g.seq;
+    let nodes;
+    try { nodes = demote(await builders[key](() => fill(key))); }
+    catch (e) { nodes = [h("p", { class: "empty", text: e && e.status === 0 ? e.message : "Não foi possível carregar esta parte. Tente de novo." })]; }
+    if (my !== g.seq) return; // um redesenho mais novo já entrou
+    clear(g.body);
+    g.body.append(...nodes.filter(Boolean));
+    g.body.removeAttribute("aria-busy");
+  };
+  await Promise.all(sections.map(([k]) => fill(k)));
 
-  async function fill(body) {
-    if (active === "modelos") body.append(await templatesPanel(() => render()));
-    else if (active === "avisos") {
-      body.append(await notices(await pushPanel(() => render()))); // notificações dos aparelhos primeiro; e-mail depois
-    }
-    else if (active === "calendario") body.append(await calendarFeed(() => render()));
-    else if (active === "ia") body.append(await tokens(() => render()), ...aiHelp(), await webhooksPanel(() => render()));
-    // Conta: primeiro o que muda o dia (dias úteis, projeto padrão), depois quem vê e manda tarefas.
-    else if (isUser) body.append(workDays(ctx.me), defaultProjectPanel(ctx.me, (r) => meChanged(ctx.me, r)), privacyPanel(ctx.me), profilePanel(ctx.me, render), themePanel(ctx.me), assistantPanel(ctx.me), ticketsPanel(ctx.me), shortcutsPanel(), account(ctx.me), await otherDevicesPanel(), await passkeysPanel(render), deleteAccount(isUser));
-    else body.append(profilePanel(ctx.me, render), themePanel(ctx.me), account(ctx.me), await otherDevicesPanel(), await passkeysPanel(render), deleteAccount(isUser));
+  // Rola até a seção (sem animação na abertura) e põe o foco no título dela.
+  function goTo(key, smooth) {
+    const t = groups[key] && groups[key].title;
+    if (!t) return;
+    t.scrollIntoView({ block: "start", behavior: smooth && !calmMotion() ? "smooth" : "auto" });
+    t.focus({ preventScroll: true });
   }
-  await render();
+  // A tela volta ao topo depois de montar e entra com uma animação de escala
+  // (que muda as posições medidas): a seção pedida vem depois das duas.
+  if (want && want !== sections[0][0]) setTimeout(async () => {
+    await Promise.all(document.getAnimations().map((a) => a.finished.catch(() => {})));
+    goTo(want, false);
+  }, 0);
 }
 
 // ----------------------------------------------------------------- perfil --
@@ -108,7 +169,7 @@ function profilePanel(me, rerender) {
   const locked = identityLocked(me);
   const name = h("input", { type: "text", maxlength: "60", value: me.display_name || "", placeholder: me.name });
   if (locked) { name.disabled = true; name.setAttribute("aria-describedby", "name-locked"); }
-  const err = h("p", { class: "error-text" });
+  const err = errorLine();
   const file = h("input", { type: "file", accept: "image/png,image/jpeg,image/webp", class: "hidden" });
   const pick = h("button", { type: "button", class: "btn btn-ghost btn-sm", onClick: () => file.click() }, icon("edit"), me.avatar ? "Trocar foto" : "Enviar foto");
   const remove = me.avatar ? h("button", {
@@ -133,20 +194,28 @@ function profilePanel(me, rerender) {
       file.value = "";
     }
   });
+  // Salva ao sair do campo (ou no Enter), sem botão.
   const form = h("form", {}, field("Nome de exibição", name), locked ? null : err,
-    locked ? h("p", { class: "dialog-note lock-note", id: "name-locked" }, icon("lock"), IDENTITY_LOCKED)
-      : h("button", { type: "submit", class: "btn btn-primary", text: "Salvar nome" }));
-  form.addEventListener("submit", busy(async (ev) => {
-    ev.preventDefault();
-    err.textContent = "";
+    locked ? h("p", { class: "dialog-note lock-note", id: "name-locked" }, icon("lock"), IDENTITY_LOCKED) : null);
+  let saved = me.display_name || "";
+  const save = saver(async () => {
+    const v = name.value.trim();
+    if (v === saved) return;
+    fieldError(err, name, "");
     try {
-      meChanged(me, await api.put("/me/profile", { display_name: name.value.trim() || null }));
-      toast(`Combinado: vou chamar você de ${me.name}.`);
-      rerender();
+      meChanged(me, await api.put("/me/profile", { display_name: v || null }));
+      const before = saved;
+      saved = me.display_name || "";
+      name.placeholder = me.name;
+      toast(`Combinado: vou chamar você de ${me.name}.`, { action: "Desfazer", onAction: async () => {
+        name.value = before; await save();
+      } });
     } catch (e) {
-      err.textContent = e.message || "Não foi possível salvar.";
+      fieldError(err, name, e.message || "Não foi possível salvar o nome.");
     }
-  }));
+  });
+  name.addEventListener("change", save);
+  form.addEventListener("submit", (ev) => { ev.preventDefault(); save(); });
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Perfil" })),
     h("div", { class: "profile-row" }, avatar(me, "lg"),
@@ -185,19 +254,25 @@ function assistantPanel(me) {
   };
   for (const el of [idle, falas, reopen]) el.addEventListener("change", sync);
   sync();
-  const save = h("button", { type: "button", class: "btn btn-primary", text: "Salvar assistente" });
-  save.addEventListener("click", async () => {
+  // Salva a cada mudança (o número e a hora, ao sair do campo); o painel inteiro vai junto.
+  const err = errorLine();
+  const nums = [mins, reopenMins, staleDays];
+  const save = saver(async () => {
+    const bad = nums.find((el) => !el.disabled && !el.checkValidity());
+    if (bad) { fieldError(err, bad, `Use um número entre ${bad.min} e ${bad.max}.`); return; }
     const body = { enabled: falas.checked, idle_on: idle.checked, idle_minutes: Number(mins.value),
       idle_start: toMin(from.value || "08:00"), idle_end: toMin(to.value || "18:00"),
       reopen_on: reopen.checked, reopen_minutes: Number(reopenMins.value),
       summary_from: Math.min(toMin(summaryFrom.value || "14:00"), 1439),
       stale_days: Math.min(Math.max(Number(staleDays.value) || 5, 1), 60) };
-    if (body.idle_start >= body.idle_end) { toast("O início do horário precisa ser antes do fim.", { error: true }); return; }
+    if (body.idle_start >= body.idle_end) { fieldError(err, [from, to], "O início do horário precisa ser antes do fim."); return; }
+    fieldError(err, [...nums, from, to], "");
     try {
       meChanged(me, { assistant: await api.put("/me/assistant", body) });
       toast("Assistente salvo.");
-    } catch (e) { errorToast(e, "Não foi possível salvar."); }
-  });
+    } catch (e) { errorToast(e, "Não foi possível salvar o assistente."); }
+  }, 300);
+  for (const el of [falas, idle, reopen, mins, from, to, reopenMins, summaryFrom, staleDays]) el.addEventListener("change", save);
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Assistente" })),
     h("div", { class: "notice-row" },
@@ -218,7 +293,7 @@ function assistantPanel(me) {
     h("div", { class: "idle-config" },
       h("label", {}, "Avisar após", mins, "min sem registro"),
       h("label", {}, "entre", from, "e", to)),
-    h("div", { class: "row-actions" }, save));
+    err);
 }
 
 // ---------------------------------------------------------------- modelos --
@@ -250,7 +325,7 @@ async function templatesPanel(rerender) {
     setHashPage("p", page, "config");
     box.append(...slice.rows.map(rowOf));
     const nav = pager({ page, total: list.length, size: TEMPLATES_PAGE, label: "modelos",
-      onPage: (n) => { page = n; paint(); }, focus: () => box.closest(".panel")?.querySelector("h2") });
+      onPage: (n) => { page = n; paint(); }, focus: () => box.closest(".panel")?.querySelector("h2, h3") });
     if (nav) box.append(nav);
   };
   paint();
@@ -314,25 +389,30 @@ function ticketsPanel(me) {
   }
   const url = h("input", { type: "url", maxlength: "300", value: me.ticket_url || "",
     placeholder: "https://glpi.empresa.com.br/front/ticket.form.php?id={id}" });
-  const save = h("button", { type: "button", class: "btn btn-primary", text: "Salvar endereço" });
-  save.addEventListener("click", async () => {
+  // Salva ao sair do campo (ou no Enter); um endereço inválido fica marcado, com a frase embaixo.
+  const err = errorLine();
+  const save = saver(async () => {
+    const v = url.value.trim();
+    if (v === (me.ticket_url || "")) { fieldError(err, url, ""); return; }
     try {
-      const r = await api.put("/me/tickets", { ticket_url: url.value.trim() || null });
+      const r = await api.put("/me/tickets", { ticket_url: v || null });
+      fieldError(err, url, "");
       meChanged(me, r);
       toast(r.ticket_url ? "Endereço salvo: o número do chamado vira link." : "Endereço removido.");
-    } catch (e) { errorToast(e, "Use um endereço começando com http:// ou https://."); }
+    } catch (e) { fieldError(err, url, e && e.status === 0 ? e.message : "Use um endereço começando com http:// ou https://."); }
   });
+  url.addEventListener("change", save);
+  url.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); save(); } });
   return h("section", { class: "panel", id: "chamados" },
     h("div", { class: "panel-head" }, h("h2", { text: "Chamados e ordens de serviço" })),
     h("p", { class: "help", text: "Opcional. Se a sua equipe usa um sistema de chamados ou de ordens de serviço, cole o endereço de um deles, trocando o número por {id} (ex.: https://sistema.empresa/os/{id}). Sem {id}, o número vai no fim. Com o endereço, o “#4821” das tarefas abre o chamado." }),
-    field("Endereço do chamado ou OS", url),
-    h("div", { class: "row-actions" }, save));
+    field("Endereço do chamado ou OS", url), err);
 }
 
 // ---------------------------------------------------------------- atalhos --
 
 function shortcutsPanel() {
-  const keys = [["n", "nova tarefa"], ["/", "buscar"], ["h", "Hoje"], ["t", "Tarefas"], ["r", "Meu mês"],
+  const keys = [["n", "nova tarefa"], ["q", "registro rápido"], ["/", "buscar"], ["h", "Hoje"], ["t", "Tarefas"], ["r", "Meu mês"],
     ["l", "Meu mês (outro período ou formato)"], ["s", "parar o cronômetro"], ["?", "ver todos os atalhos"]];
   // Desligar: para quem usa controle por voz ou esbarra numa tecla sem querer.
   const on = h("input", { type: "checkbox" });
@@ -355,26 +435,32 @@ function workDays(me) {
     cb.checked = ((me.work_days >> bit) & 1) === 1;
     return { bit, label, cb };
   });
-  const err = h("p", { class: "error-text" });
-  const save = h("button", { type: "button", class: "btn btn-primary", text: "Salvar" });
-  save.addEventListener("click", async () => {
+  const err = errorLine();
+  // Salva ao marcar (vários dias seguidos viram uma gravação só); nenhum dia não vale.
+  const paint = (mask) => { for (const { bit, cb } of boxes) cb.checked = ((mask >> bit) & 1) === 1; };
+  const save = saver(async () => {
     const mask = boxes.reduce((m, { bit, cb }) => (cb.checked ? m | (1 << bit) : m), 0);
-    err.textContent = "";
-    if (!mask) { err.textContent = "Escolha pelo menos um dia."; return; }
+    if (mask === me.work_days) { fieldError(err, cbs, ""); return; }
+    if (!mask) { fieldError(err, cbs, "Escolha pelo menos um dia."); return; }
+    fieldError(err, cbs, "");
+    const before = me.work_days;
     try {
       const res = await api.post("/auth/settings", { work_days: mask });
       me.work_days = res.work_days;
-      toast("Dias úteis salvos.");
+      toast("Dias úteis salvos.", { action: "Desfazer", onAction: async () => { paint(before); await save(); } });
     } catch (e) {
-      errorToast(e, "Não foi possível salvar.");
+      paint(me.work_days);
+      errorToast(e, "Não foi possível salvar os dias úteis.");
     }
-  });
+  }, 700);
+  const cbs = boxes.map((b) => b.cb);
+  for (const cb of cbs) cb.addEventListener("change", save);
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Meus dias úteis" })),
     h("p", { class: "help", text: "As rotinas que repetem “nos dias úteis” seguem estes dias. O que você marcar fora da agenda de uma rotina fica salvo como extra e não entra no percentual. Atenção: mudar os dias úteis recalcula também os números dos dias anteriores." }),
-    h("fieldset", { class: "weekday-picker" },
+    h("fieldset", { class: "weekday-picker" }, h("legend", { class: "sr-only", text: "Meus dias úteis" }),
       ...boxes.map(({ label, cb }) => h("label", { class: "weekday-option" }, cb, h("span", { text: label })))),
-    err, save);
+    err);
 }
 
 // ------------------------------------------------------------------ avisos --
@@ -418,43 +504,42 @@ async function notices(push) {
   syncWeekly();
   const titles = h("input", { type: "checkbox" });
   titles.checked = p.show_titles;
-  const save = h("button", { type: "button", class: "btn btn-primary", text: "Salvar avisos" });
-  save.addEventListener("click", async () => {
+  // Salva a cada mudança (e-mail e notificações juntos: o horário da manhã é um só).
+  // O e-mail da cópia salva ao sair do campo; inválido, fica marcado com a frase embaixo.
+  const ccErr = errorLine();
+  weeklyExtra.children[1].after(ccErr);
+  const save = saver(async () => {
     const body = { show_titles: titles.checked, weekly_pdf: pdf.checked, weekly_cc: cc.value.trim() || null };
     for (const r of rows) { body[r.key] = r.on.checked; body[`${r.key}_hour`] = Number(r.hour.value); }
+    if (body.weekly_cc && !cc.checkValidity()) { fieldError(ccErr, cc, "O e-mail da cópia não parece válido."); body.weekly_cc = p.weekly_cc || null; }
+    else fieldError(ccErr, cc, "");
     try {
       await api.put("/notifications", body);
       await api.put("/push/prefs", { ...push.collect(), morning_hour: body.morning_hour });
-      toast("Avisos salvos."); setDirty(false);
+      p.weekly_cc = body.weekly_cc;
+      toast("Avisos salvos.");
     }
-    catch (e) { if (e.status === 422) toast("O e-mail da cópia não parece válido.", { error: true }); else errorToast(e, "Não foi possível salvar."); }
-  });
+    catch (e) { if (e.status === 422) fieldError(ccErr, cc, "O e-mail da cópia não parece válido."); else errorToast(e, "Não foi possível salvar os avisos."); }
+  }, 400);
+  // Os testes saem com o que está salvo: antes, termina a gravação que estiver pendente.
   const test = h("button", { type: "button", class: "btn btn-ghost" }, icon("mail"), "Mandar um teste");
   test.disabled = !p.mail_configured;
   test.addEventListener("click", async () => {
     test.disabled = true;
-    try { const r = await api.post("/notifications/test"); toast(`Teste enviado para ${r.to}.`); }
+    try { await save.flush(); const r = await api.post("/notifications/test"); toast(`Teste enviado para ${r.to}.`); }
     catch (e) { errorToast(e, "Não foi possível enviar."); }
     finally { setTimeout(() => { test.disabled = false; }, 4000); }
   });
-  // A semana passada como sairia na segunda (só para você; a cópia não recebe). Salve antes.
-  const testWeek = h("button", { type: "button", class: "btn btn-ghost", title: "A semana passada como sairia na segunda, só para você (salve antes)" },
+  // A semana passada como sairia na segunda (só para você; a cópia não recebe).
+  const testWeek = h("button", { type: "button", class: "btn btn-ghost", title: "A semana passada como sairia na segunda, só para você" },
     icon("reports"), "Testar a semana");
   testWeek.disabled = !p.mail_configured;
   testWeek.addEventListener("click", async () => {
     testWeek.disabled = true;
-    try { const r = await api.post("/notifications/test?kind=weekly"); toast(`Semana enviada para ${r.to}.`); }
+    try { await save.flush(); const r = await api.post("/notifications/test?kind=weekly"); toast(`Semana enviada para ${r.to}.`); }
     catch (e) { errorToast(e, "Não foi possível enviar."); }
     finally { setTimeout(() => { testWeek.disabled = false; }, 4000); }
   });
-  // Os testes saem com o que está salvo: com alteração pendente, esperam o "Salvar avisos".
-  const testTitles = [test.title || "", testWeek.title || ""];
-  const setDirty = (dirty) => {
-    for (const [i, b] of [test, testWeek].entries()) {
-      b.disabled = dirty || !p.mail_configured;
-      b.title = dirty ? "Salve os avisos antes de testar" : testTitles[i];
-    }
-  };
   const KIND_PT = { morning: "seu dia", evening: "fim do dia", weekly: "semana", test: "teste" };
   const recent = p.recent.filter((r) => r.ok !== null || r.error !== "nada a avisar");
   const mailPanel = h("section", { class: "panel" },
@@ -464,8 +549,9 @@ async function notices(push) {
       p.mail_configured ? null : warnBox("O envio de e-mail ainda não está configurado neste servidor. Você pode deixar tudo escolhido; os avisos começam quando ele for ligado."),
       ...rows.flatMap((r) => (r === weekly ? [r.el, weeklyExtra] : [r.el])),
       h("label", { class: "check-line notice-titles" }, titles, h("span", { text: "Mostrar os títulos das tarefas no e-mail (desligado: só os números)" })),
-      h("div", { class: "row-actions" }, save, test, testWeek));
-  for (const ev of ["input", "change"]) mailPanel.addEventListener(ev, (e) => { if (!e.target.closest(".row-actions")) setDirty(true); });
+      h("div", { class: "row-actions" }, test, testWeek));
+  // Qualquer escolha dos dois painéis (a cópia, ao sair do campo) grava.
+  for (const panel of [push, mailPanel]) panel.addEventListener("change", (e) => { if (e.target.matches("input, select")) save(); });
   return h("div", { class: "settings-grid" },
     push, mailPanel,
     recent.length ? h("section", { class: "panel" },
@@ -686,22 +772,15 @@ function showNewToken(res) {
     ["Cursor", ["Cole em mcp.json, na pasta .cursor da sua pasta de usuário (ou em Cursor Settings > MCP > Add new global MCP server). " + MERGE_NOTE], cfg.cursor],
     ["Gemini CLI", ["Abra settings.json, na pasta .gemini da sua pasta de usuário. Depois do primeiro login ele já tem conteúdo (o login, o tema): não cole por cima. " + MERGE_NOTE], cfg.gemini],
   ];
-  const seg = h("div", { class: "seg seg-sm ai-tabs", role: "tablist", "aria-label": "Sua IA" });
-  const slot = h("div", { class: "ai-config" });
-  const show = (i) => {
-    for (const [n, b] of [...seg.children].entries()) b.setAttribute("aria-selected", String(n === i));
-    const [, note, code] = AIS[i];
-    clear(slot);
-    slot.append(h("p", { class: "dialog-note" }, ...note), codeBox(code));
-  };
-  AIS.forEach(([name], i) => seg.append(h("button", { type: "button", class: "chip-btn", role: "tab", text: name, onClick: () => show(i) })));
-  show(0);
+  // Sem abas: cada IA recolhida (uma aberta por vez), com a nota e o bloco pronto.
+  const configs = AIS.map(([name, note, code], i) => h("details", { class: "ai-config", name: "ai-config", open: i === 0 ? "open" : null },
+    h("summary", { text: name }), h("p", { class: "dialog-note" }, ...note), codeBox(code)));
   const dlg = modal(
     h("h2", { text: "Chave criada" }),
     h("p", { text: `“${res.name}” — copie agora: ela não aparece de novo.` }),
     h("div", { class: "token-box", text: res.token }),
-    h("p", { class: "dialog-note ai-tabs-note", text: "Configuração pronta, já com a chave. Escolha a sua IA:" }),
-    seg, slot,
+    h("p", { class: "dialog-note ai-tabs-note", text: "Configuração pronta, já com a chave. Abra a da sua IA:" }),
+    ...configs,
     warnBox("Trate como senha: não cole em repositório, print ou chat. Se vazar, revogue aqui."),
     h("div", { class: "dialog-actions" },
       h("button", {
@@ -986,16 +1065,15 @@ function assignments(me) {
       : "Desligado: ninguém pode atribuir tarefas a você.";
   };
   sync();
-  cb.addEventListener("change", async () => {
-    cb.disabled = true;
+  const guard = lockWhileSaving(cb); // gravando: aria-disabled (o foco fica na chave)
+  cb.addEventListener("change", () => guard(async () => {
     try {
       const res = await api.put("/me/assignments", { accept: cb.checked });
       meChanged(me, res);
       sync();
       toast(cb.checked ? "Pronto: você aceita tarefas atribuídas." : "Você não recebe mais tarefas atribuídas. As já recebidas continuam com você.");
     } catch (e) { cb.checked = !cb.checked; errorToast(e); }
-    finally { cb.disabled = false; }
-  });
+  }));
   const lock = managed ? h("p", { class: "dialog-note lock-note", id: "assign-locked" }, icon("lock"),
     "Nesta instância do Nexus, todos recebem tarefas de quem atribui (definido pela administração). " +
     `A sua escolha (${me.accepts_assignments_at ? "permitir" : "não permitir"}) fica guardada e volta a valer se isso mudar.`) : null;
@@ -1203,16 +1281,15 @@ function seenBy(me) {
   };
   paint();
   api.get("/me/visibility").then((res) => { list = res; paint(); }).catch(() => line.remove());
-  cb.addEventListener("change", async () => {
-    cb.disabled = true;
+  const guard = lockWhileSaving(cb); // gravando: aria-disabled (o foco fica na chave)
+  cb.addEventListener("change", () => guard(async () => {
     try {
       const res = await api.put("/me/viewers", { accept: cb.checked });
       meChanged(me, res);
       paint();
       toast(cb.checked ? "Pronto: quem vê a equipe vê seu registro." : "Quem vê a equipe não vê mais seu registro.");
     } catch (e) { cb.checked = !cb.checked; errorToast(e); }
-    finally { cb.disabled = false; }
-  });
+  }));
   const lock = managed ? h("p", { class: "dialog-note lock-note", id: "seen-locked" }, icon("lock"),
     "Nesta instância do Nexus, quem gerencia a equipe vê as tarefas de todos (definido pela administração). " +
     `A sua escolha (${me.viewers_allowed ? "permitir" : "não permitir"}) fica guardada e volta a valer se isso mudar.`) : null;
