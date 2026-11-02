@@ -32,7 +32,9 @@ class OrgIn(BaseModel):
     """Admin › Para empresas e instituições. Campo ausente = mantém."""
     team_visibility: Optional[Literal["self", "managers"]] = None  # cada pessoa escolhe / visível para quem gerencia
     identity_managed: Optional[bool] = None  # nome e e-mail definidos pela administração
-    tour_required: Optional[bool] = None     # tour obrigatório no primeiro acesso
+    invite_request_off: Optional[bool] = None  # sem "Solicitar convite" na tela de login
+    # Endereço do sistema de chamados da instância ({id} = o número); "" ou null = sem endereço.
+    ticket_url: Optional[str] = Field(default=None, max_length=300, pattern=r"^(https?://\S+)?$")
 
 
 class AdminProfileIn(BaseModel):
@@ -62,6 +64,16 @@ class AppSettingsIn(BaseModel):
 
 class DeleteUserIn(BaseModel):
     confirm_email: str = Field(max_length=320)  # o admin digita o e-mail da conta
+    transfer_to: Optional[int] = None  # quem recebe as tarefas abertas (papel Usuário); ausente = saem com a conta
+
+
+class BlockUserIn(BaseModel):
+    transfer_to: Optional[int] = None  # quem recebe as tarefas abertas (papel Usuário); ausente = ficam na conta
+
+
+class ResetPasswordIn(BaseModel):
+    # temp: senha temporária mostrada ao admin; link: link de nova senha por e-mail (só com SMTP)
+    method: Literal["temp", "link"] = "temp"
 
 
 class DeleteMeIn(BaseModel):
@@ -240,7 +252,7 @@ class ThemeIn(BaseModel):
 class InviteRequestIn(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     email: EmailStr
-    source: Literal["colega", "site", "github", "outro"]
+    source: Literal["colega", "empresa", "internet", "outro"]  # genéricas (sql/037)
     source_note: Optional[str] = Field(default=None, max_length=120)
     reason: str = Field(min_length=3, max_length=600)
     website: Optional[str] = Field(default=None, max_length=200)  # armadilha: gente não vê, robô preenche

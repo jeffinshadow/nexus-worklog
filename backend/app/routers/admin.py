@@ -3,16 +3,22 @@
 Ver os registros e relatórios das pessoas saiu daqui: é do Visualizador de
 tarefas (routers/viewer.py).
 """
+import json
 import logging
+import threading
+import unicodedata
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from psycopg.errors import UniqueViolation
 
-from .. import audit, db, links, mailer, org, people, roles
+from .. import audit, db, links, mailer, org, people, push, roles
 from ..deps import require_admin, require_admin_csrf
-from ..schemas import AdminProfileIn, AppSettingsIn, DeleteUserIn, InviteIn, OrgIn, RolesIn
+from ..schemas import (AdminProfileIn, AppSettingsIn, BlockUserIn, DeleteUserIn, InviteIn, OrgIn, ResetPasswordIn,
+                       RolesIn)
 from ..security import generate_temp_password, hash_password, revoke_access
+from ..services import default_project
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 log = logging.getLogger("uvicorn.error")
@@ -25,18 +31,29 @@ def _ensure_user(user_id: int) -> dict:
     return row
 
 
+def _sort_key(name: str) -> str:
+    """Ordem alfabética sem acento e sem caixa (Álvaro junto de Alice)."""
+    return unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode().casefold()
+
+
 @router.get("/users")
 def list_users(admin=Depends(require_admin)):
+    """Contas em ordem de nome (o que a linha mostra), com o último acesso
+    (`last_seen_at`: entrar ou usar o app; nulo = nunca entrou), a criação e
+    quantas tarefas abertas cada uma tem (`open_tasks`, para transferir)."""
     rows = db.query_all(
         f"""SELECT u.id, u.email, u.role, u.created_at, u.accepts_assignments_at, u.invite_pending,
-                   u.viewers_allowed, u.blocked_at,
+                   u.viewers_allowed, u.blocked_at, u.last_seen_at,
+                   (SELECT count(*) FROM worklog_tasks w WHERE w.user_id = u.id AND w.status <> 'done')::int AS open_tasks,
                    -- convite pendente cujo link já venceu: o admin reenvia
                    (u.invite_pending AND NOT EXISTS (
                        SELECT 1 FROM auth_links l WHERE l.user_id = u.id AND l.kind = 'invite'
                           AND l.used_at IS NULL AND l.expires_at > now())) AS invite_expired,
                    {roles.ROLES_SQL}
-              FROM users u ORDER BY lower(u.email)""")
-    return [{**r, **people.profile(r["id"])} for r in rows]
+              FROM users u""")
+    out = [{**r, **people.profile(r["id"])} for r in rows]
+    out.sort(key=lambda r: (_sort_key(r["name"] or r["email"]), r["email"]))
+    return out
 
 
 @router.post("/users", status_code=201)
@@ -132,23 +149,119 @@ def cancel_invite(user_id: int, admin=Depends(require_admin_csrf)):
 
 
 @router.post("/users/{user_id}/block")
-def block_user(user_id: int, admin=Depends(require_admin_csrf)):
+def block_user(user_id: int, data: BlockUserIn | None = None, admin=Depends(require_admin_csrf)):
     """Corta o acesso agora, sem apagar nada (celular perdido, pessoa de férias
     ou que saiu): senha trocada por uma que ninguém sabe, sessões, chaves de
     API, calendário, notificações e passkeys desligados, links de e-mail sem
-    valor e "Esqueci a senha" sem efeito. Redefinir senha libera de novo."""
+    valor e "Esqueci a senha" sem efeito. Redefinir senha libera de novo.
+    `transfer_to`: as tarefas abertas passam para essa pessoa (papel Usuário)."""
     if user_id == admin["user_id"]:
         raise HTTPException(status_code=400, detail="você não pode bloquear a sua própria conta")
     target = _ensure_user(user_id)
     if db.query_one("SELECT 1 FROM users WHERE id = %s AND invite_pending", (user_id,)):
         raise HTTPException(status_code=400, detail="o convite ainda não foi aceito: use Cancelar convite")
+    dest = _receiver(user_id, data.transfer_to if data else None)
     db.execute("""UPDATE users SET password_hash = %s, must_change_password = true, blocked_at = now()
                    WHERE id = %s""", (hash_password(generate_temp_password(32)), user_id))
     _cut_access(user_id)
     db.execute("UPDATE auth_links SET used_at = now() WHERE user_id = %s AND used_at IS NULL", (user_id,))
     audit.record({**admin, "actor": "admin"}, "user.block", "user", user_id,
                  after={"by": admin["email"], "email": target["email"]}, user_id=user_id)
-    return {"ok": True, "email": target["email"]}
+    moved = transfer_open_tasks(target, dest, admin) if dest else None
+    return {"ok": True, "email": target["email"], "transferred": moved}
+
+
+# ------------------------------------------------ transferir tarefas abertas --
+
+def _receiver(src_id: int, to_id: int | None) -> dict | None:
+    """Quem recebe as tarefas abertas de quem sai: outra conta com o papel
+    Usuário e acesso liberado (não precisa ter aceitado tarefas atribuídas: é
+    decisão da administração). Validado ANTES de bloquear ou excluir."""
+    if to_id is None:
+        return None
+    if to_id == src_id:
+        raise HTTPException(status_code=400, detail="escolha outra pessoa para receber as tarefas")
+    row = db.query_one(
+        """SELECT u.id, u.email FROM users u
+            WHERE u.id = %s AND u.blocked_at IS NULL
+              AND EXISTS (SELECT 1 FROM user_roles r WHERE r.user_id = u.id AND r.role = 'user')""", (to_id,))
+    if not row:
+        raise HTTPException(status_code=400, detail="quem recebe as tarefas precisa ter o papel Usuário e o acesso liberado")
+    return row
+
+
+def _transfer_mail(titles: list[str], from_name: str, by_name: str):
+    from ..notify import Mail  # import tardio: notify importa rotas
+    n = len(titles)
+    if n > 1:
+        m = Mail(f"{n} tarefas passaram para você", f"{by_name} transferiu para você as tarefas abertas de {from_name}",
+                 "Elas já estão nas suas tarefas no Nexus, com as anotações, o checklist e as fotos.")
+    else:
+        m = Mail(f"Uma tarefa passou para você: {titles[0]}", f"{by_name} transferiu para você uma tarefa de {from_name}",
+                 "Ela já está nas suas tarefas no Nexus, com as anotações, o checklist e as fotos.")
+    m.block("Tarefas", titles, True)
+    m.reason = "Você recebe este e-mail porque quem administra o Nexus transferiu tarefas para você."
+    m.settings_tab = None
+    m.link = "/#/tarefas"
+    return m
+
+
+def transfer_open_tasks(src: dict, dest: dict, admin: dict) -> dict:
+    """Passa as tarefas abertas (não concluídas) de `src` para `dest`, numa
+    gravação só: a tarefa muda de dono com as anotações, o checklist e as
+    fotos; entra no projeto padrão de quem recebe (os projetos são de cada
+    um); o tempo já registrado fica no registro de quem saiu (é trabalho dele).
+    Cada tarefa vai ao histórico de quem recebe (worklog.transfer), e quem
+    recebe é avisado como numa atribuição (e-mail e notificação no aparelho)."""
+    rows = db.query_all(
+        """WITH t AS (SELECT id FROM worklog_tasks WHERE user_id = %(src)s AND status <> 'done' FOR UPDATE),
+                x AS (DELETE FROM worklog_task_projects WHERE task_id IN (SELECT id FROM t)),
+                tm AS (DELETE FROM task_timers WHERE task_id IN (SELECT id FROM t)),
+                n AS (UPDATE task_notes SET user_id = %(dst)s, external_ref = NULL WHERE task_id IN (SELECT id FROM t)),
+                c AS (UPDATE task_checklist SET user_id = %(dst)s WHERE task_id IN (SELECT id FROM t)),
+                f AS (UPDATE photos SET user_id = %(dst)s, external_ref = NULL WHERE task_id IN (SELECT id FROM t)),
+                w AS (UPDATE worklog_tasks SET user_id = %(dst)s, project_id = %(p)s, objective_id = NULL,
+                                               exec_position = NULL, external_ref = NULL
+                       WHERE id IN (SELECT id FROM t) RETURNING id, title)
+           SELECT id, title FROM w ORDER BY id""",
+        {"src": src["id"], "dst": dest["id"], "p": default_project(dest["id"])})
+    from_name = people.profile(src["id"])["name"]
+    to_name = people.profile(dest["id"])["name"]
+    by_name = people.profile(admin["user_id"])["name"]
+    ctx = {**admin, "actor": "admin"}
+    for r in rows:
+        snap = audit.worklog_snapshot(r["id"], dest["id"])
+        audit.record(ctx, "worklog.transfer", "worklog", r["id"],
+                     after={**snap, "by": by_name, "from": from_name}, user_id=dest["id"])
+    out = {"count": len(rows), "to": to_name, "to_id": dest["id"], "emailed": False}
+    if not rows:
+        return out
+    audit.record(ctx, "user.transfer_tasks", "user", src["id"],
+                 after={"from": src["email"], "to": dest["email"], "count": len(rows), "by": admin["email"],
+                        "tasks": [r["id"] for r in rows]})
+    titles = [r["title"] for r in rows]
+    if mailer.configured():
+        from .assign import _spawn  # o mesmo envio em segundo plano da atribuição
+        _spawn(dest["email"], _transfer_mail(titles, from_name, by_name))
+        out["emailed"] = True
+    threading.Thread(target=_push_transfer, args=(dest["id"], rows, from_name), daemon=True).start()
+    return out
+
+
+def _push_transfer(uid: int, rows: list[dict], from_name: str) -> None:
+    """Notificação no aparelho como a de uma tarefa atribuída (a mesma preferência)."""
+    try:
+        p = push.prefs(uid)
+        if not p["assigned"]:
+            return
+        one = len(rows) == 1
+        title = f"Tarefa de {from_name} passou para você" if one else f"{len(rows)} tarefas de {from_name} passaram para você"
+        url = f"/#/tarefas?id={rows[0]['id']}" if one else "/#/tarefas"
+        push.send(uid, push._msg(title, rows[0]["title"] if one else "Abra o Nexus para ver.", url,
+                                 f"transferidas-{rows[0]['id']}", "atribuida", p["hide_content"],
+                                 "Tarefas passaram para você"), urgency="high", ttl=24 * 3600)
+    except Exception:  # noqa: BLE001 — a transferência já foi feita; a notificação é aviso
+        log.exception("notificação da transferência falhou")
 
 
 def _cut_access(user_id: int) -> None:
@@ -171,11 +284,66 @@ def set_roles(user_id: int, data: RolesIn, admin=Depends(require_admin_csrf)):
     if "admin" in before and "admin" not in novos and roles.admins_count() <= 1:
         raise HTTPException(status_code=400, detail="o sistema precisa de pelo menos um admin")
     roles.replace(user_id, novos)
+    notified = False
     if set(before) != set(novos):
         audit.record({**admin, "actor": "admin"}, "user.roles", "user", user_id,
                      before={"roles": before}, after={"roles": novos, "by": admin["email"], "email": target["email"]},
                      user_id=user_id)
-    return {"id": user_id, "roles": novos}
+        if user_id != admin["user_id"]:
+            notified = role_notice(user_id, target["email"], set(novos) - set(before), set(before) - set(novos), admin)
+    return {"id": user_id, "roles": novos, "notified": notified}
+
+
+# O que cada papel muda para a pessoa (aviso no app e no e-mail; mesma ordem do Admin).
+ROLE_GAIN = {
+    "user": ("Usuário", "Você passa a ter o seu próprio registro: Hoje, Tarefas, Rotinas e relatórios."),
+    "admin": ("Admin", "Você administra o Nexus: convites, contas, papéis e configurações gerais (Admin, no menu)."),
+    "assigner": ("Manda tarefas", "Você pode mandar tarefas para quem aceitou receber e acompanhar o que mandou."),
+    "viewer": ("Vê a equipe", "Você vê, sem editar, o registro da equipe na tela Equipe."),
+}
+
+
+def role_notice(uid: int, email: str, added: set, removed: set, admin: dict) -> bool:
+    """Guarda o aviso único (o app mostra no próximo acesso, até "Entendi") e,
+    com e-mail configurado, avisa por e-mail. Ganhou e perdeu de novo antes de
+    ver = nada a dizer. Convite ainda não aceito ou conta bloqueada: nada (o
+    tour e a liberação já explicam). Devolve se houve aviso."""
+    u = db.query_one("SELECT invite_pending, blocked_at, role_notice FROM users WHERE id = %s", (uid,))
+    if not u or u["invite_pending"] or u["blocked_at"]:
+        return False
+    old = u["role_notice"] or {}
+    old_add, old_rem = set(old.get("added", [])), set(old.get("removed", []))
+    add = (old_add - removed) | (added - old_rem)    # ganhou e perdeu antes de ver: some dos dois lados
+    rem = (old_rem - added) | (removed - old_add)
+    notice = {"added": [k for k in ROLE_GAIN if k in add], "removed": [k for k in ROLE_GAIN if k in rem]}
+    db.execute("UPDATE users SET role_notice = %s WHERE id = %s",
+               (json.dumps(notice) if (add or rem) else None, uid))
+    if mailer.configured():
+        from .assign import _spawn  # o mesmo envio em segundo plano da atribuição
+        _spawn(email, _roles_mail(added, removed, people.profile(admin["user_id"])["name"]))
+    return True
+
+
+def _roles_mail(added: set, removed: set, by_name: str):
+    from ..notify import Mail
+    ganhou = [ROLE_GAIN[k][0] for k in ROLE_GAIN if k in added]
+    perdeu = [ROLE_GAIN[k][0] for k in ROLE_GAIN if k in removed]
+    nomes = lambda xs: " e ".join(f"“{n}”" for n in xs)  # noqa: E731
+    if ganhou:
+        m = Mail(f"Novo papel no Nexus: {', '.join(ganhou)}", f"{by_name} deu a você o papel {nomes(ganhou)}",
+                 "Os seus papéis no Nexus mudaram. Na próxima vez que abrir o app, ele mostra o que mudou.")
+    else:
+        m = Mail(f"Papel retirado no Nexus: {', '.join(perdeu)}", f"{by_name} tirou o seu papel {nomes(perdeu)}",
+                 "Os seus papéis no Nexus mudaram. Na próxima vez que abrir o app, ele mostra o que mudou.")
+    for k in ROLE_GAIN:
+        if k in added:
+            m.blocks.append((f"Novo: {ROLE_GAIN[k][0]}", [ROLE_GAIN[k][1]]))
+    for k in ROLE_GAIN:
+        if k in removed:
+            m.blocks.append((f"Retirado: {ROLE_GAIN[k][0]}",
+                             ["O que vinha com esse papel sai do menu. Os seus dados continuam guardados."]))
+    m.reason, m.settings_tab = "Você recebe este e-mail porque quem administra o Nexus mudou os seus papéis.", None
+    return m
 
 
 @router.put("/users/{user_id}/profile")
@@ -220,7 +388,8 @@ def edit_profile(user_id: int, data: AdminProfileIn, admin=Depends(require_admin
 def delete_user(user_id: int, data: DeleteUserIn, admin=Depends(require_admin_csrf)):
     """Exclui a conta e TODOS os dados dela (tarefas, rotinas, tempo, chaves,
     histórico: ON DELETE CASCADE). Sem volta: o admin confirma digitando o
-    e-mail. Tarefas que essa pessoa atribuiu ficam com quem recebeu."""
+    e-mail. Tarefas que essa pessoa atribuiu ficam com quem recebeu.
+    `transfer_to`: antes de excluir, as tarefas abertas passam para essa pessoa."""
     if user_id == admin["user_id"]:
         raise HTTPException(status_code=400, detail="para a sua própria conta, use Configurações > Conta")
     target = _ensure_user(user_id)
@@ -228,13 +397,15 @@ def delete_user(user_id: int, data: DeleteUserIn, admin=Depends(require_admin_cs
         raise HTTPException(status_code=400, detail="confirme digitando o e-mail da conta")
     if "admin" in roles.of(user_id) and roles.admins_count() <= 1:
         raise HTTPException(status_code=400, detail="o sistema precisa de pelo menos um admin")
+    dest = _receiver(user_id, data.transfer_to)
+    moved = transfer_open_tasks(target, dest, admin) if dest else None
     counts = account_counts(user_id)
     if not roles.delete_account(user_id):
         raise HTTPException(status_code=400, detail="o sistema precisa de pelo menos um admin")
     # Fica no histórico de quem excluiu (o do excluído some junto com a conta).
     audit.record({**admin, "actor": "admin"}, "user.delete", "user", user_id,
-                 before={"email": target["email"], **counts})
-    return {"ok": True, "email": target["email"], **counts}
+                 before={"email": target["email"], **counts, **({"transferred": moved["count"]} if moved else {})})
+    return {"ok": True, "email": target["email"], **counts, "transferred": moved}
 
 
 def account_counts(user_id: int) -> dict:
@@ -264,10 +435,12 @@ def put_settings(data: AppSettingsIn, admin=Depends(require_admin_csrf)):
 
 @router.get("/org")
 def get_org(admin=Depends(require_admin)):
-    """Para empresas e instituições: as opções globais (todas desligadas por padrão)."""
+    """Para empresas e instituições: as opções globais (todas desligadas por padrão).
+    `mail_configured`: sem e-mail, o pedido de convite nunca aparece (a opção só explica)."""
     o = org.get()
     return {"team_visibility": o["team_visibility"], "team_visibility_since": o["team_visibility_since"],
-            "identity_managed": o["identity_managed"], "tour_required": o["tour_required"]}
+            "identity_managed": o["identity_managed"], "invite_request_off": o["invite_request_off"],
+            "ticket_url": o["ticket_url"], "mail_configured": mailer.configured()}
 
 
 @router.put("/org")
@@ -283,33 +456,81 @@ def put_org(data: OrgIn, admin=Depends(require_admin_csrf)):
                        WHERE id = 1""", (data.team_visibility, data.team_visibility))
         audit.record(ctx, "app.team_visibility", "app_settings", 1, before={"team_visibility": before["team_visibility"]},
                      after={"team_visibility": data.team_visibility, "by": admin["email"]})
-    for key in ("identity_managed", "tour_required"):
+    for key in ("identity_managed", "invite_request_off"):
         val = getattr(data, key)
         if val is not None and val != before[key]:
             db.execute(f"UPDATE app_settings SET {key} = %s, updated_at = now() WHERE id = 1", (val,))
             audit.record(ctx, f"app.{key}", "app_settings", 1, before={key: before[key]},
                          after={key: val, "by": admin["email"]})
+    # Endereço do sistema de chamados (vale para todos; enviado vazio ou null = tira).
+    if "ticket_url" in data.model_fields_set:
+        url = (data.ticket_url or "").strip() or None
+        if url != before["ticket_url"]:
+            db.execute("UPDATE app_settings SET ticket_url = %s, updated_at = now() WHERE id = 1", (url,))
+            audit.record(ctx, "app.ticket_url", "app_settings", 1, before={"ticket_url": before["ticket_url"]},
+                         after={"ticket_url": url, "by": admin["email"]})
     return get_org(admin)
 
 
 @router.post("/users/{user_id}/reset-password")
-def reset_password(user_id: int, admin=Depends(require_admin_csrf)):
-    """Redefine a senha de um usuario para uma temporaria gerada (mostrada uma
-    unica vez ao admin). Forca troca no proximo login e encerra as sessoes do
-    alvo. Sem envolvimento de e-mail. Para a própria conta, use a troca normal."""
+def reset_password(user_id: int, data: ResetPasswordIn | None = None, admin=Depends(require_admin_csrf)):
+    """Redefine a senha de outra conta (e libera uma conta bloqueada). A senha
+    atual deixa de valer, e as sessões, chaves de API, calendário e passkeys
+    do alvo são cortados. Duas formas:
+
+    - `temp` (padrão): senha temporária mostrada uma única vez ao admin; a
+      pessoa troca no próximo login.
+    - `link` (só com e-mail configurado): o link de nova senha do "Esqueci a
+      senha" vai para o e-mail da pessoa (vale 24 horas, uso único); o admin
+      também recebe o link, para mandar por outro canal se o e-mail falhar.
+
+    Para a própria conta, use a troca normal."""
     if user_id == admin["user_id"]:
         raise HTTPException(status_code=400, detail="use a troca de senha da sua própria conta")
     target = _ensure_user(user_id)
+    method = data.method if data else "temp"
+    if method == "link" and not mailer.configured():
+        raise HTTPException(status_code=400, detail="e-mail não configurado no servidor: use a senha temporária")
+    was_blocked = bool(db.query_one("SELECT 1 FROM users WHERE id = %s AND blocked_at IS NOT NULL", (user_id,)))
 
     temp = generate_temp_password()
+    # Pelo link, a senha vira uma que ninguém sabe até a pessoa criar a dela.
+    secret = generate_temp_password(32) if method == "link" else temp
     # Também libera uma conta bloqueada (blocked_at volta a vazio).
     db.execute(
-        """UPDATE users SET password_hash = %s, must_change_password = true, invite_pending = false,
+        """UPDATE users SET password_hash = %s, must_change_password = %s, invite_pending = false,
                             blocked_at = NULL WHERE id = %s""",
-        (hash_password(temp), user_id),
+        (hash_password(secret), method == "temp", user_id),
     )
-    # Conta comprometida ou pessoa que saiu: ela só volta com a senha temporária.
+    # Conta comprometida ou pessoa que saiu: ela só volta com a senha temporária (ou o link).
     _cut_access(user_id)
     audit.record({**admin, "actor": "admin"}, "user.reset_password", "password", user_id,
-                 after={"by": admin["email"]}, user_id=user_id)
-    return {"email": target["email"], "temp_password": temp}
+                 after={"by": admin["email"], "method": method, **({"unblocked": True} if was_blocked else {})},
+                 user_id=user_id)
+    if method == "temp":
+        return {"email": target["email"], "temp_password": temp, "method": "temp"}
+    link = links.url("reset", links.issue(user_id, "reset", ttl=ADMIN_RESET_TTL))
+    try:
+        m = _admin_reset_mail(target["email"], people.profile(admin["user_id"])["name"], link, was_blocked)
+        mailer.send(target["email"], m.subject, m.text(), m.html())
+        emailed = True
+    except mailer.MailError as e:
+        log.warning("link de nova senha para a conta %s não foi por e-mail: %s", user_id, e)
+        emailed = False
+    return {"email": target["email"], "reset_url": link, "emailed": emailed, "method": "link"}
+
+
+ADMIN_RESET_TTL = timedelta(hours=24)  # o "Esqueci a senha" vale 1 hora; o mandado pelo admin, um dia
+
+
+def _admin_reset_mail(email: str, by_name: str, link: str, unblocked: bool):
+    from ..notify import Mail
+    m = Mail("Crie uma senha nova para o Nexus",
+             "O seu acesso foi liberado" if unblocked else "A sua senha do Nexus foi redefinida",
+             f"{by_name}, que administra o Nexus, {'liberou o seu acesso' if unblocked else 'redefiniu a sua senha'}. "
+             "Crie uma senha nova pelo botão abaixo. O link vale por 24 horas e funciona uma vez só.")
+    m.blocks = [("A sua conta", [email]),
+                ("A senha antiga não vale mais", ["Os aparelhos conectados saíram da conta; entre de novo com a senha nova."])]
+    m.link, m.absolute, m.button = link, True, "Criar uma senha nova"
+    m.reason, m.settings_tab = "Você recebe este e-mail porque um administrador do Nexus redefiniu a sua senha.", None
+    return m

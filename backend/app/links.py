@@ -11,12 +11,13 @@ TTL = {"invite": timedelta(days=7), "reset": timedelta(hours=1), "email": timede
 HASH_KEY = {"invite": "convite", "reset": "senha", "email": "email"}  # /login#convite=... / #senha=... / #email=...
 
 
-def issue(user_id: int, kind: str, new_email: str | None = None) -> str:
+def issue(user_id: int, kind: str, new_email: str | None = None, ttl: timedelta | None = None) -> str:
+    """ttl: outra validade (o link de nova senha mandado pelo admin vale 24 horas)."""
     db.execute("UPDATE auth_links SET used_at = now() WHERE user_id = %s AND kind = %s AND used_at IS NULL",
                (user_id, kind))
     token = new_token()
     db.execute("INSERT INTO auth_links (user_id, kind, token_hash, expires_at, new_email) VALUES (%s, %s, %s, %s, %s)",
-               (user_id, kind, token_hash(token), datetime.now(timezone.utc) + TTL[kind], new_email))
+               (user_id, kind, token_hash(token), datetime.now(timezone.utc) + (ttl or TTL[kind]), new_email))
     return token
 
 

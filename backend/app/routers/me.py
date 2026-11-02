@@ -204,11 +204,20 @@ def activity(user=Depends(web_active)):
 
 @router.put("/tickets")
 def put_ticket_url(data: TicketUrlIn, user=Depends(web_active_csrf)):
-    """Endereço do sistema de chamados; {id} vira o número (sem {id}, o número vai no fim)."""
+    """Endereço do sistema de chamados; {id} vira o número (sem {id}, o número vai no fim).
+    Com o endereço definido pela administração (Admin › Para empresas), 409: o
+    da instância vale para todos; o da pessoa fica guardado e volta a valer se
+    o admin esvaziar o global."""
+    if org.get()["ticket_url"]:
+        raise HTTPException(status_code=409, detail=TICKETS_BY_ADMIN)
     url = (data.ticket_url or "").strip() or None
     db.execute("UPDATE users SET ticket_url = %s WHERE id = %s", (url, user["user_id"]))
     audit.record(user, "tickets.update", "user", user["user_id"], after={"ticket_url": url})
-    return {"ticket_url": url}
+    return {"ticket_url": url, "ticket_url_managed": False}
+
+
+TICKETS_BY_ADMIN = ("Nesta instância do Nexus, o endereço do sistema de chamados é definido pela administração "
+                    "e vale para todos. Para mudar, fale com quem administra.")
 
 
 @router.put("/default-project")
@@ -256,6 +265,13 @@ def seen_visibility_notice(user=Depends(web_active_csrf)):
     """"Entendi" no aviso único de que quem gerencia a equipe vê o registro de todos."""
     db.execute("UPDATE users SET visibility_notice_at = now() WHERE id = %s", (user["user_id"],))
     return {"visibility_notice": False}
+
+
+@router.put("/role-notice")
+def seen_role_notice(user=Depends(web_active_csrf)):
+    """"Entendi" no aviso único de papel ganho ou retirado pelo admin."""
+    db.execute("UPDATE users SET role_notice = NULL WHERE id = %s", (user["user_id"],))
+    return {"role_notice": None}
 
 
 @router.put("/assignments")

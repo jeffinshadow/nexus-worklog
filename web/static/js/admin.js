@@ -1,6 +1,7 @@
 import { api } from "./api.js";
-import { h, icon, clear, field, markInvalid } from "./dom.js";
-import { codeBox, confirmDialog, errorToast, modal, navBadge, toast, busy, warnBox, popupMenu, sheet, refocusBy } from "./ui.js";
+import { h, icon, clear, field, markInvalid, localDay, dateTime, addDays } from "./dom.js";
+import { codeBox, confirmDialog, errorToast, modal, navBadge, toast, busy, warnBox, popupMenu, sheet, refocusBy,
+  pager, pageSlice, hashPage, setHashPage } from "./ui.js";
 import { applyBranding } from "./branding.js";
 import { avatar } from "./profile.js";
 
@@ -25,21 +26,62 @@ function rowMenu(btn, title, items) {
   popupMenu(r.left, r.bottom + 4, items, r.top);
 }
 
-// Busca por nome ou e-mail nas listas de contas (só aparece com lista longa).
-function searchBox(rows) {
-  const input = h("input", { type: "search", placeholder: "Buscar por nome ou e-mail", "aria-label": "Buscar conta por nome ou e-mail", autocomplete: "off" });
-  const none = h("p", { class: "empty hidden", text: "Nenhuma conta com esse nome ou e-mail." });
-  input.addEventListener("input", () => {
-    const q = input.value.trim().toLowerCase();
-    let shown = 0;
-    for (const [el, text] of rows) { const ok = !q || text.includes(q); el.classList.toggle("hidden", !ok); shown += ok; }
-    none.classList.toggle("hidden", shown > 0);
-  });
-  return rows.length > 6 ? [h("div", { class: "field admin-search" }, input), none] : [];
-}
 const userText = (u) => `${u.display_name || ""} ${u.email}`.toLowerCase();
 
 const dateShort = (iso) => new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+const dmy = (ts) => { const [y, m, d] = localDay(ts).split("-"); return `${d}/${m}/${y}`; };
+// "hoje, 14:20", "ontem, 09:05" ou a data (no fuso da app).
+function seenText(ts) {
+  const day = localDay(ts), today = localDay(Date.now());
+  const hm = dateTime(ts).split(" ").pop();
+  return day === today ? `hoje, ${hm}` : day === addDays(today, -1) ? `ontem, ${hm}` : dmy(ts);
+}
+// Criação e último acesso de uma conta (convite pendente: a data do convite).
+const accessLine = (u) => u.invite_pending ? `Convidada em ${dmy(u.created_at)}`
+  : `Criada em ${dmy(u.created_at)} · ` + (u.last_seen_at ? `último acesso ${seenText(u.last_seen_at)}` : "nunca entrou");
+
+// Situação das contas (os chips acima da lista; o número já é o resumo).
+const STATUS = [
+  ["all", "Todas", () => true],
+  ["active", "Ativas", (u) => !u.invite_pending && !u.blocked_at],
+  ["pending", "Convite pendente", (u) => u.invite_pending],
+  ["blocked", "Bloqueadas", (u) => !!u.blocked_at],
+];
+const PAGE = 20;
+// Filtros da lista de contas: ficam enquanto o app está aberto (redesenhar depois de uma ação não os perde).
+const usersFilter = { q: "", role: "", status: "all" };
+
+// Origem dos pedidos de convite ("site" e "github" só nos pedidos antigos).
+const ORIGEM = { colega: "indicação de colega", empresa: "pela empresa ou equipe", internet: "internet ou redes sociais",
+  outro: "outro", site: "site", github: "GitHub" };
+
+// Bloquear ou excluir quem tem tarefas abertas: passar para outra pessoa
+// (papel Usuário, acesso liberado) ou deixar. value(): id, null (deixar) ou
+// undefined (escolheu passar, mas sem pessoa).
+function transferPicker(u, users, keep) {
+  if (!u.open_tasks) return null;
+  const n = u.open_tasks;
+  const others = users.filter((x) => x.id !== u.id && x.roles.includes("user") && !x.blocked_at);
+  const pass = h("input", { type: "radio", name: "transfer", value: "pass" });
+  const stay = h("input", { type: "radio", name: "transfer", value: "keep" });
+  const sel = h("select", { "aria-label": "Quem recebe as tarefas" }, h("option", { value: "", text: "Escolha a pessoa…" }),
+    ...others.map((x) => h("option", { value: String(x.id), text: x.display_name ? `${x.display_name} (${x.email})` : x.email })));
+  pass.checked = others.length > 0;
+  stay.checked = !pass.checked;
+  if (!others.length) { pass.disabled = true; sel.disabled = true; }
+  sel.addEventListener("change", () => { if (sel.value) { pass.checked = true; markInvalid([sel], null, false); } });
+  stay.addEventListener("change", () => markInvalid([sel], null, false));
+  const el = h("fieldset", { class: "transfer-tasks" },
+    h("legend", { text: n === 1 ? "1 tarefa aberta" : `${n} tarefas abertas` }),
+    h("label", { class: "check-line role-line" }, pass, h("span", {}, h("strong", { text: "Passar para outra pessoa" }),
+      h("small", { text: "Vão com as anotações, o checklist e as fotos; quem recebe é avisado e fica no histórico. O tempo já registrado continua nesta conta." }))),
+    h("div", { class: "field transfer-who" }, sel),
+    h("label", { class: "check-line role-line" }, stay, h("span", {}, h("strong", { text: keep[0] }), h("small", { text: keep[1] }))),
+    others.length ? null : h("p", { class: "dialog-note", text: "Nenhuma outra conta com o papel Usuário e acesso liberado pode receber." }));
+  return { el, sel, value: () => stay.checked ? null : sel.value ? Number(sel.value) : undefined };
+}
+
+const movedText = (t) => t && t.count ? ` ${t.count === 1 ? "1 tarefa passou" : `${t.count} tarefas passaram`} para ${t.to}.` : "";
 
 // Número de pedidos de convite abertos no item Admin do menu (também ao abrir o app).
 export function setRequestsBadge(n) {
@@ -58,9 +100,12 @@ export async function mount(root, ctx) {
     ["empresas", "Para empresas", (el) => mountOrg(el, ctx.me)],
     ["identidade", "Identidade visual", (el) => mountBranding(el)],
   ];
+  // #/admin?aba=empresas abre direto na aba (link da Conta e do detalhe da tarefa).
+  const pedida = (location.hash.match(/[?&]aba=(\w+)/) || [])[1];
+  const first = abas.find(([k]) => k === pedida) || abas[0];
   for (const [key, label, fn] of abas) {
     seg.append(h("button", {
-      type: "button", class: "chip-btn", role: "tab", "aria-selected": key === "usuarios" ? "true" : "false", text: label,
+      type: "button", class: "chip-btn", role: "tab", "aria-selected": key === first[0] ? "true" : "false", text: label,
       onClick: () => {
         for (const b of seg.children) b.setAttribute("aria-selected", b.textContent === label ? "true" : "false");
         fn(body);
@@ -68,32 +113,69 @@ export async function mount(root, ctx) {
     }));
   }
   root.append(seg, body);
-  await mountUsers(body, ctx.me);
+  await first[2](body);
 }
 
 const roleNames = (roles) => ROLES.filter(([k]) => roles.includes(k)).map(([, n]) => n).join(" · ") || "sem papel";
 
 async function mountUsers(root, me) {
   clear(root);
-  const users = await api.get("/admin/users");
+  const [users, pedidos] = await Promise.all([api.get("/admin/users"), api.get("/admin/invite-requests").catch(() => [])]);
   const emailById = new Map(users.map((u) => [String(u.id), u.email]));
   const inviteBtn = h("button", { type: "button", class: "btn btn-primary", onClick: onInvite }, icon("add"), "Convidar pessoa");
-  const rows = users.map((u) => [userRow(u), userText(u)]);
+  const st = usersFilter;
+  let page = hashPage("pc");
+  const title = h("h2", { text: "Contas" });
+  const box = h("div", { class: "admin-users-list" });
+  // Busca, papel e situação: só com lista longa (com poucas contas, é ruído).
+  const many = users.length > 6;
+  const search = h("input", { type: "search", placeholder: "Buscar por nome ou e-mail", "aria-label": "Buscar conta por nome ou e-mail", autocomplete: "off", value: st.q });
+  search.addEventListener("input", () => { st.q = search.value.trim().toLowerCase(); page = 1; paint(); });
+  const roleSel = h("select", { "aria-label": "Filtrar por papel" }, h("option", { value: "", text: "Todos os papéis" }),
+    ...ROLES.map(([k, n]) => h("option", { value: k, text: n })));
+  roleSel.value = st.role;
+  roleSel.addEventListener("change", () => { st.role = roleSel.value; page = 1; paint(); });
+  if (!STATUS.some(([k, , test]) => k === st.status && (k === "all" || users.some(test)))) st.status = "all";
+  const seg = h("div", { class: "seg seg-sm admin-status", role: "group", "aria-label": "Filtrar por situação" },
+    ...STATUS.filter(([k, , test]) => k === "all" || users.some(test)).map(([k, label, test]) =>
+      h("button", { type: "button", class: "chip-btn", "data-k": k, text: `${label} · ${users.filter(test).length}`,
+        onClick: () => { st.status = k; page = 1; paint(); } })));
   const list = h("section", { class: "panel admin-users" },
-    h("div", { class: "panel-head" }, h("h2", { text: "Contas" }), h("div", { class: "spacer" }), inviteBtn),
+    h("div", { class: "panel-head" }, title, h("div", { class: "spacer" }), inviteBtn),
     // Os papéis de cada conta mudam no ⋮ dela ("Papéis…"); aqui, o que cada um pode.
     h("details", { class: "roles-help" }, h("summary", { text: "O que cada papel pode" }),
       h("dl", { class: "roles-legend" }, ...ROLES.flatMap(([k, n, d]) => [h("dt", { text: n }), h("dd", { text: roleDesc(k, d, me) })]))),
-    ...searchBox(rows), ...rows.map(([el]) => el));
+    many ? h("div", { class: "admin-filters" }, h("div", { class: "field admin-search" }, search),
+      h("div", { class: "field admin-role" }, roleSel), seg) : null,
+    box);
+
+  function paint() {
+    clear(box);
+    for (const b of seg.children) {
+      const on = b.dataset.k === st.status;
+      b.setAttribute("aria-pressed", String(on));
+      b.setAttribute("aria-selected", String(on)); // mesmo visual do .seg
+    }
+    const test = STATUS.find(([k]) => k === st.status)[2];
+    const f = many ? st : { q: "", role: "" };
+    const shown = users.filter((u) => (!many || test(u)) && (!f.role || u.roles.includes(f.role)) && (!f.q || userText(u).includes(f.q)));
+    if (!shown.length) box.append(h("p", { class: "empty", text: "Nenhuma conta com esses filtros." }));
+    const sl = pageSlice(shown, page, PAGE);
+    page = sl.page;
+    setHashPage("pc", page, "admin");
+    for (const u of sl.rows) box.append(userRow(u));
+    const nav = pager({ page, total: shown.length, size: PAGE, label: "contas", onPage: (n) => { page = n; paint(); }, focus: () => title });
+    if (nav) box.append(nav);
+  }
 
   function userRow(u) {
     const self = u.id === me.id;
     const chips = [];
     if (u.invite_pending) chips.push(h("span", { class: "chip pending-chip " + (u.invite_expired ? "late" : "today"), text: u.invite_expired ? "convite vencido" : "convite pendente",
       title: u.invite_expired ? "O link de 7 dias venceu: reenvie o convite" : "Aguardando a pessoa criar a senha" }));
-    if (u.blocked_at) chips.push(h("span", { class: "chip pending-chip late", text: "acesso bloqueado", title: "Para liberar, use Liberar acesso" }));
+    if (u.blocked_at) chips.push(h("span", { class: "chip pending-chip late", text: "acesso bloqueado", title: `Bloqueada em ${dmy(u.blocked_at)}. Para liberar, use Liberar acesso` }));
     if (self) chips.push(h("span", { class: "chip pending-chip", text: "você" }));
-    // Quem ainda não aceitou o convite recebe outro link; os demais, senha temporária
+    // Quem ainda não aceitou o convite recebe outro link; os demais, nova senha
     // (que também libera uma conta bloqueada). O resto fica no menu da linha.
     // No celular, a ação da linha vai para o ⋮ (o e-mail fica inteiro na linha).
     const [mainText, mainFn] = self ? [] : u.invite_pending ? ["Reenviar convite", () => onResend(u)]
@@ -110,39 +192,57 @@ async function mountUsers(root, me) {
       onClick: (ev) => rowMenu(ev.currentTarget, u.display_name || u.email, phone() && main ? [[mainText, "key", mainFn], ...items] : items) }, icon("more-v"));
     return h("div", { class: "list-row" }, avatar(u, "sm"),
       h("div", { class: "t" }, u.display_name ? h("span", { class: "dot-list" }, h("span", { text: u.display_name }), h("span", { text: u.email })) : h("span", { text: u.email }),
-        h("small", {}, roleNames(u.roles), ...chips)),
+        h("small", {}, roleNames(u.roles), ...chips),
+        h("small", { class: "account-seen", text: accessLine(u) })),
       main, more);
   }
 
   // Pedidos de convite que chegaram pela tela de login (só com e-mail configurado).
-  // Os abertos primeiro; os já respondidos ficam recolhidos (saem sozinhos em 30 dias).
-  const pedidos = await api.get("/admin/invite-requests").catch(() => []);
-  const ORIGEM = { colega: "indicação de colega", site: "site da ShadowTec", github: "GitHub", outro: "outro" };
+  // Os abertos primeiro, em páginas; os já respondidos ficam recolhidos (saem sozinhos em 30 dias).
   const abertos = pedidos.filter((r) => r.status === "pending");
   const decididos = pedidos.filter((r) => r.status !== "pending");
   setRequestsBadge(abertos.length);
   const requestRow = (r) => h("div", { class: "request-row" + (r.status === "pending" ? "" : " decided") },
     h("div", { class: "t" },
       h("span", { class: "request-who" }, h("strong", { text: r.name }), " · ", r.email),
-      h("small", { text: `${ORIGEM[r.source]}${r.source_note ? ` (${r.source_note})` : ""} · ${dateShort(r.created_at)}` }),
+      h("small", { text: `${ORIGEM[r.source] || r.source}${r.source_note ? ` (${r.source_note})` : ""} · ${dateShort(r.created_at)}` }),
       h("p", { class: "request-reason", text: r.reason })),
     r.status === "pending"
       ? h("div", { class: "request-actions" },
           r.has_account ? h("span", { class: "chip", text: "já tem conta" }) : null,
           h("button", { type: "button", class: "btn btn-primary btn-sm", disabled: r.has_account ? "disabled" : null,
             "aria-label": `Convidar ${r.name}`, onClick: () => onInvite(r) }, icon("send"), "Convidar"),
-          h("button", { type: "button", class: "btn btn-text btn-sm", text: "Recusar", onClick: async () => {
+          h("button", { type: "button", class: "btn btn-text btn-sm", text: "Recusar", "aria-label": `Recusar o pedido de ${r.name}`, onClick: async () => {
             if (!(await confirmDialog({ title: `Recusar o pedido de ${r.name}?`, text: "Nenhum e-mail é enviado para quem pediu. O pedido fica na lista por 30 dias.", confirm: "Recusar" }))) return;
             try { await api.post(`/admin/invite-requests/${r.id}/decline`); await mountUsers(root, me); } catch (e) { errorToast(e); }
           } }))
       : h("span", { class: "chip " + (r.status === "invited" ? "done" : ""), text: r.status === "invited" ? "convidado" : "recusado" }));
+  // Uma lista em páginas (20 por página) dentro de `box`; foco no título ao trocar.
+  const pagedList = (rows, box, key, label, head, compact) => {
+    let pg = key ? hashPage(key) : 1;
+    const draw = () => {
+      clear(box);
+      const sl = pageSlice(rows, pg, PAGE);
+      pg = sl.page;
+      if (key) setHashPage(key, pg, "admin");
+      for (const r of sl.rows) box.append(requestRow(r));
+      const nav = pager({ page: pg, total: rows.length, size: PAGE, label, compact, onPage: (n) => { pg = n; draw(); }, focus: head });
+      if (nav) box.append(nav);
+    };
+    draw();
+    return box;
+  };
+  const reqTitle = h("h2", { text: "Pedidos de convite" });
+  const decSummary = h("summary", { text: `Já respondidos (${decididos.length})` });
   const requests = pedidos.length ? h("section", { class: "panel" },
-    h("div", { class: "panel-head" }, h("h2", { text: "Pedidos de convite" }),
+    h("div", { class: "panel-head" }, reqTitle,
       abertos.length ? h("span", { class: "count", text: String(abertos.length) }) : null),
-    ...(abertos.length ? abertos.map(requestRow) : [h("p", { class: "empty", text: "Nenhum pedido esperando resposta." })]),
-    decididos.length ? h("details", { class: "requests-decided" },
-      h("summary", { text: `Já respondidos (${decididos.length})` }), ...decididos.map(requestRow)) : null) : null;
+    abertos.length ? pagedList(abertos, h("div"), "pp", "pedidos de convite", () => reqTitle, false)
+      : h("p", { class: "empty", text: "Nenhum pedido esperando resposta." }),
+    decididos.length ? h("details", { class: "requests-decided" }, decSummary,
+      pagedList(decididos, h("div"), null, "pedidos já respondidos", () => decSummary, true)) : null) : null;
   root.append(h("div", { class: "settings-grid" }, requests, list));
+  paint();
 
   // ---- Cancelar convite (ninguém entrou ainda: a conta não tem dados) ----
   async function onCancelInvite(u) {
@@ -151,26 +251,43 @@ async function mountUsers(root, me) {
     catch (e) { errorToast(e, "Não foi possível cancelar o convite."); }
   }
 
-  // ---- Bloquear acesso: corta agora, sem apagar nada; "Liberar acesso" (senha temporária) volta ----
-  async function onBlock(u) {
-    const ok = await confirmDialog({
-      title: "Bloquear o acesso?",
-      text: `${u.email} sai de todos os aparelhos agora e não entra mais: a senha vira uma que ninguém sabe, e as chaves de API, o link do calendário e a entrada com digital ou rosto (passkeys) param de funcionar. Tarefas, rotinas e histórico ficam guardados. Para liberar, use “Liberar acesso”: gera uma senha temporária para você repassar.`,
-      confirm: "Bloquear", danger: true,
-    });
-    if (!ok) return;
-    try { await api.post(`/admin/users/${u.id}/block`); toast(`Acesso de ${u.email} bloqueado. Os dados ficam.`); mountUsers(root, me); }
-    catch (e) { errorToast(e, "Não foi possível bloquear."); }
+  // ---- Bloquear acesso: corta agora, sem apagar nada; "Liberar acesso" volta.
+  // Com tarefas abertas, oferece passá-las para outra pessoa. ----
+  function onBlock(u) {
+    const tp = transferPicker(u, users, ["Deixar nesta conta", "Ficam guardadas e voltam se você liberar o acesso."]);
+    const err = h("p", { class: "error-text", role: "alert" });
+    const form = h("form", {},
+      h("p", { text: `${u.email} sai de todos os aparelhos agora e não entra mais: a senha vira uma que ninguém sabe, e as chaves de API, o link do calendário e a entrada com digital ou rosto (passkeys) param de funcionar. Tarefas, rotinas e histórico ficam guardados. Para liberar, use “Liberar acesso”.` }),
+      tp ? tp.el : null, err,
+      h("div", { class: "dialog-actions" },
+        h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
+        h("button", { type: "submit", class: "btn btn-danger", text: "Bloquear" })));
+    form.addEventListener("submit", busy(async (ev) => {
+      ev.preventDefault();
+      err.textContent = "";
+      const to = tp ? tp.value() : null;
+      if (to === undefined) { err.textContent = "Escolha quem recebe as tarefas (ou deixe nesta conta)."; markInvalid([tp.sel], err); tp.sel.focus(); return; }
+      try {
+        const res = await api.post(`/admin/users/${u.id}/block`, to ? { transfer_to: to } : {});
+        dlg.close();
+        toast(`Acesso de ${u.email} bloqueado.${movedText(res.transferred) || " Os dados ficam."}`);
+        mountUsers(root, me);
+      } catch (e) { err.textContent = e.message || "Não foi possível bloquear."; }
+    }));
+    const dlg = modal(h("h2", { text: "Bloquear o acesso?" }), form);
+    (tp ? tp.sel : form.querySelector(".btn-text")).focus();
   }
 
   // ---- Excluir conta (LGPD): apaga a conta e todos os dados dela; confirma com o e-mail ----
   function onDelete(u) {
+    const tp = transferPicker(u, users, ["Excluir junto com a conta", "As tarefas abertas saem com o resto dos dados."]);
     const input = h("input", { type: "email", autocomplete: "off", required: "required" });
     const err = h("p", { class: "error-text", role: "alert" });
     input.addEventListener("input", () => markInvalid([input], err, false));
     const form = h("form", {},
       h("p", { class: "help", text: `Exclui a conta ${u.email} e tudo o que está nela: tarefas, rotinas, tempo, anotações, chaves de API e histórico. Não dá para desfazer. Tarefas que essa pessoa atribuiu a outras continuam com quem recebeu. O e-mail e as contagens ficam registrados no seu histórico (180 dias).` }),
       h("p", { class: "help", text: "Só quer cortar o acesso agora (férias, celular perdido)? Use “Bloquear acesso” no menu da conta: a pessoa sai de todos os aparelhos e os dados ficam." }),
+      tp ? tp.el : null,
       field("Digite o e-mail da conta para confirmar", input), err,
       h("div", { class: "dialog-actions" },
         h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
@@ -178,22 +295,26 @@ async function mountUsers(root, me) {
     form.addEventListener("submit", busy(async (ev) => {
       ev.preventDefault();
       err.textContent = "";
+      const to = tp ? tp.value() : null;
+      if (to === undefined) { err.textContent = "Escolha quem recebe as tarefas (ou exclua junto)."; markInvalid([tp.sel], err); tp.sel.focus(); return; }
       try {
-        const res = await api.post(`/admin/users/${u.id}/delete`, { confirm_email: input.value.trim() });
+        const res = await api.post(`/admin/users/${u.id}/delete`, { confirm_email: input.value.trim(), ...(to ? { transfer_to: to } : {}) });
         dlg.close();
-        toast(`Conta ${res.email} excluída (${res.tasks} tarefas, ${res.routines} rotinas).`);
+        toast(`Conta ${res.email} excluída (${res.tasks} tarefas, ${res.routines} rotinas).${movedText(res.transferred)}`);
         mountUsers(root, me);
       } catch (e) { err.textContent = e.message || "Não foi possível excluir."; markInvalid([input], err); input.focus(); }
     }));
     const dlg = modal(h("h2", { text: "Excluir conta?" }), form);
-    input.focus();
+    (tp ? tp.sel : input).focus();
   }
 
-  // ---- Redefinir senha (senha temporária, troca forçada no próximo login) ----
-  // Numa conta bloqueada, é o "Liberar acesso".
+  // ---- Redefinir senha / Liberar acesso. Com e-mail no servidor, o padrão é
+  // mandar o link de nova senha (ninguém repassa senha); a senha temporária
+  // continua como alternativa. Sem e-mail, só a senha temporária. ----
   async function onReset(uid, blocked = false) {
     const email = emailById.get(uid) || "";
-    const ok = await confirmDialog(blocked ? {
+    const byMail = await api.get("/auth/options").then((o) => o.email).catch(() => false);
+    const method = byMail ? await chooseReset(email, blocked) : (await confirmDialog(blocked ? {
       title: "Liberar o acesso?",
       text: `Gera uma senha temporária para ${email} entrar de novo. Repasse à pessoa; no primeiro login, ela cria uma senha nova.`,
       confirm: "Liberar",
@@ -201,15 +322,49 @@ async function mountUsers(root, me) {
       title: "Redefinir senha?",
       text: `Gera uma senha temporária para ${email}. As sessões, as chaves de API e o link de calendário da conta são revogados; no próximo login, a pessoa define uma senha nova.`,
       confirm: "Redefinir", danger: true,
-    });
-    if (!ok) return;
+    })) && "temp";
+    if (!method) return;
     try {
-      const res = await api.post(`/admin/users/${uid}/reset-password`);
-      showPassword(res.email, res.temp_password);
+      const res = await api.post(`/admin/users/${uid}/reset-password`, { method });
+      if (res.reset_url) showResetLink(res); else showPassword(res.email, res.temp_password);
       if (blocked) mountUsers(root, me);
     } catch (e) {
       errorToast(e, "Não foi possível redefinir a senha.");
     }
+  }
+
+  function chooseReset(email, blocked) {
+    return new Promise((resolve) => {
+      let pick = null;
+      const link = h("button", { type: "button", class: "btn btn-primary", onClick: () => { pick = "link"; dlg.close(); } }, icon("send"), "Mandar link por e-mail");
+      const dlg = modal(
+        h("h2", { text: blocked ? "Liberar o acesso?" : "Redefinir senha?" }),
+        h("p", { text: blocked
+          ? `${email} volta a entrar criando uma senha nova.`
+          : `A senha atual de ${email} deixa de valer agora, e as sessões, as chaves de API e o link de calendário da conta são revogados.` }),
+        h("dl", { class: "reset-ways" },
+          h("dt", { text: "Link por e-mail (recomendado)" }),
+          h("dd", { text: "A pessoa recebe um link para criar a senha. Vale 24 horas e funciona uma vez só; ninguém precisa repassar senha." }),
+          h("dt", { text: "Senha temporária" }),
+          h("dd", { text: "Você vê uma senha e repassa; a pessoa troca no primeiro login." })),
+        h("div", { class: "dialog-actions reset-actions" },
+          h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
+          h("button", { type: "button", class: "btn btn-ghost", text: "Gerar senha temporária", onClick: () => { pick = "temp"; dlg.close(); } }),
+          link));
+      dlg.addEventListener("close", () => resolve(pick));
+      link.focus();
+    });
+  }
+
+  function showResetLink(res) {
+    const dlg = modal(
+      h("h2", { text: res.emailed ? "Link enviado" : "Link criado" }),
+      res.emailed
+        ? h("p", {}, "Mandamos o link de nova senha para ", h("strong", { text: res.email }), ". Se não chegar, mande este link por outro canal:")
+        : warnBox(`O e-mail para ${res.email} não saiu. Mande este link por outro canal (WhatsApp, chat):`),
+      codeBox(res.reset_url),
+      h("p", { class: "dialog-note", text: "Vale por 24 horas e funciona uma vez só. Pedir de novo gera um link novo e o anterior deixa de valer." }),
+      h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Pronto", onClick: () => dlg.close() })));
   }
 
   async function onResend(u) {
@@ -346,11 +501,11 @@ function editRoles(u, me, onChanged) {
     saving = true;
     for (const [b] of boxes) b.setAttribute("aria-disabled", "true");
     try {
-      await api.put(`/admin/users/${u.id}/roles`, { roles });
+      const res = await api.put(`/admin/users/${u.id}/roles`, { roles });
       u.roles = roles;
       changed = true;
       paintConsent();
-      toast(`Papéis de ${who} salvos.`);
+      toast(res.notified ? `Papéis de ${who} salvos. A pessoa é avisada do que mudou.` : `Papéis de ${who} salvos.`);
     } catch (e) { cb.checked = !cb.checked; errorToast(e); }
     finally {
       saving = false;
@@ -369,7 +524,8 @@ function editRoles(u, me, onChanged) {
   };
   paintConsent();
   const dlg = modal(h("h2", { text: `Papéis de ${who}` }),
-    h("p", { class: "dialog-note", text: "Qualquer combinação. Marcou ou desmarcou, já vale." }),
+    h("p", { class: "dialog-note", text: u.invite_pending || u.id === me.id ? "Qualquer combinação. Marcou ou desmarcou, já vale."
+      : "Qualquer combinação. Marcou ou desmarcou, já vale; a pessoa vê um aviso do que mudou no próximo acesso (e por e-mail, se configurado)." }),
     h("div", { class: "role-lines" }, ...boxes.map(([, l]) => l)), consent,
     h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-text", text: "Fechar", onClick: () => dlg.close() })));
   // A linha da conta mostra os papéis novos; o foco volta ao ⋮ dela (a lista foi redesenhada).
@@ -427,7 +583,7 @@ async function mountOrg(root, me) {
   let cfg = await api.get("/admin/org");
   const save = async (patch, msg) => {
     cfg = await api.put("/admin/org", patch);
-    me.org = { team_visibility: cfg.team_visibility, identity_managed: cfg.identity_managed, tour_required: cfg.tour_required };
+    me.org = { team_visibility: cfg.team_visibility, identity_managed: cfg.identity_managed };
     toast(msg);
   };
 
@@ -479,10 +635,37 @@ async function mountOrg(root, me) {
       toggle("identity_managed", "Nome e e-mail definidos pela administração",
         "Ligado, só o admin muda nome e e-mail (Contas › ⋮ › Editar nome e e-mail); na Conta de cada um, os campos ficam bloqueados com o motivo. Desligado, cada pessoa muda os seus (o e-mail novo é confirmado por link).",
         "Pronto: nome e e-mail agora são definidos pela administração.", "Pronto: cada pessoa volta a mudar o próprio nome e e-mail.")),
-    h("fieldset", { class: "org-option" }, h("legend", { text: "Primeiro acesso" }),
-      toggle("tour_required", "Tour obrigatório no primeiro acesso",
-        "Quem entra pela primeira vez faz o tour até o fim (sem “Pular”; Voltar continua). Quem já usa o Nexus ou já fez o tour não é obrigado.",
-        "Pronto: o tour passa a ser obrigatório no primeiro acesso.", "Pronto: o tour volta a ser opcional.")))));
+    h("fieldset", { class: "org-option" }, h("legend", { text: "Tela de login" }),
+      toggle("invite_request_off", "Sem “Solicitar convite” na tela de login",
+        "Ligado, quem não tem conta não pede acesso pela tela de login: só entra quem você convidar. Desligado, o pedido aparece ali e chega em Contas."
+          + (cfg.mail_configured ? "" : " Hoje o e-mail não está configurado no servidor, então o pedido já não aparece."),
+        "Pronto: a tela de login não oferece mais o pedido de convite.", "Pronto: a tela de login volta a oferecer o pedido de convite.")),
+    ticketField())));
+
+  // Endereço do sistema de chamados da instância. Vazio = cada pessoa usa o seu (Conta).
+  function ticketField() {
+    const url = h("input", { type: "url", maxlength: "300", value: cfg.ticket_url || "", id: "org-ticket-url",
+      placeholder: "https://glpi.empresa.com.br/front/ticket.form.php?id={id}" });
+    const err = h("p", { class: "error-text", role: "alert" });
+    url.addEventListener("input", () => markInvalid([url], err, false));
+    const saveBtn = h("button", { type: "button", class: "btn btn-primary", text: "Salvar endereço", onClick: busy(async () => {
+      err.textContent = "";
+      const v = url.value.trim();
+      try {
+        await save({ ticket_url: v || null }, v ? "Pronto: o endereço vale para todos." : "Pronto: cada pessoa volta a usar o próprio endereço.");
+        me.ticket_url_managed = !!cfg.ticket_url;
+        if (cfg.ticket_url) me.ticket_url = cfg.ticket_url;
+      } catch (e) {
+        err.textContent = e.status === 422 ? "Use um endereço começando com http:// ou https://." : e.message || "Não foi possível salvar.";
+        markInvalid([url], err);
+        url.focus();
+      }
+    }) });
+    return h("fieldset", { class: "org-option org-ticket" }, h("legend", { text: "Sistema de chamados" }),
+      field("Endereço do chamado ou OS (para todos)", url),
+      h("p", { class: "dialog-note field-note", text: "Troque o número por {id} (ex.: https://sistema.empresa/os/{id}); sem {id}, o número vai no fim. Preenchido, vale para todos e o campo fica travado na Conta de cada um. Vazio (padrão), cada pessoa configura o seu; os endereços de cada um ficam guardados." }),
+      err, h("div", { class: "row-actions" }, saveBtn));
+  }
 }
 
 // ---- Geral: limite de datas retroativas em tarefas ----

@@ -1660,3 +1660,32 @@ input:disabled { cursor: not-allowed; }
 .invite-roles .role-line { min-height: 44px; }
 .invite-roles .role-line small { color: var(--on-surface-variant); }
 .email-block { margin: 0 0 8px; }
+/* Admin › Contas: busca, papel e situação numa faixa acima da lista; criação e último acesso na linha. */
+.admin-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 0 0 10px; }
+.admin-filters .field { margin: 0; }
+.admin-filters .admin-search { flex: 1 1 220px; margin: 0; }
+.admin-filters .admin-role { flex: 0 1 190px; }
+.admin-filters .admin-role select { width: 100%; min-height: 44px; }
+.admin-filters .admin-status { flex: 1 1 100%; flex-wrap: wrap; }
+.admin-users .list-row .t small.account-seen { color: var(--on-surface-variant); margin-top: 2px; }
+/* Bloquear/Excluir: passar as tarefas abertas para outra pessoa. */
+.transfer-tasks { border: 0; padding: 0; margin: 14px 0 6px; }
+.transfer-tasks legend { padding: 0; margin: 0 0 4px; font-weight: var(--weight-title); color: var(--on-surface); }
+.transfer-tasks .role-line { min-height: 44px; }
+.transfer-tasks .role-line small { color: var(--on-surface-variant); }
+.transfer-tasks .transfer-who { margin: 2px 0 8px 30px; }
+.transfer-tasks .transfer-who select { width: 100%; min-height: 44px; }
+/* Redefinir senha: link por e-mail ou senha temporária. */
+.reset-ways { margin: 12px 0 0; font-size: var(--type-body-s); }
+.reset-ways dt { font-weight: var(--weight-title); color: var(--on-surface); margin-top: 8px; }
+.reset-ways dd { margin: 2px 0 0; color: var(--on-surface-variant); }
+.reset-actions { flex-wrap: wrap; }
+/* Aviso de papel novo ou retirado. */
+.role-notice-list { margin: 8px 0 0; padding: 0; list-style: none; }
+.role-notice-list li { margin: 0 0 10px; }
+.role-notice-list strong { display: block; color: var(--on-surface); }
+.role-notice-list span { color: var(--on-surface-variant); font-size: var(--type-body-s); }
+/* Detalhe da tarefa: chamado sem endereço configurado (o número fica só texto). */
+.ticket-hint { display: block; margin-top: 4px; color: var(--on-surface-variant); font-size: var(--type-caption); }
+.ticket-hint a, #tickets-locked a { text-decoration: underline; }
+.org-ticket .row-actions { margin-top: 8px; }

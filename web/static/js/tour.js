@@ -3,7 +3,7 @@
 // (nome, tema, dias úteis, projetos, projeto padrão, rotinas) e (2) um passeio pela
 // tela Hoje, com destaque em cada parte, mostrando como fica o dia a dia.
 // Quem já configurou passa rápido: cada passo vem com o que já está salvo.
-// Tour obrigatório (Admin › Para empresas, só no primeiro acesso): sem "Pular"
+// Tour obrigatório no primeiro acesso de toda conta nova (sempre, desde 01/11): sem "Pular"
 // nem Esc até concluir (Voltar continua); a conclusão vai para o servidor.
 // Parada que falha (passo que não carrega, alvo ausente) segue para a próxima.
 import { api } from "./api.js";
@@ -34,6 +34,35 @@ export async function visibilityNotice(me) {
     h("p", { text: "Nesta instância do Nexus, quem gerencia a equipe vê as tarefas de todos (definido pela administração). Quem tem o papel “Vê a equipe” vê, sem editar, o seu quadro, os seus números, relatórios, horas e fotos." }),
     h("p", { class: "dialog-note", text: viewers.length ? `Hoje, com esse papel: ${viewers.join(", ")}.` : "Hoje, ninguém tem esse papel." }),
     h("p", { class: "dialog-note", text: "A sua escolha em Configurações > Conta fica guardada e volta a valer se a administração mudar isso." }),
+    h("div", { class: "dialog-actions" }, ok));
+  ok.focus();
+}
+
+// Aviso único de papel ganho ou retirado pela administração (o menu já mudou;
+// isto explica o porquê). Só "Entendi" grava; Esc mostra de novo depois.
+const ROLE_INFO = {
+  user: ["Usuário", "Você tem o próprio registro: Hoje, Tarefas, Rotinas e relatórios."],
+  admin: ["Admin", "Você administra o Nexus: convites, contas, papéis e configurações. Fica em Admin, no menu."],
+  assigner: ["Manda tarefas", "Você pode mandar tarefas para quem aceitou receber e acompanhar o que mandou."],
+  viewer: ["Vê a equipe", "Você vê, sem editar, o registro da equipe na tela Equipe, no menu."],
+};
+export function roleNotice(me) {
+  const n = me.role_notice || {};
+  const added = (n.added || []).filter((k) => ROLE_INFO[k]), removed = (n.removed || []).filter((k) => ROLE_INFO[k]);
+  if (!added.length && !removed.length) return;
+  const ok = h("button", { type: "button", class: "btn btn-primary", text: "Entendi", onClick: async () => {
+    try { await api.put("/me/role-notice"); me.role_notice = null; dlg.close(); }
+    catch (e) { errorToast(e); }
+  } });
+  const title = !removed.length ? (added.length > 1 ? "Você ganhou papéis novos" : "Você ganhou um papel novo")
+    : !added.length ? (removed.length > 1 ? "Alguns papéis seus foram retirados" : "Um papel seu foi retirado") : "Os seus papéis mudaram";
+  const dlg = modal(
+    h("h2", { text: title }),
+    h("p", { class: "dialog-note intro", text: "Quem administra o Nexus mudou os seus papéis." }),
+    h("ul", { class: "role-notice-list" },
+      ...added.map((k) => h("li", {}, h("strong", { text: `Novo: ${ROLE_INFO[k][0]}` }), h("span", { text: ROLE_INFO[k][1] }))),
+      ...removed.map((k) => h("li", {}, h("strong", { text: `Retirado: ${ROLE_INFO[k][0]}` }),
+        h("span", { text: "O que vinha com esse papel saiu do menu. Os seus dados continuam guardados." })))),
     h("div", { class: "dialog-actions" }, ok));
   ok.focus();
 }

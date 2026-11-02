@@ -363,7 +363,10 @@ export async function openTask(taskId, onChange, opts = {}) {
       objField,
       h("div", { class: "field wide" }, h("span", { class: "field-label", text: "Outros projetos" }), extras.el),
       h("div", { class: "field" }, h("label", { for: ticket.id, text: "Nº do chamado ou OS" }),
-        url ? h("div", { class: "with-link" }, ticket, h("a", { class: "icon", href: url, target: "_blank", rel: "noopener noreferrer", title: "Abrir o chamado", "aria-label": "Abrir o chamado" }, icon("right"))) : ticket),
+        url ? h("div", { class: "with-link" }, ticket, h("a", { class: "icon", href: url, target: "_blank", rel: "noopener noreferrer", title: "Abrir o chamado", "aria-label": "Abrir o chamado" }, icon("right"))) : ticket,
+        // Sem endereço (nem da administração nem da pessoa): o número fica só texto; uma dica discreta.
+        t.ticket && !url ? h("small", { class: "ticket-hint" }, "Para o número virar link, ",
+          h("a", { href: "#/config?aba=conta", text: "configure o endereço do sistema de chamados em Configurações › Conta" }), ".") : null),
       h("div", { class: "field field-check" }, h("label", { class: "check-line" }, afterHours, h("span", { text: "Plantão / fora do horário" }))));
 
     if (t.status === "blocked") {
