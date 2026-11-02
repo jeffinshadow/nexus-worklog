@@ -267,6 +267,7 @@ export function todayCard(b, sum, ctx) {
       actions: [action("Ver na Equipe", () => { seen(); ctx.go("equipe"); }, true)] }] });
   }
   // Último dia útil da semana: convite para a revisão (uma vez; "Agora não" vale a semana toda).
+  const rv = sum && sum.review;
   if (rv && rv.invite) items.push({ key: "hoje:revisao", lines: [{
     line: "Último dia útil da semana. Que tal uma revisão rápida? São 3 passos: o que fechou, o que ficou e o que vem.",
     actions: [action("Revisar a semana", () => openReview(ctx.onChanged), true),
