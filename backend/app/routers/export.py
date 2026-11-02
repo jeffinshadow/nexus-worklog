@@ -53,13 +53,14 @@ def _tasks(uid: int, start: date | None = None, end: date | None = None) -> list
                   w.project_id, w.external_ref, w.objective_id,
                   """ + TASK_COUNTS + """,
                   (SELECT COALESCE(sum(t.minutes), 0) FROM time_entries t
-                    WHERE t.task_id = w.id AND t.day BETWEEN %(s)s AND %(e)s)::int AS period_minutes
+                    WHERE t.task_id = w.id AND t.user_id = w.user_id AND t.day BETWEEN %(s)s AND %(e)s)::int AS period_minutes
              FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
             WHERE w.user_id = %(uid)s
               AND (NOT %(p)s
                    OR ((w.created_at AT TIME ZONE %(tz)s)::date <= %(e)s
                        AND (w.completed_at IS NULL OR (w.completed_at AT TIME ZONE %(tz)s)::date >= %(s)s))
-                   OR EXISTS (SELECT 1 FROM time_entries t WHERE t.task_id = w.id AND t.day BETWEEN %(s)s AND %(e)s))
+                   OR EXISTS (SELECT 1 FROM time_entries t WHERE t.task_id = w.id AND t.user_id = w.user_id
+                                 AND t.day BETWEEN %(s)s AND %(e)s))
             ORDER BY w.created_at""",
         {"uid": uid, "p": period, "s": start, "e": end, "tz": app_tz().key})
 
@@ -83,7 +84,7 @@ def time_csv(uid: int | None, filename: str, viewable_only: bool = False,
                   w.ticket, w.after_hours, u.email
              FROM time_entries e JOIN worklog_tasks w ON w.id = e.task_id
              JOIN users u ON u.id = e.user_id
-             LEFT JOIN projects p ON p.id = w.project_id
+             LEFT JOIN projects p ON p.id = w.project_id AND p.user_id = e.user_id
             WHERE (%(uid)s::bigint IS NULL OR e.user_id = %(uid)s) AND (NOT %(vo)s OR {visible_sql('u')})
               AND (%(s)s::date IS NULL OR e.day >= %(s)s) AND (%(e)s::date IS NULL OR e.day <= %(e)s)
             ORDER BY e.day, u.email, e.id""", {"uid": uid, "vo": viewable_only, "s": start, "e": end})
@@ -108,7 +109,7 @@ def plantao_csv(start: Optional[date] = Query(None), end: Optional[date] = Query
         """SELECT COALESCE(e.day, (w.completed_at AT TIME ZONE %(tz)s)::date) AS dia, w.id, w.title, w.ticket,
                   p.name AS project, COALESCE(e.minutes, 0) AS minutes, e.note
              FROM worklog_tasks w
-             LEFT JOIN time_entries e ON e.task_id = w.id
+             LEFT JOIN time_entries e ON e.task_id = w.id AND e.user_id = w.user_id
              LEFT JOIN projects p ON p.id = w.project_id
             WHERE w.user_id = %(uid)s AND w.after_hours
               AND COALESCE(e.day, (w.completed_at AT TIME ZONE %(tz)s)::date) BETWEEN %(s)s AND %(e)s

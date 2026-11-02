@@ -35,6 +35,9 @@ def test_finalizar_e_reabrir(usuario):
     tid = _criar(usuario)
     assert usuario.post(f"/worklog/{tid}/finish").status_code == 200
     assert _tarefa(usuario, tid)["status"] == "done"
+    # Aba velha não reabre (R6 funcional M3): só "a fazer" reabre de propósito.
+    assert usuario.patch(f"/worklog/{tid}", {"status": "in_progress"}).status_code == 409
+    assert usuario.patch(f"/worklog/{tid}", {"status": "todo"}).status_code == 200
     usuario.patch(f"/worklog/{tid}", {"status": "in_progress"})
     t = _tarefa(usuario, tid)
     assert t["status"] == "in_progress"

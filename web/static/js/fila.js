@@ -8,6 +8,9 @@
 // os dados na tela são de antes (o service worker serve a última leitura).
 import { h, icon, localDay, localDateTime } from "./dom.js";
 
+// Hora (HH:MM) no fuso da app, não no do aparelho (como dom.js dateTime).
+const hourOf = (ts) => localDateTime(ts).slice(11, 16);
+
 const DB = "nexus", STORE = "fila", FAILED = "falhas";
 const QUEUEABLE = [
   /^POST \/worklog$/, /^POST \/worklog\/\d+\/finish$/, /^POST \/worklog\/\d+\/notes$/,
@@ -312,7 +315,7 @@ export function prepareButton({ compact = false } = {}) {
     btn.setAttribute("aria-busy", "true");
     try {
       const r = await prepareOffline((done, total) => { btn.title = `Guardando ${done} de ${total}…`; });
-      const hora = new Date(r.at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+      const hora = hourOf(r.at);
       const tarefas = r.n === 1 ? "1 tarefa" : `${r.n} tarefas`;
       toast(r.total > r.n + r.failed
         ? `Pronto às ${hora}: ${tarefas} com checklist e anotações no aparelho (as ${READY_MAX} primeiras do Hoje).`
@@ -334,11 +337,11 @@ async function changed() {
   pending = ops.length;
   const offline = !navigator.onLine || staleAt;
   if (!offline && !ops.length && !bad.length) { bar?.remove(); bar = null; return; }
-  const hora = staleAt ? new Date(staleAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : null;
+  const hora = staleAt ? hourOf(staleAt) : null;
   // "Deixar pronto para sem sinal" de hoje: a barra diz de que hora são os detalhes guardados.
   const ready = readyInfo();
-  const readyHour = ready && new Date(ready.at).toDateString() === new Date().toDateString()
-    ? new Date(ready.at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : null;
+  const readyHour = ready && localDay(ready.at) === localDay(Date.now())
+    ? hourOf(ready.at) : null;
   // A contagem vem primeiro: no celular a barra corta o fim.
   const parts = [
     ops.length ? (sending && navigator.onLine ? `enviando ${ops.length > 1 ? `${ops.length} alterações` : "1 alteração"}…`
@@ -357,7 +360,7 @@ async function changed() {
 async function showList() {
   const { modal } = await import("./ui.js");
   const [ops, bad] = await Promise.all([all(), failures()]);
-  const when = (iso) => new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const when = (iso) => hourOf(iso);
   const dlg = modal(h("h2", { text: "Feito sem conexão" }),
     ops.length ? h("p", { class: "dialog-note", text: "Vai sozinho, nesta ordem, quando a conexão voltar (com o Nexus aberto)." }) : null,
     ...ops.map((op) => h("div", { class: "token-row" }, h("span", { class: "token-name", text: describe(op) }), h("span", { class: "token-meta", text: when(op.at) }))),
@@ -385,15 +388,18 @@ export const pendingCount = () => pending;
 // Sessão expirada: as leituras guardadas saem do aparelho (pode ser compartilhado).
 // A fila fica: é trabalho ainda não enviado, e vai quando a mesma pessoa entrar
 // (outra conta entrando apaga tudo, em app.js).
+// Título da tarefa interrompida pelo cronômetro (timer.js): pode ter nome de cliente.
+const PREV_TIMER_KEY = "nexus.cronometro.interrompida";
+
 export async function wipeReads() {
-  try { localStorage.removeItem(READY_KEY); } catch { /* sem armazenamento */ }
+  try { localStorage.removeItem(READY_KEY); localStorage.removeItem(PREV_TIMER_KEY); } catch { /* sem armazenamento */ }
   if ("caches" in window) await caches.delete("nexus-dados");  // o mesmo nome de sw.js
 }
 
 // Sair: a fila e as leituras guardadas não ficam no aparelho (pode ser compartilhado).
 export async function wipe() {
   try { await tx(STORE, "readwrite", (s) => s.clear()); await tx(FAILED, "readwrite", (s) => s.clear()); } catch { /* sem IndexedDB */ }
-  try { localStorage.removeItem(READY_KEY); } catch { /* sem armazenamento */ }
+  try { localStorage.removeItem(READY_KEY); localStorage.removeItem(PREV_TIMER_KEY); } catch { /* sem armazenamento */ }
   if ("caches" in window) for (const k of await caches.keys()) if (k.startsWith("nexus-")) await caches.delete(k);
 }
 

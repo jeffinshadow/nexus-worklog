@@ -152,7 +152,8 @@ TASK_COUNTS = """
     (SELECT count(*) FROM task_checklist c WHERE c.task_id = w.id AND c.done)::int AS check_done,
     (SELECT count(*) FROM task_notes n WHERE n.task_id = w.id)::int AS notes_count,
     (SELECT count(*) FROM photos f WHERE f.task_id = w.id AND f.user_id = w.user_id AND f.deleted_at IS NULL)::int AS photos_count,
-    (SELECT COALESCE(sum(t.minutes), 0) FROM time_entries t WHERE t.task_id = w.id)::int AS minutes,
+    -- só o tempo do dono atual: o de quem passou a tarefa (transferência) fica no registro dele
+    (SELECT COALESCE(sum(t.minutes), 0) FROM time_entries t WHERE t.task_id = w.id AND t.user_id = w.user_id)::int AS minutes,
     (SELECT o.title FROM project_objectives o WHERE o.id = w.objective_id) AS objective_title,
     """ + EXTRA_PROJECTS
 
@@ -358,13 +359,22 @@ def get_board(user_id: int, day: date | None = None, project: int | None = None,
                """ + TASK_COUNTS + extra + """
           FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
          WHERE w.user_id = %s"""
+    # "Primeiro amanhã" que vale hoje: a escolha mais recente para hoje ou antes
+    # (até 7 dias). Escolha feita para um feriado ou folga em que o app não abriu
+    # continua no dia seguinte, em vez de sumir sem aviso.
+    first_hl = db.query_one(
+        "SELECT max(first_on) AS d FROM worklog_tasks WHERE user_id = %s AND first_on <= %s AND first_on > %s",
+        (user_id, today, today - timedelta(days=7)))["d"]
     in_progress = db.query_all(
         cols(TOUCHED) + " AND w.status <> 'done'" + filtro_proj
         + """ ORDER BY COALESCE(w.first_on = %s, false) DESC, COALESCE(w.due_date < %s, false) DESC,
                        COALESCE(w.due_date = %s, false) DESC,
                        w.priority, COALESCE(w.due_date, DATE '9999-12-31'), w.created_at""",
-        tuple(params) + (today, today, today),
+        tuple(params) + (first_hl, today, today),
     )
+    for t in in_progress:  # na resposta, a escolha que vale hoje sai com first_on = hoje (o selo do Hoje)
+        if first_hl and t["first_on"] == first_hl:
+            t["first_on"] = today
     done = db.query_all(
         cols() + " AND w.status = 'done'" + filtro_proj
         + " ORDER BY w.completed_at DESC NULLS LAST, w.id DESC LIMIT %s OFFSET %s",
@@ -653,7 +663,8 @@ def get_dashboard_analytics(user_id: int, tasks, completions, mask: int, today: 
           -- a tarefa em dois projetos conta o tempo inteiro em cada um
           LEFT JOIN LATERAL (SELECT w.project_id AS pid UNION
                              SELECT x.project_id FROM worklog_task_projects x WHERE x.task_id = w.id) tp ON true
-          LEFT JOIN projects p ON p.id = tp.pid
+          -- projeto de outra conta (tarefa que foi transferida) não entra: conta como "sem projeto"
+          LEFT JOIN projects p ON p.id = tp.pid AND p.user_id = e.user_id
          WHERE e.user_id = %s AND e.day BETWEEN %s AND %s
          GROUP BY p.name, p.color ORDER BY minutes DESC
         """,
@@ -785,7 +796,7 @@ def _report_inputs(user_id: int, start: date, end: date, project: dict | None = 
                """ + EXTRA_PROJECTS + """
           FROM time_entries e
           JOIN worklog_tasks w ON w.id = e.task_id
-          LEFT JOIN projects p ON p.id = w.project_id
+          LEFT JOIN projects p ON p.id = w.project_id AND p.user_id = e.user_id
          WHERE e.user_id = %s AND e.day BETWEEN %s AND %s"""
         + _PROJ_FILTER + " ORDER BY e.day, e.created_at",
         (user_id, start, end, pid, pid, pid),
@@ -829,7 +840,7 @@ def team_report_inputs(uids: list[int], start: date, end: date) -> dict[int, dic
             """SELECT e.user_id, e.day, e.minutes, e.note, w.title, w.after_hours, p.name AS project,
                       p.color AS project_color, """ + PROJECT_ICON + ", " + EXTRA_PROJECTS + """
                  FROM time_entries e JOIN worklog_tasks w ON w.id = e.task_id
-                 LEFT JOIN projects p ON p.id = w.project_id
+                 LEFT JOIN projects p ON p.id = w.project_id AND p.user_id = e.user_id
                 WHERE e.user_id = ANY(%s) AND e.day BETWEEN %s AND %s
                 ORDER BY e.day, e.created_at""", (uids, start, end)):
         out[e.pop("user_id")]["entries"].append(e)

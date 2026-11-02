@@ -60,16 +60,16 @@ const ORIGEM = { colega: "indicação de colega", empresa: "pela empresa ou equi
   outro: "outro", site: "site", github: "GitHub" };
 
 // Bloquear ou excluir quem tem tarefas abertas: passar para outra pessoa
-// (papel Usuário, acesso liberado) ou deixar. value(): id, null (deixar) ou
+// (papel Usuário, acesso liberado e que já entrou: a regra do servidor) ou deixar. value(): id, null (deixar) ou
 // undefined (escolheu passar, mas sem pessoa).
 function transferPicker(u, users, keep) {
   if (!u.open_tasks) return null;
   const n = u.open_tasks;
-  const others = users.filter((x) => x.id !== u.id && x.roles.includes("user") && !x.blocked_at);
+  const others = users.filter((x) => x.id !== u.id && x.roles.includes("user") && !x.blocked_at && !x.invite_pending);
   const pass = h("input", { type: "radio", name: "transfer", value: "pass" });
   const stay = h("input", { type: "radio", name: "transfer", value: "keep" });
   const sel = h("select", { "aria-label": "Quem recebe as tarefas" }, h("option", { value: "", text: "Escolha a pessoa…" }),
-    ...others.map((x) => h("option", { value: String(x.id), text: x.display_name ? `${x.display_name} (${x.email})` : x.email })));
+    ...others.map((x) => h("option", { value: String(x.id), text: x.display_name ? `${x.display_name} · ${x.email}` : x.email })));
   pass.checked = others.length > 0;
   stay.checked = !pass.checked;
   if (!others.length) { pass.disabled = true; sel.disabled = true; }
@@ -81,7 +81,7 @@ function transferPicker(u, users, keep) {
       h("small", { text: "Vão com as anotações, o checklist e as fotos; quem recebe é avisado e fica no histórico. O tempo já registrado continua nesta conta." }))),
     h("div", { class: "field transfer-who" }, sel),
     h("label", { class: "check-line role-line" }, stay, h("span", {}, h("strong", { text: keep[0] }), h("small", { text: keep[1] }))),
-    others.length ? null : h("p", { class: "dialog-note", text: "Nenhuma outra conta com o papel Usuário e acesso liberado pode receber." }));
+    others.length ? null : h("p", { class: "dialog-note", text: "Nenhuma outra conta com o papel Usuário, acesso liberado e que já entrou no Nexus pode receber." }));
   return { el, sel, value: () => stay.checked ? null : sel.value ? Number(sel.value) : undefined };
 }
 
@@ -670,11 +670,36 @@ async function mountOrg(root, me) {
         "Ligado, só o admin muda nome e e-mail (Contas › ⋮ › Editar nome e e-mail); na Conta de cada um, os campos ficam bloqueados com o motivo. Desligado, cada pessoa muda os seus (o e-mail novo é confirmado por link).",
         "Pronto: nome e e-mail agora são definidos pela administração.", "Pronto: cada pessoa volta a mudar o próprio nome e e-mail.")),
     h("fieldset", { class: "org-option" }, h("legend", { text: "Tela de login" }),
-      toggle("invite_request_off", "Sem “Solicitar convite” na tela de login",
-        "Ligado, quem não tem conta não pede acesso pela tela de login: só entra quem você convidar. Desligado, o pedido aparece ali e chega em Contas."
-          + (cfg.mail_configured ? "" : " Hoje o e-mail não está configurado no servidor, então o pedido já não aparece."),
-        "Pronto: a tela de login não oferece mais o pedido de convite.", "Pronto: a tela de login volta a oferecer o pedido de convite.")),
-    ticketField())));
+      toggle("invite_request_on", "Mostrar “Solicitar convite” na tela de login",
+        "Ligado, quem não tem conta pede acesso pela tela de login e o pedido chega em Contas. Desligado (padrão), só entra quem você convidar."
+          + (cfg.mail_configured ? "" : " Hoje o e-mail não está configurado no servidor, então o pedido não aparece mesmo ligado."),
+        "Pronto: a tela de login oferece o pedido de convite.", "Pronto: a tela de login não oferece mais o pedido de convite.")),
+    ticketField(),
+    privacyField())));
+
+  // Política de privacidade da instância: link na tela de login, na Conta e no convite.
+  function privacyField() {
+    const url = h("input", { type: "url", maxlength: "300", value: cfg.privacy_url || "", id: "org-privacy-url",
+      placeholder: "https://empresa.com.br/privacidade" });
+    const err = h("p", { class: "error-text", role: "alert" });
+    url.addEventListener("input", () => markInvalid([url], err, false));
+    const saveBtn = h("button", { type: "button", class: "btn btn-primary", text: "Salvar endereço", onClick: busy(async () => {
+      err.textContent = "";
+      const v = url.value.trim();
+      try {
+        await save({ privacy_url: v || null }, v ? "Pronto: o link da política aparece no login, na Conta e no convite." : "Pronto: sem link de política de privacidade.");
+        me.privacy_url = cfg.privacy_url;
+      } catch (e) {
+        err.textContent = e.status === 422 ? "Use um endereço começando com https://." : e.message || "Não foi possível salvar.";
+        markInvalid([url], err);
+        url.focus();
+      }
+    }) });
+    return h("fieldset", { class: "org-option org-ticket" }, h("legend", { text: "Política de privacidade" }),
+      field("Endereço da política de privacidade", url),
+      h("p", { class: "dialog-note field-note", text: "Preenchido, o link aparece na tela de login, em Configurações > Conta e no e-mail de convite. Vazio (padrão), nenhum link aparece." }),
+      err, h("div", { class: "row-actions" }, saveBtn));
+  }
 
   // Endereço do sistema de chamados da instância. Vazio = cada pessoa usa o seu (Conta).
   function ticketField() {

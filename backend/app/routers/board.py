@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from .. import db
 from ..deps import active_user, active_user_csrf
 from ..services import BOARD_DONE_LIMIT, RETRO_DAYS, app_today, board_day_range, get_board, next_work_day, work_mask
+from ..paging import OFFSET_MAX
 
 router = APIRouter(prefix="/api/board", tags=["board"])
 
@@ -16,7 +17,10 @@ def check_board_day(day: Optional[date]) -> Optional[date]:
     if day is None:
         return None
     min_day, today = board_day_range(app_today())
-    if not (min_day <= day <= today):
+    if day > today:
+        raise HTTPException(status_code=400, detail="dia no futuro: o quadro vai de hoje até "
+                                                    f"{RETRO_DAYS} dias atrás")
+    if day < min_day:
         raise HTTPException(status_code=400, detail=f"só dá para marcar rotinas dos últimos {RETRO_DAYS} dias")
     return day
 
@@ -25,7 +29,7 @@ def check_board_day(day: Optional[date]) -> Optional[date]:
 def board(
     day: Optional[date] = Query(default=None),
     project: Optional[int] = Query(default=None, ge=0, description="0 = sem projeto"),
-    done_offset: int = Query(default=0, ge=0, le=1000000, description="Concluídas: pula as N mais recentes (páginas)"),
+    done_offset: int = Query(default=0, ge=0, le=OFFSET_MAX, description="Concluídas: pula as N mais recentes (páginas)"),
     done_limit: int = Query(default=BOARD_DONE_LIMIT, ge=1, le=BOARD_DONE_LIMIT, description="Concluídas por resposta; o total vem em done_total"),
     user=Depends(active_user),
 ):
@@ -55,7 +59,7 @@ def set_first(user_id: int, day: date, ids: list[int], strict: bool = True) -> l
     ok = {r["id"] for r in db.query_all(
         "SELECT id FROM worklog_tasks WHERE user_id = %s AND status <> 'done' AND id = ANY(%s)", (user_id, ids))} if ids else set()
     if strict and len(ok) != len(ids):
-        raise HTTPException(status_code=400, detail="só tarefas suas em aberto (concluída ou de outra pessoa não entra); atualize a tela")
+        raise HTTPException(status_code=400, detail="só tarefas suas em aberto (concluída ou de outra pessoa não entra)")
     ids = [i for i in ids if i in ok]
     db.execute("UPDATE worklog_tasks SET first_on = NULL WHERE user_id = %s AND first_on = %s AND NOT (id = ANY(%s))",
                (user_id, day, ids))

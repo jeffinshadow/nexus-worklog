@@ -7,9 +7,16 @@ let CSRF = null;
 
 // Mensagem para a tela, sempre em português: o detail do backend quando ele
 // é texto; validação (lista do FastAPI), rede e respostas sem JSON, genéricas.
+// O servidor não diz "atualize a tela" (a mensagem também vai para a IA e as
+// integrações): quando a tela está velha (item sumiu, já resolvido), diz aqui.
+const STALE = /pode ter sido excluíd|já foi resolvida|já foi concluída|mudou enquanto|não há devolução em aberto|só tarefas suas em aberto/;
+
 function messageFor(status, data) {
   const d = data && data.detail;
-  if (typeof d === "string" && d) return d[0].toUpperCase() + d.slice(1) + (/[.!?]$/.test(d) ? "" : ".");
+  if (typeof d === "string" && d) {
+    const msg = d[0].toUpperCase() + d.slice(1) + (/[.!?]$/.test(d) ? "" : ".");
+    return (status === 400 || status === 404 || status === 409) && STALE.test(d) ? msg + " Atualize a tela." : msg;
+  }
   if (Array.isArray(d)) {
     // Os validadores de schemas.py falam português ("Value error, ..."); o resto
     // é inglês do pydantic e vira o texto genérico.

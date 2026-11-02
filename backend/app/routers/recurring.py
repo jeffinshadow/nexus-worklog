@@ -72,7 +72,7 @@ def order(data: OrderIn, user=Depends(active_user_csrf)):
     if len(set(data.ids)) != len(data.ids):
         raise HTTPException(status_code=400, detail="rotina repetida na lista")
     if not set(data.ids) <= set(ids):
-        raise HTTPException(status_code=400, detail="rotina não encontrada (pode ter sido excluída); atualize a tela")
+        raise HTTPException(status_code=400, detail="rotina não encontrada (pode ter sido excluída)")
     new = data.ids + [i for i in ids if i not in data.ids]
     if new == ids:
         return {"ok": True}
@@ -159,7 +159,7 @@ def update(task_id: int, data: RecurringUpdate, user=Depends(active_user_csrf)):
     uid = user["user_id"]
     before = audit.recurring_snapshot(task_id, uid)
     if not before or not before["active"]:
-        raise HTTPException(status_code=404, detail="rotina não encontrada (pode ter sido excluída); atualize a tela")
+        raise HTTPException(status_code=404, detail="rotina não encontrada (pode ter sido excluída)")
     agenda = data.agenda() if data.freq is not None else {}
     horario = "remind_at" in data.model_fields_set  # null tira o horário
     passos = "steps" in data.model_fields_set  # null ou [] tira os passos
@@ -212,7 +212,7 @@ def deactivate(task_id: int, user=Depends(active_user_csrf)):
         (task_id, user["user_id"]),
     )
     if not updated:
-        raise HTTPException(status_code=404, detail="rotina não encontrada (pode ter sido excluída); atualize a tela")
+        raise HTTPException(status_code=404, detail="rotina não encontrada (pode ter sido excluída)")
     audit.record(user, "recurring.deactivate", "recurring", task_id, before=before,
                  after=audit.recurring_snapshot(task_id, user["user_id"]))
     return {"ok": True}
@@ -225,7 +225,7 @@ def toggle(task_id: int, data: ToggleIn, user=Depends(active_user_csrf)):
         (task_id, user["user_id"]),
     )
     if not owns:
-        raise HTTPException(status_code=404, detail="rotina não encontrada (pode ter sido excluída); atualize a tela")
+        raise HTTPException(status_code=404, detail="rotina não encontrada (pode ter sido excluída)")
 
     # Marcação retroativa: hoje ou até RETRO_DAYS dias atrás (mesma janela do
     # quadro), e só em dia em que a rotina estava vigente.
@@ -271,7 +271,7 @@ def toggle(task_id: int, data: ToggleIn, user=Depends(active_user_csrf)):
 def snooze(task_id: int, data: SnoozeIn, user=Depends(active_user_csrf)):
     """Adia o lembrete da rotina hoje (as notificações do aparelho esperam)."""
     if not db.query_one("SELECT 1 FROM recurring_tasks WHERE id = %s AND user_id = %s AND active", (task_id, user["user_id"])):
-        raise HTTPException(status_code=404, detail="rotina não encontrada (pode ter sido excluída); atualize a tela")
+        raise HTTPException(status_code=404, detail="rotina não encontrada (pode ter sido excluída)")
     return {"until": push.snooze(user["user_id"], task_id, data.minutes)}
 
 
@@ -294,7 +294,7 @@ def current_pause(task_id: int, today):
 def _active_routine(task_id: int, uid: int) -> dict:
     row = db.query_one("SELECT id, label FROM recurring_tasks WHERE id = %s AND user_id = %s AND active", (task_id, uid))
     if not row:
-        raise HTTPException(status_code=404, detail="rotina não encontrada (pode ter sido excluída); atualize a tela")
+        raise HTTPException(status_code=404, detail="rotina não encontrada (pode ter sido excluída)")
     return row
 
 

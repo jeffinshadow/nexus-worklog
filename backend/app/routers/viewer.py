@@ -27,7 +27,8 @@ router = APIRouter(prefix="/api/viewer", tags=["viewer"])
 
 
 def _ensure_user(user_id: int) -> dict:
-    row = db.query_one(f"SELECT u.id, u.email FROM users u WHERE u.id = %s AND {visible_sql('u')}", (user_id,))
+    row = db.query_one(f"SELECT u.id, u.email FROM users u WHERE u.id = %s AND {visible_sql('u')} AND {active_sql('u')}",
+                        (user_id,))  # a mesma regra da lista: pendente ou bloqueada não abre por id
     if not row:
         raise HTTPException(status_code=404, detail="usuário não encontrado")
     return row

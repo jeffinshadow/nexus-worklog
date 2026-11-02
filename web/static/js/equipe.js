@@ -230,6 +230,10 @@ function peopleTile(a, ctx) {
   const list = h("ul", { class: "eq-people" });
   const box = h("div", {}, list);
   const tile = mes.tile(12, "eq-people-tile", "Pessoas", "em ordem alfabética · toque para ver o mês e o quadro", box);
+  // Nome repetido (o derivado do e-mail: joao.silva e joao.souza viram "Joao"): o cartão leva o e-mail junto.
+  const seen = {};
+  for (const p of a.people) seen[p.name.toLowerCase()] = (seen[p.name.toLowerCase()] || 0) + 1;
+  const label = (p) => (seen[p.name.toLowerCase()] > 1 ? `${p.name} · ${p.email}` : p.name);
   const paint = () => {
     const slice = pageSlice(a.people, peoplePage, PEOPLE_PAGE);
     peoplePage = slice.page;
@@ -237,7 +241,7 @@ function peopleTile(a, ctx) {
     list.replaceChildren(...slice.rows.map((p) => h("li", {},
       h("button", { type: "button", class: "eq-person", title: p.email, onClick: () => openPerson(p.id) },
         initial(p),
-        h("span", { class: "eq-p-name", text: p.name }),
+        h("span", { class: "eq-p-name", text: label(p) }),
         h("span", { class: "eq-p-n", text: `${p.open} em aberto · ${p.waiting} aguardando` }),
         h("span", { class: "eq-p-last", title: p.last_activity ? dateTime(p.last_activity) : "", text: lastSeen(p.last_activity) })))));
     box.querySelector(".pager")?.remove();
@@ -290,7 +294,7 @@ function pdfDialog(a) {
   if (!a || !a.people.length) return;
   const [s, e] = monthRange();
   const today = localDay(Date.now());
-  const who = h("select", {}, ...a.people.map((p) => h("option", { value: p.id, text: p.name })));
+  const who = h("select", {}, ...a.people.map((p) => h("option", { value: p.id, text: `${p.name} · ${p.email}` })));
   const proj = h("select", {}, h("option", { value: "", text: "Todos (o registro da pessoa)" }));
   const start = h("input", { type: "date", value: s, max: today, required: "required" });
   const end = h("input", { type: "date", value: e, max: today, required: "required" });

@@ -29,6 +29,10 @@ SOURCES = {"colega": "indicação de colega", "empresa": "pela empresa ou equipe
            "outro": "outro", "site": "site", "github": "GitHub"}
 
 
+# Pedidos por dia, somando todos (cada um manda e-mail e push aos admins).
+DAILY_CAP = 20
+
+
 def _mail_admins(req: dict) -> None:
     from ..notify import Mail
     admins = db.query_all("""SELECT u.id, u.email FROM users u
@@ -55,7 +59,9 @@ def _mail_admins(req: dict) -> None:
 def _mail_requester(req: dict) -> None:
     from ..notify import Mail
     try:
-        m = Mail("Recebemos o seu pedido de convite", f"Olá, {req['name']}",
+        # Sem o nome digitado: o formulário é público, e o nome (texto livre) iria
+        # pelo SMTP da instância para um endereço que qualquer um escolhe.
+        m = Mail("Recebemos o seu pedido de convite", "Pedido de convite recebido",
                  "O seu pedido de acesso ao Nexus chegou ao administrador. Se ele aprovar, você recebe o convite "
                  "neste e-mail, com o link para criar a sua senha.")
         m.link, m.button = "/login", "Abrir o Nexus"
@@ -73,6 +79,11 @@ def request_invite(data: InviteRequestIn, request: Request):
     if not invite_req_limiter.allow(f"ip:{client_ip(request)}") or not invite_req_email_limiter.allow(f"em:{email}"):
         raise HTTPException(status_code=429, detail="muitos pedidos; tente mais tarde")
     resposta = {"ok": True}
+    # Teto global: com IPs variados, os limites por IP e por e-mail não seguram a
+    # caixa dos admins nem o SMTP. Conta no banco (vale depois de reiniciar).
+    if db.query_one("SELECT count(*)::int AS n FROM invite_requests WHERE created_at > now() - interval '1 day'")["n"] \
+            >= DAILY_CAP:
+        raise HTTPException(status_code=429, detail="muitos pedidos hoje; tente amanhã ou fale com quem administra")
     if data.website:  # campo escondido preenchido: robô
         return resposta
     if db.query_one("SELECT 1 FROM users WHERE email = %s", (email,)):

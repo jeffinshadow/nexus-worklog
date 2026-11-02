@@ -217,8 +217,10 @@ function recap(sum, t, go) {
     const s = sum.last_day;
     if (s.pontual_done || s.minutes) {
       const quando = s.start === addDays(sum.today, -1) ? "Ontem" : "Desde o último dia útil";
-      const tempo = s.minutes ? ` e apontou ${duration(s.minutes)}` : "";
-      return { line: `${quando}, você concluiu ${plural(s.pontual_done, "tarefa", "tarefas")}${tempo}.`, act: null };
+      // Nada concluído, só tempo: "Ontem, você apontou 14h." (não "concluiu 0 tarefas").
+      const feito = s.pontual_done ? `concluiu ${plural(s.pontual_done, "tarefa", "tarefas")}` : "";
+      const tempo = s.minutes ? `apontou ${duration(s.minutes)}` : "";
+      return { line: `${quando}, você ${[feito, tempo].filter(Boolean).join(" e ")}.`, act: null };
     }
   }
   if (t.weekday === 5 && t.hour >= 14 && sum.week) {

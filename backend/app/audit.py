@@ -24,6 +24,9 @@ def _jsonable(value):
 
 def record(ctx: dict, action: str, entity: str, entity_id, before=None, after=None,
            user_id: int | None = None) -> None:
+    # Ação gravada no histórico de OUTRA pessoa (atribuir, transferir): a chave
+    # de API de quem agiu é dela, não de quem recebe ("atribuída por X" já diz quem foi).
+    alheio = user_id is not None and user_id != ctx.get("user_id")
     db.execute(
         """
         INSERT INTO audit_log (user_id, actor, token_id, token_name, action,
@@ -33,8 +36,8 @@ def record(ctx: dict, action: str, entity: str, entity_id, before=None, after=No
         (
             user_id or ctx["user_id"],
             ctx.get("actor", "web"),
-            ctx.get("token_id"),
-            ctx.get("token_name"),
+            None if alheio else ctx.get("token_id"),
+            None if alheio else ctx.get("token_name"),
             action,
             entity,
             entity_id,

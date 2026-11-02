@@ -53,8 +53,10 @@ def test_conta_bloqueada_nao_aceita_nem_recebe(admin, par, caixa):
     mid = uid_de(marina)
     tid = _mandar(chefe, marina)
     assert admin.post(f"/admin/users/{mid}/block").status_code == 200
-    p = next(x for x in chefe.get("/assign/people").json() if x["id"] == mid)
+    p = next(x for x in admin.get("/assign/people").json() if x["id"] == mid)
     assert p["accepts"] is False and p["blocked"] is True
+    # Quem manda tarefas não vê o bloqueio nem o e-mail (pentest R6 A1).
+    assert mid not in {x.get("id") for x in chefe.get("/assign/people").json()}
     caixa.clear()
     r = chefe.post("/assign", {"user_id": mid, "title": "Outra"})
     assert r.status_code == 404
@@ -77,9 +79,9 @@ def test_foto_so_de_quem_aparece_nas_listas(admin, novo_usuario):
     assert chefe.get(url.removeprefix("/api")).status_code == 404
     assert visto.get(url.removeprefix("/api")).status_code == 404
     assert admin.get(url.removeprefix("/api")).status_code == 200
-    # Na lista do Atribuir, quem não aceita vai sem foto (a imagem daria 404).
-    p = next(x for x in chefe.get("/assign/people").json() if x["email"] == "alvo@example.com")
-    assert p["avatar"] is None
+    # Na lista do Atribuir, quem não aceita vai sem foto (a imagem daria 404) e sem e-mail.
+    assert "alvo@example.com" not in {x.get("email") for x in chefe.get("/assign/people").json()}
+    assert next(x for x in admin.get("/assign/people").json() if x["email"] == "alvo@example.com")["avatar"] == url
     # Aceitou receber tarefas: o atribuidor vê; o visualizador ainda não.
     alvo.put("/me/assignments", {"accept": True})
     assert chefe.get(url.removeprefix("/api")).status_code == 200
@@ -421,6 +423,8 @@ def test_convite_cancelado_volta_o_pedido_para_pendente(monkeypatch, admin):
     monkeypatch.setattr(mailer, "send", lambda *a, **k: None)
     monkeypatch.setattr(push, "send", lambda *a, **k: 1)
     monkeypatch.setattr(ir.threading, "Thread", lambda target, daemon: type("T", (), {"start": lambda self: target()})())
+    from conftest import ligar_pedido_convite
+    ligar_pedido_convite()
     assert Api().post("/auth/invite-request", {"name": "Ana Souza", "email": "ana@empresa.com.br", "source": "colega",
                                                "reason": "Registrar o suporte da filial."}).status_code == 202
     pedido = admin.get("/admin/invite-requests").json()[0]

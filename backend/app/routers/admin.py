@@ -108,6 +108,8 @@ def _invite_mail(email: str, by_name: str, link: str):
              "O Nexus guarda o seu dia de trabalho: rotinas, tarefas e o tempo de cada uma, com relatório pronto. "
              "Crie a sua senha pelo botão abaixo. O convite vale por 7 dias e funciona uma vez só.")
     m.blocks = [("A sua conta", [email])]
+    if privacy := org.get()["privacy_url"]:  # Admin › Para empresas
+        m.blocks.append(("Privacidade", [f"Política de privacidade desta instância: {privacy}"]))
     m.link, m.absolute, m.button = link, True, "Aceitar o convite"
     m.reason, m.settings_tab = "Você recebe este e-mail porque um administrador do Nexus criou uma conta para você.", None
     return m
@@ -146,6 +148,13 @@ def cancel_invite(user_id: int, admin=Depends(require_admin_csrf)):
     target = _ensure_user(user_id)
     if not db.query_one("SELECT 1 FROM users WHERE id = %s AND invite_pending", (user_id,)):
         raise HTTPException(status_code=400, detail="essa conta já aceitou o convite: para tirar, use Excluir conta")
+    # Conta pendente com tarefas (transferidas antes desta regra, ou por outro
+    # caminho): cancelar apagaria tudo junto. Recusa e indica o caminho com transferência.
+    n = db.query_one("SELECT count(*)::int AS n FROM worklog_tasks WHERE user_id = %s", (user_id,))["n"]
+    if n:
+        raise HTTPException(status_code=409, detail=(
+            f"essa conta tem {'1 tarefa' if n == 1 else f'{n} tarefas'}: use Excluir conta e passe "
+            f"{'a tarefa' if n == 1 else 'as tarefas'} para outra pessoa"))
     if not roles.delete_account(user_id):
         raise HTTPException(status_code=400, detail="o sistema precisa de pelo menos um admin")
     # O pedido de convite que gerou a conta volta a ficar pendente (não fica "convidado"
@@ -188,7 +197,8 @@ def block_user(user_id: int, data: BlockUserIn | None = None, admin=Depends(requ
 
 def _receiver(src_id: int, to_id: int | None) -> dict | None:
     """Quem recebe as tarefas abertas de quem sai: outra conta com o papel
-    Usuário e acesso liberado (não precisa ter aceitado tarefas atribuídas: é
+    Usuário, acesso liberado e que já entrou (convite pendente não recebe, a
+    mesma regra do Atribuir; não precisa ter aceitado tarefas atribuídas: é
     decisão da administração). Validado ANTES de bloquear ou excluir."""
     if to_id is None:
         return None
@@ -196,10 +206,10 @@ def _receiver(src_id: int, to_id: int | None) -> dict | None:
         raise HTTPException(status_code=400, detail="escolha outra pessoa para receber as tarefas")
     row = db.query_one(
         """SELECT u.id, u.email FROM users u
-            WHERE u.id = %s AND u.blocked_at IS NULL
+            WHERE u.id = %s AND u.blocked_at IS NULL AND NOT u.invite_pending
               AND EXISTS (SELECT 1 FROM user_roles r WHERE r.user_id = u.id AND r.role = 'user')""", (to_id,))
     if not row:
-        raise HTTPException(status_code=400, detail="quem recebe as tarefas precisa ter o papel Usuário e o acesso liberado")
+        raise HTTPException(status_code=400, detail="quem recebe as tarefas precisa ter o papel Usuário, o acesso liberado e já ter entrado no Nexus")
     return row
 
 
@@ -384,6 +394,7 @@ def edit_profile(user_id: int, data: AdminProfileIn, admin=Depends(require_admin
         except UniqueViolation as e:
             raise HTTPException(status_code=409, detail="esse e-mail já é de outra conta") from e
         links.cancel(user_id, "email")  # um pedido de troca da própria pessoa deixa de valer
+        links.cancel(user_id, "reset")  # link de nova senha mandado ao endereço antigo também
         after["email"] = new
         if not target["invite_pending"]:  # quem nunca entrou recebe o convite (reenviar), não um aviso
             from .auth import notify_email_change  # import tardio: auth importa outras rotas
@@ -451,8 +462,8 @@ def get_org(admin=Depends(require_admin)):
     o = org.get()
     return {"team_visibility": o["team_visibility"], "team_visibility_since": o["team_visibility_since"],
             "assign_receive": o["assign_receive"], "assign_receive_since": o["assign_receive_since"],
-            "identity_managed": o["identity_managed"], "invite_request_off": o["invite_request_off"],
-            "ticket_url": o["ticket_url"], "mail_configured": mailer.configured()}
+            "identity_managed": o["identity_managed"], "invite_request_on": o["invite_request_on"],
+            "ticket_url": o["ticket_url"], "privacy_url": o["privacy_url"], "mail_configured": mailer.configured()}
 
 
 @router.put("/org")
@@ -474,19 +485,20 @@ def put_org(data: OrgIn, admin=Depends(require_admin_csrf)):
                        WHERE id = 1""", (data.assign_receive, data.assign_receive))
         audit.record(ctx, "app.assign_receive", "app_settings", 1, before={"assign_receive": before["assign_receive"]},
                      after={"assign_receive": data.assign_receive, "by": admin["email"]})
-    for key in ("identity_managed", "invite_request_off"):
+    for key in ("identity_managed", "invite_request_on"):
         val = getattr(data, key)
         if val is not None and val != before[key]:
             db.execute(f"UPDATE app_settings SET {key} = %s, updated_at = now() WHERE id = 1", (val,))
             audit.record(ctx, f"app.{key}", "app_settings", 1, before={key: before[key]},
                          after={key: val, "by": admin["email"]})
-    # Endereço do sistema de chamados (vale para todos; enviado vazio ou null = tira).
-    if "ticket_url" in data.model_fields_set:
-        url = (data.ticket_url or "").strip() or None
-        if url != before["ticket_url"]:
-            db.execute("UPDATE app_settings SET ticket_url = %s, updated_at = now() WHERE id = 1", (url,))
-            audit.record(ctx, "app.ticket_url", "app_settings", 1, before={"ticket_url": before["ticket_url"]},
-                         after={"ticket_url": url, "by": admin["email"]})
+    # Endereços (chamados; política de privacidade): valem para todos; enviado vazio ou null = tira.
+    for key in ("ticket_url", "privacy_url"):
+        if key in data.model_fields_set:
+            url = (getattr(data, key) or "").strip() or None
+            if url != before[key]:
+                db.execute(f"UPDATE app_settings SET {key} = %s, updated_at = now() WHERE id = 1", (url,))
+                audit.record(ctx, f"app.{key}", "app_settings", 1, before={key: before[key]},
+                             after={key: url, "by": admin["email"]})
     return get_org(admin)
 
 

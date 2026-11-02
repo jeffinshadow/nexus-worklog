@@ -22,6 +22,7 @@ from pydantic import ValidationError
 
 from .. import db, deps, services
 from ..config import config
+from ..version import VERSION
 from ..labels import PRIO_PT, STATUS_PT
 from ..labels import dur as _dur
 from ..schemas import (AssignIn, ChecklistIn, ChecklistUpdate, FinishIn, NoteIn, ObjectiveIn, ObjectiveUpdate, OrderIn,
@@ -45,9 +46,9 @@ from .board import check_board_day
 router = APIRouter(tags=["mcp"])
 
 SUPPORTED_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26"]
-SERVER_INFO = {"name": "nexus-worklog", "title": "Nexus Worklog", "version": "2.0.0"}
+SERVER_INFO = {"name": "nexus-worklog", "title": "Nexus Worklog", "version": VERSION}
 INSTRUCTIONS = (
-    "Nexus Worklog: o registro do dia de trabalho do usuário. Use get_today para "
+    "Nexus Worklog " + VERSION + ": o registro do dia de trabalho do usuário. Use get_today para "
     "ver o dia (rotinas e tarefas abertas), get_summary para a daily/retro (ontem e a "
     "semana, com tempo por projeto) e get_week para semanas passadas. Registre o que o usuário contar com "
     "create_task/update_task/complete_task, log_time e add_note; marque rotinas com "
@@ -68,6 +69,23 @@ INSTRUCTIONS = (
     "concluir várias tarefas de uma vez, confirme com a pessoa."
 )
 DESTRUCTIVE = {"update_task", "undo"}  # sobrescrevem ou apagam o que existia
+
+# O que muda nas instruções para as chaves que não escrevem tudo (a IA não tenta
+# update_task/undo e a pessoa não acha que está quebrado).
+SCOPE_NOTE = {
+    "append": (" ESTA CHAVE SÓ REGISTRA: cria tarefas, conclui, anota, aponta tempo, marca rotinas e usa o "
+               "cronômetro; não edita, não exclui e não desfaz (update_task e undo não existem para ela). Para "
+               "corrigir um engano, a pessoa usa o app (Histórico)."),
+    "read": (" ESTA CHAVE É SÓ DE LEITURA: consulte, resuma e planeje, mas não registra nada; para registrar, "
+             "a pessoa usa o app ou uma chave de escrita."),
+}
+# Sessão aberta antes de uma atualização do Nexus (o cliente guardou a lista velha).
+STALE_HINT = (" Se você usava esta ferramenta ou argumento antes, o Nexus foi atualizado (versão " + VERSION
+              + "): reconecte o servidor MCP para receber a lista nova (no Claude Code: /mcp → reconectar).")
+
+
+def _instructions(ctx) -> str:
+    return INSTRUCTIONS + SCOPE_NOTE.get(ctx.get("scope"), "")
 
 STATUS = list(STATUS_PT)
 # Na tela, "blocked" se chama "aguardando" (esperando algo de fora: peça, cliente, aprovação).
@@ -380,10 +398,17 @@ def t_create_task(ctx, args):
     minutes = args.pop("minutes", None)
     if minutes is not None and not 1 <= minutes <= 1440:
         raise ToolError("minutes vai de 1 a 1440")
-    if args.get("completed_at") and not args.get("created_at"):
+    derived = bool(args.get("completed_at") and not args.get("created_at"))
+    if derived:
         args["created_at"] = _started_from(args["completed_at"], minutes)
     data = _call(WorklogIn, **_task_args(uid, args))
-    res = _call(worklog_routes.create, data, Response(), user=ctx)
+    try:
+        res = _call(worklog_routes.create, data, Response(), user=ctx)
+    except ToolError as e:
+        # A criação foi calculada a partir da conclusão: o erro é da data que a IA mandou.
+        if derived and str(e).startswith("data de criação"):
+            raise ToolError(str(e).replace("data de criação", "data de conclusão", 1)) from None
+        raise
     verbo = "Já existia (external_ref repetido), nada duplicado" if res.get("existing") else "Criada"
     aviso = ""
     if minutes and not res.get("existing"):
@@ -410,7 +435,10 @@ def t_update_task(ctx, args):
 def t_complete_task(ctx, args):
     task_id = int(args["task_id"])
     data = _call(FinishIn, completed_at=args.get("completed_at"), resolution=args.get("resolution"))
-    _call(worklog_routes.finish, task_id, data, user=ctx)
+    res = _call(worklog_routes.finish, task_id, data, user=ctx)
+    if res.get("existing"):
+        quando = res["completed_at"].astimezone(services.app_tz()).strftime("%d/%m") if res.get("completed_at") else "antes"
+        return f"Já estava concluída em {quando} (nada mudou): " + _task_line(_find_task(ctx["user_id"], task_id), services.app_today())
     return "Concluída: " + _task_line(_find_task(ctx["user_id"], task_id), services.app_today())
 
 
@@ -455,8 +483,10 @@ def t_search(ctx, args):
 
 
 def t_add_note(ctx, args):
-    data = _call(NoteIn, body=args.get("text", ""))
-    _call(worklog_routes.add_note, int(args["task_id"]), data, user=ctx)
+    data = _call(NoteIn, body=args.get("text", ""), external_ref=args.get("external_ref"))
+    row = _call(worklog_routes.add_note, int(args["task_id"]), data, Response(), user=ctx)
+    if row.get("existing"):
+        return f"Já anotado na tarefa #{args['task_id']} (external_ref repetido, nada duplicado)."
     return f"Anotado na tarefa #{args['task_id']}."
 
 
@@ -473,8 +503,12 @@ def t_set_checklist_item(ctx, args):
 
 
 def t_log_time(ctx, args):
-    data = _call(TimeIn, minutes=args.get("minutes"), day=args.get("day"), note=args.get("note"))
-    row = _call(worklog_routes.log_time, int(args["task_id"]), data, user=ctx)
+    data = _call(TimeIn, minutes=args.get("minutes"), day=args.get("day"), note=args.get("note"),
+                 external_ref=args.get("external_ref"))
+    row = _call(worklog_routes.log_time, int(args["task_id"]), data, Response(), user=ctx)
+    if row.get("existing"):
+        return (f"Já apontado: {_dur(row['minutes'])} em {row['day'].isoformat()} na tarefa #{args['task_id']} "
+                "(external_ref repetido, nada somado).")
     return f"Apontado {_dur(row['minutes'])} em {row['day'].isoformat()} na tarefa #{args['task_id']}."
 
 
@@ -1044,7 +1078,8 @@ def t_get_history(ctx, args):
                 r["summary"] += f" (atribuída por {by})"
         who = {"web": "app", "api": f"API ({r['token_name']})", "mcp": f"IA ({r['token_name']})",
                "admin": "admin"}.get(r["actor"], r["actor"])
-        flags = " [desfeita]" if r["undone"] else (" [pode desfazer]" if r["can_undo"] and r["id"] in mine else "")
+        flags = " [desfeita]" if r["undone"] else (
+            " [pode desfazer]" if r["can_undo"] and r["id"] in mine and _can_write(ctx, "undo") else "")
         out.append(f"#{r['id']} {r['created_at'].astimezone(services.app_tz()):%d/%m %H:%M} {who}: {r['summary']}{flags}")
     return "\n".join(out) or "(sem histórico)"
 
@@ -1214,7 +1249,8 @@ TOOLS = {
                               "description": "Tarefas: pula as N primeiras (vêm 40 por vez; a resposta diz o próximo offset)"}}}),
     "add_note": (t_add_note, True, "Anota um progresso na tarefa (o que foi feito, decisão, pendência).",
                  {"type": "object", "required": ["task_id", "text"], "properties": {
-                     "task_id": {"type": "integer"}, "text": {"type": "string", "maxLength": 2000}}}),
+                     "task_id": {"type": "integer"}, "text": {"type": "string", "maxLength": 2000},
+                     "external_ref": {"type": "string", "maxLength": 100, "description": "Id seu desta escrita: repetir não duplica (ex.: fechar-AAAA-MM-DD-1)"}}}),
     "add_checklist_item": (t_add_checklist_item, True, "Adiciona um item (subtarefa) ao checklist da tarefa.",
                            {"type": "object", "required": ["task_id", "label"], "properties": {
                                "task_id": {"type": "integer"}, "label": {"type": "string", "maxLength": 200}}}),
@@ -1225,7 +1261,8 @@ TOOLS = {
                  {"type": "object", "required": ["task_id", "minutes"], "properties": {
                      "task_id": {"type": "integer"},
                      "minutes": {"type": "integer", "minimum": 1, "maximum": 1440},
-                     "day": DATE, "note": {"type": "string", "maxLength": 200}}}),
+                     "day": DATE, "note": {"type": "string", "maxLength": 200},
+                     "external_ref": {"type": "string", "maxLength": 100, "description": "Id seu desta escrita: repetir não duplica (ex.: fechar-AAAA-MM-DD-1)"}}}),
     "list_projects": (t_list_projects, False,
                       "Lista os projetos/clientes do usuário, com tarefas abertas e quantidade de objetivos; "
                       "os arquivados vêm no fim, marcados [arquivado].",
@@ -1455,7 +1492,8 @@ PROMPTS = {
                  "minutos, projeto se eu disser) e PEÇA CONFIRMAÇÃO antes de gravar. Confirmado: para o que já foi "
                  "feito, use create_task com status done, completed_at de hoje, minutes com o tempo e external_ref "
                  "\"fechar-{hoje}-N\" (N = 1, 2, 3... na ordem da lista), assim rodar de novo não duplica; para uma "
-                 "tarefa que já existe, use complete_task, add_note ou log_time nela em vez de criar outra; rotina feita, "
+                 "tarefa que já existe, use complete_task, add_note ou log_time nela em vez de criar outra (em add_note "
+                 "e log_time, external_ref \"fechar-{hoje}-N\" também, para não somar o tempo em dobro); rotina feita, "
                  "set_recurring com done=true. Não altere nem exclua o que já estava registrado. No fim, diga o que foi gravado."),
     },
     "resumo_projeto": {
@@ -1475,9 +1513,17 @@ PROMPTS = {
 }
 
 
-def _prompt_list() -> list:
+# Prompts que gravam: a chave só de leitura não os recebe.
+WRITE_PROMPTS = {"fechar_dia"}
+
+
+def _prompts_for(ctx) -> dict:
+    return {n: p for n, p in PROMPTS.items() if ctx.get("scope") != "read" or n not in WRITE_PROMPTS}
+
+
+def _prompt_list(ctx=None) -> list:
     return [{"name": n, "title": p["title"], "description": p["description"], "arguments": p["arguments"]}
-            for n, p in PROMPTS.items()]
+            for n, p in _prompts_for(ctx or {}).items()]
 
 
 def _arg(args: dict, name: str, default: str) -> str:
@@ -1519,6 +1565,10 @@ def _tool_list(ctx) -> list:
     for name, (_, writes, desc, schema) in TOOLS.items():
         if (writes and not _can_write(ctx, name)) or not _allowed(ctx, name):
             continue
+        if name == "set_recurring" and ctx.get("scope") == "append":
+            # "só registrar" marca rotinas, mas não pausa nem desmarca: o esquema não oferece
+            props = {k: v for k, v in schema["properties"].items() if k != "paused_until"}
+            schema = {**schema, "properties": props}
         out.append({
             "name": name,
             "description": desc,
@@ -1548,7 +1598,7 @@ def _check_args(name: str, schema: dict, args) -> dict:
         raise ToolError(AUTO_STATUS)
     if extra:
         validos = ", ".join(props) or "nenhum (esta ferramenta não recebe argumentos)"
-        raise ToolError(f"argumento desconhecido: {', '.join(extra)} (nada foi feito). Válidos: {validos}")
+        raise ToolError(f"argumento desconhecido: {', '.join(extra)} (nada foi feito). Válidos: {validos}." + STALE_HINT)
     falta = [k for k in schema.get("required", []) if args.get(k) is None]
     if falta:
         raise ToolError(f"falta o campo {', '.join(falta)}")
@@ -1583,17 +1633,19 @@ def _handle(ctx, msg):
     if method == "initialize":
         asked = params.get("protocolVersion")
         version = asked if asked in SUPPORTED_VERSIONS else SUPPORTED_VERSIONS[0]
+        # listChanged: a lista muda com o papel, o escopo da chave e as atualizações do
+        # Nexus; sem stream (só POST), o cliente relê ao reconectar.
         result = {"protocolVersion": version,
-                  "capabilities": {"tools": {"listChanged": False}, "prompts": {"listChanged": False}},
-                  "serverInfo": SERVER_INFO, "instructions": INSTRUCTIONS}
+                  "capabilities": {"tools": {"listChanged": True}, "prompts": {"listChanged": True}},
+                  "serverInfo": SERVER_INFO, "instructions": _instructions(ctx)}
     elif method == "ping":
         result = {}
     elif method == "tools/list":
         result = {"tools": _tool_list(ctx)}
     elif method == "prompts/list":
-        result = {"prompts": _prompt_list()}
+        result = {"prompts": _prompt_list(ctx)}
     elif method == "prompts/get":
-        if params.get("name") not in PROMPTS:
+        if params.get("name") not in _prompts_for(ctx):
             return _rpc_error(rid, -32602, f"prompt desconhecido: {params.get('name')}")
         try:
             result = _prompt_get(params["name"], params.get("arguments") or {})
@@ -1603,7 +1655,7 @@ def _handle(ctx, msg):
         name, args = params.get("name"), params.get("arguments") or {}
         spec = TOOLS.get(name) if _allowed(ctx, name) else None
         if not spec:
-            return _rpc_error(rid, -32602, f"ferramenta desconhecida: {name}")
+            return _rpc_error(rid, -32602, f"ferramenta desconhecida: {name}." + STALE_HINT)
         fn, writes, schema = spec[0], spec[1], spec[3]
         try:
             if writes and not _can_write(ctx, name):

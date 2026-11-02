@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from psycopg.errors import UniqueViolation
 
 from .. import audit, db
-from ..paging import clamp, put_total
+from ..paging import clamp, put_total, OFFSET_MAX
 from ..deps import active_user, active_user_csrf, deny_append
 from ..schemas import ChecklistIn, ChecklistUpdate, FinishIn, NoteIn, NoteUpdate, SnoozeIn, TimeIn, TimeUpdate, WorklogIn, WorklogUpdate
 from .assign import notify_assigner
@@ -118,7 +118,7 @@ def stop_timer_of(user: dict, task_id: int, ended_at: datetime | None = None) ->
 def _own_task(uid: int, task_id: int) -> dict:
     row = audit.worklog_snapshot(task_id, uid)
     if not row:
-        raise HTTPException(status_code=404, detail="tarefa não encontrada (pode ter sido excluída); atualize a tela")
+        raise HTTPException(status_code=404, detail="tarefa não encontrada (pode ter sido excluída)")
     return row
 
 
@@ -229,15 +229,17 @@ def list_tasks(
     status: Literal["open", "done", "all"] = "all",
     limit: int = Query(default=200, ge=1, le=500),
     external_ref: Annotated[Optional[str], Query(min_length=1, max_length=120)] = None,  # Annotated: idem (MCP)
-    offset: Annotated[int, Query(ge=0, le=1000000, description="Pula as N primeiras (páginas); o total vem em X-Total-Count")] = 0,
+    offset: Annotated[int, Query(ge=0, le=OFFSET_MAX, description="Pula as N primeiras (páginas); o total vem em X-Total-Count")] = 0,
     response: Response = None,
     user=Depends(active_user),
 ):
     """Tarefas por período (dias inclusivos, fuso da app), pela criação ou
     pela conclusão: para conferir o que já foi lançado sem baixar tudo.
     Com external_ref: só a tarefa com essa chave (lista vazia se não houver)."""
+    if start and end and start > end:  # como a prévia e o PDF
+        raise HTTPException(status_code=400, detail="período inválido: from depois de to")
     col = "w.completed_at" if by == "completed" else "w.created_at"
-    limit, offset = clamp(limit, 1, 500, 200), clamp(offset, 0, 1000000, 0)
+    limit, offset = clamp(limit, 1, 500, 200), clamp(offset, 0, OFFSET_MAX, 0)
     cond, params = ["w.user_id = %(uid)s"], {"uid": user["user_id"], "tz": app_tz().key, "lim": limit, "off": offset}
     if external_ref is not None:
         found = _by_ref(user["user_id"], external_ref.strip())
@@ -286,7 +288,7 @@ def detail(task_id: int, user=Depends(active_user)):
         (task_id, uid),
     )
     if not task:
-        raise HTTPException(status_code=404, detail="tarefa não encontrada (pode ter sido excluída); atualize a tela")
+        raise HTTPException(status_code=404, detail="tarefa não encontrada (pode ter sido excluída)")
     task["checklist"] = db.query_all(
         "SELECT id, label, done, position FROM task_checklist WHERE task_id = %s ORDER BY position, id",
         (task_id,),
@@ -298,8 +300,10 @@ def detail(task_id: int, user=Depends(active_user)):
     from .photos import for_task
     task["photos"] = for_task(uid, task_id)
     task["time"] = db.query_all(
-        "SELECT id, minutes, day, note, actor, token_name, created_at FROM time_entries WHERE task_id = %s ORDER BY day DESC, id DESC",
-        (task_id,),
+        # só o tempo do dono: o de quem passou a tarefa (transferência) fica no registro dele
+        "SELECT id, minutes, day, note, actor, token_name, created_at FROM time_entries"
+        " WHERE task_id = %s AND user_id = %s ORDER BY day DESC, id DESC",
+        (task_id, uid),
     )
     task["minutes"] = sum(t["minutes"] for t in task["time"])
     task["today"] = app_today()  # o detalhe não precisa buscar o quadro só para saber o dia
@@ -356,6 +360,12 @@ def update(task_id: int, data: WorklogUpdate, user=Depends(active_user_csrf)):
     if "resolution" in sent and (data.status or before["status"]) == "done":  # como o create: só em concluída
         fields.append("resolution = %s")
         values.append((data.resolution or "").strip() or None)
+    if before["status"] == "done" and data.status not in (None, "done", "todo"):
+        # Aba ou aparelho desatualizado: "marcar como aguardando/em andamento"
+        # numa tarefa que já foi concluída em outro lugar a reabriria sem querer.
+        # Reabrir de propósito continua sendo {"status": "todo"}.
+        raise HTTPException(status_code=409, detail=(
+            "a tarefa já foi concluída (talvez em outro aparelho); para reabrir, mude o status para a fazer"))
     final_status = data.status or before["status"]
     if data.completed_at and final_status != "done":
         raise HTTPException(status_code=400, detail="data de conclusão só em tarefa concluída")
@@ -415,8 +425,12 @@ def finish(task_id: int, data: Optional[FinishIn] = None, user=Depends(active_us
     """Conclui agora, ou na data informada (retroativo). Já concluída e sem
     data: mantém a conclusão que tinha."""
     before = _own_task(user["user_id"], task_id)
-    deny_append(user, before["status"] == "done")  # "só registrar" conclui, não muda a conclusão
     raw = data.completed_at if data else None
+    if before["status"] == "done" and not raw and not (data and (data.resolution or "").strip()):
+        # Já concluída e nada a mudar: não grava outro worklog.finish (feed,
+        # webhooks e o aviso a quem atribuiu sairiam de novo). Vale para toda chave.
+        return {"ok": True, "existing": True, "completed_at": before["completed_at"]}
+    deny_append(user, before["status"] == "done")  # "só registrar" conclui, não muda a conclusão
     when = before["completed_at"] if (before["completed_at"] and not raw) else \
         resolve_completed(raw, before["created_at"], datetime.now(timezone.utc))
     stop_timer_of(user, task_id, when if raw else None)
@@ -557,7 +571,7 @@ def update_note(note_id: int, data: NoteUpdate, user=Depends(active_user_csrf)):
         (note_id, user["user_id"]),
     )
     if not before:
-        raise HTTPException(status_code=404, detail="anotação não encontrada (pode ter sido excluída); atualize a tela")
+        raise HTTPException(status_code=404, detail="anotação não encontrada (pode ter sido excluída)")
     row = db.query_one(f"UPDATE task_notes SET body = %s WHERE id = %s RETURNING {NOTE_COLS}", (data.body, note_id))
     if data.body != before["body"]:
         audit.record(user, "note.update", "note", note_id, before=before, after={**before, "body": data.body})
@@ -573,7 +587,7 @@ def delete_note(note_id: int, user=Depends(active_user_csrf)):
         (note_id, user["user_id"]),
     )
     if not row:
-        raise HTTPException(status_code=404, detail="anotação não encontrada (pode ter sido excluída); atualize a tela")
+        raise HTTPException(status_code=404, detail="anotação não encontrada (pode ter sido excluída)")
     audit.record(user, "note.delete", "note", note_id, before=row)
     return {"ok": True}
 
@@ -603,7 +617,7 @@ def update_item(item_id: int, data: ChecklistUpdate, user=Depends(active_user_cs
         (item_id, user["user_id"]),
     )
     if not before:
-        raise HTTPException(status_code=404, detail="item do checklist não encontrado (pode ter sido excluído); atualize a tela")
+        raise HTTPException(status_code=404, detail="item do checklist não encontrado (pode ter sido excluído)")
     label = data.label.strip() if data.label is not None else before["label"]
     done = data.done if data.done is not None else before["done"]
     db.execute("UPDATE task_checklist SET label = %s, done = %s WHERE id = %s", (label, done, item_id))
@@ -621,7 +635,7 @@ def delete_item(item_id: int, user=Depends(active_user_csrf)):
         (item_id, user["user_id"]),
     )
     if not row:
-        raise HTTPException(status_code=404, detail="item do checklist não encontrado (pode ter sido excluído); atualize a tela")
+        raise HTTPException(status_code=404, detail="item do checklist não encontrado (pode ter sido excluído)")
     audit.record(user, "checklist.delete", "checklist", item_id, before=row)
     return {"ok": True}
 
@@ -675,7 +689,7 @@ def update_time(entry_id: int, data: TimeUpdate, user=Depends(active_user_csrf))
         (entry_id, uid),
     )
     if not before:
-        raise HTTPException(status_code=404, detail="registro de tempo não encontrado (pode ter sido excluído); atualize a tela")
+        raise HTTPException(status_code=404, detail="registro de tempo não encontrado (pode ter sido excluído)")
     sent = data.model_fields_set
     minutes = data.minutes if data.minutes is not None else before["minutes"]
     day = data.day if data.day is not None else before["day"]
@@ -706,6 +720,6 @@ def delete_time(entry_id: int, user=Depends(active_user_csrf)):
         (entry_id, user["user_id"]),
     )
     if not row:
-        raise HTTPException(status_code=404, detail="registro de tempo não encontrado (pode ter sido excluído); atualize a tela")
+        raise HTTPException(status_code=404, detail="registro de tempo não encontrado (pode ter sido excluído)")
     audit.record(user, "time.delete", "time", entry_id, before=row)
     return {"ok": True}

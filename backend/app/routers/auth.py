@@ -17,7 +17,7 @@ from ..deps import (
     web_active,
     set_session_cookie,
 )
-from ..schemas import ChangePasswordIn, EmailConfirmIn, ForgotIn, LinkPasswordIn, LoginIn, SettingsIn
+from ..schemas import ChangePasswordIn, EmailConfirmIn, ForgotIn, LinkPasswordIn, LinkPeekIn, LoginIn, SettingsIn
 from ..services import app_today, app_tz, task_retro_days
 from .recurring import replace_routine
 from ..security import (
@@ -128,12 +128,13 @@ def _start_session(user: dict, response: Response) -> dict:
 @router.get("/options")
 def options():
     """O que a tela de login oferece (público): "Esqueci a senha" só com e-mail;
-    "Solicitar convite" só com e-mail e se o admin não o desligou (Para empresas)."""
-    return {"email": mailer.configured(), "invite_request": invite_request_open()}
+    "Solicitar convite" só com e-mail e se o admin o ligou (Para empresas; desligado
+    por padrão). `privacy_url`: a política de privacidade da instância (ou nulo)."""
+    return {"email": mailer.configured(), "invite_request": invite_request_open(), "privacy_url": org.get()["privacy_url"]}
 
 
 def invite_request_open() -> bool:
-    return mailer.configured() and not org.get()["invite_request_off"]
+    return mailer.configured() and bool(org.get()["invite_request_on"])
 
 
 def _reset_mail(email: str, link: str):
@@ -182,9 +183,21 @@ def forgot(data: ForgotIn, request: Request):
     return {"ok": True}
 
 
-@router.get("/link")
-def link_info(kind: Literal["invite", "reset"], token: str, request: Request):
-    """Para quem abriu o link: de que conta é (ou 404 se venceu/foi usado)."""
+@router.post("/link")
+def link_info(data: LinkPeekIn, request: Request):
+    """Para quem abriu o link: de que conta é (ou 404 se venceu/foi usado).
+    POST com o token no corpo: na URL ele iria para o log de acesso."""
+    return _link_info(data.kind, data.token, request)
+
+
+@router.get("/link", include_in_schema=False)
+def link_info_get(kind: Literal["invite", "reset"], token: str, request: Request):
+    """Forma antiga (app em cache de antes da troca para POST). O nginx não grava
+    esta rota no log de acesso."""
+    return _link_info(kind, token, request)
+
+
+def _link_info(kind: str, token: str, request: Request) -> dict:
     if not link_limiter.allow(f"ip:{client_ip(request)}"):
         raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
     row = links.peek(token, kind)
@@ -277,6 +290,7 @@ def confirm_email(data: EmailConfirmIn, request: Request):
         db.execute("UPDATE users SET email = %s WHERE id = %s", (new, user["id"]))
     except UniqueViolation as e:  # corrida com outra conta pegando o mesmo e-mail
         raise HTTPException(status_code=409, detail="esse e-mail passou a ser de outra conta: escolha outro") from e
+    links.cancel(user["id"], "reset")  # link de nova senha que foi para o endereço antigo deixa de valer
     audit.record({"user_id": user["id"], "actor": "web"}, "email.change", "user", user["id"],
                  before={"email": user["email"]}, after={"email": new})
     notify_email_change(user["email"], new, by_admin=False)

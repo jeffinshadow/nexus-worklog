@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from .. import db
 from ..deps import active_user
 from ..labels import fold
-from ..paging import clamp, put_total
+from ..paging import clamp, put_total, OFFSET_MAX
 from ..services import ASSIGNER_NAME, EXTRA_PROJECTS, PROJECT_ICON
 
 router = APIRouter(prefix="/api", tags=["search"])
@@ -76,10 +76,10 @@ def find_similar(uid: int, title: str) -> list[dict]:
 @router.get("/search")
 def search(
     q: str = Query(..., min_length=2, max_length=100),
-    offset: Annotated[int, Query(ge=0, le=100000, description="Tarefas: pula as N primeiras (páginas)")] = 0,
+    offset: Annotated[int, Query(ge=0, le=OFFSET_MAX, description="Tarefas: pula as N primeiras (páginas)")] = 0,
     limit: Annotated[int, Query(ge=1, le=100, description="Tarefas por resposta (padrão 40)")] = MAX_HITS,
-    rec_offset: Annotated[int, Query(ge=0, le=100000, description="Rotinas: pula as N primeiras")] = 0,
-    proj_offset: Annotated[int, Query(ge=0, le=100000, description="Projetos: pula os N primeiros")] = 0,
+    rec_offset: Annotated[int, Query(ge=0, le=OFFSET_MAX, description="Rotinas: pula as N primeiras")] = 0,
+    proj_offset: Annotated[int, Query(ge=0, le=OFFSET_MAX, description="Projetos: pula os N primeiros")] = 0,
     side_limit: Annotated[int, Query(ge=1, le=50, description="Rotinas e projetos por resposta (padrão 20)")] = SIDE_HITS,
     response: Response = None,
     user=Depends(active_user),
@@ -91,8 +91,8 @@ def search(
     fq = fold(q.strip()[:100]).lstrip("#")  # "#1234" acha o chamado; também pelo MCP (sem validação de Query)
     if len(fq) < 2:
         raise HTTPException(status_code=400, detail="busque ao menos 2 letras")
-    offset, limit = clamp(offset, 0, 100000, 0), clamp(limit, 1, 100, MAX_HITS)
-    rec_offset, proj_offset = clamp(rec_offset, 0, 100000, 0), clamp(proj_offset, 0, 100000, 0)
+    offset, limit = clamp(offset, 0, OFFSET_MAX, 0), clamp(limit, 1, 100, MAX_HITS)
+    rec_offset, proj_offset = clamp(rec_offset, 0, OFFSET_MAX, 0), clamp(proj_offset, 0, OFFSET_MAX, 0)
     side_limit = clamp(side_limit, 1, 50, SIDE_HITS)
     like = _like(fq)
     params = {"uid": uid, "like": like, "lim": limit, "off": offset}

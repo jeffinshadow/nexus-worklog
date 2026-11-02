@@ -9,7 +9,7 @@ import pytest
 
 from app import db, mailer
 from app.routers import auth as auth_mod
-from conftest import Api, SENHA_PADRAO, hist, uid_de
+from conftest import ligar_pedido_convite, Api, SENHA_PADRAO, hist, uid_de
 
 
 class _Agora:
@@ -122,22 +122,26 @@ def _pedido(**kw):
             "reason": "Quero registrar o suporte da filial.", **kw}
 
 
-def test_admin_desliga_pedido_de_convite(admin, caixa):
-    assert Api().get("/auth/options").json()["invite_request"] is True  # padrão: como sempre
-    org = admin.put("/admin/org", {"invite_request_off": True}).json()
-    assert org["invite_request_off"] is True and org["mail_configured"] is True
-    assert Api().get("/auth/options").json() == {"email": True, "invite_request": False}
+def test_pedido_de_convite_e_opt_in(admin, caixa):
+    # Desligado por padrão (decisão D1, sql/042): nem a tela oferece nem a rota aceita.
+    assert Api().get("/auth/options").json() == {"email": True, "invite_request": False, "privacy_url": None}
+    assert admin.get("/admin/org").json()["invite_request_on"] is False
     assert Api().post("/auth/invite-request", _pedido()).status_code == 404
     assert not db.query_one("SELECT 1 FROM invite_requests")
-    admin.put("/admin/org", {"invite_request_off": False})
+    org = admin.put("/admin/org", {"invite_request_on": True}).json()
+    assert org["invite_request_on"] is True and org["mail_configured"] is True
+    assert Api().get("/auth/options").json()["invite_request"] is True
     assert Api().post("/auth/invite-request", _pedido()).status_code == 202
-    rows = db.query_all("SELECT after FROM audit_log WHERE action = 'app.invite_request_off' ORDER BY id")
-    assert [r["after"]["invite_request_off"] for r in rows] == [True, False]
-    textos = [h["summary"] for h in hist(admin) if h["action"] == "app.invite_request_off"]
-    assert any("tirou" in t for t in textos)
+    admin.put("/admin/org", {"invite_request_on": False})
+    assert Api().post("/auth/invite-request", _pedido(email="outra@x.com")).status_code == 404
+    rows = db.query_all("SELECT after FROM audit_log WHERE action = 'app.invite_request_on' ORDER BY id")
+    assert [r["after"]["invite_request_on"] for r in rows] == [True, False]
+    textos = [h["summary"] for h in hist(admin) if h["action"] == "app.invite_request_on"]
+    assert any("passou a oferecer" in t for t in textos) and any("tirou" in t for t in textos)
 
 
 def test_origens_genericas(admin, caixa):
+    ligar_pedido_convite()
     for i, origem in enumerate(("colega", "empresa", "internet", "outro")):
         assert Api().post("/auth/invite-request", _pedido(email=f"p{i}@x.com", source=origem)).status_code == 202
     for antiga in ("site", "github"):  # não oferecidas mais

@@ -5,6 +5,8 @@ de toda lista paginada termina no id, para um item não aparecer em duas página
 from fastapi import Response
 
 TOTAL_HEADER = "X-Total-Count"
+# Teto do offset: só o do inteiro do banco. Offset além do fim devolve lista vazia (não erro).
+OFFSET_MAX = 2_147_483_647
 
 
 def put_total(response, total: int) -> None:

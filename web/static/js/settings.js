@@ -966,7 +966,11 @@ function privacyPanel(me) {
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Quem vê e quem manda tarefas para você" })),
     h("h3", { class: "sum-h", text: "Receber tarefas" }), ...assignments(me),
-    h("h3", { class: "sum-h", text: "Ver o seu registro" }), ...seenBy(me));
+    h("h3", { class: "sum-h", text: "Ver o seu registro" }), ...seenBy(me),
+    // Política de privacidade da instância (Admin › Para empresas), quando definida.
+    me.privacy_url && /^https:\/\//.test(me.privacy_url)
+      ? h("p", { class: "dialog-note" }, h("a", { class: "privacy-link", href: me.privacy_url, target: "_blank", rel: "noopener", text: "Política de privacidade desta instância" }))
+      : null);
 }
 
 // Consentimento: sem ele, ninguém consegue mandar tarefas para esta pessoa.

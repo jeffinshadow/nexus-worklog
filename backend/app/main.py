@@ -13,6 +13,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import db, notify, roles
 from .config import config
+from .version import VERSION
 from .routers import (admin, assign, auth, board, branding, calendar, dashboard, export, history, mcp, me, packs,
                       invite_requests, notifications, objectives, passkeys, photos, projects, push, recurring, renewals, reports, review, search, summary, templates, timer,
                       saude, tokens, viewer, webhooks, worklog)
@@ -64,7 +65,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Shadow Nexus Worklog",
+    title="Nexus Worklog",
+    version=VERSION,
     description="API REST do Nexus Worklog. Referência, erros e exemplos: docs/API.md.",
     lifespan=lifespan,
     docs_url=None,
@@ -120,3 +122,8 @@ for module in (auth, recurring, worklog, board, dashboard, reports, admin, histo
     app.include_router(module.router)
 app.include_router(worklog.items)  # /api/notes, /api/checklist, /api/time
 app.include_router(assign.received)  # /api/worklog/{id}/return (quem recebeu devolve)
+
+# docs/openapi.json com a chave Bearer, as rotas só do app e os cabeçalhos (openapi_doc.py).
+from . import openapi_doc  # noqa: E402
+
+openapi_doc.install(app)

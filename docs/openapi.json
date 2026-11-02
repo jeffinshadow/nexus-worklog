@@ -1,9 +1,9 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Shadow Nexus Worklog",
+    "title": "Nexus Worklog",
     "description": "API REST do Nexus Worklog. Referência, erros e exemplos: docs/API.md.",
-    "version": "0.1.0"
+    "version": "2.1.0"
   },
   "paths": {
     "/api/health": {
@@ -19,14 +19,21 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "security": []
       }
     },
     "/api/client-errors": {
       "post": {
         "summary": "Client Error",
-        "description": "Erro de JavaScript do navegador vai para o log do backend (sem terceiros,\nsem banco). Só sessão do app (chave de API não), poucos por pessoa; sem CSRF: só escreve no log.",
+        "description": "Erro de JavaScript do navegador vai para o log do backend (sem terceiros,\nsem banco). Só sessão do app (chave de API não), poucos por pessoa; sem CSRF: só escreve no log.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "client_error_api_client_errors_post",
         "requestBody": {
           "content": {
@@ -51,8 +58,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/auth/login": {
@@ -90,8 +105,15 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "security": []
       }
     },
     "/api/auth/options": {
@@ -100,7 +122,7 @@
           "auth"
         ],
         "summary": "Options",
-        "description": "O que a tela de login oferece (público): \"Esqueci a senha\" só com e-mail;\n\"Solicitar convite\" só com e-mail e se o admin não o desligou (Para empresas).",
+        "description": "O que a tela de login oferece (público): \"Esqueci a senha\" só com e-mail;\n\"Solicitar convite\" só com e-mail e se o admin o ligou (Para empresas; desligado\npor padrão). `privacy_url`: a política de privacidade da instância (ou nulo).",
         "operationId": "options_api_auth_options_get",
         "responses": {
           "200": {
@@ -110,8 +132,15 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "security": []
       }
     },
     "/api/auth/forgot": {
@@ -150,42 +179,35 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "security": []
       }
     },
     "/api/auth/link": {
-      "get": {
+      "post": {
         "tags": [
           "auth"
         ],
         "summary": "Link Info",
-        "description": "Para quem abriu o link: de que conta é (ou 404 se venceu/foi usado).",
-        "operationId": "link_info_api_auth_link_get",
-        "parameters": [
-          {
-            "name": "kind",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "enum": [
-                "invite",
-                "reset"
-              ],
-              "type": "string",
-              "title": "Kind"
+        "description": "Para quem abriu o link: de que conta é (ou 404 se venceu/foi usado).\nPOST com o token no corpo: na URL ele iria para o log de acesso.",
+        "operationId": "link_info_api_auth_link_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkPeekIn"
+              }
             }
           },
-          {
-            "name": "token",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Token"
-            }
-          }
-        ],
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -204,8 +226,15 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "security": []
       }
     },
     "/api/auth/invite/accept": {
@@ -244,8 +273,15 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "security": []
       }
     },
     "/api/auth/reset": {
@@ -284,8 +320,15 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "security": []
       }
     },
     "/api/auth/email/confirm": {
@@ -324,8 +367,15 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "security": []
       }
     },
     "/api/auth/logout": {
@@ -343,8 +393,17 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/auth/sessions": {
@@ -353,7 +412,7 @@
           "auth"
         ],
         "summary": "Sessions",
-        "description": "Quantos outros aparelhos (navegadores) estão com a conta aberta.",
+        "description": "Quantos outros aparelhos (navegadores) estão com a conta aberta.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "sessions_api_auth_sessions_get",
         "responses": {
           "200": {
@@ -363,8 +422,16 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/auth/logout-others": {
@@ -373,7 +440,7 @@
           "auth"
         ],
         "summary": "Logout Others",
-        "description": "Sai dos outros aparelhos sem trocar a senha (celular perdido, computador\nemprestado). Esta sessão continua; chaves de API e calendário não mudam.",
+        "description": "Sai dos outros aparelhos sem trocar a senha (celular perdido, computador\nemprestado). Esta sessão continua; chaves de API e calendário não mudam.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "logout_others_api_auth_logout_others_post",
         "responses": {
           "200": {
@@ -383,8 +450,16 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/auth/me": {
@@ -402,6 +477,12 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -441,8 +522,17 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/auth/settings": {
@@ -481,6 +571,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -501,6 +597,12 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -540,6 +642,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -580,6 +688,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -631,6 +745,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       },
@@ -669,6 +789,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -719,6 +845,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -770,6 +902,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -821,6 +959,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       },
@@ -860,6 +1004,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -900,6 +1050,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       },
@@ -1010,7 +1166,7 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "maximum": 1000000,
+              "maximum": 2147483647,
               "minimum": 0,
               "description": "Pula as N primeiras (páginas); o total vem em X-Total-Count",
               "default": 0,
@@ -1026,6 +1182,11 @@
               "application/json": {
                 "schema": {}
               }
+            },
+            "headers": {
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
             }
           },
           "422": {
@@ -1037,6 +1198,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -1078,6 +1245,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       },
@@ -1126,6 +1299,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       },
@@ -1164,6 +1343,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -1222,6 +1407,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -1273,6 +1464,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -1314,6 +1511,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -1355,6 +1558,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -1406,6 +1615,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -1456,6 +1671,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -1507,6 +1728,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -1561,7 +1788,7 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "maximum": 1000000,
+              "maximum": 2147483647,
               "minimum": 0,
               "description": "Concluídas: pula as N mais recentes (páginas)",
               "default": 0,
@@ -1602,6 +1829,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -1642,6 +1875,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -1692,6 +1931,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -1773,6 +2018,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -1855,6 +2106,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -1865,7 +2122,7 @@
           "admin"
         ],
         "summary": "List Users",
-        "description": "Contas em ordem de nome (o que a linha mostra), com o último acesso\n(`last_seen_at`: entrar ou usar o app; nulo = nunca entrou), a criação e\nquantas tarefas abertas cada uma tem (`open_tasks`, para transferir).",
+        "description": "Contas em ordem de nome (o que a linha mostra), com o último acesso\n(`last_seen_at`: entrar ou usar o app; nulo = nunca entrou), a criação e\nquantas tarefas abertas cada uma tem (`open_tasks`, para transferir).\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "list_users_api_admin_users_get",
         "responses": {
           "200": {
@@ -1875,15 +2132,23 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       },
       "post": {
         "tags": [
           "admin"
         ],
         "summary": "Invite User",
-        "description": "Cria a conta de um convidado, com o nome (vale até o primeiro acesso; no\ntour a pessoa confirma ou ajusta) e os papéis escolhidos ali (padrão: só\nUsuário; mudam depois em Papéis…).\n\nCom e-mail configurado: convite por link (vale 7 dias, uso único), mandado\npor e-mail e mostrado ao admin para copiar; a pessoa cria a própria senha.\nSem e-mail: senha temporária (mostrada uma única vez ao admin), trocada no\nprimeiro login, como no reset.",
+        "description": "Cria a conta de um convidado, com o nome (vale até o primeiro acesso; no\ntour a pessoa confirma ou ajusta) e os papéis escolhidos ali (padrão: só\nUsuário; mudam depois em Papéis…).\n\nCom e-mail configurado: convite por link (vale 7 dias, uso único), mandado\npor e-mail e mostrado ao admin para copiar; a pessoa cria a própria senha.\nSem e-mail: senha temporária (mostrada uma única vez ao admin), trocada no\nprimeiro login, como no reset.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "invite_user_api_admin_users_post",
         "requestBody": {
           "content": {
@@ -1913,8 +2178,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/admin/users/{user_id}/invite": {
@@ -1923,7 +2196,7 @@
           "admin"
         ],
         "summary": "Resend Invite",
-        "description": "Reenvia o convite de quem ainda não entrou (link novo, o velho para de valer).",
+        "description": "Reenvia o convite de quem ainda não entrou (link novo, o velho para de valer).\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "resend_invite_api_admin_users__user_id__invite_post",
         "parameters": [
           {
@@ -1954,8 +2227,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/admin/users/{user_id}/cancel-invite": {
@@ -1964,7 +2245,7 @@
           "admin"
         ],
         "summary": "Cancel Invite",
-        "description": "Desfaz um convite que ainda não foi aceito: a conta (sem dados, a pessoa\nnunca entrou) sai e o link deixa de valer. Sem digitar o e-mail.",
+        "description": "Desfaz um convite que ainda não foi aceito: a conta (sem dados, a pessoa\nnunca entrou) sai e o link deixa de valer. Sem digitar o e-mail.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "cancel_invite_api_admin_users__user_id__cancel_invite_post",
         "parameters": [
           {
@@ -1995,8 +2276,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/admin/users/{user_id}/block": {
@@ -2005,7 +2294,7 @@
           "admin"
         ],
         "summary": "Block User",
-        "description": "Corta o acesso agora, sem apagar nada (celular perdido, pessoa de férias\nou que saiu): senha trocada por uma que ninguém sabe, sessões, chaves de\nAPI, calendário, notificações e passkeys desligados, links de e-mail sem\nvalor e \"Esqueci a senha\" sem efeito. Redefinir senha libera de novo.\n`transfer_to`: as tarefas abertas passam para essa pessoa (papel Usuário).",
+        "description": "Corta o acesso agora, sem apagar nada (celular perdido, pessoa de férias\nou que saiu): senha trocada por uma que ninguém sabe, sessões, chaves de\nAPI, calendário, notificações e passkeys desligados, links de e-mail sem\nvalor e \"Esqueci a senha\" sem efeito. Redefinir senha libera de novo.\n`transfer_to`: as tarefas abertas passam para essa pessoa (papel Usuário).\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "block_user_api_admin_users__user_id__block_post",
         "parameters": [
           {
@@ -2053,8 +2342,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/admin/users/{user_id}/roles": {
@@ -2063,7 +2360,7 @@
           "admin"
         ],
         "summary": "Set Roles",
-        "description": "Papéis da conta. O admin não tira o próprio papel de admin (não se\ntranca para fora) e o sistema nunca fica sem nenhum admin.",
+        "description": "Papéis da conta. O admin não tira o próprio papel de admin (não se\ntranca para fora) e o sistema nunca fica sem nenhum admin.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "set_roles_api_admin_users__user_id__roles_put",
         "parameters": [
           {
@@ -2104,8 +2401,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/admin/users/{user_id}/profile": {
@@ -2114,7 +2419,7 @@
           "admin"
         ],
         "summary": "Edit Profile",
-        "description": "Admin › pessoa › Editar nome e e-mail (o caminho para mudar quando a\nopção \"Nome e e-mail definidos pela administração\" está ligada; vale também\ncom ela desligada, para corrigir um convite). Campo ausente = mantém.\nTrocar o e-mail avisa o endereço antigo e o novo (conta que já entrou). Fica\nno log de admin (histórico de quem alterou).",
+        "description": "Admin › pessoa › Editar nome e e-mail (o caminho para mudar quando a\nopção \"Nome e e-mail definidos pela administração\" está ligada; vale também\ncom ela desligada, para corrigir um convite). Campo ausente = mantém.\nTrocar o e-mail avisa o endereço antigo e o novo (conta que já entrou). Fica\nno log de admin (histórico de quem alterou).\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "edit_profile_api_admin_users__user_id__profile_put",
         "parameters": [
           {
@@ -2155,8 +2460,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/admin/users/{user_id}/delete": {
@@ -2165,7 +2478,7 @@
           "admin"
         ],
         "summary": "Delete User",
-        "description": "Exclui a conta e TODOS os dados dela (tarefas, rotinas, tempo, chaves,\nhistórico: ON DELETE CASCADE). Sem volta: o admin confirma digitando o\ne-mail. Tarefas que essa pessoa atribuiu ficam com quem recebeu.\n`transfer_to`: antes de excluir, as tarefas abertas passam para essa pessoa.",
+        "description": "Exclui a conta e TODOS os dados dela (tarefas, rotinas, tempo, chaves,\nhistórico: ON DELETE CASCADE). Sem volta: o admin confirma digitando o\ne-mail. Tarefas que essa pessoa atribuiu ficam com quem recebeu.\n`transfer_to`: antes de excluir, as tarefas abertas passam para essa pessoa.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "delete_user_api_admin_users__user_id__delete_post",
         "parameters": [
           {
@@ -2206,8 +2519,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/admin/settings": {
@@ -2225,8 +2546,17 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       },
       "put": {
         "tags": [
@@ -2262,8 +2592,17 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/admin/org": {
@@ -2272,7 +2611,7 @@
           "admin"
         ],
         "summary": "Get Org",
-        "description": "Para empresas e instituições: as opções globais (todas desligadas por padrão).\n`mail_configured`: sem e-mail, o pedido de convite nunca aparece (a opção só explica).",
+        "description": "Para empresas e instituições: as opções globais (todas desligadas por padrão).\n`mail_configured`: sem e-mail, o pedido de convite nunca aparece (a opção só explica).\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "get_org_api_admin_org_get",
         "responses": {
           "200": {
@@ -2282,15 +2621,23 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       },
       "put": {
         "tags": [
           "admin"
         ],
         "summary": "Put Org",
-        "description": "Liga/desliga cada opção (campo ausente = mantém). Cada mudança fica no\nlog de admin (quem e quando). Visibilidade e receber tarefas: as escolhas\nde cada pessoa ficam guardadas; voltar para \"Cada pessoa escolhe\" as devolve.",
+        "description": "Liga/desliga cada opção (campo ausente = mantém). Cada mudança fica no\nlog de admin (quem e quando). Visibilidade e receber tarefas: as escolhas\nde cada pessoa ficam guardadas; voltar para \"Cada pessoa escolhe\" as devolve.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "put_org_api_admin_org_put",
         "requestBody": {
           "content": {
@@ -2320,8 +2667,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/admin/users/{user_id}/reset-password": {
@@ -2330,7 +2685,7 @@
           "admin"
         ],
         "summary": "Reset Password",
-        "description": "Redefine a senha de outra conta (e libera uma conta bloqueada). A senha\natual deixa de valer, e as sessões, chaves de API, calendário e passkeys\ndo alvo são cortados. Duas formas:\n\n- `temp` (padrão): senha temporária mostrada uma única vez ao admin; a\n  pessoa troca no próximo login.\n- `link` (só com e-mail configurado): o link de nova senha do \"Esqueci a\n  senha\" vai para o e-mail da pessoa (vale 24 horas, uso único); o admin\n  também recebe o link, para mandar por outro canal se o e-mail falhar.\n\nPara a própria conta, use a troca normal.",
+        "description": "Redefine a senha de outra conta (e libera uma conta bloqueada). A senha\natual deixa de valer, e as sessões, chaves de API, calendário e passkeys\ndo alvo são cortados. Duas formas:\n\n- `temp` (padrão): senha temporária mostrada uma única vez ao admin; a\n  pessoa troca no próximo login.\n- `link` (só com e-mail configurado): o link de nova senha do \"Esqueci a\n  senha\" vai para o e-mail da pessoa (vale 24 horas, uso único); o admin\n  também recebe o link, para mandar por outro canal se o e-mail falhar.\n\nPara a própria conta, use a troca normal.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "reset_password_api_admin_users__user_id__reset_password_post",
         "parameters": [
           {
@@ -2378,8 +2733,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/history": {
@@ -2457,7 +2820,7 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "maximum": 100000,
+              "maximum": 2147483647,
               "minimum": 0,
               "description": "Pula as N ações mais recentes (páginas); o total vem em X-Total-Count",
               "default": 0,
@@ -2492,6 +2855,11 @@
               "application/json": {
                 "schema": {}
               }
+            },
+            "headers": {
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
             }
           },
           "422": {
@@ -2503,6 +2871,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -2543,6 +2917,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -2562,8 +2942,17 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       },
       "post": {
         "tags": [
@@ -2599,8 +2988,17 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/tokens/{token_id}": {
@@ -2639,8 +3037,17 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/tokens/{token_id}/renew": {
@@ -2649,7 +3056,7 @@
           "tokens"
         ],
         "summary": "Renew Token",
-        "description": "Nova validade (a partir de agora) para uma chave vencida ou perto de\nvencer: a IA segue com a mesma chave, sem reconfigurar. Revogada não volta.",
+        "description": "Nova validade (a partir de agora) para uma chave vencida ou perto de\nvencer: a IA segue com a mesma chave, sem reconfigurar. Revogada não volta.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "renew_token_api_tokens__token_id__renew_post",
         "parameters": [
           {
@@ -2690,8 +3097,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/mcp": {
@@ -2709,6 +3124,12 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       },
@@ -2726,6 +3147,12 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       },
@@ -2743,6 +3170,12 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -2762,8 +3195,15 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "security": []
       }
     },
     "/api/branding/logo": {
@@ -2781,8 +3221,15 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "security": []
       }
     },
     "/api/admin/branding": {
@@ -2820,8 +3267,17 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/admin/branding/logo": {
@@ -2839,8 +3295,17 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       },
       "delete": {
         "tags": [
@@ -2856,8 +3321,17 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/projects": {
@@ -2914,6 +3388,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       },
@@ -2952,6 +3432,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -3002,6 +3488,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       },
@@ -3040,6 +3532,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -3091,6 +3589,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -3110,6 +3614,12 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -3154,6 +3664,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -3173,6 +3689,12 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -3216,6 +3738,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -3246,7 +3774,7 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "maximum": 100000,
+              "maximum": 2147483647,
               "minimum": 0,
               "description": "Tarefas: pula as N primeiras (páginas)",
               "default": 0,
@@ -3274,7 +3802,7 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "maximum": 100000,
+              "maximum": 2147483647,
               "minimum": 0,
               "description": "Rotinas: pula as N primeiras",
               "default": 0,
@@ -3288,7 +3816,7 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "maximum": 100000,
+              "maximum": 2147483647,
               "minimum": 0,
               "description": "Projetos: pula os N primeiros",
               "default": 0,
@@ -3318,6 +3846,11 @@
               "application/json": {
                 "schema": {}
               }
+            },
+            "headers": {
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
             }
           },
           "422": {
@@ -3329,6 +3862,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -3379,8 +3918,17 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/recurring/{recurring_id}/photos": {
@@ -3446,8 +3994,17 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       },
       "get": {
         "tags": [
@@ -3494,8 +4051,17 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/photos/{photo_id}": {
@@ -3544,8 +4110,17 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       },
       "delete": {
         "tags": [
@@ -3582,8 +4157,17 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/export/fotos.zip": {
@@ -3592,7 +4176,7 @@
           "photos"
         ],
         "summary": "Export Zip",
-        "description": "Todas as fotos da conta num .zip (pastas por tarefa e por rotina). Monta\nnum arquivo temporário, uma foto por vez (a memória do backend é pequena).",
+        "description": "Todas as fotos da conta num .zip (pastas por tarefa e por rotina). Monta\nnum arquivo temporário, uma foto por vez (a memória do backend é pequena).\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "export_zip_api_export_fotos_zip_get",
         "responses": {
           "200": {
@@ -3602,8 +4186,16 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/export/plantao.csv": {
@@ -3668,6 +4260,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -3734,6 +4332,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -3809,6 +4413,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -3828,15 +4438,24 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       },
       "post": {
         "tags": [
           "calendar"
         ],
         "summary": "Create Feed",
-        "description": "Cria (ou troca) o link. O link antigo para de funcionar na hora.",
+        "description": "Cria (ou troca) o link. O link antigo para de funcionar na hora.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "create_feed_api_calendar_post",
         "requestBody": {
           "content": {
@@ -3866,8 +4485,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       },
       "delete": {
         "tags": [
@@ -3883,8 +4510,17 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       },
       "patch": {
         "tags": [
@@ -3920,8 +4556,17 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/calendar/{token}.ics": {
@@ -3960,8 +4605,15 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "security": []
       }
     },
     "/api/notifications": {
@@ -3979,8 +4631,17 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       },
       "put": {
         "tags": [
@@ -4016,8 +4677,17 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/notifications/test": {
@@ -4026,7 +4696,7 @@
           "notifications"
         ],
         "summary": "Send Test",
-        "description": "Teste para a própria pessoa: o aviso da manhã (prévia) ou a semana\npassada como sairia na segunda (com o PDF, se ligado; a cópia não recebe).",
+        "description": "Teste para a própria pessoa: o aviso da manhã (prévia) ou a semana\npassada como sairia na segunda (com o PDF, se ligado; a cópia não recebe).\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "send_test_api_notifications_test_post",
         "parameters": [
           {
@@ -4062,8 +4732,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/me/profile": {
@@ -4101,8 +4779,17 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/me/email": {
@@ -4111,7 +4798,7 @@
           "me"
         ],
         "summary": "Request Email Change",
-        "description": "Trocar o próprio e-mail: pede a senha atual e manda um link de\nconfirmação ao endereço NOVO (24 horas, uso único). O e-mail só muda quando\na pessoa confirma (POST /api/auth/email/confirm); o antigo recebe um aviso.\nBloqueado quando a administração define nome e e-mail.",
+        "description": "Trocar o próprio e-mail: pede a senha atual e manda um link de\nconfirmação ao endereço NOVO (24 horas, uso único). O e-mail só muda quando\na pessoa confirma (POST /api/auth/email/confirm); o antigo recebe um aviso.\nBloqueado quando a administração define nome e e-mail.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "request_email_change_api_me_email_post",
         "requestBody": {
           "content": {
@@ -4141,15 +4828,23 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       },
       "delete": {
         "tags": [
           "me"
         ],
         "summary": "Cancel Email Change",
-        "description": "Desiste da troca pendente: o link mandado ao endereço novo deixa de valer.",
+        "description": "Desiste da troca pendente: o link mandado ao endereço novo deixa de valer.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "cancel_email_change_api_me_email_delete",
         "responses": {
           "200": {
@@ -4159,8 +4854,16 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/me/avatar": {
@@ -4178,8 +4881,17 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       },
       "delete": {
         "tags": [
@@ -4195,8 +4907,17 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/me/avatar/{user_id}": {
@@ -4235,8 +4956,17 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/me/assistant": {
@@ -4274,8 +5004,17 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/me/visibility": {
@@ -4284,7 +5023,7 @@
           "me"
         ],
         "summary": "Visibility",
-        "description": "Quem, além da pessoa, tem papel que alcança o registro dela (Configurações >\nConta): visualizador (registro, relatórios e fotos de quem aceitou, ver\nPUT /me/viewers) e admin (que concede papéis). Só nome e papel; sem e-mail.",
+        "description": "Quem, além da pessoa, tem papel que alcança o registro dela (Configurações >\nConta): visualizador (registro, relatórios e fotos de quem aceitou, ver\nPUT /me/viewers) e admin (que concede papéis). Só nome e papel; sem e-mail.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "visibility_api_me_visibility_get",
         "responses": {
           "200": {
@@ -4294,8 +5033,16 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/me/activity": {
@@ -4304,7 +5051,7 @@
           "me"
         ],
         "summary": "Activity",
-        "description": "Último registro (de qualquer origem): o lembrete de inatividade confere\naqui antes de avisar, para não cobrar quem registrou pela IA ou no celular.",
+        "description": "Último registro (de qualquer origem): o lembrete de inatividade confere\naqui antes de avisar, para não cobrar quem registrou pela IA ou no celular.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "activity_api_me_activity_get",
         "responses": {
           "200": {
@@ -4314,8 +5061,16 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/me/tickets": {
@@ -4324,7 +5079,7 @@
           "me"
         ],
         "summary": "Put Ticket Url",
-        "description": "Endereço do sistema de chamados; {id} vira o número (sem {id}, o número vai no fim).\nCom o endereço definido pela administração (Admin › Para empresas), 409: o\nda instância vale para todos; o da pessoa fica guardado e volta a valer se\no admin esvaziar o global.",
+        "description": "Endereço do sistema de chamados; {id} vira o número (sem {id}, o número vai no fim).\nCom o endereço definido pela administração (Admin › Para empresas), 409: o\nda instância vale para todos; o da pessoa fica guardado e volta a valer se\no admin esvaziar o global.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "put_ticket_url_api_me_tickets_put",
         "requestBody": {
           "content": {
@@ -4354,8 +5109,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/me/default-project": {
@@ -4364,7 +5127,7 @@
           "me"
         ],
         "summary": "Put Default Project",
-        "description": "Projeto aplicado à tarefa criada sem projeto (no app, pela API, pela IA\nou recebida por atribuição). Só projeto ativo da própria pessoa.",
+        "description": "Projeto aplicado à tarefa criada sem projeto (no app, pela API, pela IA\nou recebida por atribuição). Só projeto ativo da própria pessoa.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "put_default_project_api_me_default_project_put",
         "requestBody": {
           "content": {
@@ -4394,8 +5157,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/me/theme": {
@@ -4404,7 +5175,7 @@
           "me"
         ],
         "summary": "Put Theme",
-        "description": "Tema da interface (auto = o do aparelho). Vale em todos os aparelhos da conta.",
+        "description": "Tema da interface (auto = o do aparelho). Vale em todos os aparelhos da conta.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "put_theme_api_me_theme_put",
         "requestBody": {
           "content": {
@@ -4434,8 +5205,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/me/tour": {
@@ -4444,7 +5223,7 @@
           "me"
         ],
         "summary": "Put Tour",
-        "description": "Tour guiado visto (ou pulado, quando não é obrigatório). false = abre de\nnovo no próximo acesso. Concluído uma vez, o primeiro acesso acabou: o tour\nobrigatório nunca mais força esta conta. Quem passou pelo tour já viu a\nparada da visibilidade (quando ativa): o aviso único não aparece depois.",
+        "description": "Tour guiado visto (ou pulado, quando não é obrigatório). false = abre de\nnovo no próximo acesso. Concluído uma vez, o primeiro acesso acabou: o tour\nobrigatório nunca mais força esta conta. Quem passou pelo tour já viu a\nparada da visibilidade (quando ativa): o aviso único não aparece depois.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "put_tour_api_me_tour_put",
         "requestBody": {
           "content": {
@@ -4474,8 +5253,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/me/visibility-notice": {
@@ -4484,7 +5271,7 @@
           "me"
         ],
         "summary": "Seen Visibility Notice",
-        "description": "\"Entendi\" no aviso único de que quem gerencia a equipe vê o registro de todos.",
+        "description": "\"Entendi\" no aviso único de que quem gerencia a equipe vê o registro de todos.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "seen_visibility_notice_api_me_visibility_notice_put",
         "responses": {
           "200": {
@@ -4494,8 +5281,16 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/me/assign-notice": {
@@ -4504,7 +5299,7 @@
           "me"
         ],
         "summary": "Seen Assign Notice",
-        "description": "\"Entendi\" no aviso único de que todos recebem tarefas de quem atribui.",
+        "description": "\"Entendi\" no aviso único de que todos recebem tarefas de quem atribui.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "seen_assign_notice_api_me_assign_notice_put",
         "responses": {
           "200": {
@@ -4514,8 +5309,16 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/me/role-notice": {
@@ -4524,7 +5327,7 @@
           "me"
         ],
         "summary": "Seen Role Notice",
-        "description": "\"Entendi\" no aviso único de papel ganho ou retirado pelo admin.",
+        "description": "\"Entendi\" no aviso único de papel ganho ou retirado pelo admin.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "seen_role_notice_api_me_role_notice_put",
         "responses": {
           "200": {
@@ -4534,8 +5337,16 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/me/assignments": {
@@ -4544,7 +5355,7 @@
           "me"
         ],
         "summary": "Put Assignments",
-        "description": "Consentimento para receber tarefas de um atribuidor (só pelo app).\nDesligar não mexe nas tarefas já recebidas. Com \"Todos recebem de quem\natribui\" (Admin › Para empresas), 409: a escolha fica guardada como está.",
+        "description": "Consentimento para receber tarefas de um atribuidor (só pelo app).\nDesligar não mexe nas tarefas já recebidas. Com \"Todos recebem de quem\natribui\" (Admin › Para empresas), 409: a escolha fica guardada como está.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "put_assignments_api_me_assignments_put",
         "requestBody": {
           "content": {
@@ -4574,8 +5385,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/me/viewers": {
@@ -4584,7 +5403,7 @@
           "me"
         ],
         "summary": "Put Viewers",
-        "description": "Aceite do visualizador (só pelo app): com ele, quem tem o papel viewer vê\no registro da pessoa em Equipe (quadro, números, PDF, horas, fotos).",
+        "description": "Aceite do visualizador (só pelo app): com ele, quem tem o papel viewer vê\no registro da pessoa em Equipe (quadro, números, PDF, horas, fotos).\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "put_viewers_api_me_viewers_put",
         "requestBody": {
           "content": {
@@ -4614,8 +5433,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/me/delete": {
@@ -4624,7 +5451,7 @@
           "me"
         ],
         "summary": "Delete Me",
-        "description": "A própria pessoa exclui a conta e todos os dados dela (LGPD), com a\nsenha. Sem volta; exporte antes em Relatórios. O último admin não sai.",
+        "description": "A própria pessoa exclui a conta e todos os dados dela (LGPD), com a\nsenha. Sem volta; exporte antes em Relatórios. O último admin não sai.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "delete_me_api_me_delete_post",
         "requestBody": {
           "content": {
@@ -4654,8 +5481,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/timer": {
@@ -4673,6 +5508,12 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       },
@@ -4690,6 +5531,12 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -4729,6 +5576,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -4775,6 +5628,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -4794,6 +5653,12 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       },
@@ -4831,6 +5696,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -4881,6 +5752,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       },
@@ -4919,6 +5796,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -4960,6 +5843,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -4979,8 +5868,17 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/viewer/users/{user_id}/board": {
@@ -5036,8 +5934,17 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/viewer/users/{user_id}/dashboard": {
@@ -5095,8 +6002,17 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/viewer/users/{user_id}/projects": {
@@ -5105,7 +6021,7 @@
           "viewer"
         ],
         "summary": "User Projects",
-        "description": "Projetos da pessoa (para tirar o relatório de um cliente dela).",
+        "description": "Projetos da pessoa (para tirar o relatório de um cliente dela).\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "user_projects_api_viewer_users__user_id__projects_get",
         "parameters": [
           {
@@ -5136,8 +6052,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/viewer/users/{user_id}/reports/export": {
@@ -5226,8 +6150,17 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/viewer/export/apontamentos.csv": {
@@ -5236,7 +6169,7 @@
           "viewer"
         ],
         "summary": "Team Time Csv",
-        "description": "Apontamentos de quem aceitou o visualizador (some por cliente/projeto na\nplanilha), do período start..end (padrão: o mês corrente; até 1 ano).",
+        "description": "Apontamentos de quem aceitou o visualizador (some por cliente/projeto na\nplanilha), do período start..end (padrão: o mês corrente; até 1 ano).\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "team_time_csv_api_viewer_export_apontamentos_csv_get",
         "parameters": [
           {
@@ -5292,8 +6225,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/viewer/team": {
@@ -5302,7 +6243,7 @@
           "viewer"
         ],
         "summary": "Team Panel",
-        "description": "Painel da Equipe de um mês (padrão: o corrente, até hoje). Tudo SOMADO de\nquem pode ser visto: rotinas em dia, concluídas e horas do mês (a mesma conta\ndo PDF e de Meu mês de cada pessoa) com os últimos 6 meses da equipe, as\ntarefas aguardando agora, \"Precisa de atenção\", o tempo por projeto (por\nnome, como no CSV) e os cartões das pessoas, em ordem alfabética.",
+        "description": "Painel da Equipe de um mês (padrão: o corrente, até hoje). Tudo SOMADO de\nquem pode ser visto: rotinas em dia, concluídas e horas do mês (a mesma conta\ndo PDF e de Meu mês de cada pessoa) com os últimos 6 meses da equipe, as\ntarefas aguardando agora, \"Precisa de atenção\", o tempo por projeto (por\nnome, como no CSV) e os cartões das pessoas, em ordem alfabética.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "team_panel_api_viewer_team_get",
         "parameters": [
           {
@@ -5343,8 +6284,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/assign/people": {
@@ -5353,7 +6302,7 @@
           "assign"
         ],
         "summary": "List People",
-        "description": "Contas com registro próprio e se podem receber tarefas agora (`accepts`,\na regra de assignable.py) e desde quando aceitaram (`accepts_assignments_at`;\ncom \"Todos recebem de quem atribui\" fica a escolha guardada da pessoa).\nConta com acesso bloqueado não recebe (`blocked`: a tela diz por quê).\n`everyone`: a instância está em \"Todos recebem\". A foto só de quem pode\nreceber (a mesma regra de GET /api/me/avatar/{id}); o admin vê todas.",
+        "description": "Contas com registro próprio e se podem receber tarefas agora (`accepts`,\na regra de assignable.py) e desde quando aceitaram (`accepts_assignments_at`;\ncom \"Todos recebem de quem atribui\" fica a escolha guardada da pessoa).\nConta com acesso bloqueado não recebe (`blocked`: a tela diz por quê).\n`everyone`: a instância está em \"Todos recebem\". A foto só de quem pode\nreceber (a mesma regra de GET /api/me/avatar/{id}); o admin vê todas.\n\nQuem não é admin (o papel Manda tarefas) vê com nome e e-mail só quem pode\nreceber (e a própria conta). Quem não pode receber vem só como\n`{\"accepts\": false, \"everyone\": …}`, sem id, e-mail nem bloqueio: conta\npara \"as outras N ainda não aceitam\", sem expor quem disse não.",
         "operationId": "list_people_api_assign_people_get",
         "responses": {
           "200": {
@@ -5363,6 +6312,12 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -5402,6 +6357,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -5422,6 +6383,12 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -5473,6 +6440,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -5514,6 +6487,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -5555,6 +6534,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -5575,6 +6560,12 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -5594,6 +6585,12 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       },
@@ -5631,6 +6628,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -5682,6 +6685,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       },
@@ -5720,6 +6729,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -5761,6 +6776,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -5801,7 +6822,7 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "maximum": 1000000,
+              "maximum": 2147483647,
               "minimum": 0,
               "default": 0,
               "title": "Offset"
@@ -5827,6 +6848,11 @@
               "application/json": {
                 "schema": {}
               }
+            },
+            "headers": {
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
             }
           },
           "422": {
@@ -5838,6 +6864,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -5879,6 +6911,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       },
@@ -5928,6 +6966,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -5978,6 +7022,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       },
@@ -6017,6 +7067,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -6068,6 +7124,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -6119,6 +7181,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -6129,7 +7197,7 @@
           "push"
         ],
         "summary": "Overview",
-        "description": "Chave pública, preferências e os aparelhos ligados (current = este, pelo endpoint).",
+        "description": "Chave pública, preferências e os aparelhos ligados (current = este, pelo endpoint).\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "overview_api_push_get",
         "parameters": [
           {
@@ -6167,8 +7235,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/push/devices": {
@@ -6206,8 +7282,17 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/push/devices/{device_id}": {
@@ -6246,8 +7331,17 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/push/prefs": {
@@ -6285,8 +7379,17 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/push/test": {
@@ -6332,8 +7435,17 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/auth/passkeys": {
@@ -6351,8 +7463,17 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/auth/passkeys/register/options": {
@@ -6370,8 +7491,17 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/auth/passkeys/register": {
@@ -6409,8 +7539,17 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/auth/passkeys/{passkey_id}": {
@@ -6449,8 +7588,17 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/auth/passkeys/login/options": {
@@ -6468,8 +7616,15 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "security": []
       }
     },
     "/api/auth/passkeys/login": {
@@ -6507,8 +7662,15 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "security": []
       }
     },
     "/api/auth/invite-request": {
@@ -6546,8 +7708,15 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "security": []
       }
     },
     "/api/admin/invite-requests": {
@@ -6565,8 +7734,17 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/admin/invite-requests/{rid}/invite": {
@@ -6575,7 +7753,7 @@
           "invite-requests"
         ],
         "summary": "Invite",
-        "description": "Convida quem pediu, com o nome (revisado pelo admin; padrão: o do pedido)\ne os papéis escolhidos ali (padrão: só Usuário), como em POST /admin/users.",
+        "description": "Convida quem pediu, com o nome (revisado pelo admin; padrão: o do pedido)\ne os papéis escolhidos ali (padrão: só Usuário), como em POST /admin/users.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "invite_api_admin_invite_requests__rid__invite_post",
         "parameters": [
           {
@@ -6623,8 +7801,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/admin/invite-requests/{rid}/decline": {
@@ -6663,8 +7849,17 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/webhooks": {
@@ -6682,6 +7877,12 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       },
@@ -6719,8 +7920,17 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/webhooks/{hook_id}": {
@@ -6729,7 +7939,7 @@
           "webhooks"
         ],
         "summary": "Update Webhook",
-        "description": "Troca o endereço e/ou os eventos sem recriar: o segredo e a fila seguem.\nO endereço novo passa pela mesma checagem do cadastro (https público).",
+        "description": "Troca o endereço e/ou os eventos sem recriar: o segredo e a fila seguem.\nO endereço novo passa pela mesma checagem do cadastro (https público).\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "update_webhook_api_webhooks__hook_id__patch",
         "parameters": [
           {
@@ -6770,8 +7980,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       },
       "delete": {
         "tags": [
@@ -6808,6 +8026,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -6818,7 +8042,7 @@
           "webhooks"
         ],
         "summary": "Enable Webhook",
-        "description": "Religa um desligado por falhas: continua do evento em que parou.",
+        "description": "Religa um desligado por falhas: continua do evento em que parou.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "enable_webhook_api_webhooks__hook_id__enable_post",
         "parameters": [
           {
@@ -6849,8 +8073,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/webhooks/{hook_id}/test": {
@@ -6859,7 +8091,7 @@
           "webhooks"
         ],
         "summary": "Test Webhook",
-        "description": "Envia agora um evento de teste assinado (X-Nexus-Event: ping) e devolve\n{ok, status, ms, error}. Só pelo app; não conta como falha nem desliga.\nVale também para um desligado (testar antes de religar).",
+        "description": "Envia agora um evento de teste assinado (X-Nexus-Event: ping) e devolve\n{ok, status, ms, error}. Só pelo app; não conta como falha nem desliga.\nVale também para um desligado (testar antes de religar).\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "test_webhook_api_webhooks__hook_id__test_post",
         "parameters": [
           {
@@ -6890,8 +8122,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": []
       }
     },
     "/api/review/week": {
@@ -6910,6 +8150,12 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -6957,6 +8203,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -6977,6 +8229,12 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -6997,6 +8255,12 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -7048,6 +8312,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -7067,8 +8337,17 @@
                 "schema": {}
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-session-only": true,
+        "security": [],
+        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
       }
     },
     "/api/notes/{note_id}": {
@@ -7118,6 +8397,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       },
@@ -7156,6 +8441,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -7206,6 +8497,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       },
@@ -7244,6 +8541,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -7295,6 +8598,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       },
@@ -7333,6 +8642,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -7384,6 +8699,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
           }
         }
       }
@@ -8184,6 +9505,31 @@
         ],
         "title": "LinkPasswordIn"
       },
+      "LinkPeekIn": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "invite",
+              "reset"
+            ],
+            "title": "Kind"
+          },
+          "token": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "token"
+        ],
+        "title": "LinkPeekIn",
+        "description": "O token vai no corpo (POST), fora da URL e do log de acesso do servidor."
+      },
       "LoginIn": {
         "properties": {
           "email": {
@@ -8448,7 +9794,7 @@
             ],
             "title": "Identity Managed"
           },
-          "invite_request_off": {
+          "invite_request_on": {
             "anyOf": [
               {
                 "type": "boolean"
@@ -8457,7 +9803,20 @@
                 "type": "null"
               }
             ],
-            "title": "Invite Request Off"
+            "title": "Invite Request On"
+          },
+          "privacy_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300,
+                "pattern": "^(https://\\S+)?$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Privacy Url"
           },
           "ticket_url": {
             "anyOf": [
@@ -10316,6 +11675,50 @@
         ],
         "title": "_PushKeys"
       }
+    },
+    "securitySchemes": {
+      "bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Chave de API (Configurações > Chaves de API): Authorization: Bearer nxs_..."
+      }
+    },
+    "headers": {
+      "X-Total-Count": {
+        "description": "Total de itens da lista, sem o limit/offset (páginas).",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "Retry-After": {
+        "description": "Segundos para esperar antes de tentar de novo.",
+        "schema": {
+          "type": "integer"
+        }
+      }
+    },
+    "responses": {
+      "TooManyRequests": {
+        "description": "Limite de tentativas: espere o Retry-After.",
+        "headers": {
+          "Retry-After": {
+            "$ref": "#/components/headers/Retry-After"
+          }
+        }
+      },
+      "Busy": {
+        "description": "Servidor ocupado: tente de novo depois do Retry-After.",
+        "headers": {
+          "Retry-After": {
+            "$ref": "#/components/headers/Retry-After"
+          }
+        }
+      }
     }
-  }
+  },
+  "security": [
+    {
+      "bearer": []
+    }
+  ]
 }

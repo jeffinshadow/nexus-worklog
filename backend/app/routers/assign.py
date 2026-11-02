@@ -43,7 +43,12 @@ def list_people(user=Depends(require_people_list)):
     com "Todos recebem de quem atribui" fica a escolha guardada da pessoa).
     Conta com acesso bloqueado não recebe (`blocked`: a tela diz por quê).
     `everyone`: a instância está em "Todos recebem". A foto só de quem pode
-    receber (a mesma regra de GET /api/me/avatar/{id}); o admin vê todas."""
+    receber (a mesma regra de GET /api/me/avatar/{id}); o admin vê todas.
+
+    Quem não é admin (o papel Manda tarefas) vê com nome e e-mail só quem pode
+    receber (e a própria conta). Quem não pode receber vem só como
+    `{"accepts": false, "everyone": …}`, sem id, e-mail nem bloqueio: conta
+    para "as outras N ainda não aceitam", sem expor quem disse não."""
     rows = db.query_all(
         f"""SELECT u.id, u.email, u.accepts_assignments_at, u.blocked_at IS NOT NULL AS blocked,
                    {assignable.receive_sql('u')} AS accepts
@@ -54,6 +59,9 @@ def list_people(user=Depends(require_people_list)):
     everyone = assignable.everyone()
     out = []
     for r in rows:
+        if not is_admin and not r["accepts"] and r["id"] != user["user_id"]:
+            out.append({"accepts": False, "everyone": everyone})
+            continue
         p = people.profile(r["id"])
         if not r["accepts"] and not is_admin:
             p["avatar"] = None
@@ -259,7 +267,7 @@ def _removed(uid: int) -> list[dict]:
     return out
 
 
-RESOLVED_MSG = "essa devolução já foi resolvida (atribuída de novo ou encerrada); atualize a tela"
+RESOLVED_MSG = "essa devolução já foi resolvida (atribuída de novo ou encerrada)"
 
 # Devolução ainda sem decisão de quem atribuiu: a tarefa não voltou (desfazer
 # de quem recebeu), não saiu de novo da conta dela e não foi atribuída de novo
@@ -419,7 +427,7 @@ def close_return(task_id: int, user=Depends(require_assigner_csrf)):
     atenção" e fica na lista como "devolvida · encerrada"."""
     r = next((x for x in open_returns(user["user_id"]) if x["id"] == task_id), None)
     if not r:
-        raise HTTPException(status_code=404, detail="não há devolução em aberto com esse número; atualize a tela")
+        raise HTTPException(status_code=404, detail="não há devolução em aberto com esse número")
     audit.record(user, "assign.close", "assignment", task_id,
                  before={"title": r["title"], "to": r["to_name"], "reason": r["reason"]})
     return {"ok": True}
@@ -449,6 +457,39 @@ def _push_return(uid: int, tid: int, title: str, quem: str, reason: str) -> None
         log.exception("push de devolução da tarefa %s falhou", tid)
 
 
+def _undo_return_mail(title: str, quem: str):
+    from ..notify import Mail  # import tardio: notify importa rotas
+    m = Mail(f"Voltou atrás: {title}", f"{quem} desfez a devolução da tarefa que você atribuiu",
+             f"A tarefa voltou para as tarefas de {quem}, como antes da devolução. Não precisa atribuir de novo.")
+    m.reason = "Você recebe este e-mail porque atribuiu esta tarefa pelo Nexus."
+    m.settings_tab = None
+    m.link = "/#/equipe"
+    m.blocks = [("Tarefa", [title])]
+    return m
+
+
+def notify_return_undone(assigner_id: int, task_id: int, title: str, uid: int) -> None:
+    """Quem devolveu desfez (Histórico): quem atribuiu recebeu o e-mail "Devolvida"
+    e ficaria achando que a tarefa está sem dono. Avisa pelo mesmo caminho."""
+    assigner = db.query_one("SELECT id, email FROM users WHERE id = %s AND blocked_at IS NULL", (assigner_id,))
+    if not assigner:
+        return
+    quem = people.profile(uid)["name"]
+    if mailer.configured():
+        _spawn(assigner["email"], _undo_return_mail(title, quem))
+
+    def _push():
+        try:
+            p = push.prefs(assigner["id"])
+            if p["assigned"]:
+                push.send(assigner["id"], push._msg(f"{quem} voltou atrás", f"{title}: a tarefa voltou para {quem}",
+                                                    "/#/equipe", f"devolvida-{task_id}", "devolvida", p["hide_content"],
+                                                    "Devolução desfeita"), ttl=24 * 3600)
+        except Exception:  # noqa: BLE001 — aviso; o desfazer já foi gravado
+            log.exception("push do desfazer da devolução %s falhou", task_id)
+    threading.Thread(target=_push, daemon=True).start()
+
+
 @received.post("/{task_id}/return")
 def return_task(task_id: int, data: ReturnIn, user=Depends(active_user_csrf)):
     """Quem recebeu devolve a tarefa atribuída, com o motivo (até 120). Ela sai
@@ -457,7 +498,7 @@ def return_task(task_id: int, data: ReturnIn, user=Depends(active_user_csrf)):
     uid = user["user_id"]
     before = audit.worklog_snapshot(task_id, uid)
     if not before:
-        raise HTTPException(status_code=404, detail="tarefa não encontrada (pode ter sido excluída); atualize a tela")
+        raise HTTPException(status_code=404, detail="tarefa não encontrada (pode ter sido excluída)")
     if not before["assigned_by"] or before["assigned_by"] == uid:
         raise HTTPException(status_code=400, detail="só dá para devolver uma tarefa que alguém atribuiu a você")
     if before["status"] == "done":
@@ -472,7 +513,7 @@ def return_task(task_id: int, data: ReturnIn, user=Depends(active_user_csrf)):
                               " FROM time_entries WHERE task_id = %s", (task_id,)),
     }
     if not db.execute("DELETE FROM worklog_tasks WHERE id = %s AND user_id = %s AND status <> 'done'", (task_id, uid)):
-        raise HTTPException(status_code=409, detail="a tarefa mudou enquanto você devolvia; atualize a tela")
+        raise HTTPException(status_code=409, detail="a tarefa mudou enquanto você devolvia")
     quem = people.profile(uid)["name"]
     by_name = people.profile(assigner["id"])["name"] if assigner else "quem atribuiu"
     # Lápide comum (*.delete) para o feed/webhook de quem recebeu, com o motivo.
