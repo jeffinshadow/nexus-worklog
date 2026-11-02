@@ -10,18 +10,18 @@ import { editUserTeams, inviteTeamsField, mountTeams } from "./admin-equipes.js"
 const ROLES = [
   ["user", "Usuário", "tem o próprio registro (Hoje, Tarefas, Rotinas) e pode receber tarefas"],
   ["admin", "Admin", "convites, contas, papéis e configurações gerais"],
-  ["assigner", "Manda tarefas", "libera Atribuir na tela Equipe: manda tarefas para quem aceitou receber"],
+  ["assigner", "Manda tarefas", "libera Atribuir na tela Equipe: atribui tarefas para quem aceitou receber"],
   ["viewer", "Vê a equipe", "libera a tela Equipe: vê, sem editar, o registro (quadro, números, PDF, horas e fotos) de quem permitir (cada pessoa libera em Configurações > Conta)"],
 ];
 
 // "Vê a equipe" com a instância em "Visível para quem gerencia": vê todos (sem aceite).
-// "Manda tarefas" com "Todos recebem de quem atribui": manda para todos (sem aceite).
+// "Manda tarefas" com "Todos recebem de quem atribui": atribui a todos (sem aceite).
 const roleDesc = (k, d, me) => roleDescBase(k, d, me) + (me && me.teams_on && (k === "viewer" || k === "assigner")
   ? " (com equipes: só de quem está na mesma equipe; Admin › Equipes)" : "");
 const roleDescBase = (k, d, me) => k === "viewer" && me && me.org && me.org.team_visibility === "managers"
   ? "libera a tela Equipe: vê, sem editar, o registro (quadro, números, PDF, horas e fotos) de todos — nesta instância, visível para quem gerencia (Admin › Para empresas)"
   : k === "assigner" && me && me.org && me.org.assign_receive === "all"
-  ? "libera Atribuir na tela Equipe: manda tarefas para todos com o papel Usuário — nesta instância, todos recebem de quem atribui (Admin › Para empresas)"
+  ? "libera Atribuir na tela Equipe: atribui tarefas para todos com o papel Usuário — nesta instância, todos recebem de quem atribui (Admin › Para empresas)"
   : d;
 
 const phone = () => matchMedia("(max-width: 860px)").matches;
@@ -631,11 +631,11 @@ async function mountOrg(root, me) {
     return radios.map(([, l]) => l);
   };
   const receive = choice("assign_receive", [
-    ["self", "Cada pessoa escolhe", "Padrão. Quem tem o papel “Manda tarefas” só manda para quem aceitar receber, em Configurações > Conta."],
+    ["self", "Cada pessoa escolhe", "Padrão. Quem tem o papel “Manda tarefas” só atribui a quem aceitar receber, em Configurações > Conta."],
     ["all", "Todos recebem de quem atribui", "Todos com o papel Usuário recebem tarefas de quem tem o papel “Manda tarefas”, sem que a pessoa possa desligar. A escolha de cada um fica guardada."],
   ], (v) => v === "all" ? {
     title: "Todos passam a receber tarefas de quem atribui?",
-    text: "Quem tem o papel “Manda tarefas” passa a mandar tarefas para todas as pessoas com o papel Usuário, mesmo quem não aceitou. Na Conta de cada um, a chave fica bloqueada com o motivo, e quem já usa o Nexus vê um aviso no próximo acesso. As escolhas de cada pessoa ficam guardadas.",
+    text: "Quem tem o papel “Manda tarefas” passa a atribuir tarefas para todas as pessoas com o papel Usuário, mesmo quem não aceitou. Na Conta de cada um, a chave fica bloqueada com o motivo, e quem já usa o Nexus vê um aviso no próximo acesso. As escolhas de cada pessoa ficam guardadas.",
     confirm: "Todos recebem",
   } : {
     title: "Voltar para “Cada pessoa escolhe”?",

@@ -239,7 +239,7 @@ def _code_mail(code: str, to_name: str):
 def _received_mail(from_name: str):
     from ..notify import Mail
     m = Mail("Você agora é o admin master do Nexus", f"{from_name} passou para você o papel de admin master",
-             "Como admin master, você é quem pode ver e mandar tarefas para todos, com ou sem equipe, quando ligar os "
+             "Como admin master, você é quem pode ver e atribuir tarefas para todos, com ou sem equipe, quando ligar os "
              "seus papéis “Vê a equipe” e “Manda tarefas” (Admin › Equipes). As suas visualizações dos registros de "
              "outras pessoas ficam no log de admin. Só você pode passar este papel adiante.")
     m.reason, m.settings_tab = "Você recebe este e-mail porque recebeu o papel de admin master do Nexus.", None

@@ -153,7 +153,7 @@ class AssignIn(BaseModel):
 
 
 class ReturnIn(BaseModel):
-    """Quem recebeu devolve a tarefa atribuída, com o porquê (vai para quem mandou)."""
+    """Quem recebeu devolve a tarefa atribuída, com o porquê (vai para quem atribuiu)."""
     reason: str = Field(min_length=1, max_length=120)
 
     @model_validator(mode="after")

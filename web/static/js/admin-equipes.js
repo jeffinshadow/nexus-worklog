@@ -149,7 +149,7 @@ function masterPanel(m, users, me, reload) {
   if (!m.me) {
     return h("section", { class: "panel" }, head,
       h("p", { class: "help" }, "O admin master é ", h("strong", { text: m.master ? m.master.name : "—" }),
-        ". Só ele vê e manda tarefas para todos, com ou sem equipe (quando liga os próprios papéis), e só ele passa esse papel para outro admin."));
+        ". Só ele vê e atribui tarefas para todos, com ou sem equipe (quando liga os próprios papéis), e só ele passa esse papel para outro admin."));
   }
   const toggle = (key, title, desc) => {
     const cb = h("input", { type: "checkbox" });
@@ -171,10 +171,10 @@ function masterPanel(m, users, me, reload) {
   const admins = users.filter((u) => u.id !== me.id && u.roles.includes("admin") && !u.blocked_at && !u.invite_pending);
   const transfer = h("button", { type: "button", class: "btn btn-ghost", onClick: () => transferDialog(m, admins, reload) }, icon("key"), "Transferir o papel de master…");
   return h("section", { class: "panel" }, head,
-    h("p", { class: "help", text: "Você é o admin master desta instância: o único que vê e manda tarefas para todos, com ou sem equipe. Ligue ou desligue quando quiser; desligados, a tela Equipe e o Atribuir somem para você." }),
+    h("p", { class: "help", text: "Você é o admin master desta instância: o único que vê e atribui tarefas para todos, com ou sem equipe. Ligue ou desligue quando quiser; desligados, a tela Equipe e o Atribuir somem para você." }),
     h("div", { class: "role-lines" },
       toggle("viewer", "Vê a equipe", "Ver, sem editar, o registro de quem aceitou (ou, em equipe, pelas opções de Para empresas), de todas as equipes e de quem está sem equipe."),
-      toggle("assigner", "Manda tarefas", "Mandar tarefas para quem aceita receber (ou, em equipe, pelas opções de Para empresas), de todas as equipes e de quem está sem equipe.")),
+      toggle("assigner", "Manda tarefas", "Atribuir tarefas a quem aceita receber (ou, em equipe, pelas opções de Para empresas), de todas as equipes e de quem está sem equipe.")),
     h("p", { class: "dialog-note", text: "O que você abrir do registro de outras pessoas fica no log de admin (o seu Histórico)." }),
     h("div", { class: "row-actions" }, transfer));
 }
@@ -202,7 +202,7 @@ function transferDialog(m, admins, reload) {
   const err = h("p", { class: "error-text", role: "alert" });
   for (const el of [who, pw, code]) el.addEventListener("input", () => markInvalid([el], err, false));
   const step1 = h("div", {},
-    h("p", { class: "help", text: "Quem recebe passa a ser o único que vê e manda tarefas para todos (quando ligar os papéis dele) e o único que pode passar o papel adiante. Você continua admin." }),
+    h("p", { class: "help", text: "Quem recebe passa a ser o único que vê e atribui tarefas para todos (quando ligar os papéis dele) e o único que pode passar o papel adiante. Você continua admin." }),
     field("Para quem (outro admin)", who), field("Sua senha", pw));
   const sentTo = h("p", { class: "help" });
   const step2 = h("div", { hidden: true }, sentTo, field("Código de 6 dígitos", code),
@@ -279,7 +279,7 @@ export async function editUserTeams(u, onChanged) {
   }
   const dlg = modal(h("h2", { text: `Equipes de ${who}` }),
     teams.length
-      ? h("p", { class: "dialog-note", text: "Pode estar em várias. Marcou ou desmarcou, já vale: quem vê a equipe ou manda tarefas alcança esta pessoa só por uma equipe em comum." })
+      ? h("p", { class: "dialog-note", text: "Pode estar em várias. Marcou ou desmarcou, já vale: quem vê a equipe ou atribui tarefas alcança esta pessoa só por uma equipe em comum." })
       : h("p", { text: "Nenhuma equipe cadastrada ainda. Crie em Admin › Equipes." }),
     h("div", { class: "role-lines" }, ...boxes.map(([, l]) => l)),
     h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-text", text: "Fechar", onClick: () => dlg.close() })));

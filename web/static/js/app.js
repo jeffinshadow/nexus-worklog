@@ -39,7 +39,7 @@ const VIEWS = {
   mes: { title: "Meu mês", need: "user", eyebrow: "como foi o mês", mount: (el, ctx) => mes.mount(el, ctx) },
   historico: { title: "Histórico", eyebrow: "o que mudou", mount: (el) => history.mount(el) },
   config: { title: "Configurações", mount: (el, ctx) => settings.mount(el, ctx) },
-  // Equipe: o painel (quem acompanha) e Atribuir (quem manda tarefas), numa tela só.
+  // Equipe: o painel (quem acompanha) e Atribuir (quem atribui tarefas), numa tela só.
   equipe: { title: "Equipe", need: ["viewer", "assigner"], mount: (el, ctx) => equipe.mount(el, ctx) },
   admin: { title: "Admin", need: "admin", eyebrow: "contas e papéis", mount: (el, ctx) => admin.mount(el, ctx) },
   mais: { title: "Mais", mount: (el) => mountMore(el) },
@@ -273,7 +273,7 @@ function showHelp(focus) {
       ...(has("viewer") ? [["Equipe", "Do papel “Vê a equipe”. Um painel para coordenar, não para comparar: os números da equipe somados (rotinas em dia, tarefas concluídas, horas, aguardando), o que precisa de atenção, o tempo por projeto e as pessoas em ordem alfabética. Tocar numa pessoa abre o mês e o quadro dela, só para ver. Entra só quem permitiu (cada pessoa decide em Configurações > Conta). No topo: Horas da equipe (CSV) e PDF."]] : []),
       ...(has("assigner") ? [["Atribuir (na Equipe)", "Do papel “Manda tarefas”. “Atribuir tarefa”, no alto da tela Equipe, manda uma tarefa para quem aceitou receber. Logo abaixo ficam as Tarefas que atribuí: enquanto ela está a fazer, você ainda altera ou cancela; depois, é da pessoa. Quem recebeu pode devolver com o motivo: aí você atribui de novo (a ela ou a outra pessoa) ou encerra."]] : []),
       ...(has("admin") ? [["Admin", "Convites e pedidos de convite, contas (senha, bloquear, excluir), papéis, configurações gerais e identidade visual."]] : []),
-      ["Configurações", user ? "A sua conta (dias úteis, projeto padrão, quem vê e quem manda tarefas), avisos, calendário e IA." : "A sua conta, e IA e API."],
+      ["Configurações", user ? "A sua conta (dias úteis, projeto padrão, quem vê e quem atribui tarefas), avisos, calendário e IA." : "A sua conta, e IA e API."],
     ])),
     user ? sec("add", "Registro rápido (no Hoje)",
       h("p", { class: "help", text: "Escreva o que fez e aperte Enter. Marcadores opcionais no fim, em qualquer ordem:" }),

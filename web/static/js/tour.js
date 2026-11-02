@@ -27,27 +27,27 @@ const VIS_TEXT = (me) => me.teams_on && (me.teams || []).length
   ? `Nesta instância do Nexus, quem gerencia vê as tarefas de quem está na mesma equipe (definido pela administração). Você está em: ${teamsOf(me)}. Quem tem o papel “Vê a equipe” nessas equipes vê, sem editar, o seu quadro, os seus números, relatórios, horas e fotos.`
   : "Nesta instância do Nexus, quem gerencia a equipe vê as tarefas de todos (definido pela administração). Quem tem o papel “Vê a equipe” vê, sem editar, o seu quadro, os seus números, relatórios, horas e fotos.";
 const assignText = (me) => me.teams_on && (me.teams || []).length
-  ? `Nesta instância do Nexus, quem está na mesma equipe recebe tarefas de quem atribui (definido pela administração). Você está em: ${teamsOf(me)}. Quem tem o papel “Manda tarefas” nessas equipes pode mandar tarefas para você; cada uma chega por e-mail e aparece em Tarefas com “de” e o nome de quem mandou.`
+  ? `Nesta instância do Nexus, quem está na mesma equipe recebe tarefas de quem atribui (definido pela administração). Você está em: ${teamsOf(me)}. Quem tem o papel “Manda tarefas” nessas equipes pode atribuir tarefas para você; cada uma chega por e-mail e aparece em Tarefas com “de” e o nome de quem mandou.`
   : ASSIGN_TEXT;
 
-const ASSIGN_TEXT = "Nesta instância do Nexus, todos recebem tarefas de quem atribui (definido pela administração). Quem tem o papel “Manda tarefas” pode mandar tarefas para você; cada uma chega por e-mail e aparece em Tarefas com “de” e o nome de quem mandou.";
+const ASSIGN_TEXT = "Nesta instância do Nexus, todos recebem tarefas de quem atribui (definido pela administração). Quem tem o papel “Manda tarefas” pode atribuir tarefas para você; cada uma chega por e-mail e aparece em Tarefas com “de” e o nome de quem mandou.";
 const ASSIGN_OWN = "A tarefa recebida é sua: você edita, conclui ou devolve com o motivo.";
 // Aviso único de papel ganho ou retirado pela administração (o menu já mudou;
 // isto explica o porquê). Só "Entendi" grava; Esc mostra de novo depois.
 const ROLE_INFO = {
   user: ["Usuário", "Você tem o próprio registro: Hoje, Tarefas, Rotinas e relatórios."],
   admin: ["Admin", "Você administra o Nexus: convites, contas, papéis e configurações. Fica em Admin, no menu."],
-  assigner: ["Manda tarefas", "Você pode mandar tarefas para quem aceitou receber e acompanhar o que mandou."],
+  assigner: ["Manda tarefas", "Você pode atribuir tarefas a quem aceitou receber e acompanhar o que atribuiu."],
   viewer: ["Vê a equipe", "Você vê, sem editar, o registro da equipe na tela Equipe, no menu."],
-  master: ["Admin master", "Você é o admin master: com “Vê a equipe” e “Manda tarefas” ligados (Admin › Equipes), vê e manda tarefas para todos, com ou sem equipe. O que você abrir do registro dos outros fica no log de admin, e só você passa este papel adiante."],
+  master: ["Admin master", "Você é o admin master: com “Vê a equipe” e “Manda tarefas” ligados (Admin › Equipes), vê e atribui tarefas para todos, com ou sem equipe. O que você abrir do registro dos outros fica no log de admin, e só você passa este papel adiante."],
 };
 // Com Para empresas ligado, "Manda tarefas" e "Vê a equipe" valem para todos (sem aceite).
 function roleText(k, me) {
   const org = me.org || {};
   const inTeams = me.teams_on && !me.is_master;
-  if (inTeams && k === "assigner") return (me.teams || []).length ? `Você pode mandar tarefas para quem está nas suas equipes (${teamsOf(me)}) e acompanhar o que mandou, na tela Equipe.` : "Você pode mandar tarefas para quem está nas suas equipes. Hoje você não está em nenhuma: peça à administração para incluir você.";
+  if (inTeams && k === "assigner") return (me.teams || []).length ? `Você pode atribuir tarefas para quem está nas suas equipes (${teamsOf(me)}) e acompanhar o que atribuiu, na tela Equipe.` : "Você pode atribuir tarefas para quem está nas suas equipes. Hoje você não está em nenhuma: peça à administração para incluir você.";
   if (inTeams && k === "viewer") return (me.teams || []).length ? `Você vê, sem editar, o registro de quem está nas suas equipes (${teamsOf(me)}) na tela Equipe, no menu.` : "Você vê, sem editar, o registro de quem está nas suas equipes. Hoje você não está em nenhuma: peça à administração para incluir você.";
-  if (k === "assigner" && org.assign_receive === "all") return "Você pode mandar tarefas para todos da equipe (nesta instância, todos recebem de quem atribui) e acompanhar o que mandou, na tela Equipe.";
+  if (k === "assigner" && org.assign_receive === "all") return "Você pode atribuir tarefas para todos da equipe (nesta instância, todos recebem de quem atribui) e acompanhar o que atribuiu, na tela Equipe.";
   if (k === "viewer" && org.team_visibility === "managers") return "Você vê, sem editar, o registro de toda a equipe na tela Equipe, no menu (nesta instância, visível para quem gerencia).";
   return ROLE_INFO[k][1];
 }

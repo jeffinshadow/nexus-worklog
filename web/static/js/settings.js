@@ -93,7 +93,7 @@ export async function mount(root, ctx) {
 
   // Cada seção se carrega e se redesenha sozinha; uma que falhar não derruba as outras.
   const builders = {
-    // Quem é (nome, foto, tema), o que muda o dia (dias úteis, projeto padrão), quem vê e manda tarefas, o resto.
+    // Quem é (nome, foto, tema), o que muda o dia (dias úteis, projeto padrão), quem vê e atribui tarefas, o resto.
     conta: async (again) => isUser
       ? [profilePanel(ctx.me, again), themePanel(ctx.me), workDays(ctx.me), defaultProjectPanel(ctx.me, (r) => meChanged(ctx.me, r)),
         privacyPanel(ctx.me), assistantPanel(ctx.me), ticketsPanel(ctx.me), shortcutsPanel(), account(ctx.me),
@@ -883,7 +883,7 @@ function aiHelp() {
 
 // ------------------------------------------------------- tarefas atribuídas --
 
-// Os dois aceites num painel só: sem eles, ninguém manda tarefas nem vê o registro.
+// Os dois aceites num painel só: sem eles, ninguém atribui tarefas nem vê o registro.
 function privacyPanel(me) {
   const who = api.get("/me/visibility").catch(() => null); // uma leitura para as duas partes
   return h("section", { class: "panel" },
@@ -904,11 +904,11 @@ function teamsLine(me) {
   const mine = me.teams || [];
   return [h("h3", { class: "sum-h", text: "Suas equipes" }),
     h("p", { class: "help account-teams-line" }, mine.length
-      ? [h("strong", { text: mine.join(", ") }), " (definido pela administração). Só quem está numa equipe com você — e o admin master, se tiver os papéis ativos — pode ver o seu registro ou mandar tarefas para você."]
-      : ["Você ainda não está em nenhuma equipe (quem define é a administração). Assim, só o admin master pode ver o seu registro ou mandar tarefas para você, e só se você permitir aqui. As opções da empresa não valem para você: tudo depende das suas escolhas abaixo."])];
+      ? [h("strong", { text: mine.join(", ") }), " (definido pela administração). Só quem está numa equipe com você — e o admin master, se tiver os papéis ativos — pode ver o seu registro ou atribuir tarefas para você."]
+      : ["Você ainda não está em nenhuma equipe (quem define é a administração). Assim, só o admin master pode ver o seu registro ou atribuir tarefas para você, e só se você permitir aqui. As opções da empresa não valem para você: tudo depende das suas escolhas abaixo."])];
 }
 
-// Consentimento: sem ele, ninguém consegue mandar tarefas para esta pessoa.
+// Consentimento: sem ele, ninguém consegue atribuir tarefas para esta pessoa.
 // "Todos recebem de quem atribui" (Admin › Para empresas): a chave fica
 // bloqueada, à vista, com o motivo; a escolha fica guardada para quando voltar.
 function assignments(me, who) {
@@ -919,9 +919,9 @@ function assignments(me, who) {
   const since = h("p", { class: "dialog-note" });
   const sync = () => {
     since.textContent = managed
-      ? "Cada tarefa recebida chega por e-mail e aparece em Tarefas com “de” e o nome de quem mandou."
+      ? "Cada tarefa recebida chega por e-mail e aparece em Tarefas com “de” e o nome de quem atribuiu."
       : me.accepts_assignments_at
-      ? `Aceito desde ${dateTime(me.accepts_assignments_at)}. Cada tarefa recebida chega por e-mail e aparece em Tarefas com “de” e o nome de quem mandou.`
+      ? `Aceito desde ${dateTime(me.accepts_assignments_at)}. Cada tarefa recebida chega por e-mail e aparece em Tarefas com “de” e o nome de quem atribuiu.`
       : "Desligado: ninguém pode atribuir tarefas a você.";
   };
   sync();
@@ -938,17 +938,17 @@ function assignments(me, who) {
     (me.teams_on ? "Nesta instância do Nexus, quem está numa equipe recebe tarefas de quem atribui nela (definido pela administração). "
       : "Nesta instância do Nexus, todos recebem tarefas de quem atribui (definido pela administração). ") +
     `A sua escolha (${me.accepts_assignments_at ? "permitir" : "não permitir"}) fica guardada e volta a valer se isso mudar${me.teams_on ? " ou se você sair das equipes" : ""}.`) : null;
-  // Transparência: quem pode mandar tarefas para você agora (o servidor aplica a regra).
+  // Transparência: quem pode atribuir tarefas para você agora (o servidor aplica a regra).
   const now = h("p", { class: "dialog-note" });
   if (who) who.then((list) => {
     if (!list) { now.remove(); return; }
     const names = list.filter((p) => p.assigns).map((p) => p.name);
-    now.textContent = `Quem pode mandar tarefas para você agora: ${names.length ? names.join(", ") : "ninguém"}.`;
+    now.textContent = `Quem pode atribuir tarefas para você agora: ${names.length ? names.join(", ") : "ninguém"}.`;
   });
   return [
-    h("p", { class: "help", text: (managed ? "Quem tem o papel “Manda tarefas” (tela Equipe) pode mandar tarefas para você."
-      : "Quem tem o papel “Manda tarefas” (tela Equipe) pode mandar tarefas para você, mas só se você permitir aqui.") +
-      " A tarefa recebida é sua: você edita, conclui, exclui ou devolve com o motivo. Quem mandou só corrige ou cancela enquanto ela está a fazer e você não registrou nada nela." }),
+    h("p", { class: "help", text: (managed ? "Quem tem o papel “Manda tarefas” (tela Equipe) pode atribuir tarefas para você."
+      : "Quem tem o papel “Manda tarefas” (tela Equipe) pode atribuir tarefas para você, mas só se você permitir aqui.") +
+      " A tarefa recebida é sua: você edita, conclui, exclui ou devolve com o motivo. Quem atribuiu só corrige ou cancela enquanto ela está a fazer e você não registrou nada nela." }),
     h("label", { class: "check-line" + (managed ? " is-locked" : "") }, cb, h("span", { text: "Permitir que me atribuam tarefas" })),
     lock, since, now];
 }

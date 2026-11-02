@@ -629,7 +629,7 @@ def _deliveries(pdf: _Report, data: dict) -> None:
     cols = [("dia", 14, "L"), ("tarefa", pdf.cw - 14 - wp - 16 - 14, "L")]
     if show_proj:
         cols.append(("projeto", wp, "L"))
-    cols += [("tempo", 16, "R"), ("itens", 14, "R")]
+    cols += [("tempo", 16, "R"), ("checklist", 14, "R")]
     _table_head(pdf, cols)
     tw = cols[1][1] - 5
     for r in rows:
@@ -711,7 +711,7 @@ def _open(pdf: _Report, data: dict) -> None:
             pdf.dot(x - 2.4, y + 1.5, 1.3, WARN)
         pdf.font("sansm" if r["priority"] == 1 else "sans", 8.6, INK if r["priority"] != 3 else INK2)
         tw = cols[1][1] - 4
-        tx = r["title"] + (f" — {r['check_done']}/{r['check_total']} itens" if r["check_total"] else "")
+        tx = r["title"] + (f" — {r['check_done']}/{r['check_total']} do checklist" if r["check_total"] else "")
         pdf.text_at(x, y, tw, 4.2, pdf.fit(tx, tw))
         x += cols[1][1]
         if show_proj:
