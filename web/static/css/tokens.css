@@ -57,13 +57,10 @@
   --elev-3: 0 28px 64px -20px color-mix(in srgb, var(--shadow) 80%, transparent);
 
   /* Movimento (Material 3): curvas padrão e enfática, e três durações. Entrar
-     usa a desaceleração; sair, a aceleração. */
+     usa a desaceleração enfática. */
   --ease-standard: cubic-bezier(.2, 0, 0, 1);
-  --ease-standard-decel: cubic-bezier(0, 0, 0, 1);
-  --ease-standard-accel: cubic-bezier(.3, 0, 1, 1);
   --ease-emphasized: cubic-bezier(.2, 0, 0, 1);
   --ease-emphasized-decel: cubic-bezier(.05, .7, .1, 1);
-  --ease-emphasized-accel: cubic-bezier(.3, 0, .8, .15);
   --dur-short: 150ms;   /* camadas de estado, chips, cores */
   --dur-medium: 250ms;  /* menus, avisos, diálogos */
   --dur-long: 400ms;    /* painéis e folhas que entram na tela */
@@ -79,15 +76,12 @@
   --surface: #131314;
   --surface-deep: #0C0D0E;          /* surface-container-lowest: atrás de tudo, código */
   --surface-side: #161718;          /* surface-container-low: menu lateral */
-  --surface-fade: #171819;
   --surface-container: #1A1A1C;     /* cartões e painéis */
   --surface-container-high: #222324;
   --surface-container-highest: #2C2C2D;
   --surface-card: #131314;          /* itens dentro de um painel (cartão de tarefa) */
   --surface-pop: #222324;           /* menus, diálogos (no escuro sobem um degrau) */
-  --surface-toast: #2C2C2D;
   --surface-raise: #1D1D1F;
-  --surface-accent: #262F3C;        /* = secondary-container */
   --surface-assist: #1B2029;        /* a fala do assistente: contêiner com um toque de azul */
   --on-surface: #F0EDEE;
   --on-surface-variant: #ACABAD;
@@ -112,15 +106,12 @@
   --on-tertiary-container: #E9DDFF;
   --inverse-surface: #E4E2E3;       /* aviso (snackbar) e dicas */
   --inverse-on-surface: #303031;
-  --inverse-primary: #00569A;
   --snackbar-bg: #2C2C2D;          /* aviso no escuro: contêiner mais alto (como no desktop), não placa clara */
   --snackbar-fg: #F0EDEE;
   --snackbar-action: #8AB8F0;
   --scrim: rgba(0, 0, 0, .55);      /* véu atrás de diálogos e folhas */
   --glow-shadow: 0 0 14px 1px color-mix(in srgb, #5294E2 45%, transparent);  /* brilho do horizonte do login */
   --chart-muted: #52719C;           /* secundário: barras secundárias dos gráficos (≥ 3:1 sobre --surface-tile) */
-  --accent-purple: #B98EFF;         /* terciário */
-  --accent-cyan: #62C7E0;
 
   /* Status: pastéis do Google levemente harmonizados, cada um com o contêiner sólido. */
   --success: #78CA9F;
@@ -175,15 +166,12 @@
   --surface: #FBFAFF;
   --surface-deep: #E8E8ED;
   --surface-side: #F5F4FA;
-  --surface-fade: #F0F0F5;
   --surface-container: #F0F0F5;
   --surface-container-high: #E9E9EE;
   --surface-container-highest: #E0E1E6;
   --surface-card: #FFFFFF;
   --surface-pop: #FFFFFF;
-  --surface-toast: #FFFFFF;
   --surface-raise: #FFFFFF;
-  --surface-accent: #D6E3FB;
   --surface-assist: #EDF1FB;
   --on-surface: #191C20;
   --on-surface-variant: #43474E;
@@ -205,15 +193,12 @@
   --on-tertiary-container: #5B3A99;
   --inverse-surface: #2E3035;
   --inverse-on-surface: #F0F0F5;
-  --inverse-primary: #8AB8F0;
   --snackbar-bg: #2E3035;          /* aviso no claro: superfície invertida (snackbar do M3) */
   --snackbar-fg: #F0F0F5;
   --snackbar-action: #8AB8F0;
   --scrim: rgba(0, 0, 0, .32);
   --glow-shadow: none;             /* no claro o brilho vira mancha cinza */
   --chart-muted: #7B94B6;
-  --accent-purple: #7B51BF;
-  --accent-cyan: #007286;
   --success: #00774F;
   --success-container: #C4EED3;
   --on-success-container: #00522F;
@@ -258,15 +243,12 @@
   --surface: #FBFAFF;
   --surface-deep: #E8E8ED;
   --surface-side: #F5F4FA;
-  --surface-fade: #F0F0F5;
   --surface-container: #F0F0F5;
   --surface-container-high: #E9E9EE;
   --surface-container-highest: #E0E1E6;
   --surface-card: #FFFFFF;
   --surface-pop: #FFFFFF;
-  --surface-toast: #FFFFFF;
   --surface-raise: #FFFFFF;
-  --surface-accent: #D6E3FB;
   --surface-assist: #EDF1FB;
   --on-surface: #191C20;
   --on-surface-variant: #43474E;
@@ -288,15 +270,12 @@
   --on-tertiary-container: #5B3A99;
   --inverse-surface: #2E3035;
   --inverse-on-surface: #F0F0F5;
-  --inverse-primary: #8AB8F0;
   --snackbar-bg: #2E3035;          /* aviso no claro: superfície invertida (snackbar do M3) */
   --snackbar-fg: #F0F0F5;
   --snackbar-action: #8AB8F0;
   --scrim: rgba(0, 0, 0, .32);
   --glow-shadow: none;             /* no claro o brilho vira mancha cinza */
   --chart-muted: #7B94B6;
-  --accent-purple: #7B51BF;
-  --accent-cyan: #007286;
   --success: #00774F;
   --success-container: #C4EED3;
   --on-success-container: #00522F;
