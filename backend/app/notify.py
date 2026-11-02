@@ -286,9 +286,9 @@ def run_once(now: datetime, send=None) -> list[tuple[int, str, str]]:
 
 async def scheduler() -> None:
     """Loop do agendador (uma passada por minuto), dentro do backend: os e-mails
-    (com SMTP configurado), as notificações dos aparelhos (app/push.py) e os
-    webhooks (app/webhooks.py)."""
-    from . import push, webhooks
+    (com SMTP configurado), as notificações dos aparelhos (app/push.py), os
+    avisos de agenda (app/agenda.py) e os webhooks (app/webhooks.py)."""
+    from . import agenda, push, webhooks
     tz = ZoneInfo(config.APP_TZ)
     log.info("agendador ativo: e-mail %s, notificações nos aparelhos", config.SMTP_HOST or "desligado")
     while True:
@@ -302,6 +302,10 @@ async def scheduler() -> None:
             await asyncio.to_thread(push.run_once, now)
         except Exception:  # noqa: BLE001
             log.exception("agendador de notificações falhou nesta passada")
+        try:  # avisos de agenda (followup.due...) antes da entrega: saem nos webhooks
+            await asyncio.to_thread(agenda.run_once, now)
+        except Exception:  # noqa: BLE001
+            log.exception("avisos de agenda falharam nesta passada")
         try:
             await asyncio.to_thread(webhooks.run_once)
         except Exception:  # noqa: BLE001

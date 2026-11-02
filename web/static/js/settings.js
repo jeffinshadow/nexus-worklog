@@ -521,14 +521,23 @@ function showFeed(res) {
 
 // ----------------------------------------------------------- chaves de API --
 
+// Escopo da chave: [opção no formulário, na lista, o que explica embaixo].
+const SCOPES = {
+  write: ["Ler e registrar (recomendado para IA)", "ler e registrar", "Faz tudo o que você faz nas suas tarefas, rotinas e projetos, inclusive editar e excluir (tudo fica no Histórico, com desfazer)."],
+  append: ["Só registrar (não altera nem exclui)", "só registrar", "Cria tarefas, anota, adiciona item de checklist, aponta tempo, usa o cronômetro, marca rotinas e conclui. Não edita, não desmarca e não exclui nada: bom para uma IA que só anota o que você contar ou para um alerta automático."],
+  read: ["Só leitura", "só leitura", "Só consulta (resumos, tarefas, histórico); não muda nada."],
+};
+
 const VALIDADES = [["30", "30 dias"], ["90", "90 dias"], ["180", "180 dias"], ["365", "1 ano"], ["", "sem validade"]];
 
 async function tokens(rerender) {
   const list = await api.get("/tokens");
   const name = h("input", { type: "text", maxlength: "60", placeholder: "Ex.: Claude do notebook", required: "required" });
-  const scope = h("select", {},
-    h("option", { value: "write", text: "Ler e registrar (recomendado para IA)" }),
-    h("option", { value: "read", text: "Só leitura" }));
+  const scope = h("select", {}, ...Object.entries(SCOPES).map(([v, [t]]) => h("option", { value: v, text: t })));
+  const scopeNote = h("p", { class: "dialog-note field-note", "aria-live": "polite" });
+  const syncScope = () => { scopeNote.textContent = SCOPES[scope.value][2]; };
+  scope.addEventListener("change", syncScope);
+  syncScope();
   const expires = h("select", {}, ...VALIDADES.map(([v, t]) => h("option", { value: v, text: t })));
   expires.value = "90";
   const err = h("p", { class: "error-text" });
@@ -538,7 +547,7 @@ async function tokens(rerender) {
     h("div", { class: "field-row" },
       field("O que a chave pode fazer", scope),
       field("Validade", expires)),
-    err, create);
+    scopeNote, err, create);
   form.addEventListener("submit", busy(async (ev) => {
     ev.preventDefault();
     err.textContent = "";
@@ -558,7 +567,7 @@ async function tokens(rerender) {
 
   const rowOf = (t) => {
     const meta = [
-      `${t.prefix}…`, t.scope === "write" ? "ler e registrar" : "só leitura",
+      `${t.prefix}…`, (SCOPES[t.scope] || SCOPES.read)[1],
       t.expires_at ? `vence ${dateTime(t.expires_at).slice(0, 5)}` : "sem validade",
       t.last_used_at ? `usada ${dateTime(t.last_used_at)}` : "nunca usada",
     ];
@@ -577,6 +586,11 @@ async function tokens(rerender) {
       actions.append(h("button", { type: "button", class: "btn btn-ghost btn-sm", text: "Renovar", "aria-label": `Renovar a chave ${t.name}`,
         onClick: () => renewToken(t, rerender) }));
     }
+    // "O que esta chave fez": o Histórico só com o que ela fez (desfazer continua item a item).
+    const n = t.actions_7d || 0;
+    actions.prepend(h("a", { class: "btn btn-ghost btn-sm", href: `#/historico?chave=${t.id}`, text: "O que fez",
+      "aria-label": `O que a chave ${t.name} fez (${n} ${n === 1 ? "ação" : "ações"} nos últimos 7 dias)` }));
+    if (n) meta.push(`${n} ${n === 1 ? "ação" : "ações"} em 7 dias`);
     return h("div", { class: "token-row" + (t.active ? "" : " inactive") },
       h("span", { class: "token-name", text: t.name }), actions, h("span", { class: "token-meta", text: meta.join(" · ") }));
   };
@@ -786,10 +800,13 @@ const WH_EVENTS = [
   ["time.*", "Tempo apontado"],
   ["timer.*", "Cronômetro"],
   ["photo.*", "Fotos"],
-  ["recurring.*", "Rotinas", "marcar, criar, editar, pausar"],
+  ["recurring.*", "Rotinas", "marcar, criar, editar, pausar e a hora da rotina"],
+  ["recurring.due", "Hora da rotina", "o horário chegou e ela ainda não foi marcada (uma vez por dia)"],
+  ["followup.*", "Dia de cobrar", "uma tarefa aguardando chegou no dia de cobrar (de manhã)"],
   ["project.*", "Projetos"],
   ["objective.*", "Objetivos"],
-  ["renewal.*", "Vencimentos"],
+  ["renewal.*", "Vencimentos", "cadastrar, editar, renovar e o aviso"],
+  ["renewal.warning", "Vencimento no aviso", "entrou na antecedência que você definiu (de manhã, uma vez)"],
 ];
 const WH_NAME = Object.fromEntries(WH_EVENTS.map(([k, l]) => [k, l]));
 const eventsLabel = (evs) => evs.map((e) => WH_NAME[e] || e).join(", ");

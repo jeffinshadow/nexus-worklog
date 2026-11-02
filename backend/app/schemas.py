@@ -248,7 +248,7 @@ class InviteRequestIn(BaseModel):
 
 class TokenIn(BaseModel):
     name: str = Field(min_length=1, max_length=60)
-    scope: Literal["read", "write"] = "write"
+    scope: Literal["read", "write", "append"] = "write"  # append = só registrar (deps.APPEND_ROUTES)
     # Validade em dias; None = sem validade (revogue quando não usar mais).
     expires_in_days: Optional[int] = Field(default=90, ge=1, le=365)
 

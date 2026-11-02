@@ -3,6 +3,7 @@ import { h, icon, clear, field, markInvalid } from "./dom.js";
 import { codeBox, confirmDialog, errorToast, modal, navBadge, toast, busy, warnBox, popupMenu, sheet, refocusBy } from "./ui.js";
 import { applyBranding } from "./branding.js";
 import { avatar } from "./profile.js";
+import { healthPanel } from "./saude.js";
 
 const ROLES = [
   ["user", "Usuário", "tem o próprio registro (Hoje, Tarefas, Rotinas) e pode receber tarefas"],
@@ -519,7 +520,7 @@ async function mountGeneral(root, me) {
     }
   }));
   root.append(h("div", { class: "settings-grid" }, h("section", { class: "panel" },
-    h("div", { class: "panel-head" }, h("h2", { text: "Geral" })), form)));
+    h("div", { class: "panel-head" }, h("h2", { text: "Geral" })), form), await healthPanel()));
 }
 
 

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from .. import audit, db, push
 from ..config import config
-from ..deps import active_user, active_user_csrf
+from ..deps import active_user, active_user_csrf, deny_append
 from ..schemas import OrderIn, PauseIn, RecurringIn, RecurringUpdate, SnoozeIn, ToggleIn
 from ..services import app_today, app_tz, is_pending, recurring_vigente, rotinas, work_mask
 from .board import check_board_day
@@ -228,6 +228,8 @@ def toggle(task_id: int, data: ToggleIn, user=Depends(active_user_csrf)):
     was, old_note = prev is not None, (prev or {}).get("note")
     note = " ".join((data.note or "").split()) or None
     keep = "note" not in data.model_fields_set  # sem o campo: mantém; vazio ou null: apaga
+    # Chave "só registrar": marca, mas não desmarca nem troca a evidência que já havia.
+    deny_append(user, not data.done or (was and not keep and note != old_note))
     if data.done and not (note or (keep and old_note)) and db.query_one(
             "SELECT 1 FROM recurring_tasks WHERE id = %s AND require_note", (task_id,)):
         raise HTTPException(status_code=400, detail="esta rotina exige a evidência do que foi conferido")

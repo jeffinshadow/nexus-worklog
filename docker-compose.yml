@@ -28,6 +28,10 @@ services:
     restart: unless-stopped
     # Todas as variáveis vêm do .env; os padrões ficam num lugar só (app/config.py).
     env_file: .env
+    # Versão e último backup gravados pelo deploy.sh (Saúde do Nexus, Admin > Geral).
+    # Só leitura e só esta pasta: o backend nunca vê os dumps em backups/.
+    volumes:
+      - ./estado:/app/estado:ro
     # Teto de memória: se um relatório enorme estourar, cai o backend (que
     # reinicia), não o Postgres.
     mem_limit: 512m
