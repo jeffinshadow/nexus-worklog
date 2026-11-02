@@ -1,4 +1,4 @@
-"""Modelos de tarefa: procedimentos que se repetem (onboarding de usuário, troca
+"""OBSOLETO (sem interface desde a 2.0; sai na 3.0): modelos de tarefa: procedimentos que se repetem (onboarding de usuário, troca
 de equipamento, servidor novo) com título, prioridade, projeto e checklist.
 Usar um modelo cria uma tarefa comum, com os itens do checklist.
 """
@@ -31,11 +31,13 @@ def _name_free(uid: int, name: str, except_id: int | None = None) -> None:
 
 @router.get("")
 def list_templates(user=Depends(active_user)):
+    """OBSOLETO (sai na 3.0): modelos de tarefa."""
     return db.query_all(f"SELECT {_COLS} FROM task_templates WHERE user_id = %s ORDER BY lower(name)", (user["user_id"],))
 
 
 @router.post("", status_code=201)
 def create_template(data: TemplateIn, user=Depends(active_user_csrf)):
+    """OBSOLETO (sai na 3.0): modelos de tarefa."""
     uid = user["user_id"]
     if db.query_one("SELECT count(*)::int AS n FROM task_templates WHERE user_id = %s", (uid,))["n"] >= MAX_TEMPLATES:
         raise HTTPException(status_code=400, detail=f"até {MAX_TEMPLATES} modelos")
@@ -53,6 +55,7 @@ def create_template(data: TemplateIn, user=Depends(active_user_csrf)):
 
 @router.put("/{tid}")
 def update_template(tid: int, data: TemplateIn, user=Depends(active_user_csrf)):
+    """OBSOLETO (sai na 3.0): modelos de tarefa."""
     uid = user["user_id"]
     before = _own(uid, tid)
     _check_project(uid, data.project_id)
@@ -70,6 +73,7 @@ def update_template(tid: int, data: TemplateIn, user=Depends(active_user_csrf)):
 
 @router.delete("/{tid}")
 def delete_template(tid: int, user=Depends(active_user_csrf)):
+    """OBSOLETO (sai na 3.0): modelos de tarefa."""
     before = _own(user["user_id"], tid)
     db.execute("DELETE FROM task_templates WHERE id = %s AND user_id = %s", (tid, user["user_id"]))
     audit.record(user, "template.delete", "template", tid, before={"name": before["name"]})
@@ -78,7 +82,7 @@ def delete_template(tid: int, user=Depends(active_user_csrf)):
 
 @router.post("/{tid}/use", status_code=201)
 def use_template(tid: int, user=Depends(active_user_csrf)):
-    """Cria a tarefa do modelo (e o checklist). Modelo sem projeto (ou com um
+    """OBSOLETO (sai na 3.0). Cria a tarefa do modelo (e o checklist). Modelo sem projeto (ou com um
     arquivado/excluído): a tarefa vai para o projeto padrão, se houver."""
     t = _own(user["user_id"], tid)
     project = t["project_id"]

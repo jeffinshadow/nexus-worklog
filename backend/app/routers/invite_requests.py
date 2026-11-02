@@ -5,24 +5,69 @@ convida (o convite por link de sempre) ou recusa.
 
 Público e sem revelar nada: a resposta é a mesma com conta existente, pedido
 já aberto ou e-mail novo; limites por IP e por e-mail e um campo-armadilha
-para robôs. Quem pediu recebe a confirmação de que o pedido chegou; recusado,
+para robôs (e um tempo mínimo de preenchimento, de 3 s a 1 h, com carimbo assinado pelo servidor, sem
+terceiros). Quem pediu recebe a confirmação de que o pedido chegou; recusado,
 nada é enviado.
 """
+import hashlib
+import hmac
 import logging
 import threading
+import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from .. import audit, db, mailer, people, push
+from .. import audit, db, mailer, push
+from ..config import config
 from ..deps import client_ip, require_admin, require_admin_csrf
-from ..schemas import InviteIn, InviteRequestIn
+from ..schemas import InviteChoiceIn, InviteIn, InviteRequestIn
 from ..security import invite_req_email_limiter, invite_req_limiter
 from .admin import invite_user
+from .auth import invite_request_open
 
 log = logging.getLogger("uvicorn.error")
 router = APIRouter(tags=["invite-requests"])
 
-SOURCES = {"colega": "indicação de colega", "site": "site da ShadowTec", "github": "GitHub", "outro": "outro"}
+# Origens genéricas (sql/037): servem a qualquer instância. "site" e "github"
+# só aparecem em pedidos antigos (saem sozinhos em até 180 dias).
+SOURCES = {"colega": "indicação de colega", "empresa": "pela empresa ou equipe", "internet": "internet ou redes sociais",
+           "outro": "outro", "site": "site", "github": "GitHub"}
+
+
+# Tempo mínimo e máximo entre mostrar o formulário e enviar (humano leva mais de 3 s para preencher e
+# enviar; robô manda na hora, ou com um carimbo velho guardado).
+FILL_MIN, FILL_MAX = 3, 3600
+
+
+def _sign(ts: int) -> str:
+    return hmac.new(config.SECRET_KEY.encode(), f"invite-form:{ts}".encode(), hashlib.sha256).hexdigest()[:32]
+
+
+def form_token(ts: int | None = None) -> str:
+    ts = int(time.time()) if ts is None else ts
+    return f"{ts}.{_sign(ts)}"
+
+
+def _form_ok(token: str | None) -> bool:
+    try:
+        ts_s, sig = (token or "").split(".", 1)
+        ts = int(ts_s)
+    except ValueError:
+        return False
+    return hmac.compare_digest(sig, _sign(ts)) and FILL_MIN <= time.time() - ts <= FILL_MAX
+
+
+form_ok = _form_ok  # os testes trocam este nome
+
+
+@router.get("/api/auth/invite-request/form")
+def request_form():
+    """Carimbo de quando o formulário foi mostrado (assinado); volta no envio como `form_t`."""
+    return {"t": form_token()}
+
+
+# Pedidos por dia, somando todos (cada um manda e-mail e push aos admins).
+DAILY_CAP = 20
 
 
 def _mail_admins(req: dict) -> None:
@@ -51,7 +96,9 @@ def _mail_admins(req: dict) -> None:
 def _mail_requester(req: dict) -> None:
     from ..notify import Mail
     try:
-        m = Mail("Recebemos o seu pedido de convite", f"Olá, {req['name']}",
+        # Sem o nome digitado: o formulário é público, e o nome (texto livre) iria
+        # pelo SMTP da instância para um endereço que qualquer um escolhe.
+        m = Mail("Recebemos o seu pedido de convite", "Pedido de convite recebido",
                  "O seu pedido de acesso ao Nexus chegou ao administrador. Se ele aprovar, você recebe o convite "
                  "neste e-mail, com o link para criar a sua senha.")
         m.link, m.button = "/login", "Abrir o Nexus"
@@ -63,12 +110,19 @@ def _mail_requester(req: dict) -> None:
 
 @router.post("/api/auth/invite-request", status_code=202)
 def request_invite(data: InviteRequestIn, request: Request):
-    if not mailer.configured():
+    if not invite_request_open():  # sem e-mail ou desligado pelo admin (Para empresas)
         raise HTTPException(status_code=404, detail="não disponível")
     email = data.email.lower()
     if not invite_req_limiter.allow(f"ip:{client_ip(request)}") or not invite_req_email_limiter.allow(f"em:{email}"):
         raise HTTPException(status_code=429, detail="muitos pedidos; tente mais tarde")
+    if not form_ok(data.form_t):  # rápido demais, velho demais ou sem carimbo: mensagem genérica
+        raise HTTPException(status_code=400, detail="Não foi possível enviar agora. Tente de novo.")
     resposta = {"ok": True}
+    # Teto global: com IPs variados, os limites por IP e por e-mail não seguram a
+    # caixa dos admins nem o SMTP. Conta no banco (vale depois de reiniciar).
+    if db.query_one("SELECT count(*)::int AS n FROM invite_requests WHERE created_at > now() - interval '1 day'")["n"] \
+            >= DAILY_CAP:
+        raise HTTPException(status_code=429, detail="muitos pedidos hoje; tente amanhã ou fale com quem administra")
     if data.website:  # campo escondido preenchido: robô
         return resposta
     if db.query_one("SELECT 1 FROM users WHERE email = %s", (email,)):
@@ -102,14 +156,16 @@ def _decide(rid: int, status: str, admin: dict) -> dict:
 
 
 @router.post("/api/admin/invite-requests/{rid}/invite")
-def invite(rid: int, admin=Depends(require_admin_csrf)):
+def invite(rid: int, data: InviteChoiceIn | None = None, admin=Depends(require_admin_csrf)):
+    """Convida quem pediu, com o nome (revisado pelo admin; padrão: o do pedido)
+    e os papéis escolhidos ali (padrão: só Usuário), como em POST /admin/users."""
     req = db.query_one("SELECT * FROM invite_requests WHERE id = %s AND status = 'pending'", (rid,))
     if not req:
         raise HTTPException(status_code=404, detail="pedido não encontrado ou já decidido")
-    out = invite_user(InviteIn(email=req["email"]), admin=admin)  # 409 se já tiver conta
+    data = data or InviteChoiceIn()
+    nome = data.display_name if "display_name" in data.model_fields_set else (req["name"] or "")[:60]
+    out = invite_user(InviteIn(email=req["email"], display_name=nome or None, roles=data.roles, team_ids=data.team_ids), admin=admin)  # 409 se já tiver conta
     _decide(rid, "invited", admin)
-    if req["name"]:  # o nome que a pessoa deu já fica na conta (ela pode trocar)
-        db.execute("UPDATE users SET display_name = COALESCE(display_name, %s) WHERE email = %s", (req["name"][:60], req["email"]))
     return out
 
 

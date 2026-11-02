@@ -22,8 +22,7 @@ from .labels import DIAS, MESES
 from .labels import dur as _dur
 from .people import profile
 from .routers.branding import branding
-from .schemas import PrefsIn
-from .services import rotinas, week_start, get_board, get_report_range, is_due, is_work_day, work_mask
+from .services import rotinas, week_start, get_board, get_report_range, is_pending, is_work_day, work_mask
 
 log = logging.getLogger("uvicorn.error")
 
@@ -37,7 +36,12 @@ def get_prefs(uid: int) -> dict:
     row = db.query_one(
         """SELECT morning, morning_hour, evening, evening_hour, weekly, weekly_hour, show_titles, weekly_pdf, weekly_cc
              FROM notification_prefs WHERE user_id = %s""", (uid,))
-    return dict(row) if row else PrefsIn().model_dump()
+    if not row:
+        return {"email_on": False, "show_titles": True, "weekly_pdf": False, "weekly_cc": None}
+    r = dict(row)
+    # Um interruptor só: ligado se algum dos três avisos antigos estava ligado.
+    r["email_on"] = bool(r["morning"] or r["evening"] or r["weekly"])
+    return r
 
 
 def _day(d: date) -> str:
@@ -94,24 +98,24 @@ class Mail:
         brand = branding()
         parts = []
         for heading, items in self.blocks:
-            parts.append(f'<p style="margin:22px 0 8px;font:600 14px/1.4 Arial,sans-serif;color:#18181b">{e(heading)}</p>')
+            parts.append(f'<p style="margin:22px 0 8px;font:600 14px/1.4 Arial,sans-serif;color:#F0EDEE">{e(heading)}</p>')
             if items:
                 lis = "".join(f'<li style="margin:0 0 6px">{e(i)}</li>' for i in items)
-                parts.append(f'<ul style="margin:0;padding:0 0 0 18px;font:14px/1.5 Arial,sans-serif;color:#3f3f46">{lis}</ul>')
-        return f"""<!doctype html><html lang="pt-BR"><body style="margin:0;padding:0;background:#f4f5f7">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:24px 12px"><tr><td align="center">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e4e4e7">
-<tr><td style="background:#121213;padding:18px 24px;border-bottom:2px solid #5294E2">
-<span style="font:700 15px/1.1 Arial,sans-serif;color:#ffffff">{e(brand['line1'])}</span>
-<span style="font:700 15px/1.1 Arial,sans-serif;color:#a1a1a8"> {e(brand['line2'])}</span></td></tr>
+                parts.append(f'<ul style="margin:0;padding:0 0 0 18px;font:14px/1.5 Arial,sans-serif;color:#ACABAD">{lis}</ul>')
+        return f"""<!doctype html><html lang="pt-BR"><head><meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark"></head><body style="margin:0;padding:0;background:#131314">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#131314;padding:24px 12px"><tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#1A1A1C;border-radius:16px;overflow:hidden;border:1px solid #323235">
+<tr><td style="background:#161718;padding:18px 24px;border-bottom:2px solid #5294E2">
+<span style="font:700 15px/1.1 Arial,sans-serif;color:#F0EDEE">{e(brand['line1'])}</span>
+<span style="font:700 15px/1.1 Arial,sans-serif;color:#ACABAD"> {e(brand['line2'])}</span></td></tr>
 <tr><td style="padding:24px 24px 28px">
-<p style="margin:0 0 6px;font:600 20px/1.3 Arial,sans-serif;color:#18181b">{e(self.title)}</p>
-<p style="margin:0;font:14px/1.5 Arial,sans-serif;color:#52525b">{e(self.intro)}</p>
+<p style="margin:0 0 6px;font:600 20px/1.3 Arial,sans-serif;color:#F0EDEE">{e(self.title)}</p>
+<p style="margin:0;font:14px/1.5 Arial,sans-serif;color:#ACABAD">{e(self.intro)}</p>
 {''.join(parts)}
 <p style="margin:26px 0 0"><a href="{e(self.href)}" style="display:inline-block;background:#5294E2;color:#0b0d10;text-decoration:none;font:600 14px/1 Arial,sans-serif;padding:12px 20px;border-radius:999px">{e(self.button)}</a></p>
 </td></tr></table>
-<p style="max-width:560px;margin:14px auto 0;font:12px/1.5 Arial,sans-serif;color:#86868e">{e(self.reason)}
-{f'<a href="{e(config.APP_URL)}/#/config?aba={e(self.settings_tab)}" style="color:#86868e">Mudar ou desligar</a>.' if self.settings_tab else ''}</p>
+<p style="max-width:560px;margin:14px auto 0;font:12px/1.5 Arial,sans-serif;color:#919093">{e(self.reason)}
+{f'<a href="{e(config.APP_URL)}/#/config?aba={e(self.settings_tab)}" style="color:#8AB8F0">Mudar ou desligar</a>.' if self.settings_tab else ''}</p>
 </td></tr></table></body></html>"""
 
 
@@ -192,7 +196,7 @@ def attach_week_pdf(m: Mail, uid: int, email: str, today: date) -> None:
 
 
 def _rotina_devida(uid: int, day: date, mask: int) -> bool:
-    return any(r["start_d"] <= day <= r["end_d"] and is_due(r, day, mask) for r in rotinas(uid))
+    return any(r["start_d"] <= day <= r["end_d"] and is_pending(r, day, mask) for r in rotinas(uid))
 
 
 BUILDERS = {"morning": build_morning, "evening": build_evening, "weekly": build_weekly}
@@ -249,7 +253,7 @@ def run_once(now: datetime, send=None) -> list[tuple[int, str, str]]:
     for u in users:
         mask = work_mask(u["id"])
         for kind in KINDS:
-            if not u[kind] or now.hour < u[f"{kind}_hour"]:
+            if now.hour < u[f"{kind}_hour"]:
                 continue
             if kind == "weekly":
                 if today.weekday() != 0:  # segunda
@@ -283,8 +287,9 @@ def run_once(now: datetime, send=None) -> list[tuple[int, str, str]]:
 
 async def scheduler() -> None:
     """Loop do agendador (uma passada por minuto), dentro do backend: os e-mails
-    (com SMTP configurado) e as notificações dos aparelhos (app/push.py)."""
-    from . import push
+    (com SMTP configurado), as notificações dos aparelhos (app/push.py), os
+    avisos de agenda (app/agenda.py) e os webhooks (app/webhooks.py)."""
+    from . import agenda, push, webhooks
     tz = ZoneInfo(config.APP_TZ)
     log.info("agendador ativo: e-mail %s, notificações nos aparelhos", config.SMTP_HOST or "desligado")
     while True:
@@ -298,6 +303,14 @@ async def scheduler() -> None:
             await asyncio.to_thread(push.run_once, now)
         except Exception:  # noqa: BLE001
             log.exception("agendador de notificações falhou nesta passada")
+        try:  # avisos de agenda (followup.due...) antes da entrega: saem nos webhooks
+            await asyncio.to_thread(agenda.run_once, now)
+        except Exception:  # noqa: BLE001
+            log.exception("avisos de agenda falharam nesta passada")
+        try:
+            await asyncio.to_thread(webhooks.run_once)
+        except Exception:  # noqa: BLE001
+            log.exception("entrega dos webhooks falhou nesta passada")
         if now.minute == 0:  # uma vez por hora: fotos excluídas há 7 dias e de tarefas que não voltam mais
             try:
                 from .routers.photos import cleanup

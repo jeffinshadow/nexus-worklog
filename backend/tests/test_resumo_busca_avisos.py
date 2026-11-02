@@ -2,7 +2,7 @@
 import json
 from datetime import date, datetime, timedelta
 
-from app import db, notify
+from app import db, notify, push
 from conftest import Bearer, criar_chave, dia_hoje, recuar_criacao, uid_de
 
 
@@ -163,15 +163,36 @@ def _proxima(d: date, weekday: int) -> date:
     return d + timedelta(days=(weekday - d.weekday()) % 7 or 7)
 
 
-def test_preferencias_e_teste_sem_smtp(usuario):
+def test_preferencias_por_canal_e_teste_sem_smtp(usuario):
     p = usuario.get("/notifications").json()
-    assert p["morning"] is False and p["mail_configured"] is False and p["email"] == usuario.me["email"]
-    r = usuario.c.put("/api/notifications", json={"morning": True, "morning_hour": 7, "weekly": True}, headers=usuario._h())
-    assert r.status_code == 200 and r.json()["morning_hour"] == 7
+    assert p["email_on"] is False and p["mail_configured"] is False and p["email"] == usuario.me["email"]
+    r = usuario.c.put("/api/notifications", json={"email_on": True}, headers=usuario._h())
+    assert r.status_code == 200 and r.json()["email_on"] is True
+    row = db.query_one("SELECT morning, evening, weekly FROM notification_prefs WHERE user_id = %s", (uid_de(usuario),))
+    assert (row["morning"], row["evening"], row["weekly"]) == (True, True, True)   # um canal liga os três avisos
     assert usuario.post("/notifications/test").status_code == 503
-    assert usuario.c.put("/api/notifications", json={"morning_hour": 24}, headers=usuario._h()).status_code == 422
+    r = usuario.c.put("/api/notifications", json={"email_on": False}, headers=usuario._h())
+    assert r.json()["email_on"] is False
     h = usuario.get("/history?limit=1").json()[0]
     assert h["action"] == "notifications.update" and not h["can_undo"]
+
+
+def test_campos_antigos_por_tipo_viram_canal(usuario):
+    """Obsoletos (até a 3.0): aceitos; algum tipo ligado = canal ligado; os horários são ignorados."""
+    put = lambda body: usuario.c.put("/api/notifications", json=body, headers=usuario._h())
+    r = put({"weekly": True, "morning_hour": 24})        # antes 422; agora ignorado
+    assert r.status_code == 200 and r.json()["email_on"] is True
+    assert r.json()["morning_hour"] == 8                 # o horário não mudou
+    assert put({"morning": False, "evening": False, "weekly": False}).json()["email_on"] is False
+    # Push: por tipo antigo -> canal; "rotina e lembrete na hora" segue o canal.
+    hp = lambda body: usuario.put("/push/prefs", body).json()
+    assert hp({"routine": False, "deadline": False, "follow_up": False, "assigned": True})["enabled"] is True
+    assert hp({"routine": False, "deadline": False, "follow_up": False, "assigned": False})["enabled"] is False
+    r = hp({"enabled": True})
+    assert r["enabled"] and r["routine"] and r["follow_up"] and r["deadline"] and r["assigned"]
+    # Quem tinha só um tipo ligado no banco aparece com o canal ligado.
+    db.execute("UPDATE push_prefs SET routine = false, follow_up = false, deadline = false, assigned = true")
+    assert usuario.get("/push").json()["prefs"]["enabled"] is True and push.prefs(uid_de(usuario))["routine"] is True
 
 
 def test_aviso_da_manha_sai_uma_vez(usuario):
@@ -185,12 +206,12 @@ def test_aviso_da_manha_sai_uma_vez(usuario):
     caixa = Caixa()
     assert notify.run_once(datetime(segunda.year, segunda.month, segunda.day, 7, 50), caixa) == []  # antes da hora
     feito = notify.run_once(datetime(segunda.year, segunda.month, segunda.day, 8, 1), caixa)
-    assert feito == [(uid, "morning", "sent")]
+    assert (uid, "morning", "sent") in feito
     m = caixa.enviados[0]
     assert m["to"] == usuario.me["email"] and "Prazo de segunda" in m["text"] and "Já atrasada" in m["text"]
     assert "Conferir backups" in m["text"] and "<html" in m["html"] and "Abrir o Nexus" in m["html"]
     assert notify.run_once(datetime(segunda.year, segunda.month, segunda.day, 9, 0), caixa) == []  # não repete
-    assert len(caixa.enviados) == 1
+    assert sum(1 for e in caixa.enviados if e["subject"].startswith("Seu dia")) == 1
 
     domingo = segunda + timedelta(days=6)  # não útil: não sai
     assert notify.run_once(datetime(domingo.year, domingo.month, domingo.day, 8, 5), caixa) == []
@@ -219,16 +240,16 @@ def test_aviso_da_tarde_e_semanal(usuario):
     hoje = dia_hoje(usuario)
     rid = usuario.post("/recurring", {"label": "Revisar fila"}).json()["id"]
     recuar_criacao(rid, 10)
-    usuario.c.put("/api/notifications", json={"evening": True, "evening_hour": 17, "weekly": True, "weekly_hour": 8},
-                  headers=usuario._h())
+    usuario.c.put("/api/notifications", json={"email_on": True}, headers=usuario._h())
     segunda = _proxima(hoje, 0)
     caixa = Caixa()
     # semanal: só às segundas, na hora escolhida (resumo da semana anterior)
-    assert notify.run_once(datetime(segunda.year, segunda.month, segunda.day, 8, 5), caixa) == [(uid, "weekly", "sent")]
-    assert caixa.enviados[0]["subject"].startswith("Sua semana") and "Revisar fila" in caixa.enviados[0]["text"]
+    assert (uid, "weekly", "sent") in notify.run_once(datetime(segunda.year, segunda.month, segunda.day, 8, 5), caixa)
+    semana = next(e for e in caixa.enviados if e["subject"].startswith("Sua semana"))
+    assert "Revisar fila" in semana["text"]
     feito = notify.run_once(datetime(segunda.year, segunda.month, segunda.day, 17, 30), caixa)
-    assert feito == [(uid, "evening", "sent")]
-    assert "Revisar fila" in caixa.enviados[1]["text"] and caixa.enviados[1]["subject"].startswith("Faltam 1 rotina")
+    assert (uid, "evening", "sent") in feito
+    assert "Revisar fila" in caixa.enviados[-1]["text"] and caixa.enviados[-1]["subject"].startswith("Faltam 1 rotina")
     terca = segunda + timedelta(days=1)
     assert all(k != "weekly" for _, k, _ in notify.run_once(datetime(terca.year, terca.month, terca.day, 9, 0), caixa))
 
@@ -238,23 +259,24 @@ def test_semanal_com_pdf_e_copia(usuario):
     hoje = dia_hoje(usuario)
     rid = usuario.post("/recurring", {"label": "Revisar fila"}).json()["id"]
     recuar_criacao(rid, 10)
-    r = usuario.c.put("/api/notifications", json={"weekly": True, "weekly_hour": 8, "weekly_pdf": True,
+    r = usuario.c.put("/api/notifications", json={"email_on": True, "weekly_pdf": True,
                                                   "weekly_cc": "Gestor@Example.com"}, headers=usuario._h())
     assert r.status_code == 200 and r.json()["weekly_cc"] == "gestor@example.com" and r.json()["weekly_pdf"]
     assert usuario.c.put("/api/notifications", json={"weekly_cc": "não é e-mail"}, headers=usuario._h()).status_code == 422
     segunda = _proxima(hoje, 0)
     caixa = Caixa()
-    assert notify.run_once(datetime(segunda.year, segunda.month, segunda.day, 8, 5), caixa) == [(uid, "weekly", "sent")]
-    m = caixa.enviados[0]
+    assert (uid, "weekly", "sent") in notify.run_once(datetime(segunda.year, segunda.month, segunda.day, 8, 5), caixa)
+    semanais = lambda: [e for e in caixa.enviados if e["subject"].startswith("Sua semana")]
+    m = semanais()[0]
     assert m["cc"] == "gestor@example.com"
     nome, pdf, tipo = m["attachments"][0]
     assert nome.startswith("relatorio-semana-") and pdf[:4] == b"%PDF" and tipo == "application/pdf"
-    assert "anexado" in m["text"] and "verificações devidas" in m["text"]  # a abertura do relatório
+    assert "anexado" in m["text"] and "rotinas previstas" in m["text"]  # a abertura do relatório ("rotinas", como no app)
     # Desligado: sem anexo e sem cópia.
-    usuario.c.put("/api/notifications", json={"weekly": True, "weekly_hour": 8}, headers=usuario._h())
+    usuario.c.put("/api/notifications", json={"email_on": True}, headers=usuario._h())
     seguinte = segunda + timedelta(days=7)
     notify.run_once(datetime(seguinte.year, seguinte.month, seguinte.day, 8, 5), caixa)
-    assert caixa.enviados[1]["attachments"] == [] and caixa.enviados[1]["cc"] is None
+    assert semanais()[1]["attachments"] == [] and semanais()[1]["cc"] is None
 
 
 def test_teste_da_semana_vai_so_para_a_pessoa(usuario, monkeypatch):

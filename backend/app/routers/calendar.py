@@ -136,14 +136,27 @@ def build_ics(uid: int, include_recurring: bool, cal_name: str) -> str:
             extra.append("PRIORITY:1")
         event(f"task-{t['id']}", t["due_date"], summary, desc, extra)
 
-    # Impedimento com dia combinado para cobrar ("o fornecedor retorna na quinta").
+    # Tarefa aguardando com dia combinado para cobrar ("o fornecedor retorna na quinta").
     for t in db.query_all(
         """SELECT id, title, blocked_reason, follow_up_on FROM worklog_tasks
             WHERE user_id = %s AND status = 'blocked' AND follow_up_on IS NOT NULL""", (uid,)):
         # Sem o motivo (fornecedor, cliente): o feed vai para calendários de terceiros.
         event(f"followup-{t['id']}", t["follow_up_on"], f"Cobrar: {t['title']}",
-              "Tarefa bloqueada com dia combinado para cobrar.",
+              "Tarefa aguardando, com dia combinado para cobrar.",
               [f"URL:{config.APP_URL}/#/tarefas?id={t['id']}"])
+
+    # Lembrete com hora ("me lembra às 15h"): evento de 15 min com alarme, não o dia inteiro.
+    for t in db.query_all(
+        """SELECT id, title, remind_at FROM worklog_tasks
+            WHERE user_id = %s AND status <> 'done' AND remind_at IS NOT NULL
+              AND remind_at > now() - interval '7 days'""", (uid,)):
+        ini = t["remind_at"].astimezone(timezone.utc)
+        lines.extend(["BEGIN:VEVENT", f"UID:remind-{t['id']}@nexus-worklog", f"DTSTAMP:{now}",
+                      f"DTSTART:{ini:%Y%m%dT%H%M%SZ}", f"DTEND:{ini + timedelta(minutes=15):%Y%m%dT%H%M%SZ}",
+                      f"SUMMARY:{_esc('Lembrete: ' + t['title'])}", f"DESCRIPTION:{_esc('Lembrete de tarefa do Nexus.')}",
+                      "TRANSP:TRANSPARENT", f"URL:{config.APP_URL}/#/tarefas?id={t['id']}",
+                      "BEGIN:VALARM", "ACTION:DISPLAY", f"DESCRIPTION:{_esc(t['title'])}", "TRIGGER:PT0M", "END:VALARM",
+                      "END:VEVENT"])
 
     # Vencimentos: no dia de vencer e no dia de começar a avisar.
     from .renewals import list_for
@@ -156,9 +169,11 @@ def build_ics(uid: int, include_recurring: bool, cal_name: str) -> str:
     if include_recurring:
         for r in db.query_all(
             """SELECT id, label, freq, weekdays, month_day, interval_days,
-                      (created_at AT TIME ZONE %s)::date AS start_d
-                 FROM recurring_tasks WHERE user_id = %s AND active ORDER BY position, id""", (config.APP_TZ, uid)):
-            rule = _rrule(r, mask)
+                      (created_at AT TIME ZONE %s)::date AS start_d,
+                      ARRAY(SELECT ARRAY[p.start_d, p.end_d] FROM recurring_pauses p
+                             WHERE p.recurring_id = r.id AND p.start_d <= p.end_d AND p.end_d >= %s) AS pauses
+                 FROM recurring_tasks r WHERE user_id = %s AND active ORDER BY position, id""", (config.APP_TZ, today, uid)):
+            rule = _rrule(r, mask)  # 'after' (conta da última vez) não cabe numa RRULE: fica de fora
             if not rule:
                 continue
             # DTSTART = primeira ocorrência real (a RFC conta o DTSTART como uma).
@@ -166,8 +181,11 @@ def build_ics(uid: int, include_recurring: bool, cal_name: str) -> str:
                           if is_due(r, r["start_d"] + timedelta(days=i), mask)), None)
             if not first:
                 continue
+            # Dias pausados (férias, folga) saem da série.
+            pausa = sorted({s + timedelta(days=i) for s, e in r["pauses"] for i in range(min((e - s).days, 366) + 1)})
+            extra = [f"RRULE:{rule}"] + ([f"EXDATE;VALUE=DATE:{','.join(_d(x) for x in pausa)}"] if pausa else [])
             event(f"recurring-{r['id']}", first, f"Rotina: {r['label']}",
-                  "Recorrente do Nexus Worklog. Marque como feita no app.", [f"RRULE:{rule}"])
+                  "Recorrente do Nexus Worklog. Marque como feita no app.", extra)
 
     lines.append("END:VCALENDAR")
     return "\r\n".join(_fold_line(x) for x in lines) + "\r\n"

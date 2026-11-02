@@ -133,6 +133,9 @@ class RateLimiter:
 # e-mail+IP (quem erra e bloqueado, nao a dona da conta) e, com teto bem maior,
 # por e-mail (freia tentativa distribuida sem trancar a pessoa por 10 erros).
 login_limiter = RateLimiter(max_hits=10, window_seconds=300)
+# Links de convite/troca de senha: limite próprio (escritório atrás de um IP só não
+# trava o convite de quem chega por causa do login de outros).
+link_limiter = RateLimiter(max_hits=30, window_seconds=300)
 login_email_limiter = RateLimiter(max_hits=100, window_seconds=300)
 # "Esqueci a senha": poucos pedidos por IP e por e-mail (não vira canal de spam).
 reset_limiter = RateLimiter(max_hits=5, window_seconds=900)
@@ -142,6 +145,8 @@ invite_req_limiter = RateLimiter(max_hits=5, window_seconds=3600)
 invite_req_email_limiter = RateLimiter(max_hits=2, window_seconds=86400)
 # PDF: gerar e pesado (CPU, um processo so). Ate 6 por usuario por minuto.
 pdf_limiter = RateLimiter(max_hits=6, window_seconds=60)
+# Testar webhook: cada teste é um POST para fora (até 15 s); 5 por minuto por pessoa.
+webhook_test_limiter = RateLimiter(max_hits=5, window_seconds=60)
 # Erros do navegador mandados ao log: poucos por pessoa (não vira canal de spam no log).
 client_error_limiter = RateLimiter(max_hits=10, window_seconds=300)
 
@@ -156,3 +161,6 @@ def revoke_access(user_id: int) -> None:
     db.execute("UPDATE api_tokens SET revoked_at = now() WHERE user_id = %s AND revoked_at IS NULL", (user_id,))
     db.execute("DELETE FROM calendar_feeds WHERE user_id = %s", (user_id,))
     db.execute("DELETE FROM push_subscriptions WHERE user_id = %s", (user_id,))  # aparelho talvez perdido
+    # Webhook é um canal de saída dos dados: desliga (aparece na lista; religar é um clique).
+    db.execute("""UPDATE webhooks SET disabled_at = now(), last_error = 'desligado na troca de senha'
+                   WHERE user_id = %s AND disabled_at IS NULL""", (user_id,))

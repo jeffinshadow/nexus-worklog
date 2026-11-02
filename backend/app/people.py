@@ -12,8 +12,10 @@ from . import db
 # inatividade (configurações, chaves e avisos não contam).
 WORK_ACTIONS = ("worklog.%", "recurring.toggle", "note.%", "checklist.%", "time.%", "timer.start")
 
+# Um só interruptor da pessoa ("enabled"); o resto é fixo (as colunas antigas de assistant_prefs
+# ficam no banco, obsoletas e ignoradas até a 3.0).
 ASSISTANT_DEFAULTS = {"enabled": True, "idle_on": True, "idle_minutes": 30, "idle_start": 480, "idle_end": 1080,
-                      "reopen_on": True, "reopen_minutes": 10, "summary_from": 840}
+                      "reopen_on": True, "reopen_minutes": 10}
 
 
 def name_from_email(email: str) -> str:
@@ -46,12 +48,8 @@ def label(user_id: int, email: str) -> str:
 
 
 def assistant_prefs(user_id: int) -> dict:
-    r = db.query_one(
-        """SELECT enabled, idle_on, idle_minutes, idle_start, idle_end, reopen_on, reopen_minutes, summary_from
-             FROM assistant_prefs WHERE user_id = %s""",
-        (user_id,),
-    )
-    return dict(r) if r else dict(ASSISTANT_DEFAULTS)
+    r = db.query_one("SELECT enabled FROM assistant_prefs WHERE user_id = %s", (user_id,))
+    return {**ASSISTANT_DEFAULTS, "enabled": r["enabled"]} if r else dict(ASSISTANT_DEFAULTS)
 
 
 def last_activity(user_id: int):

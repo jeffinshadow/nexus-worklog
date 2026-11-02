@@ -2,28 +2,49 @@
 // com "desfazer" na ação mais recente de cada item.
 import { api } from "./api.js";
 import { h, icon, clear, dateTime } from "./dom.js";
-import { confirmDialog, errorToast, toast } from "./ui.js";
+import { confirmDialog, errorToast, hashPage, pager, setHashPage, toast } from "./ui.js";
+
+const SIZE = 30; // linhas de uma linha (hora + frase): cabem em ~2 telas no computador
 
 const WHO = {
-  web: (r) => ["web", null, "app"],
+  web: () => ["web", null, "app"],
   api: (r) => ["api", "key", r.token_name || "chave"],
   mcp: (r) => ["mcp", "spark", `IA · ${r.token_name || "chave"}`],
-  admin: (r) => ["admin", "admin", "admin"],
+  admin: () => ["admin", "admin", "admin"],
 };
 
 export async function mount(root) {
-  let limit = 50;
+  let page = hashPage();
+  // "O que esta chave fez" (Configurações > IA e API): #/historico?chave=<id>.
+  const chave = Number(new URLSearchParams(location.hash.split("?")[1] || "").get("chave")) || null;
+  let chaveNome = null;
+  if (chave) {
+    try { chaveNome = ((await api.get("/tokens")).find((t) => t.id === chave) || {}).name || null; } catch { /* só o nome do aviso */ }
+  }
+  const url = () => `/history?limit=${SIZE}&offset=${(page - 1) * SIZE}` + (chave ? `&token_id=${chave}` : "");
 
   async function render() {
-    const rows = await api.get(`/history?limit=${limit}`);
+    let { rows, total } = await api.page(url());
+    const last = Math.max(1, Math.ceil(total / SIZE));
+    if (page > last) { // a página guardada sumiu (o histórico encolheu): a última
+      page = last;
+      ({ rows, total } = await api.page(url()));
+    }
+    setHashPage("p", page, "historico");
     clear(root);
     const panel = h("section", { class: "panel" },
-      h("p", { class: "help muted", text: "Toda alteração fica registrada com a origem. Dá para desfazer a mais recente de cada tarefa, rotina ou configuração." }));
-    if (!rows.length) panel.append(h("p", { class: "empty", text: "Nada registrado ainda." }));
+      h("p", { class: "help muted", text: "Toda alteração fica registrada por 180 dias. A origem aparece quando não foi pelo app (chave de API, IA, admin). Dá para desfazer a mais recente de cada tarefa, rotina ou configuração." }));
+    if (chave) {
+      panel.append(h("div", { class: "hist-filter", role: "status" },
+        icon("key"), h("span", { text: `Só o que a chave “${chaveNome || "#" + chave}” fez` + (total ? ` · ${total} ${total === 1 ? "ação" : "ações"}` : "") }),
+        h("a", { class: "btn btn-ghost btn-sm", href: "#/historico", text: "Ver tudo" })));
+    }
+    if (!rows.length) panel.append(h("p", { class: "empty", text: chave ? "Esta chave ainda não fez nada (ou o que fez já passou de 180 dias)." : "Nada registrado ainda." }));
     const list = h("div", { class: "hist" });
     for (const r of rows) {
       const [cls, ic, label] = (WHO[r.actor] || WHO.web)(r);
-      const badge = h("span", { class: "who-badge " + cls }, ic ? icon(ic) : null, label);
+      // Pelo próprio app é o normal: a origem só aparece quando é outra (chave, IA, admin).
+      const badge = cls === "web" ? null : h("span", { class: "who-badge " + cls }, ic ? icon(ic) : null, label);
       const actions = h("div");
       if (r.can_undo) {
         actions.append(h("button", {
@@ -46,10 +67,8 @@ export async function mount(root) {
         h("div", { class: "hist-what" }, badge, r.summary),
         actions));
     }
-    panel.append(list);
-    if (rows.length === limit && limit < 200) {
-      panel.append(h("button", { type: "button", class: "btn btn-text show-more", text: "carregar mais", onClick: () => { limit = Math.min(200, limit + 50); render(); } }));
-    }
+    panel.append(list, pager({ page, total, size: SIZE, label: "Histórico",
+      onPage: async (n) => { page = n; await render(); }, focus: () => document.getElementById("page-title") }));
     root.append(panel);
   }
 

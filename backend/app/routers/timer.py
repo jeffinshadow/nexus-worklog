@@ -30,14 +30,29 @@ def client_time(at: Optional[datetime]) -> Optional[datetime]:
     return min(at, now)
 
 
+# Acima disso o cronômetro foi esquecido: parar não inventa horas, pede o tempo certo.
+FORGOTTEN = timedelta(hours=12)
+
+
 def stop_running(user: dict, only_task: int | None = None, ended_at: datetime | None = None):
     """Para o cronômetro e aponta o tempo. Devolve o apontamento ou None.
     only_task: só para se estiver rodando nessa tarefa. ended_at: parou antes
-    de agora (feito sem sinal)."""
-    t = db.query_one("SELECT task_id, started_at FROM task_timers WHERE user_id = %s", (user["user_id"],))
-    if not t or (only_task is not None and t["task_id"] != only_task):
+    de agora (feito sem sinal). Esquecido (mais de 12 h): para sem apontar e
+    devolve needs_review, com o início, para a pessoa informar o tempo."""
+    # Tira o cronômetro e lê o que era numa operação só: duas paradas ao mesmo
+    # tempo (dois aparelhos) não apontam o tempo duas vezes.
+    t = db.query_one(
+        """DELETE FROM task_timers WHERE user_id = %s AND (%s::int IS NULL OR task_id = %s)
+           RETURNING task_id, started_at""", (user["user_id"], only_task, only_task))
+    if not t:
         return None
     end = max(ended_at or datetime.now(timezone.utc), t["started_at"])
+    if end - t["started_at"] > FORGOTTEN:
+        title = db.query_one("SELECT title FROM worklog_tasks WHERE id = %s", (t["task_id"],))
+        audit.record(user, "timer.discard", "timer", t["task_id"],
+                     after={"task_id": t["task_id"], "title": title["title"] if title else ""})
+        return {"task_id": t["task_id"], "minutes": 0, "needs_review": True,
+                "started_at": t["started_at"].isoformat(), "title": title["title"] if title else ""}
     minutes = max(1, round((end - t["started_at"]).total_seconds() / 60))
     day = t["started_at"].astimezone(app_tz()).date()
     # Cronômetro esquecido por dias não pode travar concluir/parar/trocar: aponta só
@@ -45,11 +60,31 @@ def stop_running(user: dict, only_task: int | None = None, ended_at: datetime | 
     used = db.query_one("SELECT COALESCE(sum(minutes), 0)::int AS m FROM time_entries WHERE user_id = %s AND day = %s",
                         (user["user_id"], day))["m"]
     minutes = min(minutes, 1440 - used)
-    db.execute("DELETE FROM task_timers WHERE user_id = %s", (user["user_id"],))
     if minutes < 1:
         return None
     entry = log_time(t["task_id"], TimeIn(minutes=minutes, day=day, note="cronômetro"), user=user)
+    # O intervalo de verdade: um início enviado depois não pode cair em cima dele.
+    db.execute("UPDATE time_entries SET started_at = %s, ended_at = %s WHERE id = %s",
+               (t["started_at"], t["started_at"] + timedelta(minutes=minutes), entry["id"]))
     return {**entry, "task_id": t["task_id"]}
+
+
+def overlap(uid: int, at: datetime) -> dict | None:
+    """Tempo de cronômetro já apontado que termina depois de `at` (com 1 min de
+    folga): começar ali contaria o mesmo intervalo duas vezes."""
+    return db.query_one(
+        """SELECT e.started_at, e.ended_at, e.task_id, w.title FROM time_entries e
+             JOIN worklog_tasks w ON w.id = e.task_id
+            WHERE e.user_id = %s AND e.ended_at > %s + interval '1 minute'
+            ORDER BY e.ended_at DESC LIMIT 1""", (uid, at))
+
+
+def overlap_msg(o: dict) -> str:
+    tz = app_tz()
+    ini, fim = o["started_at"].astimezone(tz), o["ended_at"].astimezone(tz)
+    quando = f"{ini:%H:%M} a {fim:%H:%M}" if ini.date() == fim.date() else f"{ini:%d/%m %H:%M} a {fim:%d/%m %H:%M}"
+    return (f"já há tempo de cronômetro de {quando} em #{o['task_id']} “{o['title']}”; nada foi mudado. "
+            f"Comece a partir de {fim:%H:%M} ou aponte o tempo à mão")
 
 
 @router.get("")
@@ -68,6 +103,10 @@ def start(data: TimerIn, user=Depends(active_user_csrf)):
     if current and current["task_id"] == data.task_id:
         return {"timer": current, "stopped": None}
     at = client_time(data.at)
+    if current and at is not None and at < current["started_at"]:  # início feito sem sinal, já superado
+        raise HTTPException(status_code=409, detail="o cronômetro já mudou em outro aparelho; nada foi alterado")
+    if at is not None and (o := overlap(user["user_id"], at)):  # início antigo, depois de outro aparelho parar
+        raise HTTPException(status_code=409, detail=overlap_msg(o))
     stopped = stop_running(user, ended_at=at)  # trocar de tarefa aponta o tempo da anterior
     db.execute("INSERT INTO task_timers (user_id, task_id, started_at) VALUES (%s, %s, COALESCE(%s, now()))",
                (user["user_id"], data.task_id, at))
@@ -83,10 +122,17 @@ def start(data: TimerIn, user=Depends(active_user_csrf)):
 
 @router.post("/stop")
 def stop(data: Optional[TimerStopIn] = None, user=Depends(active_user_csrf)):
-    if not running_timer(user["user_id"]):
+    current = running_timer(user["user_id"])
+    if not current:
         raise HTTPException(status_code=409, detail="nenhum cronômetro rodando")
+    # Parada feita sem sinal que chega depois: só vale para o mesmo cronômetro
+    # (outro aparelho pode ter trocado de tarefa nesse meio tempo).
+    at = client_time(data.at if data else None)
+    if data and ((data.task_id is not None and data.task_id != current["task_id"])
+                 or (at is not None and at < current["started_at"])):
+        raise HTTPException(status_code=409, detail="o cronômetro já mudou em outro aparelho; nada foi apontado")
     # stopped = None: o dia daquele cronômetro já tinha 24h apontadas (nada a somar).
-    return {"timer": None, "stopped": stop_running(user, ended_at=client_time(data.at if data else None))}
+    return {"timer": None, "stopped": stop_running(user, ended_at=at)}
 
 
 @router.delete("")

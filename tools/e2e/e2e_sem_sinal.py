@@ -37,7 +37,8 @@ try:
     ev(f"fetch('/api/auth/login',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{email:{json.dumps(EMAIL)},password:{json.dumps(PW)}}})}})")
     marca = str(int(time.time()) % 100000)
     tid = api("POST", "/worklog", {"title": f"E5 trocar cabo {marca}"})["b"]["id"]
-    tfin = api("POST", "/worklog", {"title": f"E5 concluir {marca}"})["b"]["id"]
+    # Vence hoje e alta: no topo do Hoje (que mostra as 10 primeiras em aberto; o resto fica em Tarefas).
+    tfin = api("POST", "/worklog", {"title": f"E5 concluir {marca}", "priority": 1, "due_date": api("GET", "/board")["b"]["today"]})["b"]["id"]
     rid = api("POST", "/recurring", {"label": f"E5 rotina {marca}", "freq": "weekly", "weekdays": 127})["b"]["id"]
     api("DELETE", "/timer")
     # com conexão: visita as telas (o service worker guarda)
@@ -51,7 +52,7 @@ try:
     t0 = time.time()
     cmd("Page.reload"); time.sleep(5)
     check("sem servidor: o app abre", ev("!!document.querySelector('#view-hoje .t-rec')"), ev("document.body.innerText.slice(0,200)"))
-    check("barra 'sem conexão' com a hora", "mostrando o que havia" in (ev("document.querySelector('.offline-bar')?.innerText") or ""), ev("document.querySelector('.offline-bar')?.innerText"))
+    check("barra 'sem conexão' com a hora", "sem conexão desde" in (ev("document.querySelector('.offline-bar')?.innerText") or ""), ev("document.querySelector('.offline-bar')?.innerText"))
     # registro rápido com tempo
     ev(f"""(()=>{{const q=document.querySelector('[aria-label="Registrar tarefa rápida"]');q.value='E5 registro offline {marca} — 15min';
       q.dispatchEvent(new KeyboardEvent('keydown',{{key:'Enter',bubbles:true}}))}})()"""); time.sleep(2)

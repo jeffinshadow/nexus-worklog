@@ -3,14 +3,13 @@
   user      tem o próprio registro (Hoje, Tarefas, Rotinas...) e pode receber tarefas
   admin     contas, permissões e configurações gerais
   assigner  atribui tarefas a quem consentiu (pelo app ou por chave de API/MCP)
-  viewer    vê os registros e tira relatórios de todos (só pelo app)
+  viewer    vê os registros e tira relatórios de quem aceitou (só pelo app; users.viewers_allowed)
 
 users.role espelha "admin" só por compatibilidade (rollback e código antigo).
 """
 from . import db
 
-ROLES = ("user", "admin", "assigner", "viewer")
-LABELS = {"user": "Usuário", "admin": "Admin", "assigner": "Atribuidor de tarefas", "viewer": "Visualizador de tarefas"}
+LABELS = {"user": "Usuário", "admin": "Admin", "assigner": "Manda tarefas", "viewer": "Vê a equipe"}
 
 # Subconsulta para as leituras de sessão/chave (deps): papéis como lista.
 ROLES_SQL = "ARRAY(SELECT r.role FROM user_roles r WHERE r.user_id = u.id ORDER BY r.role) AS roles"

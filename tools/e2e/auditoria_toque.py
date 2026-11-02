@@ -1,14 +1,15 @@
 """Áreas de toque no celular (390 px): todo controle clicável visível menor que 44 px (altura ou largura)."""
-import json, os, subprocess, sys, tempfile, time, urllib.request, collections
+import json, os, subprocess, tempfile, time, urllib.request, collections
 import websocket
 B = os.environ.get("NEXUS_E2E_URL", "http://localhost:8090")
 CONTAS = [("user", os.environ["NEXUS_E2E_USER"].split(":", 1)), ("admin", os.environ["NEXUS_E2E_ADMIN"].split(":", 1))]
-TELAS = {"user": ["hoje", "tarefas", "projetos", "vencimentos", "dashboard", "relatorios", "historico", "busca?q=rede",
-                  "config?aba=modelos", "config?aba=avisos", "config?aba=calendario", "config?aba=ia", "config?aba=conta", "mais"],
-         "admin": ["admin", "equipe", "atribuir"]}
+TELAS = {"user": ["hoje", "tarefas", "projetos", "vencimentos", "mes", "mes?aba=pdf", "historico", "busca?q=rede",
+                  # Configurações é uma página só: o topo (Conta) e cada seção pelo link antigo, que rola até ela.
+                  "config", "config?aba=avisos", "config?aba=modelos", "config?aba=calendario", "config?aba=ia", "mais"],
+         "admin": ["admin", "equipe"]}
 JS = r"""(()=>{
   const out=[];
-  for (const el of document.querySelectorAll('button, a[href], select, input:not([type=hidden]), summary, [role=tab], [role=radio], label.weekday-option, label.check-row')) {
+  for (const el of document.querySelectorAll('button, a[href], select, input:not([type=hidden]), summary, [role=tab], [role=radio], label.weekday-option, label.check-line, label.check-row')) {
     if (el.closest('.hidden,[hidden],.sr-only,.trap') || el.closest('dialog:not([open])')) continue;
     const cs = getComputedStyle(el); if (cs.display==='none' || cs.visibility==='hidden' || +cs.opacity===0) continue;
     const r = el.getBoundingClientRect(); if (!r.width || !r.height) continue;
@@ -28,6 +29,25 @@ JS = r"""(()=>{
     }
   }
   return out; })()"""
+def pronto(ev, maximo=4.0):
+    """Espera a tela ficar pronta (carregada, fontes prontas, sem "carregando" e o texto
+    parado por 2 leituras seguidas) em vez de um tempo fixo; desiste em `maximo` s."""
+    t0, ultimo, firmes = time.time(), None, 0
+    while time.time() - t0 < maximo:
+        v = ev("""(() => { const m = document.querySelector('#main');
+          if (document.readyState !== 'complete' || document.fonts.status !== 'loaded' || !m) return -1;
+          if (document.querySelector('.refreshing,[aria-busy="true"],.skeleton')) return -1;
+          const n = m.innerText.trim().length; return n > 20 ? n : -1; })()""")
+        if v and v > 0 and v == ultimo:
+            firmes += 1
+            if firmes >= 2:
+                return
+        else:
+            firmes = 0
+        ultimo = v
+        time.sleep(.15)
+
+
 p = subprocess.Popen(["chromium", "--headless=new", "--remote-debugging-port=9594", "--remote-allow-origins=http://127.0.0.1:9594", f"--user-data-dir={tempfile.mkdtemp()}", "about:blank"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 res = collections.OrderedDict()
 try:
@@ -52,19 +72,32 @@ try:
         cmd("Network.clearBrowserCookies"); cmd("Page.navigate", url=B + "/login"); time.sleep(1.2)
         ev("localStorage.setItem('nexus.instalar.dispensado', String(Date.now()))")
         ev(f"fetch('/api/auth/login',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{email:{json.dumps(email)},password:{json.dumps(pw)}}})}})")
+        if ev("fetch('/api/auth/me').then(r=>r.status)") != 200:
+            print(f"!!! LOGIN FALHOU ({papel}): telas não percorridas"); continue
         for tela in TELAS[papel]:
-            cmd("Page.navigate", url=B + "/#/" + tela); time.sleep(.3); cmd("Page.reload"); time.sleep(2.8)
+            cmd("Page.navigate", url=B + "/#/" + tela); time.sleep(.3); cmd("Page.reload"); pronto(ev)
             coleta(tela)
         if papel == "user":
-            cmd("Page.navigate", url=B + "/#/tarefas"); time.sleep(.3); cmd("Page.reload"); time.sleep(2.8)
+            # projeto aberto: o cabeçalho com Tarefa, Editar e o ⋮ "Mais ações do projeto"
+            cmd("Page.navigate", url=B + "/#/projetos"); time.sleep(.3); cmd("Page.reload"); pronto(ev)
+            ev("document.querySelector('a.proj-card')?.click()"); time.sleep(.5); pronto(ev); coleta("projeto aberto")
+            ev("document.querySelector('#page-actions .proj-more')?.click()"); time.sleep(.8); coleta("menu ⋮ do projeto")
+            ev("document.querySelectorAll('dialog[open]').forEach(d=>d.close())")
+            cmd("Page.navigate", url=B + "/#/tarefas"); time.sleep(.3); cmd("Page.reload"); pronto(ev)
             ev("document.querySelector('.card-open')?.click()"); time.sleep(1.5); coleta("detalhe da tarefa")
             ev("document.querySelector('.task-dialog .edit-toggle')?.click()"); time.sleep(1); coleta("detalhe em edição")
             ev("[...document.querySelectorAll('.task-appbar button')].find(b=>b.getAttribute('aria-label')==='Mais ações')?.click()"); time.sleep(.8); coleta("menu ⋮ do detalhe")
-            cmd("Page.navigate", url=B + "/#/hoje"); time.sleep(.3); cmd("Page.reload"); time.sleep(2.8)
+            cmd("Page.navigate", url=B + "/#/hoje"); time.sleep(.3); cmd("Page.reload"); pronto(ev)
             ev("document.getElementById('fab')?.click()"); time.sleep(1); coleta("nova tarefa")
             ev("document.querySelectorAll('dialog[open]').forEach(d=>d.close())")
             ev("document.querySelector('.list-row .only-mob[aria-label^=\"Mais ações\"]')?.click()"); time.sleep(.8); coleta("menu ⋮ da linha")
+            ev("document.querySelectorAll('dialog[open]').forEach(d=>d.close())")
+            ev("document.querySelector('.t-rec .panel-head button.accent')?.click()"); time.sleep(1); coleta("nova rotina")
+            ev("document.getElementById('rec-pack-btn')?.click()"); time.sleep(1.5); coleta("pacotes: áreas")
+            ev("document.querySelector('dialog[open] .pack-card')?.click()"); time.sleep(1); coleta("pacotes: itens")
+            ev("document.querySelectorAll('dialog[open]').forEach(d=>d.close())")
 finally:
     p.terminate()
+print("alvos menores que 44 px:", sum(sum(d["tam"].values()) for d in res.values()) or "nenhum")
 for cls, d in sorted(res.items(), key=lambda kv: -sum(kv[1]["tam"].values())):
     print(f"{cls:42s} {', '.join(f'{k}×{v}' for k, v in d['tam'].most_common(3)):30s} «{d['ex']}»  [{', '.join(sorted(d['telas']))[:70]}]")

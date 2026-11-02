@@ -28,7 +28,9 @@ def test_parar_antes_de_iniciar_nao_da_tempo_negativo(usuario):
     tid = usuario.post("/worklog", {"title": "Switch"}).json()["id"]
     agora = datetime.now(timezone.utc)
     usuario.post("/timer/start", {"task_id": tid, "at": _iso(agora - timedelta(minutes=10))})
-    assert usuario.post("/timer/stop", {"at": _iso(agora - timedelta(minutes=30))}).json()["stopped"]["minutes"] == 1
+    # Parada anterior ao início deste cronômetro: é de outro (outro aparelho trocou); não aponta nada.
+    assert usuario.post("/timer/stop", {"at": _iso(agora - timedelta(minutes=30))}).status_code == 409
+    assert usuario.get("/timer").json()["timer"]["task_id"] == tid
 
 
 def test_criar_reenviado_nao_duplica(usuario):
@@ -36,3 +38,11 @@ def test_criar_reenviado_nao_duplica(usuario):
     a = usuario.post("/worklog", corpo).json()
     b = usuario.post("/worklog", corpo).json()
     assert a["id"] == b["id"] and b.get("existing")
+
+
+def test_concluir_com_hora_do_mesmo_minuto_da_criacao(usuario):
+    """Sem sinal, a conclusão leva a hora do aparelho só com minutos: no mesmo minuto da criação vale."""
+    from zoneinfo import ZoneInfo
+    tid = usuario.post("/worklog", {"title": "Rápida"}).json()["id"]
+    agora = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%Y-%m-%dT%H:%M")
+    assert usuario.post(f"/worklog/{tid}/finish", {"completed_at": agora}).status_code == 200

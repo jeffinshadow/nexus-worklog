@@ -8,7 +8,8 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
-from .. import db
+from .. import db, teams
+from ..visibility import visible_sql
 from ..deps import active_user
 from ..labels import PRIO_PT, STATUS_PT
 from ..services import TASK_COUNTS, app_today, app_tz, is_due, rotinas, work_mask
@@ -41,25 +42,54 @@ def _download(content: bytes, media: str, name: str) -> Response:
                     headers={"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-store"})
 
 
-def _tasks(uid: int) -> list[dict]:
+def _tasks(uid: int, start: date | None = None, end: date | None = None) -> list[dict]:
+    """Todas as tarefas; com período, as que estiveram em aberto em algum momento
+    dele (criadas até o fim e não concluídas antes do início) ou com tempo apontado
+    nele, e period_minutes = o tempo apontado no período."""
+    period = start is not None and end is not None
     return db.query_all(
         """SELECT w.id, w.title, w.description, w.status, w.priority, w.due_date, w.created_at, w.completed_at,
                   w.ticket, w.after_hours, w.blocked_reason, w.blocked_at, w.follow_up_on, w.resolution, p.name AS project,
-                  """ + TASK_COUNTS + """
+                  w.project_id, w.external_ref, w.objective_id,
+                  """ + TASK_COUNTS + """,
+                  (SELECT COALESCE(sum(t.minutes), 0) FROM time_entries t
+                    WHERE t.task_id = w.id AND t.user_id = w.user_id AND t.day BETWEEN %(s)s AND %(e)s)::int AS period_minutes
              FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
-            WHERE w.user_id = %s ORDER BY w.created_at""", (uid,))
+            WHERE w.user_id = %(uid)s
+              AND (NOT %(p)s
+                   OR ((w.created_at AT TIME ZONE %(tz)s)::date <= %(e)s
+                       AND (w.completed_at IS NULL OR (w.completed_at AT TIME ZONE %(tz)s)::date >= %(s)s))
+                   OR EXISTS (SELECT 1 FROM time_entries t WHERE t.task_id = w.id AND t.user_id = w.user_id
+                                 AND t.day BETWEEN %(s)s AND %(e)s))
+            ORDER BY w.created_at""",
+        {"uid": uid, "p": period, "s": start, "e": end, "tz": app_tz().key})
 
 
-def time_csv(uid: int | None, filename: str) -> Response:
-    """Apontamentos em CSV. uid=None = de todos (admin: horas da equipe por
-    cliente; o projeto vai por nome, pois cada pessoa tem os seus)."""
+def _period(start: date | None, end: date | None) -> tuple[date | None, date | None]:
+    """Período opcional das exportações: os dois ou nenhum, até 1 ano."""
+    if start is None and end is None:
+        return None, None
+    if start is None or end is None or end < start or (end - start).days > 366:
+        raise HTTPException(status_code=400, detail="período inválido: informe start e end (até 1 ano)")
+    return start, end
+
+
+def time_csv(uid: int | None, filename: str, viewer: int | None = None,
+             start: date | None = None, end: date | None = None, extra: str = "TRUE") -> Response:
+    """Apontamentos em CSV. uid=None = de todos (visualizador: horas da equipe
+    por cliente; o projeto vai por nome, pois cada pessoa tem os seus).
+    viewer = só de quem esse visualizador pode ver (visibility.visible_sql;
+    `extra`: o recorte do seletor de equipe). start/end: só esse período."""
+    vis = f"{visible_sql('u', int(viewer))} AND {extra}" if viewer is not None else "TRUE"
     rows = db.query_all(
-        """SELECT e.day, e.minutes, w.id AS task_id, w.title, p.name AS project, e.note, e.actor, e.token_name,
+        f"""SELECT e.day, e.minutes, w.id AS task_id, w.title, p.name AS project, e.note, e.actor, e.token_name,
                   w.ticket, w.after_hours, u.email
              FROM time_entries e JOIN worklog_tasks w ON w.id = e.task_id
              JOIN users u ON u.id = e.user_id
-             LEFT JOIN projects p ON p.id = w.project_id
-            WHERE (%(uid)s::bigint IS NULL OR e.user_id = %(uid)s) ORDER BY e.day, u.email, e.id""", {"uid": uid})
+             LEFT JOIN projects p ON p.id = w.project_id AND p.user_id = e.user_id
+            WHERE (%(uid)s::bigint IS NULL OR e.user_id = %(uid)s) AND {vis}
+              AND (%(s)s::date IS NULL OR e.day >= %(s)s) AND (%(e)s::date IS NULL OR e.day <= %(e)s)
+            ORDER BY e.day, u.email, e.id""", {"uid": uid, "s": start, "e": end})
     header = ["data", "minutos", "horas", "tarefa_id", "tarefa", "projeto", "observacao", "origem", "chamado", "plantao"]
     data = [[r["day"], r["minutes"], str(round(r["minutes"] / 60, 2)).replace(".", ","), r["task_id"], r["title"],
              r["project"] or "", r["note"] or "", r["token_name"] or r["actor"], r["ticket"] or "",
@@ -81,7 +111,7 @@ def plantao_csv(start: Optional[date] = Query(None), end: Optional[date] = Query
         """SELECT COALESCE(e.day, (w.completed_at AT TIME ZONE %(tz)s)::date) AS dia, w.id, w.title, w.ticket,
                   p.name AS project, COALESCE(e.minutes, 0) AS minutes, e.note
              FROM worklog_tasks w
-             LEFT JOIN time_entries e ON e.task_id = w.id
+             LEFT JOIN time_entries e ON e.task_id = w.id AND e.user_id = w.user_id
              LEFT JOIN projects p ON p.id = w.project_id
             WHERE w.user_id = %(uid)s AND w.after_hours
               AND COALESCE(e.day, (w.completed_at AT TIME ZONE %(tz)s)::date) BETWEEN %(s)s AND %(e)s
@@ -125,21 +155,29 @@ def rotinas_csv(start: Optional[date] = Query(None), end: Optional[date] = Query
 
 
 @router.get("/export/{kind}")
-def export(kind: str, user=Depends(active_user)):
+def export(kind: str, start: Optional[date] = Query(None), end: Optional[date] = Query(None), user=Depends(active_user)):
+    """tarefas.csv e apontamentos.csv aceitam start/end (os dois): só o período."""
     uid = user["user_id"]
     stamp = app_today().isoformat()
+    if kind in ("tarefas.csv", "apontamentos.csv"):
+        start, end = _period(start, end)
+        if start:
+            stamp = f"{start.isoformat()}-a-{end.isoformat()}"
     if kind == "tarefas.csv":
+        horas = lambda m: str(round(m / 60, 2)).replace(".", ",")  # noqa: E731
         rows = [[t["id"], t["title"], t["description"] or "", STATUS_PT.get(t["status"], t["status"]), PRIO_PT.get(t["priority"], ""),
                  t["project"] or "", _local(t["created_at"]), t["due_date"] or "", _local(t["completed_at"]),
                  f"{t['check_done']}/{t['check_total']}" if t["check_total"] else "", t["minutes"],
-                 str(round(t["minutes"] / 60, 2)).replace(".", ","), t["notes_count"],
-                 t["ticket"] or "", "sim" if t["after_hours"] else "", t["blocked_reason"] or "", t["resolution"] or ""] for t in _tasks(uid)]
+                 horas(t["minutes"]), t["notes_count"],
+                 t["ticket"] or "", "sim" if t["after_hours"] else "", t["blocked_reason"] or "", t["resolution"] or ""]
+                + ([t["period_minutes"], horas(t["period_minutes"])] if start else [])
+                for t in _tasks(uid, start, end)]
         return _download(_csv(rows, ["id", "titulo", "descricao", "status", "prioridade", "projeto", "criada_em", "prazo",
                                      "concluida_em", "checklist", "minutos", "horas", "anotacoes", "chamado", "plantao",
-                                     "aguardando", "como_resolveu"]),
+                                     "aguardando", "como_resolveu"] + (["minutos_no_periodo", "horas_no_periodo"] if start else [])),
                          "text/csv; charset=utf-8", f"nexus-tarefas-{stamp}.csv")
     if kind == "apontamentos.csv":
-        return time_csv(uid, f"nexus-apontamentos-{stamp}.csv")
+        return time_csv(uid, f"nexus-apontamentos-{stamp}.csv", start=start, end=end)
     if kind == "tudo.json":
         tasks = _tasks(uid)
         by_id = {t["id"]: t for t in tasks}
@@ -162,10 +200,43 @@ def export(kind: str, user=Depends(active_user)):
         for r in recurring:
             r["completed_dates"] = done.get(r["id"], [])
             r["evidence"] = evid.get(r["id"], [])  # o que foi anotado ao marcar
+        for x in db.query_all("SELECT task_id, project_id FROM worklog_task_projects WHERE task_id = ANY(%s) ORDER BY project_id",
+                              (list(by_id),)):
+            by_id[x["task_id"]].setdefault("extra_project_ids", []).append(x["project_id"])
+        projects = db.query_all(
+            """SELECT id, name, color, COALESCE(icon, 'pasta') AS icon, description, external_ref, archived, created_at
+                 FROM projects WHERE user_id = %s ORDER BY id""",
+            (uid,))
+        objs = {}
+        for o in db.query_all(
+                """SELECT project_id, id, title, description, due_date, position, external_ref, created_at
+                     FROM project_objectives WHERE user_id = %s ORDER BY position, id""", (uid,)):
+            objs.setdefault(o.pop("project_id"), []).append(o)
+        for p in projects:
+            p["objectives"] = objs.get(p["id"], [])
+
+        def prefs(table: str):
+            row = db.query_one(f"SELECT * FROM {table} WHERE user_id = %s", (uid,))  # sem linha = os padrões
+            return row and {k: v for k, v in row.items() if k not in ("user_id", "updated_at")}
+
         payload = {
             "exported_at": datetime.now(app_tz()),
             "user": db.query_one("SELECT email, work_days, created_at FROM users WHERE id = %s", (uid,)),
-            "projects": db.query_all("SELECT id, name, color, archived, created_at FROM projects WHERE user_id = %s ORDER BY id", (uid,)),
+            "profile": db.query_one(
+                f"""SELECT display_name, theme, COALESCE((SELECT s.ticket_url FROM app_settings s WHERE s.id = 1 AND {teams.company_sql('users.id')}), ticket_url) AS ticket_url,
+                          default_project_id, accepts_assignments_at, viewers_allowed,
+                          EXISTS (SELECT 1 FROM user_avatars a WHERE a.user_id = users.id) AS has_avatar
+                     FROM users WHERE id = %s""", (uid,)),
+            "prefs": {"email": prefs("notification_prefs"), "push": prefs("push_prefs"),
+                      "assistant": prefs("assistant_prefs")},
+            "projects": projects,
+            "templates": db.query_all(
+                """SELECT name, title, description, priority, project_id, after_hours, checklist, created_at
+                     FROM task_templates WHERE user_id = %s ORDER BY name""", (uid,)),
+            # As imagens não cabem aqui: vão no fotos.zip (Relatórios, pelo app).
+            "photos": {"count": db.query_one("SELECT count(*) AS n FROM photos WHERE user_id = %s AND deleted_at IS NULL",
+                                             (uid,))["n"],
+                       "download": "/api/export/fotos.zip"},
             "tasks": tasks,
             "recurring": recurring,
             "renewals": db.query_all(

@@ -4,13 +4,11 @@ import { h, icon, clear, setTimeZone, matchPasswords } from "./dom.js";
 import * as today from "./today.js";
 import * as board from "./board.js";
 import * as projetos from "./projetos.js";
-import * as dashboard from "./dashboard.js";
-import * as reports from "./reports.js";
+import * as mes from "./mes.js";
 import * as history from "./history.js";
 import * as settings from "./settings.js";
 import * as admin from "./admin.js";
 import * as equipe from "./equipe.js";
-import * as atribuir from "./atribuir.js";
 import { newRenewal, renewalsPanel } from "./renewals.js";
 import * as search from "./search.js";
 import { highlight } from "./search.js";
@@ -26,32 +24,38 @@ import { session } from "./session.js";
 import { initTimer, stopTimer, timerState } from "./timer.js";
 import { openWorklog } from "./board.js";
 import { openTask, closeSidePanel } from "./task.js";
-import { startTour } from "./tour.js";
-import { modal, busy, initTooltips, initRailPeek, syncRail, calmMotion, toast } from "./ui.js";
+import { startTour, changesNotice } from "./tour.js";
+import { openReview } from "./review.js";
+import { modal, busy, initTooltips, initRailPeek, syncRail, calmMotion, toast, singleKeysOn, repaintBadges } from "./ui.js";
 
 let me = null;
 
-// need: papel exigido (user = tem o próprio registro). O backend confere de novo.
+// need: papel exigido (user = tem o próprio registro); uma lista = qualquer um deles. O backend confere de novo.
 const VIEWS = {
   hoje: { title: "Hoje", need: "user", mount: (el, ctx) => today.mount(el, ctx) },
   tarefas: { title: "Tarefas", need: "user", mount: (el, ctx) => board.mount(el, ctx) },
   projetos: { title: "Projetos", need: "user", mount: (el, ctx) => projetos.mount(el, ctx) },
   vencimentos: { title: "Vencimentos", need: "user", eyebrow: "o que renovar", mount: (el, ctx) => mountRenewals(el, ctx) },
-  dashboard: { title: "Retrospectiva", need: "user", eyebrow: "seus números", mount: (el, ctx) => dashboard.mount(el, { me: ctx.me, setAssist: ctx.setAssist }) },
-  relatorios: { title: "Relatórios", need: "user", eyebrow: "PDF e exportação", mount: (el, ctx) => reports.mount(el, { me: ctx.me }) },
+  mes: { title: "Meu mês", need: "user", eyebrow: "como foi o mês", mount: (el, ctx) => mes.mount(el, ctx) },
   historico: { title: "Histórico", eyebrow: "o que mudou", mount: (el) => history.mount(el) },
   config: { title: "Configurações", mount: (el, ctx) => settings.mount(el, ctx) },
-  atribuir: { title: "Atribuir tarefas", need: "assigner", eyebrow: "para a equipe", mount: (el, ctx) => atribuir.mount(el, ctx) },
-  equipe: { title: "Equipe", need: "viewer", eyebrow: "cada pessoa", mount: (el) => equipe.mount(el) },
-  admin: { title: "Admin", need: "admin", eyebrow: "contas e permissões", mount: (el, ctx) => admin.mount(el, ctx) },
+  // Equipe: o painel (quem acompanha) e Atribuir (quem atribui tarefas), numa tela só.
+  equipe: { title: "Equipe", need: ["viewer", "assigner"], mount: (el, ctx) => equipe.mount(el, ctx) },
+  admin: { title: "Admin", need: "admin", eyebrow: "contas e papéis", mount: (el, ctx) => admin.mount(el, ctx) },
   mais: { title: "Mais", mount: (el) => mountMore(el) },
   busca: { title: "Busca", need: "user", eyebrow: "em tudo", mount: (el, ctx) => search.mount(el, ctx) },
 };
 
+// Telas que viraram Meu mês: links antigos (favoritos, e-mails) continuam valendo;
+// os Relatórios chegam com a exportação aberta.
+// Atribuir virou parte da Equipe (e-mails antigos levam a #/atribuir).
+const MOVED = { dashboard: "mes", relatorios: "mes?aba=pdf", atribuir: "equipe" };
+
 const has = (role) => !!me && (me.roles || []).includes(role);
-const allowed = (name) => VIEWS[name] && (!VIEWS[name].need || has(VIEWS[name].need));
+const hasAny = (need) => [].concat(need).some(has);
+const allowed = (name) => VIEWS[name] && (!VIEWS[name].need || hasAny(VIEWS[name].need));
 // Primeira tela: Hoje para quem tem registro; senão, a primeira função da conta.
-const home = () => ["hoje", "atribuir", "equipe", "admin", "historico"].find(allowed);
+const home = () => ["hoje", "equipe", "admin", "historico"].find(allowed);
 
 function setActions(...nodes) {
   const box = document.getElementById("page-actions");
@@ -69,10 +73,21 @@ function setActions(...nodes) {
   }
 }
 
+// Troca de tela pedida agora pelo menu ou por atalho: ao terminar, o foco vai
+// para o título da tela nova (o leitor anuncia onde chegou). Recargas e o
+// carregamento inicial não mexem no foco.
+let navAt = 0;
+document.addEventListener("click", (ev) => { if (ev.target.closest && ev.target.closest("a[data-view]")) navAt = Date.now(); }, true);
+
 async function route() {
+  const wantFocus = Date.now() - navAt < 1500;
+  navAt = 0;
   let name = (location.hash.replace(/^#\/?/, "") || home()).split("?")[0];
+  if (MOVED[name]) { window.history.replaceState(null, "", "#/" + MOVED[name]); name = MOVED[name].split("?")[0]; }
   if (!allowed(name)) name = home();
   const view = VIEWS[name];
+  const sameHash = lastHash === location.hash;
+  lastHash = location.hash;
 
   for (const key of Object.keys(VIEWS)) {
     document.getElementById("view-" + key).classList.toggle("hidden", key !== name);
@@ -127,7 +142,10 @@ async function route() {
     await view.mount(el, { me, setActions: actions, setEyebrow, setAssist: assist, go });
   } catch (e) {
     clear(el);
-    el.append(h("p", { class: "empty", text: e && e.status === 0 ? e.message : "Erro ao carregar. Tente de novo." }));
+    // Servidor fora (ou o app abriu do cache do aparelho): a frase e o botão, como na abertura.
+    el.append(h("div", { class: "auth-card view-error", role: "alert" },
+      h("p", { class: "sub", text: e && e.status === 0 ? e.message : "Não foi possível carregar." }),
+      h("button", { type: "button", class: "btn btn-primary full", text: "Tentar de novo", onClick: () => route() })));
   } finally {
     clearTimeout(loading);
     el.removeAttribute("aria-busy");
@@ -139,7 +157,9 @@ async function route() {
       if (!acted) setActions();
     }
   }
-  window.scrollTo(0, 0);
+  // A mesma tela redesenhada (parar o cronômetro, voltar à interrompida, lembrete): fica onde estava.
+  if (!sameHash) window.scrollTo(0, 0);
+  if (wantFocus && seq === routeSeq) document.getElementById("page-title").focus({ preventScroll: true });
   // Link direto para uma tarefa (#/tarefas?id=N: e-mail de atribuição, calendário).
   const taskId = Number(new URLSearchParams(location.hash.split("?")[1] || "").get("id"));
   if (name === "tarefas" && taskId > 0 && seq === routeSeq) {
@@ -158,6 +178,7 @@ function enter(el) {
 }
 
 let routeSeq = 0;
+let lastHash = null; // o endereço do último desenho: igual, é só atualizar a tela
 let shownView = null;
 const kept = {};
 function setAssist(node) {
@@ -172,6 +193,7 @@ function setEyebrow(text) {
 }
 
 function go(name) {
+  navAt = Date.now();
   location.hash = "#/" + name;
 }
 
@@ -206,30 +228,30 @@ async function mountRenewals(el, ctx) {
 function mountMore(el) {
   clear(el);
   const items = [
-    ["projetos", "route", "Projetos"],
     ["vencimentos", "calendar", "Vencimentos"],
-    ["dashboard", "dashboard", "Retrospectiva"],
     ["historico", "history", "Histórico"],
-    // Quem atribui tem Atribuir na barra; a Busca vem para cá.
-    has("assigner") ? ["busca", "search", "Busca"] : ["atribuir", "send", "Atribuir tarefas"],
+    // A Busca fica sempre na barra; a Equipe vem para cá (na barra só para quem não tem registro próprio).
     ["equipe", "team", "Equipe"],
     ["admin", "admin", "Admin"],
     ["config", "settings", "Configurações"],
-  ].filter(([v]) => allowed(v));
+  ].filter((it) => it && allowed(it[0]));
   el.append(
     h("a", { href: "#/config?aba=conta", class: "more-me" }, avatar(me, "md"),
       h("span", { class: "who-text" }, h("span", { class: "who-name", text: me.name, title: me.name }), h("span", { class: "who-email", text: me.email, title: me.email }))),
     h("div", { class: "menu-list" },
-      ...items.map(([v, ic, label]) => h("a", { href: "#/" + v }, icon(ic), h("span", { text: label }))),
+      ...items.map(([v, ic, label]) => h("a", { href: "#/" + v, "data-view": v }, icon(ic), h("span", { text: label }))),
+      // A revisão guiada da semana (também no convite do assistente, no último dia útil).
+      has("user") ? h("button", { type: "button", class: "nav-btn", onClick: () => openReview() }, icon("check"), h("span", { text: "Revisão da semana" })) : null,
       h("button", { type: "button", class: "nav-btn", onClick: showHelp }, icon("help"), h("span", { text: "Ajuda" })),
       h("button", { type: "button", class: "nav-btn logout", onClick: logout }, icon("logout"), h("span", { text: "Sair" }))
     )
   );
+  repaintBadges(); // ex.: pedidos de convite no item Admin
 }
 
 // Ajuda em seções: começar (tour e manual), onde fica cada coisa, marcadores do
 // registro rápido, atalhos (só no computador) e a quem recorrer (Admin > Geral).
-function showHelp() {
+function showHelp(focus) {
   const user = has("user");
   const sec = (ic, title, ...body) => h("section", { class: "help-sec" }, h("h3", {}, icon(ic), h("span", { text: title })), ...body);
   const list = (rows) => h("dl", { class: "help-list" }, ...rows.flatMap(([k, v, code]) =>
@@ -246,10 +268,12 @@ function showHelp() {
       ...(user ? [["Hoje", "Rotinas do dia, tarefas em aberto (com filtro) e o registro rápido."],
         ["Tarefas", "O quadro completo e o detalhe de cada tarefa: anotações, checklist, cronômetro, tempo."],
         ["Projetos", "Cada projeto com os objetivos em ordem de execução e as tarefas de cada um."],
-        ["Retrospectiva", "A semana e o mês em números."],
-        ["Relatórios", "PDF do período ou de um projeto, e a exportação dos dados."]] : []),
+        ["Meu mês", "Como foi o mês numa frase, com o PDF do mês. Embaixo, o painel: rotinas em dia, tarefas concluídas e horas apontadas, cada um com os últimos 6 meses e uma palavra que situa o mês na sua própria média (acima, na média, abaixo — só para você ver o seu ritmo; quem acompanha a equipe não vê); o calendário do mês, com cada dia pintado pela parte das rotinas feitas (mais forte = mais feitas); o ritmo por semana; o tempo por projeto; e as rotinas que pedem atenção. Depois, o que foi entregue. Outro período, um projeto e a exportação dos dados ficam em “Outro período ou formato”."]] : []),
       ["Histórico", "Tudo o que mudou, com desfazer."],
-      ["Configurações", user ? "Modelos, avisos, calendário, IA e a sua conta (projeto padrão, dias úteis)." : "IA e API, e a sua conta."],
+      ...(has("viewer") ? [["Equipe", "Do papel “Vê a equipe”. Um painel para coordenar, não para comparar: os números da equipe somados (rotinas em dia, tarefas concluídas, horas, aguardando), o que precisa de atenção, o tempo por projeto e as pessoas em ordem alfabética. Tocar numa pessoa abre o mês e o quadro dela, só para ver. Entra só quem permitiu (cada pessoa decide em Configurações > Conta). No topo: Horas da equipe (CSV) e PDF."]] : []),
+      ...(has("assigner") ? [["Atribuir (na Equipe)", "Do papel “Manda tarefas”. “Atribuir tarefa”, no alto da tela Equipe, manda uma tarefa para quem aceitou receber. Logo abaixo ficam as Tarefas que atribuí: enquanto ela está a fazer, você ainda altera ou cancela; depois, é da pessoa. Quem recebeu pode devolver com o motivo: aí você atribui de novo (a ela ou a outra pessoa) ou encerra."]] : []),
+      ...(has("admin") ? [["Admin", "Convites e pedidos de convite, contas (senha, bloquear, excluir), papéis, configurações gerais e identidade visual."]] : []),
+      ["Configurações", user ? "A sua conta (dias úteis, projeto padrão, quem vê e quem atribui tarefas), avisos, calendário e IA." : "A sua conta, e IA e API."],
     ])),
     user ? sec("add", "Registro rápido (no Hoje)",
       h("p", { class: "help", text: "Escreva o que fez e aperte Enter. Marcadores opcionais no fim, em qualquer ordem:" }),
@@ -259,19 +283,33 @@ function showHelp() {
         ["!alta", "prioridade alta", true],
         ["!plantão", "fora do horário", true],
         ["^amanhã", "prazo: ^hoje, ^sex, ^25/10…", true],
-        ["!bloq motivo", "bloqueada, aguardando o motivo (sempre por último)", true],
+        ["^15h", "lembrete com hora: ^15h, ^amanhã 8h, ^sex 9h30", true],
+        ["!aguarda motivo", "fica aguardando o motivo (sempre por último)", true],
         ["— 45min", "já conclui, com o tempo apontado", true],
       ]),
-      h("p", { class: "help-example" }, "Ex.: ", h("code", { text: "Troca do switch @Matriz #4821 — 45min" }))) : null,
+      h("p", { class: "help-example" }, "Ex.: ", h("code", { text: "Troca do switch @Matriz #4821 — 45min" })),
+      h("p", { class: "help-example" }, "Colou uma lista (uma por linha)? Vira uma tarefa por linha, com prévia antes de criar.")) : null,
+    user ? sec("alert", "Sem sinal",
+      h("p", { class: "help", text: "O app abre com as telas da última visita e guarda o que for feito (registrar, concluir, anotar, rotina, fotos, cronômetro); vai sozinho quando a conexão voltar. Com sinal, ele também guarda sozinho, de tempos em tempos, o detalhe das tarefas em aberto (checklist e anotações): é só abrir o app antes de sair. Sem sinal, a barra do topo diz de que hora são." })) : null,
     user && desk ? sec("key", "Atalhos de teclado", list([
-      ["n", "nova tarefa", true], ["/", "buscar", true], ["h t r l", "Hoje, Tarefas, Retrospectiva, Relatórios", true],
+      ["n", "nova tarefa", true], ["q", "registro rápido", true], ["/", "buscar", true], ["h t", "Hoje, Tarefas", true], ["r l", "Meu mês: números, relatórios", true],
       ["s", "parar o cronômetro", true], ["?", "ver todos os atalhos", true],
     ])) : null,
-    sec("mail", "Suporte", me.support_contact
-      ? h("p", { class: "help" }, "Fale com ", h("strong", { text: me.support_contact }), ".")
-      : h("p", { class: "help", text: "Dúvidas ou problemas: fale com quem administra o Nexus na sua equipe." })),
-    h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Fechar", onClick: () => dlg.close() })));
+    // Para o admin, o Suporte é ele mesmo: diz onde fica o contato que os outros veem.
+    has("admin")
+      ? sec("mail", "Suporte", h("p", { class: "help", text: me.support_contact
+          ? `As pessoas veem aqui: “${me.support_contact}”. Você muda em Admin > Geral.`
+          : "Você administra este Nexus. Em Admin > Geral, ponha o contato de suporte que as pessoas vão ver aqui." }))
+      : sec("mail", "Suporte", me.support_contact
+        ? h("p", { class: "help" }, "Fale com ", h("strong", { text: me.support_contact }), ".")
+        : h("p", { class: "help", text: "Dúvidas ou problemas: fale com quem administra o Nexus na sua equipe." })),
+    h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-text", text: "Fechar", onClick: () => dlg.close() })));
   dlg.classList.add("help-dialog");
+  // Só o meio rola (título e Fechar ficam fixos): a barra de rolagem não passa por cima dos cantos arredondados.
+  const helpBody = h("div", { class: "help-body" }, ...[...dlg.children].filter((el) => el.tagName !== "H2" && !el.classList.contains("dialog-actions")));
+  dlg.querySelector(".dialog-actions").before(helpBody);
+  // Pedido de uma seção (ex.: "ver marcadores" no Hoje): rola até ela.
+  if (focus === "marcadores") [...dlg.querySelectorAll(".help-sec")].find((s) => /Registro rápido/.test(s.textContent))?.scrollIntoView({ block: "start" });
 }
 
 // Erros de JavaScript vão para o log do servidor (sem terceiros). Poucos por página.
@@ -313,7 +351,7 @@ function showChangePassword() {
       });
       location.reload();
     } catch (e) {
-      err.textContent = e.message || "Erro ao trocar a senha.";
+      err.textContent = e.message || "Não foi possível trocar a senha.";
     }
   }));
 }
@@ -322,14 +360,25 @@ async function boot() {
   stashShare(); // compartilhado de outro app: guarda antes de um eventual login
   loadBranding();
   try {
-    me = await api.get("/auth/me");
+    // Servidor fora: o cartão de erro vem em segundos (o service worker, sem rede, responde antes com a cópia guardada).
+    me = await api.get("/auth/me", { timeout: 6500 });
   } catch (e) {
     // Só sessão inválida vai ao login; sem rede ou servidor fora, avisa e deixa tentar de novo.
     if (e.status === 401 || e.message === "nao autenticado") { toLogin(); return; }
-    document.body.append(h("div", { class: "auth-wrap" }, h("p", { class: "empty", text: e.message || "Não foi possível abrir o Nexus." }),
-      h("button", { type: "button", class: "btn btn-primary", text: "Tentar de novo", onClick: () => location.reload() })));
+    document.getElementById("boot-splash")?.remove();
+    document.querySelector(".skip-link")?.remove(); // o <main> está escondido: o atalho não levaria a nada
+    // O mesmo cartão do login: a marca, a frase e o botão juntos, no meio da tela.
+    const retry = h("button", { type: "button", class: "btn btn-primary full", text: "Tentar de novo", onClick: () => location.reload() });
+    document.body.append(h("div", { class: "auth-wrap" }, h("div", { class: "auth-card boot-error", role: "alert" },
+      h("div", { class: "lockup lockup--center" }, h("img", { class: "lockup-mark", src: "/img/dragon-mark.svg", alt: "", width: "26", height: "30" }),
+        h("span", { class: "lockup-type" }, h("span", { text: "nexus" }), h("span", { text: "worklog" }))),
+      h("p", { class: "sub", text: e.message || "Não foi possível abrir o Nexus." }),
+      retry)));
+    retry.focus();
+    loadBranding();  // o logo da equipe, se o servidor responder
     return;
   }
+  document.getElementById("boot-splash")?.remove();
   api.setCsrf(me.csrf_token);
   setTimeZone(me.tz);
   if (window.nexusTheme && me.theme && me.theme !== window.nexusTheme.get()) window.nexusTheme.set(me.theme);  // a escolha da conta vale aqui também
@@ -353,7 +402,7 @@ async function boot() {
   // Perfil ou assistente mudou (Configurações, convite do assistente): atualiza o menu e o lembrete.
   window.addEventListener("nexus:me", () => { renderWho(); configureAssistant(me); if (has("user")) startIdle(me, route); });
   // Menu: cada item aparece só para quem tem o papel (data-need).
-  for (const el of document.querySelectorAll("[data-need]")) el.classList.toggle("hidden", !has(el.dataset.need));
+  for (const el of document.querySelectorAll("[data-need]")) el.classList.toggle("hidden", !hasAny(el.dataset.need.split(" ")));
   initTooltips();
   initRailPeek();
   syncRail();
@@ -366,8 +415,9 @@ async function boot() {
     fab.classList.toggle("compact", y > lastY && y > 80);
     lastY = y;
   }, { passive: true });
-  // Barra inferior: no máximo 5 itens; quem atribui troca a Busca por Atribuir.
-  if (has("assigner")) document.querySelector('#tabbar [data-view="busca"]').classList.add("hidden");
+  // Barra inferior: no máximo 5 itens; a Busca fica sempre e a Equipe vai para "Mais"
+  // (fica na barra só para quem acompanha ou atribui sem ter registro próprio).
+  if (has("user")) document.querySelector('#tabbar [data-view="equipe"]').classList.add("hidden");
   // Celular: quando o título da tela passa por baixo da barra do topo, ela ganha a linha de baixo.
   const pageTitle = document.getElementById("page-title");
   const barH = () => document.getElementById("appbar").getBoundingClientRect().height || 56;
@@ -376,7 +426,8 @@ async function boot() {
     document.getElementById("appbar").classList.toggle("show", shown && e.intersectionRatio < 1 && e.boundingClientRect.top < barH());
   }, { rootMargin: `-${Math.round(barH())}px 0px 0px 0px`, threshold: [0, 1] }).observe(pageTitle);
   document.getElementById("btn-logout").addEventListener("click", logout);
-  document.getElementById("btn-help").addEventListener("click", showHelp);
+  document.getElementById("btn-help").addEventListener("click", () => showHelp());
+  window.addEventListener("nexus:help", (ev) => showHelp(ev.detail));
   // Busca na barra lateral; "/" foca a busca de qualquer tela.
   const sideQ = document.getElementById("side-search-q");
   document.getElementById("side-search").addEventListener("submit", (ev) => {
@@ -414,8 +465,7 @@ async function boot() {
       for (const p of projs)
         sugg.append(h("button", { type: "button", class: "sugg-item", onClick: () => {
           hideSugg(); sideQ.value = "";
-          sessionStorage.setItem("nexus.board.project", String(p.id));
-          if (location.hash.startsWith("#/tarefas")) route(); else location.hash = "#/tarefas";
+          location.hash = "#/projetos?id=" + p.id;  // a tela do projeto, como na Busca
         } }, icon("folder"), h("span", { class: "sugg-t" }, ...highlight(p.name, q)), h("small", { text: "projeto" })));
       if (!tasks.length && !projs.length) sugg.append(h("p", { class: "sugg-empty", text: "Nada encontrado." }));
       sugg.append(h("button", { type: "submit", class: "sugg-all", text: "Ver todos os resultados" }));
@@ -441,23 +491,28 @@ async function boot() {
       else location.hash = "#/busca";
     }],
     n: ["Nova tarefa", () => openWorklog(route)],
+    // O registro rápido fica depois das rotinas na ordem do Tab: uma tecla leva até ele.
+    q: ["Registro rápido (no Hoje)", () => {
+      const el = document.querySelector('#view-hoje [aria-label="Registrar tarefa rápida"]');
+      if (el && el.offsetParent) el.focus(); else go("hoje?acao=rapido");
+    }],
     h: ["Ir para Hoje", () => go("hoje")],
     t: ["Ir para Tarefas", () => go("tarefas")],
-    r: ["Ir para Retrospectiva", () => go("dashboard")],
-    l: ["Ir para Relatórios", () => go("relatorios")],
+    r: ["Ir para Meu mês", () => go("mes")],
+    l: ["Ir para Meu mês (outro período ou formato)", () => go("mes?aba=pdf")],
     s: ["Parar o cronômetro (e apontar)", () => { if (timerState()) stopTimer(); }],
     "?": ["Mostrar estes atalhos", showShortcuts],
   };
   function showShortcuts() {
     const dlg = modal(h("h2", { text: "Atalhos de teclado" }),
       h("dl", { class: "shortcuts" }, ...Object.entries(SHORTCUTS).flatMap(([k, [label]]) => [h("dt", {}, h("kbd", { text: k })), h("dd", { text: label })])),
-      h("p", { class: "dialog-note", text: "Funcionam fora dos campos de texto. Esc fecha qualquer janela." }),
-      h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Fechar", onClick: () => dlg.close() })));
+      h("p", { class: "dialog-note", text: "Funcionam fora dos campos de texto. Esc fecha qualquer janela. Dá para desligá-los em Configurações." }),
+      h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-text", text: "Fechar", onClick: () => dlg.close() })));
   }
   document.addEventListener("keydown", (ev) => {
     if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
     const sc = SHORTCUTS[ev.key.length === 1 ? ev.key.toLowerCase() : ""] || SHORTCUTS[ev.key];
-    if (!sc || !has("user")) return;  // atalhos são do registro próprio
+    if (!sc || !has("user") || !singleKeysOn()) return;  // atalhos são do registro próprio; desligáveis em Configurações
     const tag = (document.activeElement && document.activeElement.tagName) || "";
     if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag) || document.activeElement?.isContentEditable || document.querySelector("dialog[open]:not(.side)")) return;
     ev.preventDefault();
@@ -489,9 +544,11 @@ async function boot() {
   syncOnBoot();
   // Admin: pedidos de convite abertos viram um número no item Admin do menu.
   if (has("admin")) api.get("/admin/invite-requests").then((l) => import("./admin.js").then((m) => m.setRequestsBadge(l.filter((r) => r.status === "pending").length))).catch(() => {});
-  startQueue(route);  // sem sinal: a fila do aparelho vai quando a conexão voltar
+  startQueue(route, { ready: has("user") });  // sem sinal: a fila do aparelho vai quando a conexão voltar
   // Primeiro acesso: o tour guiado abre sozinho (uma vez; a Ajuda reabre).
   if (has("user") && !me.tour_done_at) setTimeout(() => startTour(me), 700);
+  // Avisos únicos (visibilidade, receber tarefas, papéis): um só diálogo, "O que mudou para você".
+  else if (me.visibility_notice || me.assign_notice || me.role_notice) setTimeout(() => changesNotice(me), 700);
 }
 
 boot();

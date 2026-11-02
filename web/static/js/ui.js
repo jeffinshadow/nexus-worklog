@@ -3,13 +3,40 @@
 import { api } from "./api.js";
 import { h, icon } from "./dom.js";
 
-// Diálogo modal criado na hora; some do DOM ao fechar.
+// Diálogo modal criado na hora; some do DOM ao fechar. O primeiro título (h2)
+// vira o nome do diálogo para o leitor de tela.
+let dlgSeq = 0;
 export function modal(...children) {
   const dlg = h("dialog", {}, ...children);
+  const title = dlg.querySelector("h2");
+  if (title) {
+    if (!title.id) title.id = "dlg-t" + ++dlgSeq;
+    dlg.setAttribute("aria-labelledby", title.id);
+  }
   document.body.appendChild(dlg);
   dlg.addEventListener("close", () => dlg.remove());
   dlg.showModal();
+  layerBox(dlg); // os avisos já têm onde aparecer (e ser lidos) dentro dele
   return dlg;
+}
+
+// Com um diálogo modal aberto, o resto da página fica inerte: avisos e a
+// região viva que ficam no <body> não são vistos (ficam atrás do véu) nem
+// lidos. Eles vão para dentro do diálogo de cima.
+function topDialog() {
+  const open = [...document.querySelectorAll("dialog[open]")].filter((d) => d.matches(":modal"));
+  return open[open.length - 1] || null;
+}
+// A caixa dos avisos e a região viva de um diálogo; `fresh`: acabou de ser
+// criada (uma região viva nova só fala da próxima mudança em diante).
+function layerBox(dlg) {
+  let toasts = dlg.querySelector(":scope > .toasts"), fresh = false;
+  if (!toasts) {
+    fresh = true;
+    toasts = h("div", { class: "toasts toasts-dialog", "aria-live": "polite" });
+    dlg.append(toasts, h("div", { class: "sr-only dlg-live", role: "status", "aria-live": "polite" }));
+  }
+  return { toasts, live: dlg.querySelector(":scope > .dlg-live"), fresh };
 }
 
 // Celular: menu que sobe de baixo (bottom sheet). items: [rótulo, ícone, fn];
@@ -21,6 +48,7 @@ export function sheet(title, items) {
     h("div", { class: "menu-list" }, ...items.filter(Boolean).map(([label, ic, fn]) =>
       h("button", { type: "button", class: "nav-btn", onClick: () => { dlg.close(); fn(); } }, icon(ic), h("span", { text: label })))));
   dlg.classList.add("sheet");
+  if (title) dlg.setAttribute("aria-label", title);
   dlg.addEventListener("click", (ev) => { if (ev.target === dlg) dlg.close(); });
   return dlg;
 }
@@ -30,15 +58,21 @@ export function sheet(title, items) {
 // ou Tab; setas andam entre os itens. Fica fora do zoom do <body>, então a
 // posição é a do ponteiro em px da tela.
 let menuClose = null;
-export function popupMenu(x, y, items) {
+// anchorTop: o topo do botão que abriu; sem espaço embaixo, o menu abre acima dele (não o cobre).
+export function popupMenu(x, y, items, anchorTop = null) {
   if (menuClose) menuClose();
   const back = document.activeElement;
   const menu = h("div", { class: "pop-menu", role: "menu" }, ...items.filter(Boolean).map(([label, ic, fn]) =>
-    h("button", { type: "button", role: "menuitem", onClick: () => { close(); fn(); } }, icon(ic), h("span", { text: label }))));
+    h("button", { type: "button", role: "menuitem", onClick: () => { close(); if (back && back.isConnected && back.focus) back.focus(); fn(); } }, icon(ic), h("span", { text: label }))));
   document.documentElement.append(menu);
+  // Mede no canto (largura inteira, sem ser espremido pela borda) e limita pela
+  // área visível sem a barra de rolagem (clientWidth, não innerWidth).
+  menu.style.left = "0px"; menu.style.top = "0px";
   const r = menu.getBoundingClientRect();
-  menu.style.left = Math.max(8, Math.min(x, innerWidth - r.width - 8)) + "px";
-  menu.style.top = Math.max(8, Math.min(y, innerHeight - r.height - 8)) + "px";
+  const vw = document.documentElement.clientWidth || innerWidth;
+  menu.style.left = Math.max(8, Math.min(x, vw - r.width - 8)) + "px";
+  const top = anchorTop !== null && y + r.height + 8 > innerHeight ? anchorTop - r.height - 4 : y;
+  menu.style.top = Math.max(8, Math.min(top, innerHeight - r.height - 8)) + "px";
   const btns = [...menu.querySelectorAll("button")];
   btns[0].focus();
   const onDown = (ev) => { if (!menu.contains(ev.target)) close(); };
@@ -48,18 +82,31 @@ export function popupMenu(x, y, items) {
     else if (ev.key === "ArrowDown") { ev.preventDefault(); btns[(i + 1) % btns.length].focus(); }
     else if (ev.key === "ArrowUp") { ev.preventDefault(); btns[(i - 1 + btns.length) % btns.length].focus(); }
   };
+  // Fechou sozinho (rolagem, outra janela) com o foco nele: volta para quem abriu.
+  const opened = Date.now();
+  const closeBack = (ev) => {
+    if (ev && ev.type === "scroll" && Date.now() - opened < 400) return; // a rolagem que trouxe o cartão para a vista
+    const had = menu.contains(document.activeElement); close(); if (had && back && back.isConnected && back.focus) back.focus({ preventScroll: true });
+  };
   function close() {
     menu.remove(); menuClose = null;
     document.removeEventListener("pointerdown", onDown, true);
     document.removeEventListener("keydown", onKey, true);
-    removeEventListener("scroll", close, true);
-    removeEventListener("resize", close);
+    removeEventListener("scroll", closeBack, true);
+    removeEventListener("resize", closeBack);
   }
   document.addEventListener("pointerdown", onDown, true);
   document.addEventListener("keydown", onKey, true);
-  addEventListener("scroll", close, true);
-  addEventListener("resize", close);
+  addEventListener("scroll", closeBack, true);
+  addEventListener("resize", closeBack);
   menuClose = close;
+}
+
+// Botão ⋮: no celular, a folha de baixo; no computador, o menu junto do botão.
+export function actionMenu(btn, title, items) {
+  if (matchMedia("(max-width: 860px)").matches) { sheet(title, items); return; }
+  const r = btn.getBoundingClientRect();
+  popupMenu(r.right - 220, r.bottom + 4, items, r.top);
 }
 
 // Quem pediu ao sistema menos movimento (as animações em JS também respeitam).
@@ -173,26 +220,45 @@ export function initTooltips() {
   addEventListener("scroll", hide, true);
 }
 
-// Número no item do menu (ex.: tarefas atrasadas); 0 apaga.
+// Número no item do menu (ex.: tarefas atrasadas); 0 apaga. No celular, o que
+// não está na barra de baixo (Admin, por exemplo) acende o número também em
+// "Mais" e no item dentro dela.
+const badges = new Map();
 export function navBadge(view, n, label) {
-  for (const a of document.querySelectorAll(`#tabbar [data-view="${view}"], #nav [data-view="${view}"]`)) {
-    let b = a.querySelector(".nav-badge");
-    if (!n) { if (b) b.remove(); continue; }
-    if (!b) { b = h("span", { class: "nav-badge" }); (a.querySelector(".tab-ind") || a).append(b); }
-    b.textContent = n > 99 ? "99+" : String(n);
-    b.setAttribute("aria-label", label || String(n));
+  badges.set(view, [n, label]);
+  for (const a of document.querySelectorAll(`#tabbar [data-view="${view}"], #nav [data-view="${view}"], #view-mais [data-view="${view}"]`)) paintBadge(a, n, label);
+  let more = 0;
+  for (const [v, [k]] of badges) {
+    const tab = document.querySelector(`#tabbar [data-view="${v}"]`);
+    if (k && (!tab || tab.classList.contains("hidden"))) more += k;
   }
+  const tab = document.querySelector('#tabbar [data-view="mais"]');
+  if (tab) paintBadge(tab, more, more === 1 ? "1 aviso em Mais" : `${more} avisos em Mais`);
 }
 
-// Confirmação com botões próprios. Resolve true/false.
-export function confirmDialog({ title, text, confirm = "Confirmar", danger = false }) {
+// A tela "Mais" é montada de novo a cada visita: repõe os números.
+export function repaintBadges() {
+  for (const [v, [n, label]] of badges) navBadge(v, n, label);
+}
+
+function paintBadge(a, n, label) {
+  let b = a.querySelector(".nav-badge");
+  if (!n) { if (b) b.remove(); return; }
+  if (!b) { b = h("span", { class: "nav-badge" }); (a.querySelector(".tab-ind") || a).append(b); }
+  b.textContent = n > 99 ? "99+" : String(n);
+  b.setAttribute("aria-label", label || String(n));
+}
+
+// Confirmação com botões próprios. Resolve true/false. `dismiss`: o botão de sair
+// (ex.: "Voltar" quando a ação já é "Cancelar tarefa", para não ter dois "Cancelar").
+export function confirmDialog({ title, text, confirm = "Confirmar", danger = false, dismiss = "Cancelar" }) {
   return new Promise((resolve) => {
     let ok = false;
     const dlg = modal(
       h("h2", { text: title }),
       text ? h("p", { text }) : null,
       h("div", { class: "dialog-actions" },
-        h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
+        h("button", { type: "button", class: "btn btn-text", text: dismiss, onClick: () => dlg.close() }),
         h("button", {
           type: "button", class: "btn " + (danger ? "btn-danger" : "btn-primary"), text: confirm,
           onClick: () => { ok = true; dlg.close(); },
@@ -203,22 +269,170 @@ export function confirmDialog({ title, text, confirm = "Confirmar", danger = fal
 }
 
 // Aviso curto no rodapé. opts: { error, action: "Desfazer", onAction }
+// Com ação, fica 12 s e pausa enquanto o mouse ou o foco estão nele (só some
+// depois que o foco sai). Não puxa o foco: "Desfazer" também vai pelo Ctrl+Z.
+let undoAction = null;
 export function toast(message, opts = {}) {
-  const box = document.getElementById("toasts");
+  const dlg = topDialog();
+  const layer = dlg ? layerBox(dlg) : null;
+  const box = layer ? layer.toasts : document.getElementById("toasts");
   if (!box) return;
   // Uma ação (action/onAction) ou várias (actions: [[rótulo, fn], ...]).
   const actions = opts.actions || (opts.action ? [[opts.action, opts.onAction]] : []);
   const long = String(message).length > 48; // não cabe numa linha de pílula
   const el = h("div", { class: "toast" + (opts.error ? " error" : "") + (long ? " long" : "") + (actions.length ? " has-actions" : ""), role: "status",
     title: long ? message : null }, h("span", { text: message }));
+  let undo = null;
+  const remove = () => {
+    // O foco estava num botão do aviso: volta para o conteúdo, não para o <body>.
+    if (el.contains(document.activeElement)) document.getElementById("main")?.focus({ preventScroll: true });
+    el.remove();
+    if (undoAction === undo) undoAction = null;
+  };
   for (const [label, fn] of actions) {
+    const run = async () => { remove(); await fn?.(); };
+    const isUndo = /^Desfazer/.test(label);
+    if (isUndo) undo = run;
     el.append(h("button", {
       type: "button", class: "btn btn-ghost btn-sm", text: label,
-      onClick: async () => { el.remove(); await fn?.(); },
+      "aria-keyshortcuts": isUndo ? "Control+Z" : null, onClick: run,
     }));
   }
-  box.append(el);
-  setTimeout(() => el.remove(), actions.length ? 9000 : 3500);
+  if (undo) { undoAction = undo; el.append(h("span", { class: "sr-only", text: "Ctrl+Z desfaz." })); }
+  // Caixa recém-criada dentro de um diálogo: o aviso entra um instante depois, para ser lido.
+  if (layer && layer.fresh) setTimeout(() => box.append(el), 80); else box.append(el);
+  const ms = actions.length ? 12000 : 3500;
+  let timer = setTimeout(remove, ms), hover = false;
+  const hold = () => { clearTimeout(timer); timer = null; };
+  const resume = () => { if (!timer && !hover && !el.contains(document.activeElement)) timer = setTimeout(remove, 4000); };
+  el.addEventListener("pointerenter", () => { hover = true; hold(); });
+  el.addEventListener("pointerleave", () => { hover = false; resume(); });
+  el.addEventListener("focusin", hold);
+  el.addEventListener("focusout", (ev) => { if (!el.contains(ev.relatedTarget)) setTimeout(resume); });
+}
+// Ctrl+Z (fora de campos de texto) aperta o "Desfazer" do aviso que está na tela.
+document.addEventListener("keydown", (ev) => {
+  if (!undoAction || ev.key.toLowerCase() !== "z" || !(ev.ctrlKey || ev.metaKey) || ev.shiftKey || ev.altKey) return;
+  const a = document.activeElement;
+  if (a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable)) return; // o Ctrl+Z do próprio campo
+  if (document.querySelector("dialog[open]:not(.side)")) return;
+  ev.preventDefault();
+  const back = keepFocus(); // a lista é redesenhada: o foco volta para onde estava
+  Promise.resolve(undoAction()).then(back);
+});
+
+// Abas (role="tab"): as setas, Home e End andam entre elas e já abrem a escolhida,
+// como o leitor de tela anuncia. Vale para todas as telas com abas.
+document.addEventListener("keydown", (ev) => {
+  if (!["ArrowRight", "ArrowLeft", "Home", "End"].includes(ev.key) || ev.altKey || ev.ctrlKey || ev.metaKey) return;
+  const tab = ev.target.closest ? ev.target.closest('[role="tab"]') : null;
+  const list = tab && tab.closest('[role="tablist"]');
+  if (!list) return;
+  const tabs = [...list.querySelectorAll('[role="tab"]')].filter((t) => !t.disabled && t.offsetParent);
+  const i = tabs.indexOf(tab), n = tabs.length;
+  const j = ev.key === "Home" ? 0 : ev.key === "End" ? n - 1 : (i + (ev.key === "ArrowRight" ? 1 : -1) + n) % n;
+  ev.preventDefault();
+  tabs[j].focus();
+  tabs[j].click();
+});
+
+// Atalhos de uma tecla (n, h, t, s...): ligados por padrão; dá para desligar
+// em Configurações (vale para este aparelho).
+const KEYS_KEY = "nexus.atalhos";
+export const singleKeysOn = () => { try { return localStorage.getItem(KEYS_KEY) !== "off"; } catch { return true; } };
+export function setSingleKeys(on) {
+  try { localStorage.setItem(KEYS_KEY, on ? "on" : "off"); } catch { /* sem armazenamento: vale só agora */ }
+}
+
+// Foco que não se perde quando a lista é redesenhada: depois de render(),
+// volta ao controle de mesmo nome (aria-label) dentro de scope.
+// Anúncio para o leitor de tela numa região viva que não é recriada com a tela.
+let liveRegion = null;
+export function announce(text) {
+  if (!liveRegion) { liveRegion = h("div", { class: "sr-only", role: "status", "aria-live": "polite" }); document.body.append(liveRegion); }
+  // Diálogo aberto: o <body> está inerte; a região viva é a de dentro dele.
+  const dlg = topDialog(), layer = dlg ? layerBox(dlg) : null;
+  const region = layer ? layer.live : liveRegion;
+  region.textContent = "";
+  setTimeout(() => { region.textContent = text; }, layer && layer.fresh ? 150 : 60);
+}
+
+// Setas de período (dia no Hoje, semana, mês, Equipe): a tela se redesenha e o
+// botão focado some. Espera o rótulo mudar, devolve o foco à mesma seta (ou à
+// outra, se esta ficou desabilitada no limite) e anuncia o período novo.
+document.addEventListener("click", (ev) => {
+  const btn = ev.target.closest && ev.target.closest(".day-nav button[aria-label]");
+  if (!btn) return;
+  const label = btn.getAttribute("aria-label");
+  const oldNav = btn.closest(".day-nav"), oldLab = oldNav.querySelector(".day-nav-label"), oldText = oldLab?.textContent;
+  const index = [...document.querySelectorAll(".day-nav")].indexOf(oldNav);
+  const t0 = performance.now();
+  const tick = () => {
+    if (performance.now() - t0 > 4000) return;
+    const navs = [...document.querySelectorAll(".day-nav")];
+    const nav = oldNav.isConnected ? oldNav : navs.filter((n) => n.querySelector(`button[aria-label="${CSS.escape(label)}"]`))[0] || navs[index];
+    const lab = nav && nav.querySelector(".day-nav-label");
+    if (!lab || lab.textContent === oldText) { requestAnimationFrame(tick); return; }
+    const a = document.activeElement;
+    if (!a || a === document.body || !a.isConnected || a === btn) {
+      const same = nav.querySelector(`button[aria-label="${CSS.escape(label)}"]`);
+      const el = same && !same.disabled ? same : nav.querySelector("button:not([disabled])");
+      if (el) el.focus();
+    }
+    if (lab !== oldLab || !lab.hasAttribute("aria-live")) announce(lab.textContent);  // rótulo recriado: a região viva nova não fala
+  };
+  requestAnimationFrame(tick);
+});
+
+export function refocusBy(scope, label) {
+  if (!scope || !label) return;
+  const el = scope.querySelector(`[aria-label="${CSS.escape(label)}"]`);
+  if (el) el.focus();
+}
+
+// Ação que redesenha a tarefa sem tirá-la da lista (Aguardando, cronômetro,
+// desfazer): guarda o controle focado e, depois do redesenho, volta para ele
+// (mesmo nome; o par Iniciar/Parar do cronômetro; ou o cartão da mesma tarefa).
+// Se a tarefa saiu, cai na que ficou no lugar (focusAfterRemoval).
+const TIMER_SWAP = [[/^Iniciar o cronômetro em /, "Parar o cronômetro de "], [/^Parar o cronômetro de /, "Iniciar o cronômetro em "]];
+export function keepFocus() {
+  const a = document.activeElement;
+  // Foco no painel/janela da tarefa (ex.: "Mais ações" > Aguardando): volta para o mesmo controle lá.
+  const dlg = a && a.closest ? a.closest("dialog.task-dialog") : null;
+  const item = a && a.closest ? a.closest("#main [data-task-id]") : null;
+  const id = item && item.dataset.taskId;
+  const label = a && a.getAttribute ? a.getAttribute("aria-label") : null;
+  const removed = focusAfterRemoval();
+  return () => {
+    const cur = document.activeElement;
+    if (cur && cur !== document.body && cur !== document.getElementById("main") && cur.isConnected) return; // já tem lugar (ex.: um diálogo)
+    if (dlg && dlg.isConnected && dlg.open) {
+      const el = (label && dlg.querySelector(`[aria-label="${CSS.escape(label)}"]`)) || dlg.querySelector(".task-appbar button");
+      if (el) { el.focus(); return; }
+    }
+    const box = id && document.querySelector(`#main [data-task-id="${CSS.escape(id)}"]`);
+    if (!box) { removed(); return; }
+    const names = label ? [label, ...TIMER_SWAP.filter(([re]) => re.test(label)).map(([re, to]) => label.replace(re, to))] : [];
+    const el = names.map((n) => box.querySelector(`[aria-label="${CSS.escape(n)}"]`)).find(Boolean)
+      || box.querySelector(".card-open, button") || box;
+    el.focus();
+  };
+}
+
+// Tarefa que sai da lista (concluir, excluir) com o foco nela: guarda a posição
+// e, depois do redesenho, foca a que ficou no lugar (ou a anterior, ou o título).
+export function focusAfterRemoval() {
+  const a = document.activeElement;
+  const item = a && a.closest ? a.closest("#main [data-task-id]") : null;
+  if (!item) return () => {};
+  const i = [...document.querySelectorAll("#main [data-task-id]")].indexOf(item);
+  return () => {
+    if (document.activeElement && document.activeElement !== document.body && document.activeElement.isConnected) return; // já foi para outro lugar (ex.: um diálogo)
+    const items = [...document.querySelectorAll("#main [data-task-id]")].filter((el) => el.offsetParent);
+    const next = items[Math.min(i, items.length - 1)];
+    const target = next ? next.querySelector(".card-open, button") || next : document.getElementById("page-title");
+    if (target) target.focus();
+  };
 }
 
 // Formulário: o botão de envio fica desabilitado até o handler terminar
@@ -232,17 +446,21 @@ export function busy(fn) {
       form.dataset.busy = "1";
     }
     const btns = form && form.querySelectorAll ? [...form.querySelectorAll("[type=submit]")] : [];
+    const had = btns.includes(document.activeElement) ? document.activeElement : null;
     btns.forEach((b) => { b.disabled = true; });
     try { return await fn(ev); } finally {
       if (form && form.dataset) delete form.dataset.busy;
       btns.forEach((b) => { b.disabled = false; });
+      // O botão desabilitado perdeu o foco (foi para o <body>): volta para ele (ex.: o envio falhou).
+      const a = document.activeElement;
+      if (had && had.isConnected && (!a || a === document.body)) had.focus({ preventScroll: true });
     }
   };
 }
 
 // Só mensagens da API (que têm status) vão para a tela; erro de JavaScript
 // (em inglês, técnico) vira a mensagem genérica.
-export function errorToast(e, fallback = "Algo deu errado.") {
+export function errorToast(e, fallback = "Não foi possível concluir.") {
   toast((e && "status" in e && e.message) || fallback, { error: true });
 }
 
@@ -253,7 +471,7 @@ export async function undoLatest(entity, entityId, onDone) {
     if (!rows.length || !rows[0].can_undo) throw new Error("Nada para desfazer.");
     await api.post(`/history/${rows[0].id}/undo`);
     toast("Desfeito.");
-    onDone && onDone();
+    if (onDone) await onDone();
   } catch (e) {
     errorToast(e, "Não foi possível desfazer.");
   }
@@ -271,4 +489,72 @@ export function codeBox(text) {
 
 export function warnBox(text) {
   return h("div", { class: "warnbox" }, icon("alert"), h("span", { text }));
+}
+
+// ------------------------------------------------------------- páginas --
+// Listas grandes não crescem na mesma página: X itens e, embaixo,
+// "Anterior · Página N de M · Próxima". Sem números clicáveis (alvos pequenos no
+// celular). Nos extremos o botão fica com aria-disabled (não disabled), para o
+// foco não cair no <body>. Ao trocar de página, a lista se redesenha e o foco
+// vai para o título dela (`focus`: o elemento ou uma função que o devolve depois
+// do redesenho), que sobe para a vista se estiver fora; o leitor ouve
+// "Página N de M". compact: dentro de cartões e blocos (36 px de desenho,
+// 44 px de alvo). page começa em 1.
+export function pager({ page, total, size, label, onPage, focus = null, compact = false }) {
+  const pages = Math.max(1, Math.ceil(total / size));
+  if (pages <= 1) return ""; // uma página só: nada (vazio, não null: append(null) escreveria "null")
+  const cur = Math.min(Math.max(1, page), pages);
+  const from = (cur - 1) * size + 1, to = Math.min(total, cur * size);
+  let going = false;
+  const go = async (n) => {
+    if (going || n < 1 || n > pages || n === cur) return;
+    going = true;
+    try { await onPage(n); } catch (e) { errorToast(e, "Não foi possível abrir a página."); return; } finally { going = false; }
+    const el = typeof focus === "function" ? focus() : focus;
+    if (el && el.isConnected) {
+      if (!el.matches("a[href], button, input, select, textarea, [tabindex]")) el.tabIndex = -1;
+      el.focus({ preventScroll: true });
+      const r = el.getBoundingClientRect();
+      if (r.top < 0 || r.top > innerHeight - 40) el.scrollIntoView({ block: "start", behavior: calmMotion() ? "auto" : "smooth" });
+    }
+    announce(`Página ${n} de ${pages}`);
+  };
+  const btn = (dir) => {
+    const prev = dir < 0, off = prev ? cur === 1 : cur === pages;
+    return h("button", { type: "button", class: "btn btn-ghost pager-btn " + (prev ? "pager-prev" : "pager-next") + (off ? " off" : ""),
+      "aria-label": prev ? "Página anterior" : "Próxima página", "aria-disabled": off ? "true" : null,
+      onClick: () => { if (!off) go(cur + dir); } },
+    prev ? icon("left") : null, h("span", { class: "pager-word", text: prev ? "Anterior" : "Próxima" }), prev ? null : icon("right"));
+  };
+  return h("nav", { class: "pager" + (compact ? " pager-compact" : ""), "aria-label": `Páginas de ${label}` },
+    btn(-1),
+    h("p", { class: "pager-info" }, h("span", { class: "pager-n", text: `Página ${cur} de ${pages}` }),
+      h("span", { class: "pager-range", text: `${from}–${to} de ${total}` })),
+    btn(1));
+}
+
+// A fatia de uma página (page em 1..; além do fim, a última) e a página certa.
+export function pageSlice(items, page, size) {
+  const pages = Math.max(1, Math.ceil(items.length / size));
+  const p = Math.min(Math.max(1, page || 1), pages);
+  return { rows: items.slice((p - 1) * size, p * size), page: p, start: (p - 1) * size };
+}
+
+// A página fica no endereço da tela (#/historico?p=3), como a busca faz com
+// ?q=: voltar do detalhe ou pelo botão Voltar do navegador cai na mesma página.
+// replaceState: trocar de página não enche o histórico nem recarrega a tela.
+export function hashPage(key = "p") {
+  const n = parseInt(new URLSearchParams(location.hash.split("?")[1] || "").get(key), 10);
+  return n >= 1 ? n : 1;
+}
+
+// view: a tela dona da lista; redesenho de outra tela (um "Desfazer" depois de
+// trocar de tela) não mexe no endereço da atual.
+export function setHashPage(key, n, view) {
+  const [path, qs = ""] = location.hash.split("?");
+  if (!path.startsWith("#/") || path !== "#/" + view) return; // sem endereço (abertura) ou outra tela: fica só na memória
+  const sp = new URLSearchParams(qs);
+  if (n > 1) sp.set(key, String(n)); else sp.delete(key);
+  const s = sp.toString();
+  window.history.replaceState(window.history.state, "", path + (s ? "?" + s : ""));
 }

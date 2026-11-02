@@ -1,5 +1,8 @@
-// Extração de relatório em PDF por período. O admin passa opts.exportBase
-// apontando para o usuário alvo.
+// "Outro período ou formato" de Meu mês: o PDF de outras datas ou de um
+// projeto e a exportação dos dados. A Equipe passa opts.exportBase apontando
+// para a pessoa. opts.range traz o mês escolhido lá no topo (as datas começam
+// nele; ficam só os atalhos de semana) e mount devolve setRange para a troca
+// de mês não recarregar o formulário.
 import { api } from "./api.js";
 import { h, icon, clear, field, addDays, localDay } from "./dom.js";
 import { errorToast } from "./ui.js";
@@ -29,25 +32,27 @@ function intro(text) {
 
 export async function mount(root, opts = {}) {
   const base = opts.exportBase || "/reports/export";
+  const range = opts.range || null;
   // Projetos antes de limpar: na volta à tela, a visita anterior fica até chegar.
   const projects = await api.get(opts.projectsUrl || "/projects?include_archived=true").catch(() => []);
   clear(root);
 
   const today = localDay(Date.now());
-  const startInput = h("input", { type: "date", value: addDays(today, -6), max: today });
-  const endInput = h("input", { type: "date", value: today, max: today });
+  const startInput = h("input", { type: "date", value: range ? range.start : addDays(today, -6), max: today });
+  const endInput = h("input", { type: "date", value: range ? range.end : today, max: today });
   const err = h("p", { class: "error-text" });
   // Projeto: os do próprio usuário, ou (admin) os do usuário escolhido.
   const projSel = h("select", {}, h("option", { value: "", text: "Todos (relatório completo)" }));
   for (const p of projects)
     projSel.append(h("option", { value: String(p.id), text: p.name + (p.archived ? " (arquivado)" : "") }));
-  const btn = h("button", { type: "button", class: "btn btn-primary", onClick: run }, icon("reports"), "Exportar PDF");
+  const btn = h("button", { type: "button", class: "btn btn-primary", onClick: run }, icon("reports"), "Baixar PDF");
 
   // Períodos prontos como botão segmentado: o que bate com as datas fica marcado.
   // Só um: no domingo dia 1º, "Esta semana" e "Este mês" são o mesmo dia, e vale
   // o tocado (datas digitadas marcam o primeiro que bater).
-  const periods = ranges(today);
+  const periods = range ? ranges(today).slice(0, 2) : ranges(today);
   let picked = -1;
+  if (opts.week) { [, startInput.value, endInput.value] = periods[0]; picked = 0; }
   const quick = h("div", { class: "seg seg-sm quick", role: "group", "aria-label": "Período" }, ...periods.map(([label, a, b], i) =>
     h("button", { type: "button", class: "chip-btn", text: label, "aria-pressed": "false",
       onClick: () => { startInput.value = a; endInput.value = b; picked = i; markPeriod(); refreshPreview(); } })));
@@ -73,7 +78,7 @@ export async function mount(root, opts = {}) {
   const dates = h("div", { class: "report-dates" },
     field("Início", startInput),
     field("Fim", endInput));
-  const wholeNote = h("p", { class: "help hidden", text: "Do primeiro registro do projeto até hoje: tudo o que foi entregue, o tempo gasto e o que ainda está aberto." });
+  const wholeNote = h("p", { class: "help hidden", text: "Do primeiro registro do projeto até hoje: tudo o que foi entregue, o tempo apontado e o que ainda está aberto." });
   function sync() {
     const proj = !!projSel.value;
     scope.classList.toggle("hidden", !proj);
@@ -100,15 +105,15 @@ export async function mount(root, opts = {}) {
       const r = await api.get(`/reports/preview?${qs}`);
       if (seq !== previewSeq) return; // chegou uma resposta mais nova
       clear(preview);
-      preview.append(icon("spark"), h("span", { text: previewText(r) }));
+      preview.append(icon("spark"), h("span", { text: previewText(r, !useDates) }));
       preview.classList.remove("hidden");
     } catch { preview.classList.add("hidden"); }
   }
   for (const el of [projSel, startInput, endInput]) el.addEventListener("change", refreshPreview);
 
   root.append(h("div", { class: "report-section" },
-    h("h3", { text: "Relatório em PDF" }),
-    intro("Indicadores, ritmo, rotinas, tarefas concluídas, o que está em aberto e o diário com o tempo apontado. Escolhendo um projeto, sai só o que é dele — do período que você quiser ou do projeto inteiro."),
+    h("h3", { text: range ? "PDF de outras datas ou de um projeto" : "Relatório em PDF" }),
+    intro("Números do mês, ritmo, rotinas, tarefas concluídas, o que está em aberto e o diário com o tempo apontado. Escolhendo um projeto, sai só o que é dele — do período que você quiser ou do projeto inteiro."),
     projSel.options.length > 1 ? field("Projeto", projSel, "report-project") : null,
     scope, wholeNote, quick,
     h("div", { class: "report-controls" }, dates, btn),
@@ -116,30 +121,38 @@ export async function mount(root, opts = {}) {
   sync();
   markPeriod();
   refreshPreview();
+  const control = {
+    setRange(start, end) { startInput.value = start; endInput.value = end; picked = -1; markPeriod(); refreshPreview(); },
+  };
 
   // Exportação dos dados (só no próprio usuário; o admin exporta PDF).
   if (!opts.exportBase) {
-    // Cada exportação é um item de lista (Material 3): ícone, título, descrição
+    // Cada exportação é um item de lista (Material 3): título, descrição
     // e o download no fim; a linha toda é o botão.
+    // Tempo e Tarefas: o período escolhido acima (os dois dias), ou tudo se faltar um.
+    const periodQs = () => {
+      const start = startInput.value, end = endInput.value;
+      return start && end && start <= end ? `?start=${start}&end=${end}` : "";
+    };
     const dl = (path, label, help) => {
       const b = h("button", { type: "button", class: "export-item", onClick: async () => {
         b.disabled = true;
-        try { await api.download(typeof path === "function" ? path() : path); } catch (e) { errorToast(e, "Falha ao exportar."); } finally { b.disabled = false; }
-      } }, h("span", { class: "export-ico" }, icon(label.includes("JSON") ? "folder" : label.includes("ZIP") ? "image" : "list")),
+        try { await api.download(typeof path === "function" ? path() : path); } catch (e) { errorToast(e, "Não foi possível exportar."); } finally { b.disabled = false; }
+      } },
         h("span", { class: "export-text" }, h("span", { class: "export-title", text: label }), h("span", { class: "export-help", text: help })),
         icon("download"));
       return b;
     };
     root.append(h("div", { class: "report-section" },
       h("h3", { text: "Exportar dados" }),
-      h("p", { class: "sub", text: "Seus dados em formato aberto, para planilha, faturamento ou backup." }),
-      dl("/export/apontamentos.csv", "Apontamentos (CSV)", "um registro por apontamento de tempo: dia, horas, tarefa, projeto e observação"),
-      dl("/export/tarefas.csv", "Tarefas (CSV)", "todas as tarefas com status, prioridade, projeto, prazo, checklist e horas"),
+      h("p", { class: "sub", text: "Seus dados em arquivos abertos (o CSV abre em qualquer planilha), para faturamento, conferência ou backup." }),
+      dl(() => "/export/apontamentos.csv" + periodQs(), "Tempo apontado (CSV)", "uma linha por apontamento: dia, horas, tarefa, projeto e observação (usa o período escolhido acima)"),
+      dl(() => "/export/tarefas.csv" + periodQs(), "Tarefas (CSV)", "as tarefas que estiveram em aberto no período escolhido acima, com situação, prioridade, projeto, prazo, checklist, as horas no período e as horas no total"),
       dl(() => "/export/plantao.csv?" + new URLSearchParams(Object.entries({ start: startInput.value, end: endInput.value }).filter(([, v]) => v)),
-        "Plantão do período (CSV)", "os apontamentos das tarefas marcadas como plantão, de todos os projetos, com as horas e o total — pra fechar sobreaviso ou banco de horas (usa o período escolhido acima)"),
+        "Plantão do período (CSV)", "os apontamentos das tarefas marcadas como plantão, de todos os projetos, com as horas e o total — para fechar sobreaviso ou banco de horas (usa o período escolhido acima)"),
       dl(() => "/export/rotinas.csv?" + new URLSearchParams(Object.entries({ start: startInput.value, end: endInput.value }).filter(([, v]) => v)),
-        "Rotinas e evidências (CSV)", "trilha de auditoria: cada rotina em cada dia, se foi feita e o que foi conferido (usa o período escolhido acima)"),
-      dl("/export/tudo.json", "Tudo (JSON)", "tarefas com anotações, checklist, tempo e como foram resolvidas; rotinas com dias feitos e evidências; vencimentos; projetos"),
+        "Rotinas e evidências (CSV)", "para comprovar: cada rotina em cada dia, se foi feita e o que foi conferido (usa o período escolhido acima)"),
+      dl("/export/tudo.json", "Tudo (cópia completa, para backup)", "um arquivo JSON com tarefas, anotações, checklist, tempo e como foram resolvidas; rotinas com dias feitos e evidências; vencimentos; projetos"),
       dl("/export/fotos.zip", "Fotos (ZIP)", "todas as fotos das tarefas e das evidências das rotinas, numa pasta por tarefa e por rotina")));
   }
 
@@ -155,9 +168,10 @@ export async function mount(root, opts = {}) {
       const q = [useDates ? `start=${start}&end=${end}` : "", proj].filter(Boolean).join("&");
       await api.download(`${base}?${q}`);
     } catch (e) {
-      err.textContent = e.message || "Falha ao exportar.";
+      err.textContent = e.message || "Não foi possível exportar.";
     } finally {
       btn.disabled = false;
     }
   }
+  return control;
 }

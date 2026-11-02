@@ -54,7 +54,7 @@ try:
     if modo=="desktop":
         passeio("ajuda no Hoje", [ajuda_desk])
         passeio("ajuda em Tarefas", [("location.hash='#/tarefas'",1.5), ajuda_desk])
-        passeio("ajuda em Relatórios (1ª visita)", [("location.hash='#/relatorios'",1.5), ajuda_desk])
+        passeio("ajuda em Meu mês (1ª visita)", [("location.hash='#/mes?aba=pdf'",1.5), ajuda_desk])
     else:
         passeio("ajuda pelo Mais", list(ajuda_mob))
 finally:

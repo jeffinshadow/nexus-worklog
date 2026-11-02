@@ -1,3 +1,4 @@
+import logging
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -9,6 +10,7 @@ from ..security import RateLimiter
 from ..services import app_today
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
+log = logging.getLogger("uvicorn.error")
 
 test_limiter = RateLimiter(max_hits=3, window_seconds=600)
 
@@ -29,20 +31,20 @@ def get_prefs(user=Depends(web_active)):
 def put_prefs(data: PrefsIn, user=Depends(web_active_csrf)):
     uid = user["user_id"]
     before = notify.get_prefs(uid)
+    on = data.is_on()
+    # Ligado = os três avisos (Seu dia, Antes de encerrar, Resumo da semana); os horários não mudam
+    # (os de quem já tinha ficam; quem começa usa os padrões da tabela).
     db.execute(
-        """INSERT INTO notification_prefs (user_id, morning, morning_hour, evening, evening_hour, weekly, weekly_hour,
-                                          show_titles, weekly_pdf, weekly_cc)
-           VALUES (%(uid)s, %(morning)s, %(morning_hour)s, %(evening)s, %(evening_hour)s, %(weekly)s, %(weekly_hour)s,
-                   %(show_titles)s, %(weekly_pdf)s, %(weekly_cc)s)
+        """INSERT INTO notification_prefs (user_id, morning, evening, weekly, show_titles, weekly_pdf, weekly_cc)
+           VALUES (%(uid)s, %(on)s, %(on)s, %(on)s, %(show_titles)s, %(weekly_pdf)s, %(weekly_cc)s)
            ON CONFLICT (user_id) DO UPDATE SET
-             morning = EXCLUDED.morning, morning_hour = EXCLUDED.morning_hour,
-             evening = EXCLUDED.evening, evening_hour = EXCLUDED.evening_hour,
-             weekly = EXCLUDED.weekly, weekly_hour = EXCLUDED.weekly_hour,
+             morning = EXCLUDED.morning, evening = EXCLUDED.evening, weekly = EXCLUDED.weekly,
              show_titles = EXCLUDED.show_titles, weekly_pdf = EXCLUDED.weekly_pdf,
              weekly_cc = EXCLUDED.weekly_cc, updated_at = now()""",
-        {"uid": uid, **data.model_dump(), "weekly_cc": (str(data.weekly_cc).lower() if data.weekly_cc else None)},
+        {"uid": uid, "on": on, "show_titles": data.show_titles, "weekly_pdf": data.weekly_pdf,
+         "weekly_cc": (str(data.weekly_cc).lower() if data.weekly_cc else None)},
     )
-    audit.record(user, "notifications.update", "notifications", uid, before=before, after=data.model_dump())
+    audit.record(user, "notifications.update", "notifications", uid, before=before, after={"email_on": on, "show_titles": data.show_titles, "weekly_pdf": data.weekly_pdf})
     return _out(uid, user["email"])
 
 
@@ -65,5 +67,6 @@ def send_test(kind: Literal["morning", "weekly"] = "morning", user=Depends(web_a
     try:
         mailer.send(user["email"], mail.subject, mail.text(), mail.html(), attachments=mail.attachments or None)
     except mailer.MailError as e:
-        raise HTTPException(status_code=502, detail=str(e)) from e
+        log.warning("teste de e-mail (usuário %s) falhou: %s", user["user_id"], e)
+        raise HTTPException(status_code=502, detail="O e-mail não saiu: o servidor de e-mail recusou o envio. Avise o administrador.") from e
     return {"ok": True, "to": user["email"]}

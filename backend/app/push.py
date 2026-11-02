@@ -8,7 +8,8 @@ banco (app_secrets), então o backup leva junto.
 
 Disparos agendados (uma passada por minuto, junto do agendador de e-mails):
   rotina    no horário da rotina, +10 e +30 min, até ser marcada ("Adiar" empurra)
-  cobrar    de manhã: bloqueadas com o dia de cobrar até hoje
+  lembrete  no "Lembrar em" da tarefa, +10 e +30 min, até concluir, "Ok" ou "Adiar"
+  cobrar    de manhã: tarefas aguardando com o dia de cobrar até hoje
   prazos    de manhã: atrasadas e o que vence hoje
 E por evento: tarefa atribuída (routers/assign.py). Cada disparo agendado é
 gravado em push_log ANTES de sair: nunca repete, mesmo reiniciando.
@@ -30,7 +31,7 @@ from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 
 from . import db
 from .config import config
-from .services import app_today, get_board, is_due, is_work_day, rotinas, work_mask
+from .services import app_today, get_board, is_pending, is_work_day, rotinas, work_mask
 
 log = logging.getLogger("uvicorn.error")
 
@@ -42,7 +43,7 @@ ALLOWED_SUFFIXES = (".push.apple.com", ".notify.windows.com")
 STEPS = (0, 10, 30)       # minutos depois do horário da rotina
 LATE_MIN = 15             # passou disso do disparo (backend fora do ar): não manda mais
 MORNING_CATCH_UP_H = 2    # como nos e-mails: "bom dia" às 15h não serve
-DEFAULT_PREFS = {"routine": True, "follow_up": True, "deadline": True, "assigned": True,
+DEFAULT_PREFS = {"enabled": True, "routine": True, "follow_up": True, "deadline": True, "assigned": True,
                  "morning_hour": 8, "hide_content": False}
 
 
@@ -152,7 +153,11 @@ def send(uid: int, message: dict, urgency: str = "normal", ttl: int = 3600, only
 def prefs(uid: int) -> dict:
     row = db.query_one("""SELECT routine, follow_up, deadline, assigned, morning_hour, hide_content
                             FROM push_prefs WHERE user_id = %s""", (uid,))
-    return dict(row) if row else dict(DEFAULT_PREFS)
+    if not row:
+        return dict(DEFAULT_PREFS)
+    # Um interruptor só: ligado se algum dos tipos antigos estava ligado (rotina e lembrete na hora seguem).
+    on = bool(row["routine"] or row["follow_up"] or row["deadline"] or row["assigned"])
+    return {**row, "enabled": on, "routine": on, "follow_up": on, "deadline": on, "assigned": on}
 
 
 # ------------------------------------------------------------- mensagens --
@@ -165,10 +170,17 @@ def _msg(title: str, body: str, url: str, tag: str, kind: str, hide: bool, gener
 
 
 def routine_message(r: dict, day, step_label: str, hide: bool) -> dict:
-    actions = [] if r["require_note"] else [{"action": "feita", "title": "Marcar feita"}]
+    # Com evidência obrigatória ou passos, marcar é no app (o campo e os passos vêm junto).
+    actions = [] if r["require_note"] or r.get("steps") else [{"action": "feita", "title": "Marcar feita"}]
     actions.append({"action": "adiar", "title": "Adiar 10 min"})
     return _msg(r["label"], step_label, "/#/hoje", f"rotina-{r['id']}-{day.isoformat()}", "rotina", hide,
                 "Rotina na hora", id=r["id"], day=day.isoformat(), actions=actions, require_interaction=True)
+
+
+def task_reminder_message(t: dict, step_label: str, hide: bool) -> dict:
+    actions = [{"action": "concluir", "title": "Concluir"}, {"action": "adiar", "title": "Adiar 10 min"}]
+    return _msg(t["title"], step_label, f"/#/tarefas?id={t['id']}", f"lembrete-{t['id']}", "lembrete", hide,
+                "Lembrete de tarefa", id=t["id"], actions=actions, require_interaction=True)
 
 
 def assigned_message(task: dict, by_name: str, hide: bool) -> dict:
@@ -198,7 +210,7 @@ def _routines(uid: int, p: dict, now: datetime, mask: int) -> list[str]:
     snoozes = {r["recurring_id"]: r["until"] for r in db.query_all(
         "SELECT recurring_id, until FROM push_snooze WHERE user_id = %s AND day = %s", (uid, today))}
     for r in rotinas(uid):
-        if not r["remind_at"] or r["id"] in feitas or not (r["start_d"] <= today <= r["end_d"]) or not is_due(r, today, mask):
+        if not r["remind_at"] or r["id"] in feitas or not (r["start_d"] <= today <= r["end_d"]) or not is_pending(r, today, mask):
             continue
         at = datetime.combine(today, r["remind_at"], tzinfo=now.tzinfo)
         until = snoozes.get(r["id"])
@@ -216,6 +228,36 @@ def _routines(uid: int, p: dict, now: datetime, mask: int) -> list[str]:
             continue
         label = f"Agora, às {r['remind_at']:%H:%M}" if moment == at else f"Era às {r['remind_at']:%H:%M} · ainda não marcada"
         send(uid, routine_message(r, today, label, p["hide_content"]), urgency="high", ttl=LATE_MIN * 60)
+        done.append(ref)
+    return done
+
+
+def _task_reminders(uid: int, p: dict, now: datetime) -> list[str]:
+    """Lembretes com hora das tarefas abertas: no horário, +10 e +30 min, até
+    concluir, tocar "Ok" (visto) ou adiar (o adiado entra como mais um disparo)."""
+    done = []
+    rows = db.query_all(
+        """SELECT id, title, remind_at, remind_snoozed_until FROM worklog_tasks
+            WHERE user_id = %s AND status <> 'done' AND remind_at IS NOT NULL
+              AND remind_at BETWEEN %s - interval '1 day' AND %s
+              AND (remind_seen_at IS NULL OR remind_seen_at < remind_at)""", (uid, now, now))
+    tz = now.tzinfo
+    for t in rows:
+        at = t["remind_at"].astimezone(tz)
+        until = t["remind_snoozed_until"].astimezone(tz) if t["remind_snoozed_until"] else None
+        stamp = f"{t['id']}:{at:%Y%m%d%H%M}"
+        moments = [(f"{stamp}:{s}", at + timedelta(minutes=s)) for s in STEPS]
+        if until:
+            moments = [m for m in moments if m[1] >= until] + [(f"{stamp}:a{until:%d%H%M}", until)]
+        due = [m for m in moments if m[1] <= now < m[1] + timedelta(minutes=LATE_MIN)]
+        if not due:
+            continue
+        ref, moment = max(due, key=lambda m: m[1])
+        if not _claim(uid, "lembrete", ref, at.date()):
+            continue
+        hora = f"{at:%H:%M}" if at.date() == now.date() else f"{at:%d/%m} às {at:%H:%M}"
+        label = f"Lembrete: agora, às {hora}" if moment == at else f"Lembrete: era às {hora}"
+        send(uid, task_reminder_message(t, label, p["hide_content"]), urgency="high", ttl=LATE_MIN * 60)
         done.append(ref)
     return done
 
@@ -257,8 +299,9 @@ def run_once(now: datetime) -> list[tuple[int, str]]:
         uid = row["user_id"]
         try:
             p, mask = prefs(uid), work_mask(uid)
-            if p["routine"]:
+            if p["routine"]:  # "Rotinas e lembretes na hora": o lembrete da tarefa vai junto
                 out += [(uid, ref) for ref in _routines(uid, p, now, mask)]
+                out += [(uid, ref) for ref in _task_reminders(uid, p, now)]
             out += [(uid, ref) for ref in _morning(uid, p, now, mask)]
         except Exception:  # noqa: BLE001 — uma pessoa com erro não para as outras
             log.exception("notificações do usuário %s falharam nesta passada", uid)

@@ -1,6 +1,6 @@
 // Notificações do sistema neste aparelho (Web Push; ver app/push.py e sw.js):
 // ligar e desligar por aparelho, o convite depois de instalado e o painel de
-// Configurações › Avisos. No iPhone, só com o Nexus na tela de início (iOS 16.4+).
+// Configurações > Avisos. No iPhone, só com o Nexus na tela de início (iOS 16.4+).
 import { api } from "./api.js";
 import { h, icon, dateTime } from "./dom.js";
 import { errorToast, toast } from "./ui.js";
@@ -9,10 +9,10 @@ import { install, installed } from "./instalar.js";
 const DISMISS_KEY = "nexus.notificacoes.dispensado";
 const DISMISS_DAYS = 30;
 
-export const supported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+const supported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 const ios = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
 // iPhone/iPad fora do app instalado: o navegador nem oferece (precisa instalar antes).
-export const needsInstall = () => ios() && !installed();
+const needsInstall = () => ios() && !installed();
 
 // "Chrome · Android", "Safari · iPhone", "Edge · Windows"…
 function deviceLabel() {
@@ -30,7 +30,7 @@ async function registration() {
   return navigator.serviceWorker.ready;
 }
 
-export async function currentSubscription() {
+async function currentSubscription() {
   if (!supported()) return null;
   try { return await (await registration()).pushManager.getSubscription(); } catch { return null; }
 }
@@ -41,7 +41,7 @@ async function save(sub) {
 }
 
 // Liga neste aparelho. Precisa vir de um clique (o navegador só pergunta assim).
-export async function enable() {
+async function enable() {
   if (!supported()) throw new Error("Este navegador não tem notificações.");
   const perm = await Notification.requestPermission();
   if (perm !== "granted") throw new Error(perm === "denied"
@@ -55,7 +55,7 @@ export async function enable() {
   return sub;
 }
 
-export async function disable(deviceId) {
+async function disable(deviceId) {
   const sub = await currentSubscription();
   if (sub) await sub.unsubscribe().catch(() => {});
   if (deviceId) await api.del(`/push/devices/${deviceId}`).catch(() => {});
@@ -105,15 +105,10 @@ export function offerNotifications(me) {
   }, 2500);
 }
 
-// --------------------------------------------- Configurações › Avisos --
-const TYPES = [
-  ["routine", "Rotina na hora", "No horário da rotina, com Marcar feita e Adiar 10 min; repete 10 e 30 min depois até ser marcada."],
-  ["follow_up", "Cobrar hoje", "De manhã, as bloqueadas com o dia de cobrar chegando."],
-  ["deadline", "Prazos de hoje", "De manhã, as atrasadas e o que vence hoje."],
-  ["assigned", "Tarefa atribuída a você", "Quando alguém manda uma tarefa pelo Nexus."],
-];
-const HOURS = Array.from({ length: 24 }, (_, i) => i);
-
+// --------------------------------------------- Configurações > Avisos --
+// Um só interruptor: rotina e lembrete na hora, cobranças e prazos da manhã, tarefas atribuídas.
+const ON_HELP = "Rotina e lembrete na hora (com Marcar feita, Concluir e Adiar), de manhã o que cobrar e os prazos de hoje, e as tarefas que alguém atribui a você.";
+// `collect()` devolve o corpo de PUT /push/prefs; Configurações grava os dois painéis a cada mudança.
 export async function pushPanel(rerender) {
   const sub = await currentSubscription();
   const p = await api.get("/push" + (sub ? "?endpoint=" + encodeURIComponent(sub.endpoint) : ""));
@@ -138,23 +133,15 @@ export async function pushPanel(rerender) {
   }
 
   // Tipos e privacidade
-  const checks = TYPES.map(([key, title, help]) => {
-    const on = h("input", { type: "checkbox", "aria-label": title });
-    on.checked = p.prefs[key];
-    return { key, on, el: h("label", { class: "notice-main notice-row" }, on, h("span", {}, h("strong", { text: title }), h("small", { text: help }))) };
-  });
-  const hour = h("select", { class: "select-sm", "aria-label": "Horário dos avisos da manhã" },
-    ...HOURS.map((x) => h("option", { value: String(x), text: `${String(x).padStart(2, "0")}:00` })));
-  hour.value = String(p.prefs.morning_hour);
+  const on = h("input", { type: "checkbox", "aria-label": "Receber notificações" });
+  on.checked = p.prefs.enabled;
+  const onRow = h("label", { class: "notice-main notice-row" }, on, h("span", {}, h("strong", { text: "Receber notificações" }), h("small", { text: ON_HELP })));
   const hide = h("input", { type: "checkbox" });
   hide.checked = p.prefs.hide_content;
-  const saveBtn = h("button", { type: "button", class: "btn btn-primary", text: "Salvar notificações" });
-  saveBtn.addEventListener("click", async () => {
-    const body = { morning_hour: Number(hour.value), hide_content: hide.checked };
-    for (const c of checks) body[c.key] = c.on.checked;
-    try { await api.put("/push/prefs", body); toast("Notificações salvas."); } catch (e) { errorToast(e, "Falha ao salvar."); }
-  });
-  const test = h("button", { type: "button", class: "btn btn-ghost" }, icon("bell"), "Testar");
+  const collect = () => {
+    return { enabled: on.checked, hide_content: hide.checked };
+  };
+  const test = h("button", { type: "button", class: "btn btn-ghost" }, icon("bell"), "Testar notificação");
   test.disabled = !p.devices.length;
   test.addEventListener("click", async () => {
     test.disabled = true;
@@ -163,19 +150,24 @@ export async function pushPanel(rerender) {
     finally { setTimeout(() => { test.disabled = false; }, 4000); }
   });
 
-  return h("section", { class: "panel" },
-    h("div", { class: "panel-head" }, icon("bell"), h("h2", { text: "Notificações nos aparelhos" })),
+  const panel = h("section", { class: "panel" },
+    h("div", { class: "panel-head" }, h("h2", { text: "Notificações nos aparelhos" })),
     h("p", { class: "help", text: "Avisos do sistema no celular e no computador, mesmo com o Nexus fechado. Cada aparelho liga separado; o conteúdo vai criptografado, sem serviço de terceiros além do push do próprio navegador." }),
     h("div", { class: "push-here" }, h("p", { text: status }), action),
-    ...checks.map((c) => c.el),
-    h("div", { class: "notice-row" }, h("span", { class: "notice-main" }, h("span", {}, h("strong", { text: "Horário dos avisos da manhã" }), h("small", { text: "Cobranças e prazos, nos dias úteis." }))), hour),
-    h("label", { class: "weekday-option notice-titles" }, hide, h("span", { text: "Esconder nomes de tarefas e rotinas na tela bloqueada (só o tipo do aviso)" })),
-    h("div", { class: "row-actions" }, saveBtn, test),
+    onRow,
+    h("label", { class: "check-line notice-titles" }, hide, h("span", { text: "Esconder nomes de tarefas e rotinas na tela bloqueada (só o tipo do aviso)" })),
+    h("div", { class: "row-actions" }, test),
     p.devices.length ? h("div", { class: "push-devices" },
       h("h3", { text: "Aparelhos ligados" }),
       ...p.devices.map((d) => h("div", { class: "token-row" },
         h("span", { class: "token-name", text: (d.label || "Aparelho") + (d.current ? " (este)" : "") }),
         h("span", { class: "token-meta", text: d.last_ok_at ? "último aviso " + dateTime(d.last_ok_at) : "ligado " + dateTime(d.created_at) }),
         h("button", { type: "button", class: "icon", title: "Remover este aparelho", "aria-label": "Remover " + (d.label || "aparelho"),
-          onClick: async () => { if (d.current) await disable(d.id); else await api.del(`/push/devices/${d.id}`); rerender(); } }, icon("trash"))))) : null);
+          onClick: async (ev) => {
+            const b = ev.currentTarget; if (b.dataset.busy) return; b.dataset.busy = "1"; // toque duplo não manda duas vezes
+            try { if (d.current) await disable(d.id); else await api.del(`/push/devices/${d.id}`); toast("Aparelho removido."); rerender(); }
+            catch (e) { delete b.dataset.busy; errorToast(e, "Não foi possível remover o aparelho."); }
+          } }, icon("trash"))))) : null);
+  panel.collect = collect;
+  return panel;
 }

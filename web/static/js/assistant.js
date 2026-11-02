@@ -4,7 +4,8 @@
 import { api } from "./api.js";
 import { h, icon, nowInTz, localDay, daysBetween, shortDate, addDays, addWorkDays } from "./dom.js";
 import { duration } from "./task.js";
-import { errorToast, modal, toast } from "./ui.js";
+import { errorToast, toast } from "./ui.js";
+import { openReview } from "./review.js";
 
 export const enabled = (me) => !!(me && me.assistant && me.assistant.enabled);
 
@@ -75,12 +76,13 @@ export function card({ key = null, hello, lines = [], actions = [], extra = null
 // Um aviso dentro da fala principal: sem moldura própria, só um fundo leve, o
 // símbolo do assistente (é ele falando, não um aviso geral do app) e um X
 // discreto para dispensá-lo sem fechar o resto.
-function noticeItem({ key, lines = [], extra = null }) {
+// onClose: o aviso também é dispensado no servidor (não volta ao recarregar).
+function noticeItem({ key, lines = [], extra = null, onClose = null }) {
   const el = h("div", { class: "assist-item" + (isClosed(key) ? " hidden" : ""), "data-key": key },
     h("span", { class: "assist-mark", "aria-hidden": "true" }, icon("spark")),
     h("div", { class: "assist-item-body" }, ...renderLines(lines), extra),
-    h("button", { type: "button", class: "icon assist-item-close", title: "Dispensar este aviso por enquanto",
-      "aria-label": "Dispensar este aviso", onClick: () => closeCard(key, el) }, icon("close")));
+    h("button", { type: "button", class: "icon assist-item-close", title: onClose ? "Dispensar este aviso" : "Dispensar este aviso por enquanto",
+      "aria-label": "Dispensar este aviso", onClick: () => { closeCard(key, el); if (onClose) onClose(); } }, icon("close")));
   return el;
 }
 
@@ -94,13 +96,13 @@ function stack(key, mainParts, items) {
   // (o Hoje se redesenha a cada ação).
   const shown = notices.filter((n) => !n.classList.contains("hidden")).length;
   if (shown) {
-    const label = shown === 1 ? "Ver 1 aviso" : `Ver ${shown} avisos`;
+    const label = shown === 1 ? "Ver 1 sugestão" : `Ver ${shown} sugestões`; // "Avisos" é o nome dos e-mails e notificações (Configurações)
     const memo = "nexus.assist.open." + key;
     const btn = h("button", { type: "button", class: "btn btn-ghost btn-sm assist-more", "aria-expanded": "false", text: label });
     const set = (open) => {
       el.classList.toggle("open", open);
       btn.setAttribute("aria-expanded", String(open));
-      btn.textContent = open ? "Ocultar avisos" : label;
+      btn.textContent = open ? "Ocultar sugestões" : label;
     };
     let wasOpen = false;
     try { wasOpen = sessionStorage.getItem(memo) === "1"; } catch { /* sem storage: começa recolhido */ }
@@ -153,58 +155,12 @@ function notes(open, today) {
       nota(t.follow_up_on < today
         ? `A cobrança de ${q(t.title)}${t.blocked_reason ? ` (${t.blocked_reason})` : ""} está atrasada desde ${shortDate(t.follow_up_on)}.`
         : `Hoje é dia de cobrar ${t.blocked_reason ? t.blocked_reason + " sobre " : ""}${q(t.title)}.`);
-    else if (t.status === "blocked" && !t.follow_up_on && d >= 3) nota(t.blocked_reason
-      ? `${q(t.title)} aguarda ${t.blocked_reason} há ${d} dias sem movimento. Vale cobrar.`
-      : `${q(t.title)} está bloqueada e sem movimento há ${d} dias. Vale confirmar se ainda depende de alguém.`);
+    // Aguardando sem dia para cobrar: sem aviso (o "Dia para cobrar" já vem sugerido ao marcar Aguardando).
+    else if (t.status === "blocked") continue;
     else if (t.status === "in_progress" && d >= 7) nota(`${q(t.title)} está em andamento sem movimento há ${d} dias.`);
     else if (t.due_date && daysBetween(today, t.due_date) === 1) nota(`${q(t.title)} vence amanhã.`);
   }
   return out;
-}
-
-// Resumo do dia: o que saiu hoje e o que falta (quando aparece: ver todayCard).
-function closing(sum, pendentes) {
-  const s = sum && sum.today_stats;
-  if (!s) return null;
-  const tempo = s.minutes ? ` e ${duration(s.minutes)} apontadas` : ", sem tempo apontado";
-  const falta = pendentes.length
-    ? `; ainda ${pendentes.length === 1 ? "falta" : "faltam"} ${pendentes.length <= 3 ? pendentes.map((r) => r.label).join(", ") : plural(pendentes.length, "rotina", "rotinas")}`
-    : "";
-  return `Resumo do dia: ${plural(s.pontual_done, "tarefa concluída", "tarefas concluídas", "nenhuma tarefa concluída")}${tempo} hoje${falta}.`;
-}
-
-// Texto da daily: Ontem (desde o último dia útil), Hoje e Impedimentos.
-export function dailyText(b, sum) {
-  const today = b.today;
-  const lines = [];
-  const last = sum && sum.last_day;
-  const quando = last ? (last.start === addDays(today, -1) ? "Ontem" : `Desde ${shortDate(last.start)}`) : "Ontem";
-  lines.push(`${quando}:`);
-  const feitas = last ? last.deliveries.slice(0, 10) : [];
-  lines.push(...(feitas.length ? feitas.map((d) => `- ${d.title}${d.project ? ` [${d.project}]` : ""}${d.minutes ? ` (${duration(d.minutes)})` : ""}`) : ["- nada registrado"]));
-  lines.push("", "Hoje:");
-  const hoje = b.in_progress.filter((t) => t.status !== "blocked").slice(0, 6);
-  lines.push(...(hoje.length ? hoje.map((t) => `- ${t.title}${t.ticket ? ` (#${t.ticket})` : ""}${t.due_date && t.due_date < today ? " — atrasada" : t.due_date === today ? " — vence hoje" : ""}`) : ["- sem tarefas em aberto"]));
-  lines.push("", "Impedimentos:");
-  const bloq = b.in_progress.filter((t) => t.status === "blocked");
-  lines.push(...(bloq.length ? bloq.map((t) => `- ${t.title}${t.ticket ? ` (#${t.ticket})` : ""}${t.blocked_reason ? ` — aguardando ${t.blocked_reason}` : ""}`) : ["- nenhum"]));
-  return lines.join("\n");
-}
-
-async function copyDaily(b, sum) {
-  const text = dailyText(b, sum);
-  try {
-    await navigator.clipboard.writeText(text);
-    toast("Texto da daily copiado. É só colar no chat da equipe.");
-  } catch {
-    // Área de transferência bloqueada: mostra o texto selecionado para copiar à mão.
-    const area = h("textarea", { class: "daily-text", rows: "12", readonly: "readonly" });
-    area.value = text;
-    const dlg = modal(h("h2", { text: "Texto da daily" }),
-      h("p", { class: "dialog-note", text: "Não consegui copiar sozinho. O texto já está selecionado: use Ctrl+C." }), area,
-      h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Fechar", onClick: () => dlg.close() })));
-    setTimeout(() => area.select(), 0);
-  }
 }
 
 // O que aconteceu desde o último dia útil (manhã) e o fechamento da sexta (tarde).
@@ -214,15 +170,17 @@ function recap(sum, t, go) {
     const s = sum.last_day;
     if (s.pontual_done || s.minutes) {
       const quando = s.start === addDays(sum.today, -1) ? "Ontem" : "Desde o último dia útil";
-      const tempo = s.minutes ? ` e apontou ${duration(s.minutes)}` : "";
-      return { line: `${quando}, você concluiu ${plural(s.pontual_done, "tarefa", "tarefas")}${tempo}.`, act: null };
+      // Nada concluído, só tempo: "Ontem, você apontou 14h." (não "concluiu 0 tarefas").
+      const feito = s.pontual_done ? `concluiu ${plural(s.pontual_done, "tarefa", "tarefas")}` : "";
+      const tempo = s.minutes ? `apontou ${duration(s.minutes)}` : "";
+      return { line: `${quando}, você ${[feito, tempo].filter(Boolean).join(" e ")}.`, act: null };
     }
   }
   if (t.weekday === 5 && t.hour >= 14 && sum.week) {
     const w = sum.week;
     return {
       line: `Nesta semana: ${plural(w.pontual_done, "tarefa concluída", "tarefas concluídas", "nenhuma tarefa concluída")}${w.minutes ? ` e ${duration(w.minutes)} apontadas` : ""}. O relatório da semana já pode ser gerado.`,
-      act: action("Gerar relatório", () => go("relatorios")),
+      act: action("Gerar relatório", () => go("mes?periodo=semana")),
     };
   }
   return { line: null, act: null };
@@ -266,7 +224,13 @@ export function todayCard(b, sum, ctx) {
   } else if (pendentes.length || open.length) {
     const partes = [pendentes.length ? plural(pendentes.length, "rotina pendente", "rotinas pendentes") : "", openLine(open.length, late)];
     resumo = `Para hoje: ${partes.filter(Boolean).join(" e ")}.`;
-    if (open.length) {
+    // "Primeiro amanhã": o que a pessoa deixou escolhido no fechamento do dia anterior vem antes da sugestão.
+    const escolhidas = open.filter((x) => x.first_on === today);
+    if (escolhidas.length) {
+      items.push({ key: "hoje:primeiro", lines: [{ line: h("p", {}, "Você deixou para começar hoje: ",
+        ...escolhidas.flatMap((x, i) => [i ? (i === escolhidas.length - 1 ? " e " : ", ") : "", h("strong", { text: q(x.title) })]), "."),
+        actions: [action("Abrir tarefa", () => ctx.openTask(escolhidas[0].id))] }] });
+    } else if (open.length) {
       const first = open[0];
       items.push({ key: "hoje:sugestao", lines: [{ line: h("p", {}, "Sugiro começar por ", h("strong", { text: q(first.title) }), `${why(first, today)}.`),
         actions: [action("Abrir tarefa", () => ctx.openTask(first.id))] }] });
@@ -276,14 +240,14 @@ export function todayCard(b, sum, ctx) {
       ? "As rotinas de hoje estão concluídas e não há tarefas em aberto. Tudo em dia."
       : "Nada pendente por aqui. O que surgir, registre no campo de registro rápido.";
   }
-  // Impedimento parado: "Cobrei" anota a cobrança na tarefa (conta como movimento; o aviso some por 3 dias).
+  // Espera parada: "Cobrei" anota a cobrança na tarefa (conta como movimento; o aviso some por 3 dias).
   if (b.work_day) for (const n of notes(open, today)) items.push({ key: n.key, lines: n.task.status === "blocked" && ctx.onChanged
     ? [{ line: n.text, actions: [action("Cobrei", async (ev) => {
         const btn = ev.currentTarget;
         btn.disabled = true; // clique duplo gravaria duas anotações
         try {
-          // Com dia combinado, a próxima cobrança vai pra daqui a 2 dias úteis (antes da
-          // anotação: se falhar, nada foi gravado e dá pra tentar de novo).
+          // Com dia combinado, a próxima cobrança vai para daqui a 2 dias úteis (antes da
+          // anotação: se falhar, nada foi gravado e dá para tentar de novo).
           if (n.task.follow_up_on) await api.patch(`/worklog/${n.task.id}`, { follow_up_on: addWorkDays(today, 2, (ME && ME.work_days) || 62) });
           await api.post(`/worklog/${n.task.id}/notes`, { body: n.task.blocked_reason ? `Cobrei: ${n.task.blocked_reason}` : "Cobrei o andamento" });
           toast("Cobrança anotada na tarefa.");
@@ -292,6 +256,27 @@ export function todayCard(b, sum, ctx) {
       })] }]
     : [n.text] });
 
+  // Quem atribui: o retorno das que mandou desde o último aviso visto (só
+  // concluídas e devolvidas; nunca "fulano está atrasado"). "Ver" leva à Equipe.
+  const an = sum && sum.assigned_news;
+  if (an) {
+    const seen = () => api.post("/assign/news/seen").catch(() => { /* sem rede: volta no próximo Hoje */ });
+    const partes = [an.done ? plural(an.done, "concluída", "concluídas") : "", an.returned ? plural(an.returned, "devolvida", "devolvidas") : ""];
+    items.push({ key: "hoje:atribuidas", onClose: seen, lines: [{
+      line: `Das que você atribuiu: ${partes.filter(Boolean).join(", ")}.` + (an.returned === 1 ? " A devolvida espera você atribuir de novo ou encerrar." : an.returned ? " As devolvidas esperam você atribuir de novo ou encerrar." : ""),
+      actions: [action("Ver na Equipe", () => { seen(); ctx.go("equipe"); }, true)] }] });
+  }
+  // Último dia útil da semana: convite para a revisão (uma vez; "Agora não" vale a semana toda).
+  const rv = sum && sum.review;
+  if (rv && rv.invite) items.push({ key: "hoje:revisao", lines: [{
+    line: "Último dia útil da semana. Que tal uma revisão rápida? São 3 passos: o que fechou, o que ficou e o que vem.",
+    actions: [action("Revisar a semana", () => openReview(ctx.onChanged), true),
+      action("Agora não", async (ev) => {
+        const item = ev.currentTarget.closest(".assist-item");
+        try { await api.post("/review/week/dismiss"); } catch { /* sem rede: só esconde agora */ }
+        if (item) closeCard("hoje:revisao", item);
+      })] }] });
+
   // Tempo esquecido: concluídas hoje sem nenhum apontamento.
   const semTempo = b.done.filter((x) => x.completed_at && localDay(x.completed_at) === today && !x.minutes);
   if (semTempo.length) {
@@ -299,60 +284,16 @@ export function todayCard(b, sum, ctx) {
       ...semTempo.slice(0, 3).flatMap((x, i) => [i ? ", " : "", h("strong", { text: q(x.title) })]), semTempo.length > 3 ? " e outras." : "."),
       actions: semTempo.slice(0, 2).map((x) => action(`Apontar em ${q(x.title.length > 24 ? x.title.slice(0, 23) + "…" : x.title)}`, () => ctx.openTask(x.id))) }] });
   }
-  // Resumo do dia: com a primeira tarefa ou rotina concluída hoje; sem nada
-  // concluído, a partir do horário escolhido em Conta (padrão 14:00), em dia útil.
-  const st = sum && sum.today_stats;
-  const algo = st && (st.pontual_done || st.recurring_done || st.recurring_extra);
-  const desde = me.assistant.summary_from ?? 840;
-  const fechamento = algo || (b.work_day && t.hour * 60 + t.minute >= desde) ? closing(sum, pendentes) : null;
   // Recapitulação: "Ontem, você concluiu…" vai no texto principal; o fechamento
   // da sexta (com o botão do relatório) é um aviso.
   const r = recap(sum, t, ctx.go);
-  if (r.line && r.act) items.push({ key: "hoje:recap", lines: [{ line: r.line, actions: [r.act] }] });
-  if (b.work_day) items.push({ key: "hoje:daily", lines: [{ line: "Posso montar o texto da daily: ontem, hoje e impedimentos, pronto para colar no chat da equipe.",
-    actions: [action("Copiar para a daily", () => copyDaily(b, sum))] }] });
+  if (r.line && r.act && !(rv && rv.invite)) items.push({ key: "hoje:recap", lines: [{ line: r.line, actions: [r.act] }] });
   const ask = invite(me, ctx.onProfile);
   if (ask) items.push({ key: "hoje:nome", lines: [], extra: ask });
 
-  return stack("hoje", { hello: greeting(me.name), lines: [resumo, r.line && !r.act ? r.line : null, fechamento] }, items);
-}
-
-// --------------------------------------------------------- Retrospectiva --
-
-export function retroCard(a, me) {
-  if (!enabled(me)) return null;
-  const lines = [];
-  // O período da tela: "nos últimos 30 dias" ou "em setembro" (mês escolhido).
-  const MES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
-  const per = a.period && a.period.month ? "em " + MES[Number(a.period.month.slice(5)) - 1] : "nos últimos 30 dias";
-  const rot = (a.task_adherence && a.task_adherence.tasks) || [];
-  const pct = (r) => Math.round((100 * r.done) / r.slots);
-  if (rot.length >= 2) {
-    const best = rot.reduce((x, y) => (y.done / y.slots > x.done / x.slots ? y : x));
-    const worst = rot[0]; // vem ordenado: a mais pulada primeiro
-    if (pct(best) > pct(worst))
-      lines.push(`Sua rotina mais consistente ${per} é ${q(best.label)} (${pct(best)}%). ` +
-        `A que mais escapa é ${q(worst.label)} (${pct(worst)}%)${pct(worst) < 50 ? "; talvez a agenda dela mereça uma revisão" : ""}.`);
-  } else if (rot.length === 1) {
-    lines.push(`Sua rotina ${q(rot[0].label)} foi feita em ${pct(rot[0])}% dos dias da agenda ${per}.`);
-  }
-  const streak = rot.filter((r) => r.streak >= 3).sort((x, y) => y.streak - x.streak)[0];
-  if (streak) lines.push(`${q(streak.label)} está em dia há ${streak.streak} dias seguidos.`);
-  const proj = ((a.projects && a.projects.items) || []).filter((p) => p.minutes);
-  const total = proj.reduce((s, p) => s + p.minutes, 0);
-  if (proj.length >= 2 && total) {
-    const top = proj[0];
-    const share = Math.round((100 * top.minutes) / total);
-    if (share >= 40) lines.push(`${share}% do tempo apontado ${per} foi para ${top.name ? q(top.name) : "tarefas sem projeto"}.`);
-  }
-  const weeks = (a.throughput && a.throughput.weeks) || [];
-  const done = weeks.reduce((s, w) => s + w.done, 0);
-  if (weeks.length && !lines.length)
-    lines.push(done ? `${a.period && a.period.month ? per.charAt(0).toUpperCase() + per.slice(1) : "Nas últimas 4 semanas"}, você concluiu ${plural(done, "tarefa", "tarefas")}.`
-      : `Ainda não há tarefas concluídas ${a.period && a.period.month ? per : "nas últimas 4 semanas"} para analisar.`);
-  if (!lines.length) return null;
-  const [first, ...rest] = lines.slice(0, 3);
-  return stack("retro", { lines: [first], compact: true }, rest.map((l, i) => ({ key: `retro:${i}`, lines: [l] })));
+  // O "Primeiro amanhã" se escolhe só na Passagem de turno e na revisão da semana (decisão do dono, 02/11):
+  // o texto do dia é a Passagem; o resumo para a equipe saiu daqui.
+  return stack("hoje", { hello: greeting(me.name), lines: [resumo, r.line && !r.act ? r.line : null] }, items);
 }
 
 // ---------------------------------------------------------------- Tarefas --
@@ -369,12 +310,14 @@ export function boardLine(open, today, me) {
 
 // ------------------------------------------------------------- Relatórios --
 
-export function previewText(p) {
+// whole: "Projeto completo" (sem datas): fala do projeto, não de um período.
+export function previewText(p, whole = false) {
+  const alvo = whole ? "neste projeto" : "neste período";
   if (!p.pontual_done && !p.minutes && !p.recurring_done)
-    return "Não há registros neste período; o relatório sairia vazio.";
+    return `Não há registros ${alvo}; o relatório sairia vazio.`;
   const partes = [plural(p.pontual_done, "tarefa concluída", "tarefas concluídas", "nenhuma tarefa concluída")];
   if (p.minutes) partes.push(`${duration(p.minutes)} apontadas`);
   if (p.recurring_total) partes.push(`${Math.round((100 * p.recurring_done) / p.recurring_total)}% das rotinas cumpridas`);
   const lista = partes.length > 1 ? `${partes.slice(0, -1).join(", ")} e ${partes[partes.length - 1]}` : partes[0];
-  return `Este período tem ${lista}, em ${plural(p.active_days, "dia", "dias")} com atividade.`;
+  return `${whole ? "Neste projeto" : "Neste período"}: ${lista}, em ${plural(p.active_days, "dia", "dias")} com atividade.`;
 }

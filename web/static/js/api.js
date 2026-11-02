@@ -1,16 +1,30 @@
 // Wrapper de fetch para /api. Envia o cookie de sessao (same-origin) e o
 // header X-CSRF-Token nas mutacoes. Redireciona para o login em 401 de sessao.
 
-import { after as queueAfter, configure, enqueue, markFresh, markStale, overlay, queueable } from "./fila.js";
+import { after as queueAfter, configure, enqueue, markFresh, markStale, overlay, queueable, wipeReads } from "./fila.js";
 
 let CSRF = null;
 
 // Mensagem para a tela, sempre em português: o detail do backend quando ele
 // é texto; validação (lista do FastAPI), rede e respostas sem JSON, genéricas.
+// O servidor não diz "atualize a tela" (a mensagem também vai para a IA e as
+// integrações): quando a tela está velha (item sumiu, já resolvido), diz aqui.
+const STALE = /pode ter sido excluíd|já foi resolvida|já foi concluída|mudou enquanto|não há devolução em aberto|só tarefas suas em aberto/;
+
 function messageFor(status, data) {
   const d = data && data.detail;
-  if (typeof d === "string" && d) return d;
-  if (Array.isArray(d)) return "Dados inválidos: confira os campos.";
+  if (typeof d === "string" && d) {
+    const msg = d[0].toUpperCase() + d.slice(1) + (/[.!?]$/.test(d) ? "" : ".");
+    return (status === 400 || status === 404 || status === 409) && STALE.test(d) ? msg + " Atualize a tela." : msg;
+  }
+  if (Array.isArray(d)) {
+    // Os validadores de schemas.py falam português ("Value error, ..."); o resto
+    // é inglês do pydantic e vira o texto genérico.
+    const raw = String((d[0] && d[0].msg) || "");
+    const m = raw.replace(/^Value error, /, "").trim();
+    if (m && (raw !== m || /[à-ú]/i.test(m))) return m[0].toUpperCase() + m.slice(1) + (/[.!?]$/.test(m) ? "" : ".");
+    return "Algum campo está inválido. Confira e tente de novo.";
+  }
   if (status === 429) return "Muitas tentativas. Aguarde um pouco e tente de novo.";
   if (status >= 500) return "O servidor teve um problema. Tente de novo em instantes.";
   return "Não foi possível concluir. Tente de novo.";
@@ -56,11 +70,14 @@ async function send(method, path, { body, type, timeout = 20000, publicCall = fa
 // Login guardando a tela atual (#/...), para voltar a ela depois.
 export function toLogin() {
   const next = location.hash.startsWith("#/") ? "?next=" + encodeURIComponent(location.hash) : "";
-  location.href = "/login" + next;
+  wipeReads().catch(() => {}).finally(() => { location.href = "/login" + next; });
 }
 
+// Foto (base64, até ~1,3 MB) no 3G do campo passa dos 20 s: espera mais.
+const waitFor = (path) => (/\/photos(\?|$)/.test(path) ? 90000 : 20000);
+
 async function raw(method, path, body) {
-  const res = await send(method, path, body === undefined ? {} : { body: JSON.stringify(body), type: "application/json" });
+  const res = await send(method, path, body === undefined ? { timeout: waitFor(path) } : { body: JSON.stringify(body), type: "application/json", timeout: waitFor(path) });
   return res.status === 204 ? null : res.json().catch(() => null);
 }
 configure(raw);
@@ -68,20 +85,23 @@ configure(raw);
 // Sem sinal, as ações da fila (fila.js) ficam guardadas e a resposta é
 // { queued: true, qid }; leituras servidas do cache avisam a barra e recebem
 // por cima o que está na fila.
-async function request(method, path, body) {
-  if (method === "POST" && path === "/worklog" && body && !body.external_ref)
-    body = { ...body, external_ref: "app-" + crypto.randomUUID() };  // reenviar nunca duplica
+async function request(method, path, body, opts = {}) {
+  if (method === "POST" && /^\/(worklog(\/\d+\/(notes|time|photos))?|recurring\/\d+\/photos(\?.*)?)$/.test(path) && body && !body.external_ref)
+    body = { ...body, external_ref: "app-" + crypto.randomUUID() };  // reenviar (fila, timeout) nunca duplica
   let res;
   try {
-    res = await send(method, path, body === undefined ? {} : { body: JSON.stringify(body), type: "application/json" });
+    res = await send(method, path, body === undefined ? { timeout: opts.timeout || waitFor(path) } : { body: JSON.stringify(body), type: "application/json", timeout: waitFor(path) });
   } catch (e) {
     if (e.status === 0 && queueable(method, path)) return { queued: true, qid: await enqueue(method, path, body), id: null };
     throw e;
   }
   if (method === "GET") {
     const cached = res.headers.get("X-Nexus-Cache");
-    if (cached) { markStale(cached); return overlay(path.split("?")[0], await res.json().catch(() => null)); }
+    const total = Number(res.headers.get("X-Total-Count"));
+    const withTotal = (rows) => (opts.total ? { rows: rows || [], total: Number.isFinite(total) && res.headers.has("X-Total-Count") ? total : (rows || []).length } : rows);
+    if (cached) { markStale(cached); return withTotal(await overlay(path.split("?")[0], await res.json().catch(() => null))); }
     markFresh();
+    return withTotal(await res.json().catch(() => null));
   }
   return res.status === 204 ? null : res.json().catch(() => null);
 }
@@ -107,7 +127,10 @@ async function upload(path, file) {
 }
 
 export const api = {
-  get: (p) => request("GET", p),
+  // opts.timeout: espera menor (a abertura do app não fica 20 s parada com o servidor fora).
+  get: (p, opts) => request("GET", p, undefined, opts),
+  // Lista paginada: { rows, total } (o total vem no cabeçalho X-Total-Count).
+  page: (p, opts) => request("GET", p, undefined, { ...opts, total: true }),
   // Rotas públicas (ex.: identidade visual na tela de login): 401 não redireciona.
   getPublic: async (p) => (await send("GET", p, { publicCall: true })).json(),
   post: (p, b) => request("POST", p, b),

@@ -190,6 +190,7 @@ def test_mcp_hoje_respeita_agenda_e_resumo(usuario):
 def test_admin_exporta_horas_da_equipe(admin, usuario, novo_usuario):
     outro = novo_usuario("outro@example.com")
     for u, m in ((usuario, 30), (outro, 45)):
+        u.put("/me/viewers", {"accept": True})
         pid = u.post("/projects", {"name": "Loja X"}).json()["id"]
         tid = u.post("/worklog", {"title": "Cabear", "project_id": pid}).json()["id"]
         u.post(f"/worklog/{tid}/time", {"minutes": m})
@@ -417,3 +418,38 @@ def test_rotina_pendente_hoje_nao_fica_para_tras(usuario):
     hoje = dia_hoje(usuario)
     r = get_report_range(uid_de(usuario), hoje, hoje)
     assert all(x["due"] == 0 for x in r["recurring_stats"])  # hoje ainda dá tempo
+
+
+# ================================================================ gauntlet geral --
+
+def test_desfazer_troca_de_agenda_devolve_todas_as_marcacoes(usuario):
+    from datetime import timedelta
+    rid = usuario.post("/recurring", {"label": "Ronda", "require_note": False}).json()["id"]
+    recuar_criacao(rid, 10)
+    hoje = dia_hoje(usuario)
+    novo = usuario.patch(f"/recurring/{rid}", {"freq": "weekly", "weekdays": 127}).json()["id"]
+    ontem = (hoje - timedelta(days=1)).isoformat()
+    # marcação feita na nova, num dia anterior (como se a troca fosse de dias atrás)
+    db.execute("INSERT INTO recurring_completions (task_id, user_id, completed_date, note) "
+               "SELECT %s, user_id, %s, 'quadro ok' FROM recurring_tasks WHERE id = %s", (novo, ontem, novo))
+    assert _desfazer(usuario, "recurring", novo).status_code == 200
+    n = db.query_one("SELECT note FROM recurring_completions WHERE task_id = %s AND completed_date = %s", (rid, ontem))
+    assert n and n["note"] == "quadro ok"
+
+
+def test_desfazer_troca_de_agenda_fora_da_janela_da_409(usuario):
+    rid = usuario.post("/recurring", {"label": "R"}).json()["id"]
+    recuar_criacao(rid, 20)
+    novo = usuario.patch(f"/recurring/{rid}", {"freq": "weekly", "weekdays": 2}).json()["id"]
+    db.execute("UPDATE audit_log SET created_at = now() - interval '10 days' WHERE entity_id = %s AND action = 'recurring.replace'", (novo,))
+    assert _desfazer(usuario, "recurring", novo).status_code == 409
+
+
+def test_calendario_nao_conta_rotina_de_hoje_pendente(usuario):
+    rid = usuario.post("/recurring", {"label": "Diária", "freq": "weekly", "weekdays": 127}).json()["id"]  # todo dia, até domingo
+    recuar_criacao(rid, 3)
+    hoje = dia_hoje(usuario).isoformat()
+    heat = lambda: {str(d["date"]): d for d in usuario.get("/dashboard").json()["heatmap"]["days"]}
+    assert heat()[hoje]["slots"] == 0  # pendente hoje: ainda dá tempo, não é falta
+    usuario.post(f"/recurring/{rid}/toggle", {"done": True})
+    assert heat()[hoje]["slots"] == 1 and heat()[hoje]["done"] == 1

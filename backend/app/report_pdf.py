@@ -6,7 +6,7 @@ services.get_report_range (+ a identidade visual) e devolve os bytes do PDF.
 Conceito editorial: página branca, sem caixas; a hierarquia vem da
 tipografia (Google Sans Flex, estáticas em assets/fonts) e de linhas finas.
 Um parágrafo de abertura conta o período em texto corrido; os números
-grandes vêm logo abaixo. A cor é só para dados: azul (#5294E2, o do app)
+grandes vêm logo abaixo. A cor é só para dados: azul (#1A6AB5, o do app claro)
 para o que foi feito, vermelho para o que ficou para trás, as cores dos
 projetos só nos pontos. A matriz de rotinas (um ponto por dia) mostra a
 aderência do período de relance.
@@ -14,7 +14,7 @@ aderência do período de relance.
 
 import io
 import unicodedata
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
 
 from fontTools.ttLib import TTFont
@@ -29,20 +29,21 @@ ASSETS = Path(__file__).parent / "assets"
 FONTS = ASSETS / "fonts"
 
 
-# Paleta (impressão em fundo branco; o azul é o mesmo do app).
-INK = (20, 20, 23)
-INK2 = (74, 74, 82)
-DIM = (138, 138, 148)
-FAINT = (196, 196, 204)
-LINE = (226, 226, 231)
-HAIR = (238, 238, 242)
-ACCENT = (82, 148, 226)
-ACCENT_MID = (168, 201, 241)
-ACCENT_SOFT = (237, 244, 252)
-BAD = (204, 70, 60)
-WARN = (190, 134, 14)
-WHITE = (255, 255, 255)
-BAND = (18, 18, 19)  # o fundo do app: o ícone do logo
+# Paleta (impressão em fundo branco): os hex do tema claro da paleta híbrida.
+# O azul é o primário do claro (#5294E2 escurecido até AA: dá texto legível no
+# papel); erro e aviso também são os do claro. Todo texto passa 4,5:1 no branco,
+# menos o FAINT, que é o esmaecido de propósito (vazio, fora da agenda).
+INK = (25, 28, 32)          # #191C20 texto
+INK2 = (67, 71, 78)         # #43474E texto secundário
+DIM = (95, 99, 107)         # #5F636B apagado (rótulos, datas)
+FAINT = (168, 171, 180)     # #A8ABB4 divisor forte / esmaecido
+LINE = (223, 226, 235)      # #DFE2EB divisor sutil
+HAIR = (233, 233, 238)      # #E9E9EE linhas finas e trilhos
+ACCENT = (26, 106, 181)     # #1A6AB5 primário
+ACCENT_MID = (166, 195, 237)  # #A6C3ED secundário (rotinas, extras)
+BAD = (181, 31, 33)         # #B51F21 erro
+WARN = (119, 102, 0)        # #776600 aviso
+BAND = (19, 19, 20)  # #131314, o fundo do app: o ícone do logo
 
 M = 18  # margem lateral (mm)
 
@@ -86,6 +87,8 @@ def _schedule(r: dict) -> str:
         return "último dia do mês" if (r.get("month_day") or 0) >= 31 else f"todo dia {r['month_day']}"
     if f == "interval":
         return f"a cada {r['interval_days']} dias"
+    if f == "after":
+        return f"{r['interval_days']} dias depois da última vez"
     return "dias úteis"
 
 
@@ -205,6 +208,9 @@ class _Report(FPDF):
         return t.rstrip() + "…"
 
     def lines(self, text: str, w: float, h: float) -> int:
+        # Cabe numa linha (o caso comum): sem a simulação do multi_cell, que pesa no PDF de um ano.
+        if "\n" not in text and self.get_string_width(_s(text)) <= w - 1:
+            return 1
         return len(self.multi_cell(w, h, _s(text), dry_run=True, output="LINES")) or 1
 
     def para(self, x, y, w, lh, text) -> float:
@@ -225,7 +231,9 @@ def _lede(data: dict) -> str:
     s = data["summary"]
     by_project = bool(data.get("project"))
     frases = []
-    if s["active_days"]:
+    if s["active_days"] and s["period_days"] == 1:
+        frases.append("O dia teve atividade registrada.")
+    elif s["active_days"]:
         frases.append(f"Em {_plural(s['period_days'], 'dia', 'dias')}, "
                       f"{s['active_days'] if s['active_days'] != s['period_days'] else 'todos'} "
                       f"{'teve' if s['active_days'] == 1 else 'tiveram'} atividade registrada.")
@@ -241,7 +249,9 @@ def _lede(data: dict) -> str:
         frases.append(("Foram " if s["pontual_done"] != 1 or s["minutes"] else "Foi ") + " e ".join(feito) + ".")
     if s["recurring_total"] and not by_project:
         pct = round(100 * s["recurring_done"] / s["recurring_total"])
-        r = f"As rotinas ficaram em {pct}%: {s['recurring_done']} de {s['recurring_total']} verificações devidas"
+        # "rotinas", como no app (não "verificações"); sem nenhuma, uma frase em vez de um 0% frio.
+        r = (f"Foram feitas {s['recurring_done']} de {s['recurring_total']} rotinas previstas ({pct}%)" if s["recurring_done"]
+             else f"Nenhuma das {s['recurring_total']} rotinas previstas foi marcada")
         r += f", mais {_plural(s['recurring_extra'], 'extra', 'extras')}." if s["recurring_extra"] else "."
         frases.append(r)
     if s["open"]:
@@ -311,7 +321,7 @@ def _figures(pdf: _Report, data: dict) -> None:
     if not by_project:
         pct = round(100 * s["recurring_done"] / s["recurring_total"]) if s["recurring_total"] else None
         cols.append(("rotinas", f"{pct}%" if pct is not None else "—",
-                     f"{s['recurring_done']} de {s['recurring_total']} devidas" if s["recurring_total"] else "nenhuma devida", pct))
+                     f"{s['recurring_done']} de {s['recurring_total']} previstas" if s["recurring_total"] else "nenhuma prevista", pct))
     cols.append(("concluídas", str(s["pontual_done"]), "tarefas", None))
     cols.append(("tempo", _dur(s["minutes"]) if s["minutes"] else "—",
                  (f"{_dur(s['minutes_after_hours'])} em plantão" if s.get("minutes_after_hours") else
@@ -442,8 +452,8 @@ def _chart(pdf: _Report, data: dict) -> None:
 
 
 def _matrix(pdf: _Report, data: dict) -> bool:
-    """Rotinas × dias: ● feita, ○ perdida (vermelho), ● claro = extra, · fora da
-    agenda. Só para períodos de até 62 dias (depois, a lista com barras)."""
+    """Rotinas × dias: ● feita, ○ perdida (anel neutro: fato, não nota), ● claro
+    = extra, · fora da agenda. Só para períodos de até 62 dias (depois, a lista com barras)."""
     stats = [r for r in data["recurring_stats"] if r["due"] or r["extra"]]
     series = data["series"]
     n = len(series)
@@ -455,7 +465,7 @@ def _matrix(pdf: _Report, data: dict) -> bool:
     d = min(step * 0.62, 2.8)
     y = _section(pdf, "Rotinas", need=14 + 6 * min(len(stats), 6), legend=[
         ("feita", lambda x, yy: pdf.dot(x, yy, 2.2, ACCENT)),
-        ("perdida", lambda x, yy: pdf.dot(x + 0.15, yy + 0.15, 1.9, None, outline=BAD, lw=0.35)),
+        ("não feita", lambda x, yy: pdf.dot(x + 0.15, yy + 0.15, 1.9, None, outline=DIM, lw=0.35)),
         ("extra", lambda x, yy: pdf.dot(x, yy, 2.2, ACCENT_MID)),
         ("fora da agenda", lambda x, yy: pdf.dot(x + 0.75, yy + 0.75, 0.7, FAINT)),
     ])
@@ -487,13 +497,13 @@ def _matrix(pdf: _Report, data: dict) -> bool:
             elif mk == "E":
                 pdf.dot(cx, cy, d, ACCENT_MID)
             elif mk == "M":
-                pdf.dot(cx + 0.18, cy + 0.18, d - 0.36, None, outline=BAD, lw=0.35)
+                pdf.dot(cx + 0.18, cy + 0.18, d - 0.36, None, outline=DIM, lw=0.35)
             elif mk == "P":
                 pdf.dot(cx + 0.18, cy + 0.18, d - 0.36, None, outline=FAINT, lw=0.3)
             elif mk == "O":
                 pdf.dot(cx + d / 2 - 0.35, cy + d / 2 - 0.35, 0.7, FAINT)
         pct = round(100 * r["done"] / r["due"]) if r["due"] else None
-        pdf.font("labelb", 7.4, INK if pct is None or pct >= 60 else BAD)
+        pdf.font("labelb", 7.4, INK)  # sem cor por limite: o PDF não dá nota
         pdf.text_at(pdf.w - M - right_w, y, right_w, row_h,
                     (f"{pct}%" if pct is not None else "extra") + "", "R")
         pdf.font("label", 6, DIM)
@@ -509,7 +519,7 @@ def _recurring_list(pdf: _Report, data: dict) -> None:
     stats = [r for r in data["recurring_stats"] if r["due"] or r["extra"]]
     if not stats:
         return
-    y = _section(pdf, "Rotinas", "feitas / devidas", need=20)
+    y = _section(pdf, "Rotinas", "feitas / previstas", need=20)
     for r in stats:
         if y + 9 > pdf.bottom:
             pdf.add_page()
@@ -518,12 +528,12 @@ def _recurring_list(pdf: _Report, data: dict) -> None:
         pdf.font("sans", 8.4, INK)
         pdf.text_at(M, y, 70, 4.2, pdf.fit(r["label"], 68))
         pdf.font("label", 6.2, DIM)
-        pdf.text_at(M, y + 4.2, 70, 3, _schedule(r) + (f" · +{r['extra']} extra" if r["extra"] else ""))
+        pdf.text_at(M, y + 4.2, 70, 3, _schedule(r) + (f" · +{_plural(r['extra'], 'extra', 'extras')}" if r["extra"] else ""))
         bx, bw = M + 74, pdf.cw - 74 - 30
         pdf.box(bx, y + 2.4, bw, 1.2, HAIR, r=0.6)
         if pct:
-            pdf.box(bx, y + 2.4, bw * min(pct, 100) / 100, 1.2, ACCENT if pct >= 60 else BAD, r=0.6)
-        pdf.font("labelb", 7.4, INK if pct is None or pct >= 60 else BAD)
+            pdf.box(bx, y + 2.4, bw * min(pct, 100) / 100, 1.2, ACCENT, r=0.6)
+        pdf.font("labelb", 7.4, INK)
         pdf.text_at(pdf.w - M - 28, y + 0.6, 28, 4.2, f"{r['done']}/{r['due']}" + (f"  {pct}%" if pct is not None else ""), "R")
         y += 9
     pdf.set_y(y + 8)
@@ -578,28 +588,63 @@ def _project_tag(pdf: _Report, name, color, x, y, w) -> None:
     pdf.text_at(x + 3.2, y, w - 3.2, 4.2, pdf.fit(name, w - 4))
 
 
+def _proof(r: dict) -> str:
+    """Linha de evidência de uma tarefa concluída: "Resolvido: …" (ou a última
+    anotação) e quantas fotos ela tem. Vazia quando não há nada."""
+    text = (r.get("resolution") or "").strip()
+    label = "Resolvido: "
+    if not text:
+        text, label = (r.get("last_note") or "").strip(), "Anotação: "
+    text = " ".join(text.split())
+    if len(text) > 160:
+        text = text[:157].rstrip() + "…"
+    parts = [label + text] if text else []
+    if r.get("photos_count"):
+        parts.append(f"{r['photos_count']} foto" + ("s" if r["photos_count"] > 1 else "") + " no Nexus")
+    return " · ".join(parts)
+
+
+# Período longo (um ano): a tabela de concluídas vai até este tanto e o diário
+# sai; o resto está na exportação CSV. Mantém o PDF em minutos na VM pequena.
+LONG_DAYS, MAX_ROWS = 62, 500
+
+
 def _deliveries(pdf: _Report, data: dict) -> None:
     rows = data["deliveries"]
     if not rows:
         return
+    total = len(rows)
+    cut = total - MAX_ROWS if data.get("long") and total > MAX_ROWS else 0
+    if cut:
+        rows = rows[-MAX_ROWS:]  # as mais recentes
     prio = [("prioridade alta", lambda x, y: pdf.dot(x + 0.4, y + 0.4, 1.4, WARN))] if any(r["priority"] == 1 for r in rows) else None
-    _section(pdf, f"Tarefas concluídas ({len(rows)})", legend=prio)
+    _section(pdf, f"Tarefas concluídas ({total})", legend=prio)
+    if cut:
+        pdf.font("sans", 7.4, DIM)
+        pdf.set_x(M)
+        pdf.multi_cell(pdf.cw, 3.8, _s(f"As {MAX_ROWS} mais recentes; as outras {cut} estão na exportação CSV."), new_x="LEFT", new_y="NEXT")
+        pdf.ln(2)
     show_proj = not data.get("project")
     wp = 38 if show_proj else 0
     cols = [("dia", 14, "L"), ("tarefa", pdf.cw - 14 - wp - 16 - 14, "L")]
     if show_proj:
         cols.append(("projeto", wp, "L"))
-    cols += [("tempo", 16, "R"), ("itens", 14, "R")]
+    cols += [("tempo", 16, "R"), ("checklist", 14, "R")]
     _table_head(pdf, cols)
     tw = cols[1][1] - 5
     for r in rows:
         pdf.set_font("sansm", "", 8.6)
         n1 = pdf.lines(r["title"], tw, 4.2)
-        n2 = 0
+        n2 = n3 = 0
         if r["description"]:
             pdf.set_font("sans", "", 7.4)
             n2 = pdf.lines(r["description"], tw, 3.6)
-        h = n1 * 4.2 + n2 * 3.6 + 3.6
+        # A prova do serviço: como resolveu (ou a última anotação) e as fotos.
+        proof = _proof(r)
+        if proof:
+            pdf.set_font("sans", "", 7.2)
+            n3 = pdf.lines(proof, tw, 3.4)
+        h = n1 * 4.2 + n2 * 3.6 + n3 * 3.4 + 3.6
         if pdf.get_y() + h > pdf.bottom:
             pdf.add_page()
             _table_head(pdf, cols)
@@ -616,6 +661,10 @@ def _deliveries(pdf: _Report, data: dict) -> None:
             pdf.font("sans", 7.4, DIM)
             pdf.set_x(x)
             pdf.multi_cell(tw, 3.6, _s(r["description"]), new_x="LEFT", new_y="NEXT")
+        if proof:
+            pdf.font("sans", 7.2, INK2)
+            pdf.set_x(x)
+            pdf.multi_cell(tw, 3.4, _s(proof), new_x="LEFT", new_y="NEXT")
         x += cols[1][1]
         if show_proj:
             _project_tag(pdf, r["project"], r["project_color"], x, y, wp)
@@ -662,7 +711,7 @@ def _open(pdf: _Report, data: dict) -> None:
             pdf.dot(x - 2.4, y + 1.5, 1.3, WARN)
         pdf.font("sansm" if r["priority"] == 1 else "sans", 8.6, INK if r["priority"] != 3 else INK2)
         tw = cols[1][1] - 4
-        tx = r["title"] + (f" — {r['check_done']}/{r['check_total']} itens" if r["check_total"] else "")
+        tx = r["title"] + (f" — {r['check_done']}/{r['check_total']} do checklist" if r["check_total"] else "")
         pdf.text_at(x, y, tw, 4.2, pdf.fit(tx, tw))
         x += cols[1][1]
         if show_proj:
@@ -706,8 +755,8 @@ def _tokens(pdf: _Report, items: list, x0: float, w: float) -> None:
             pdf.dot(x, y + 1.2, 2, ACCENT)
             color = INK2
         else:
-            pdf.dot(x + 0.15, y + 1.35, 1.7, None, outline=BAD, lw=0.3)
-            color = BAD
+            pdf.dot(x + 0.15, y + 1.35, 1.7, None, outline=DIM, lw=0.3)
+            color = DIM
         pdf.font("sans", 7.6, color)
         pdf.text_at(x + 3.3, y, tw + 1, 4.4, pdf.fit(label, tw + 0.5))
         x += width
@@ -747,7 +796,7 @@ def _diary(pdf: _Report, data: dict) -> None:
         if day["recurring_total"]:
             bits.append(f"rotinas {day['recurring_done']}/{day['recurring_total']}")
         if day["recurring_extra"]:
-            bits.append(f"+{day['recurring_extra']} extra")
+            bits.append(f"+{_plural(day['recurring_extra'], 'extra', 'extras')}")
         if day["pontual"]:
             bits.append(_plural(len(day["pontual"]), "concluída", "concluídas"))
         if day["minutes"]:
@@ -832,7 +881,15 @@ def build_report_pdf(user_email: str, start: date, end: date, data: dict, brandi
     if not data.get("project") and not _matrix(pdf, data):
         _recurring_list(pdf, data)
     _projects(pdf, data)
+    data = {**data, "long": (end - start).days > LONG_DAYS}
     _deliveries(pdf, data)
     _open(pdf, data)
-    _diary(pdf, data)
+    if not data["long"]:
+        _diary(pdf, data)
+    else:  # dia a dia de um período longo: PDF de até 2 meses ou a exportação
+        pdf.room(16)
+        pdf.font("sans", 7.6, DIM)
+        pdf.set_x(M)
+        pdf.multi_cell(pdf.cw, 4, _s("O diário dia a dia sai em relatórios de até 2 meses. Para o período inteiro, "
+                                      "use a exportação CSV em Meu mês > Outro período ou formato."), new_x="LEFT", new_y="NEXT")
     return bytes(pdf.output())

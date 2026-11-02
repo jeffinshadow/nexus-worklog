@@ -2,18 +2,37 @@
 (docker-compose.test.yml); cada teste começa com o banco zerado."""
 import os
 
-import pytest
-from fastapi.testclient import TestClient
+import psycopg
 
-from app import db, main, security
-from app.main import app
+
+def _banco_do_worker():
+    """Com pytest-xdist (-n N), cada processo usa um banco só dele (nexus_test_gw0,
+    gw1…), criado na hora no mesmo Postgres descartável. Sem xdist, nada muda."""
+    worker = os.environ.get("PYTEST_XDIST_WORKER")
+    if not worker:
+        return
+    base, nome = os.environ["DATABASE_URL"].rsplit("/", 1)
+    proprio = f"{nome}_{worker}"
+    with psycopg.connect(os.environ["DATABASE_URL"], autocommit=True) as conn:
+        if not conn.execute("SELECT 1 FROM pg_database WHERE datname = %s", (proprio,)).fetchone():
+            conn.execute(f'CREATE DATABASE "{proprio}"')
+    os.environ["DATABASE_URL"] = f"{base}/{proprio}"
+
+
+_banco_do_worker()  # antes de importar o app: a config lê DATABASE_URL na importação
+
+import pytest  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+
+from app import db, main, security  # noqa: E402
+from app.main import app  # noqa: E402
 
 ADMIN_EMAIL = os.environ["ADMIN_EMAIL"]
 ADMIN_PW_INICIAL = os.environ["ADMIN_INITIAL_PASSWORD"]
 ADMIN_PW = "Admin-Definitiva-Teste-1"
 SENHA_PADRAO = "Senha-Do-Usuario-1"
 
-TABELAS = ["renewals", "app_settings", "user_roles", "app_branding", "user_avatars", "assistant_prefs", "task_timers", "task_templates",
+TABELAS = ["teams", "renewals", "app_settings", "user_roles", "app_branding", "user_avatars", "assistant_prefs", "task_timers", "task_templates",
            "audit_log", "api_tokens", "notification_log", "notification_prefs", "calendar_feeds",
            "time_entries", "task_checklist", "task_notes",
            "recurring_completions", "recurring_tasks", "projects",
@@ -25,6 +44,16 @@ def _app():
     # Abre o pool, aplica as migrations e semeia o admin (lifespan real).
     with TestClient(app):
         yield
+    # Fecha o pool no fim (sem isso, cada processo imprime "couldn't stop thread"
+    # e esconde avisos de verdade na saída da suíte).
+    db.pool.close()
+
+
+@pytest.fixture(autouse=True)
+def _pedido_sem_tempo_minimo(monkeypatch):
+    """Os testes enviam pedidos de convite na hora; o tempo mínimo tem o seu próprio teste."""
+    import app.routers.invite_requests as ir
+    monkeypatch.setattr(ir, "form_ok", lambda token: True)
 
 
 @pytest.fixture(autouse=True)
@@ -40,7 +69,8 @@ def _banco_limpo():
     main.seed_admin()
     for limiter in (security.login_limiter, security.login_email_limiter,
                     security.pdf_limiter, security.reset_limiter, security.reset_email_limiter,
-                    security.invite_req_limiter, security.invite_req_email_limiter):
+                    security.invite_req_limiter, security.invite_req_email_limiter, security.link_limiter,
+                    security.webhook_test_limiter):
         limiter._hits.clear()
     yield
 
@@ -115,6 +145,11 @@ def novo_usuario(admin):
 @pytest.fixture
 def usuario(novo_usuario):
     return novo_usuario()
+
+
+def ligar_pedido_convite():
+    """"Solicitar convite" na tela de login é opt-in (sql/042): liga para o teste."""
+    db.execute("UPDATE app_settings SET invite_request_on = true WHERE id = 1")
 
 
 def recuar_criacao(task_id, dias):

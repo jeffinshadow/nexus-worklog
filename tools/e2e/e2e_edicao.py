@@ -1,5 +1,5 @@
 """Concluir espera o fim da edição (detalhe, cartão, menu); avisos esperam salvar; evidência espera a foto."""
-import base64, json, os, subprocess, sys, tempfile, time, urllib.request
+import json, os, subprocess, sys, tempfile, time, urllib.request
 import websocket
 B = os.environ.get("NEXUS_E2E_URL", "http://localhost:8090"); EMAIL, PW = os.environ["NEXUS_E2E_USER"].split(":", 1); OUT = sys.argv[1]
 ok, falhas, erros = [], [], []
@@ -25,7 +25,9 @@ try:
     ev(f"fetch('/api/auth/login',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{email:{json.dumps(EMAIL)},password:{json.dumps(PW)}}})}})")
     ev("localStorage.setItem('nexus.instalar.dispensado', String(Date.now()))")
     marca = str(int(time.time()) % 100000)
-    tid = api("POST", "/worklog", {"title": f"Edição {marca}"})["b"]["id"]
+    # Vence hoje e alta: fica no topo de "Em aberto" (o quadro tem páginas de 25; o cartão precisa estar na 1ª).
+    hoje = api("GET", "/board")["b"]["today"]
+    tid = api("POST", "/worklog", {"title": f"Edição {marca}", "priority": 1, "due_date": hoje})["b"]["id"]
     cmd("Page.navigate", url=B + f"/#/tarefas?id={tid}"); time.sleep(3.5)
     check("fora da edição: Concluir livre", ev("!document.querySelector('.task-main-actions .btn-primary').disabled"))
     ev("document.querySelector('.task-dialog .edit-toggle').click()"); time.sleep(1)
@@ -51,19 +53,17 @@ try:
     tid2 = api("POST", "/worklog", {"title": f"Status {marca}"})["b"]["id"]
     cmd("Page.navigate", url=B + f"/#/tarefas?id={tid2}"); time.sleep(3.5)
     ev("document.querySelector('.task-dialog .edit-toggle').click()"); time.sleep(1)
-    ev("(()=>{const s=document.querySelector('.task-dialog select[aria-label=Status]');s.value='done';s.dispatchEvent(new Event('change'))})()"); time.sleep(2)
+    ev("(()=>{const s=document.querySelector('.task-dialog select[aria-label=Situação]');s.value='done';s.dispatchEvent(new Event('change'))})()"); time.sleep(2)
     check("status Concluída dentro da edição conclui", api("GET", f"/worklog/{tid2}")["b"]["status"] == "done")
-    # avisos: testar espera salvar
+    # avisos (Configurações numa página só): cada escolha salva sozinha, sem botão Salvar
     cmd("Page.navigate", url=B + "/#/config?aba=avisos"); time.sleep(3.5)
     ev("document.querySelectorAll('dialog[open]').forEach(d=>d.close())")
-    livre = ev("(()=>{const b=[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Mandar um teste'));return b && !b.disabled})()")
-    ev("document.querySelector('input[aria-label=\"Seu dia\"]').click()"); time.sleep(.3)
-    check("avisos: com alteração, testar esmaece", ev("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Mandar um teste')).disabled") and
-          ev("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Testar a semana')).title") == "Salve os avisos antes de testar")
-    ev("[...document.querySelectorAll('button')].find(b=>b.textContent==='Salvar avisos').click()"); time.sleep(1.5)
-    check("avisos: depois de salvar, testar volta", ev("!([...document.querySelectorAll('button')].find(b=>b.textContent.includes('Mandar um teste')).disabled)") == bool(livre))
-    ev("document.querySelector('input[aria-label=\"Seu dia\"]').click()"); time.sleep(.3)
-    ev("[...document.querySelectorAll('button')].find(b=>b.textContent==='Salvar avisos').click()"); time.sleep(1)
+    check("avisos: sem botão Salvar", not ev("[...document.querySelectorAll('#view-config button')].some(b=>/^Salvar/.test(b.textContent.trim()))"))
+    antes = api("GET", "/notifications")["b"]["morning"]
+    ev("document.querySelector('input[aria-label=\"Seu dia\"]').click()"); time.sleep(1.5)
+    check("avisos: a escolha salvou sozinha", api("GET", "/notifications")["b"]["morning"] == (not antes))
+    ev("document.querySelector('input[aria-label=\"Seu dia\"]').click()"); time.sleep(1.5)
+    check("avisos: voltou", api("GET", "/notifications")["b"]["morning"] == antes)
     # evidência: Salvar espera a foto
     rid = api("POST", "/recurring", {"label": f"Evid {marca}", "freq": "weekly", "weekdays": 127})["b"]["id"]
     api("POST", f"/recurring/{rid}/toggle", {"done": True})

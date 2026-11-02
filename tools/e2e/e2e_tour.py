@@ -1,5 +1,8 @@
-"""E2E na homologação (túnel 8090): tour guiado, filtro do Hoje, vários projetos, projeto padrão.
-Uso: e2e_tour.py SAIDA [desktop|mobile]"""
+"""E2E na homologação (túnel 8090): tour guiado, filtro do Hoje, vários projetos, projeto padrão
+e o tour OBRIGATÓRIO do primeiro acesso (Admin › Para empresas): conta nova convidada com nome e
+papel, sem Pular/Esc, nome do convite no passo do nome, paradas de visibilidade e de "todos recebem de
+quem atribui", conclusão no servidor.
+Uso: e2e_tour.py SAIDA [desktop|mobile]   (precisa de NEXUS_E2E_USER e NEXUS_E2E_ADMIN)"""
 import base64, json, subprocess, sys, tempfile, time, urllib.request
 import websocket
 import os
@@ -89,7 +92,7 @@ try:
     check("tour abre sozinho", wait("!!document.querySelector('dialog.tour-dialog[open]')", 8))
     time.sleep(.4); shot("t01-boas-vindas")
     click(btn("Começar"))
-    check("passo nome", wait("document.querySelector('#tour-title')?.textContent.includes('chamado')"))
+    check("passo nome", wait("document.querySelector('#tour-title')?.textContent.includes('nome')"))
     shot("t02-nome")
     click(btn("Salvar e seguir")); check("passo tema", wait("document.querySelector('#tour-title')?.textContent.includes('escuro')"))
     shot("t02b-tema")
@@ -103,6 +106,13 @@ try:
     shot("t05-padrao")
     click(btn("Salvar e seguir")); check("passo rotinas", wait("document.querySelector('#tour-title')?.textContent.includes('confere')"))
     time.sleep(.3); shot("t06-rotinas")
+    # Pacote da área: tocar numa área mostra os itens (agenda e horário); tocar de novo desmarca (nada é criado aqui).
+    check("pacotes no passo de rotinas", wait("document.querySelectorAll('dialog.tour-dialog .pack-area').length >= 5"))
+    click("document.querySelector('dialog.tour-dialog .pack-area')")
+    check("pacote mostra os itens", wait("document.querySelectorAll('dialog.tour-dialog .pack-item').length >= 3"))
+    time.sleep(.3); shot("t06b-rotinas-pacote")
+    click("document.querySelector('dialog.tour-dialog .pack-area[aria-pressed=true]')")
+    check("pacote desmarcado", wait("!document.querySelector('dialog.tour-dialog .pack-item')"))
     click(btn("Criar e seguir")); check("passo pronto", wait("document.querySelector('#tour-title')?.textContent.includes('dia a dia')"))
     shot("t07-pronto")
     me = api("GET", "/auth/me")["j"]
@@ -134,17 +144,20 @@ try:
     today = board["today"]
     exp_prio = sum(1 for t in board["in_progress"] if t["priority"] == 1)
     exp_due = sum(1 for t in board["in_progress"] if t["due_date"] and t["due_date"] <= today)
-    check("filtro prioritárias", prio_rows == exp_prio, f"{prio_rows} vs {exp_prio}")
+    # O Hoje mostra até 10 em aberto; passando disso, o link "Ver ... em Tarefas" leva ao resto.
+    HOJE_MAX = 10
+    mais = lambda: bool(ev("!!document.querySelector('.t-open .open-list a.see-all[href=\"#/tarefas\"]')"))
+    check("filtro prioritárias", prio_rows == min(exp_prio, HOJE_MAX) and mais() == (exp_prio > HOJE_MAX), f"{prio_rows} vs {exp_prio}")
     shot("t30-filtro-prio")
     click("document.querySelector('.open-filter [data-filter=due]')"); time.sleep(.2)
     due_rows = ev("document.querySelectorAll('.t-open .open-list .list-row').length")
-    check("filtro vence hoje", due_rows == exp_due, f"{due_rows} vs {exp_due}")
+    check("filtro vence hoje", due_rows == min(exp_due, HOJE_MAX) and mais() == (exp_due > HOJE_MAX), f"{due_rows} vs {exp_due}")
     shot("t31-filtro-due")
     cmd("Page.reload"); wait("!!document.querySelector('.open-filter')", 8)
     check("filtro lembrado na aba", ev("document.querySelector('.open-filter [data-filter=due]').getAttribute('aria-pressed')") == "true")
     click("document.querySelector('.open-filter [data-filter=all]')"); time.sleep(.2)
-    check("filtro todas", ev("document.querySelectorAll('.t-open .open-list .list-row').length") == total_rows == len(board["in_progress"]),
-          f"{total_rows} vs {len(board['in_progress'])}")
+    check("filtro todas", ev("document.querySelectorAll('.t-open .open-list .list-row').length") == total_rows == min(len(board["in_progress"]), HOJE_MAX)
+          and mais() == (len(board["in_progress"]) > HOJE_MAX), f"{total_rows} vs {len(board['in_progress'])}")
     print(f"abertas={total_rows} prio={prio_rows} vence={due_rows}")
 
     # ---- registro rápido com dois @ e o padrão
@@ -173,7 +186,7 @@ try:
 
     # ---- detalhe: editar extras
     tid = t["id"]
-    cmd("Page.navigate", url=B + f"/#/tarefas"); time.sleep(2)
+    cmd("Page.navigate", url=B + "/#/tarefas"); time.sleep(2)
     ev(f"import('/js/task.js').then(m => m.openTask({tid}, () => {{}}))"); time.sleep(1.2)
     shot("t50-detalhe-leitura")
     click("document.querySelector('dialog[open] .edit-toggle')"); time.sleep(.8)
@@ -190,6 +203,73 @@ try:
         for x in api("GET", f"/search?q={q}")["j"]["tasks"]:
             api("DELETE", f"/worklog/{x['id']}")
     api("PUT", "/me/default-project", {"project_id": None})
+
+    # ---- tour obrigatório no primeiro acesso (sempre, para toda conta nova; convidada com nome e papel)
+    AEMAIL, APW = _cred("NEXUS_E2E_ADMIN")
+    login = lambda e, s: ev(f"fetch('/api/auth/login',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{email:{json.dumps(e)},password:{json.dumps(s)}}})}}).then(r=>r.status)")  # noqa: E731
+    cmd("Network.enable"); cmd("Network.clearBrowserCookies")
+    cmd("Page.navigate", url=B + "/login"); time.sleep(1)
+    check("admin entra", login(AEMAIL, APW) == 200)
+    org0 = api("GET", "/admin/org")["j"]
+    api("PUT", "/admin/org", {"team_visibility": "managers", "assign_receive": "all", "identity_managed": False})  # o tour é sempre obrigatório para conta nova
+    nova = f"e2e.tour.{int(time.time())}@example.com"
+    # Com equipes na instância (sql/043), Para empresas só vale para quem está em alguma: a convidada entra numa.
+    equipes = [t["id"] for t in (api("GET", "/admin/teams")["j"] or []) if not t.get("archived_at")][:1]
+    r = api("POST", "/admin/users", {"email": nova, "display_name": "Pessoa E2E", "roles": ["user"], "team_ids": equipes})
+    check("convite com nome e papel", r["s"] == 201 and r["j"]["display_name"] == "Pessoa E2E")
+    senha_nova = "Senha-E2E-Tour-Obrigatorio-1"
+    cmd("Network.clearBrowserCookies")
+    if r["j"].get("invite_url"):
+        cmd("Page.navigate", url=r["j"]["invite_url"]); time.sleep(1.5)
+        ev(f"(() => {{ for (const id of ['link-pw', 'link-pw2']) document.getElementById(id).value = {json.dumps(senha_nova)}; document.getElementById('form-link').requestSubmit(); }})()")
+        time.sleep(2.5)
+    else:  # sem e-mail no servidor: senha temporária, trocada no 1º acesso
+        cmd("Page.navigate", url=B + "/login"); time.sleep(1)
+        login(nova, r["j"]["temp_password"])
+        api("POST", "/auth/change-password", {"current_password": r["j"]["temp_password"], "new_password": senha_nova})
+        cmd("Page.navigate", url=B + "/#/hoje")
+    check("tour obrigatório abre", wait("!!document.querySelector('dialog.tour-dialog[open]')", 10))
+    time.sleep(.5); shot("t60-obrigatorio-boas-vindas")
+    sem_pular = "![...document.querySelectorAll('dialog.tour-dialog button, .tour-pop button')].some(b => /Agora não|Só o passeio|Pular|Fechar|Encerrar/.test(b.textContent))"
+    check("sem Pular/Agora não", ev(sem_pular))
+    ev("document.querySelector('dialog.tour-dialog').dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}))")
+    ev("document.querySelector('dialog.tour-dialog').dispatchEvent(new Event('cancel', {cancelable: true}))"); time.sleep(.3)
+    check("Esc não fecha", ev("!!document.querySelector('dialog.tour-dialog[open]')"))
+    click(btn("Começar"))
+    check("nome do convite no passo do nome", wait("document.querySelector('dialog.tour-dialog input')?.value === 'Pessoa E2E'"))
+    shot("t61-obrigatorio-nome")
+    viu_vis = viu_rec = False
+    for _ in range(12):  # Salvar e seguir / Seguir / Entendi / Criar e seguir, até o "pronto"
+        t = ev("document.querySelector('#tour-title')?.textContent || ''")
+        if "Quem vê" in t and not viu_vis:
+            viu_vis = True; shot("t62-obrigatorio-visibilidade")
+        if "quem atribui" in t and not viu_rec:
+            viu_rec = True; shot("t63-obrigatorio-receber-tarefas")
+        if "dia a dia" in t:
+            break
+        check(f"sem Pular em: {t}", ev(sem_pular))
+        click("document.querySelector('dialog.tour-dialog .btn-primary')"); time.sleep(1.2)
+    check("parada de visibilidade (só quando ativa)", viu_vis)
+    check("parada de receber tarefas (só quando ativa)", viu_rec)
+    click(btn("Fazer o passeio"))
+    check("passeio abre", wait("!!document.querySelector('.tour-pop')", 15))
+    check("passeio sem Encerrar", ev(sem_pular))
+    for _ in range(15):
+        if not ev("!!document.querySelector('.tour-pop')"):
+            break
+        click("document.querySelector('.tour-pop .btn-primary')"); time.sleep(.6)
+    time.sleep(1)
+    me = api("GET", "/auth/me")["j"]
+    check("concluído no servidor", bool(me["tour_done_at"]) and me["tour_required"] is False)
+    check("passou pela parada: sem o aviso único depois", me["assign_notice"] is False and me["visibility_notice"] is False)
+    cmd("Page.navigate", url=B + "/#/hoje"); time.sleep(2.5)
+    check("tour obrigatório não reabre", not ev("!!document.querySelector('dialog.tour-dialog[open]')"))
+    # Limpeza: a conta de teste sai e as opções voltam como estavam.
+    cmd("Network.clearBrowserCookies"); cmd("Page.navigate", url=B + "/login"); time.sleep(1)
+    login(AEMAIL, APW)
+    uid_nova = next(u["id"] for u in api("GET", "/admin/users")["j"] if u["email"] == nova)
+    api("POST", f"/admin/users/{uid_nova}/delete", {"confirm_email": nova})
+    api("PUT", "/admin/org", {k: org0[k] for k in ("team_visibility", "assign_receive", "identity_managed")})
 finally:
     p.terminate()
     print("OK:", len(ok)); print("FALHAS:", falhas or "nenhuma"); print("ERROS JS:", erros or "nenhum")

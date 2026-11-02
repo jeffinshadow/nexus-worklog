@@ -19,3 +19,14 @@ def test_marcas_por_dia(usuario):
     assert (r["due"], r["done"]) == (3, 1)
     r = usuario.get(f"/reports/export?start={(hoje - timedelta(days=3)).isoformat()}&end={hoje.isoformat()}")
     assert r.status_code == 200 and r.content[:4] == b"%PDF"
+
+
+def test_pdf_de_periodo_longo_corta_tabela_e_diario():
+    """Um ano: a tabela de concluídas vai até as 500 mais recentes e o diário sai (o resto no CSV)."""
+    from datetime import date
+    from app import report_pdf
+    rows = [{"title": f"T{i}", "description": None, "priority": 3, "done_date": date(2026, 1, 1), "project": None,
+             "project_color": None, "minutes": 0, "check_total": 0, "check_done": 0, "resolution": None,
+             "last_note": None, "photos_count": 0} for i in range(600)]
+    assert report_pdf.MAX_ROWS == 500 and report_pdf.LONG_DAYS == 62
+    assert len(rows) > report_pdf.MAX_ROWS

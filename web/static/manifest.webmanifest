@@ -1,14 +1,14 @@
 {
   "name": "Nexus Worklog",
   "short_name": "Nexus",
-  "description": "O registro do dia de trabalho de quem faz TI: tarefas, rotinas, cronômetro e o relatório da semana.",
+  "description": "O registro do dia de quem faz suporte, em qualquer área: tarefas, rotinas, cronômetro e o relatório da semana.",
   "lang": "pt-BR",
   "id": "/",
   "start_url": "/#/hoje",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#121213",
-  "theme_color": "#121213",
+  "background_color": "#131314",
+  "theme_color": "#131314",
   "icons": [
     {
       "src": "/img/icon-192.png",

@@ -76,7 +76,7 @@ def test_passagem_de_turno_app_e_mcp(usuario):
     usuario.patch(f"/worklog/{fim}", {"after_hours": True})
     usuario.post(f"/worklog/{fim}/finish")
     txt = usuario.get("/summary/handoff").json()["text"]
-    assert "Passagem de turno" in txt and "aguardando aprovação da diretoria" in txt
+    assert "Passagem de turno" in txt and "Aguardando (1):\n- Firewall da filial — aprovação da diretoria" in txt
     assert "Impressora do RH (chamado 4821)" in txt and "Reset de senha (plantão)" in txt
     # Turno de 12 h, não dia civil: concluída às 23h de ontem entra; há 13 h, não.
     from app import db
@@ -89,8 +89,8 @@ def test_passagem_de_turno_app_e_mcp(usuario):
     txt = usuario.get("/summary/handoff").json()["text"]
     assert "Feita de madrugada" in txt and "Feita antes do turno" not in txt
     ia = Bearer(criar_chave(usuario)["token"])
-    assert "aguardando aprovação da diretoria" in texto(ia.tool("get_handoff"))
-    assert "(aguardando aprovação da diretoria)" in texto(ia.tool("list_tasks"))
+    assert "Firewall da filial — aprovação da diretoria" in texto(ia.tool("get_handoff"))
+    assert "[aguardando: aprovação da diretoria]" in texto(ia.tool("list_tasks"))
 
 
 def test_mcp_evidencia(usuario):
@@ -176,7 +176,7 @@ def test_csv_de_rotinas_auditoria(usuario):
     assert any(";Antivírus;prevista;sim;0 ameaças" in l for l in linhas)
     # Apagar a evidência aparece certo no histórico.
     usuario.post(f"/recurring/{rid}/toggle", {"done": True, "note": ""})
-    assert hist(usuario, entity="recurring", entity_id=rid)[0]["summary"].startswith("apagou a evidência")
+    assert hist(usuario, entity="recurring", entity_id=rid)[0]["summary"].startswith("excluiu a evidência")
 
 
 def test_rotinas_csv_mostra_a_falta(usuario):

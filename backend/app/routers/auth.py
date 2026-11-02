@@ -4,8 +4,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from psycopg.errors import UniqueViolation
 
-from .. import audit, db, links, mailer, people, roles
+from .. import audit, db, links, mailer, org, people, roles
 from ..config import config
 from ..deps import (
     active_user_csrf,
@@ -13,15 +14,17 @@ from ..deps import (
     client_ip,
     current_user,
     web_user_csrf,
+    web_active,
     set_session_cookie,
 )
-from ..schemas import ChangePasswordIn, ForgotIn, LinkPasswordIn, LoginIn, SettingsIn
+from ..schemas import ChangePasswordIn, EmailConfirmIn, ForgotIn, LinkPasswordIn, LinkPeekIn, LoginIn, SettingsIn
 from ..services import app_today, app_tz, task_retro_days
 from .recurring import replace_routine
 from ..security import (
     burn_password_check,
     hash_password,
     login_email_limiter,
+    link_limiter,
     login_limiter,
     needs_rehash,
     new_token,
@@ -42,8 +45,10 @@ def _public(row: dict, csrf: str) -> dict:
         "id": uid,
         "email": row["email"],
         **people.profile(uid),  # display_name, name, avatar
-        **(db.query_one("SELECT ticket_url, accepts_assignments_at, default_project_id, tour_done_at, theme FROM users WHERE id = %s",
+        # role_notice: papéis ganhos/perdidos ainda não vistos (aviso único com "Entendi")
+        **(db.query_one("SELECT accepts_assignments_at, viewers_allowed, default_project_id, tour_done_at, theme, role_notice FROM users WHERE id = %s",
                         (uid,)) or {}),
+        **org.for_user(uid),  # org (Para empresas), tour_required, visibility_notice, email_pending
         "assistant": people.assistant_prefs(uid),
         "role": row["role"],
         "roles": roles.of(uid),
@@ -69,7 +74,8 @@ def login(data: LoginIn, request: Request, response: Response):
         log.warning("login falhou: ip=%s conta=%s", ip, token_hash(email)[:12])  # sem o e-mail em claro
         login_limiter.allow(fail_keys[0])
         login_email_limiter.allow(fail_keys[1])
-        raise HTTPException(status_code=401, detail="credenciais invalidas")
+        dica = ", ou use Esqueci a senha" if mailer.configured() else ""
+        raise HTTPException(status_code=401, detail=f"E-mail ou senha incorretos. Confira e tente de novo{dica}.")
 
     user = db.query_one("SELECT * FROM users WHERE email = %s", (email,))
     if not user:
@@ -77,6 +83,8 @@ def login(data: LoginIn, request: Request, response: Response):
         falhou()
     if not verify_password(user["password_hash"], data.password):
         falhou()
+    if user.get("blocked_at"):  # a senha já é uma que ninguém sabe; isto é a segunda tranca
+        raise HTTPException(status_code=403, detail="Seu acesso foi bloqueado por quem administra o Nexus. Para voltar a entrar, peça que libere o acesso.")
 
     if needs_rehash(user["password_hash"]):
         db.execute(
@@ -91,6 +99,11 @@ def login(data: LoginIn, request: Request, response: Response):
     # Links de convite/senha já usados ou vencidos não servem para nada depois de um mês.
     db.execute("""DELETE FROM auth_links WHERE created_at < now() - interval '30 days'
                    AND (used_at IS NOT NULL OR expires_at <= now())""")
+    # Pedidos de convite são dados de quem nem tem conta: decididos saem em 30
+    # dias (a lista já os escondia), os nunca respondidos em 180.
+    db.execute("""DELETE FROM invite_requests
+                   WHERE (status <> 'pending' AND decided_at < now() - interval '30 days')
+                      OR (status = 'pending' AND created_at < now() - interval '180 days')""")
 
     return _start_session(user, response)
 
@@ -104,6 +117,7 @@ def _start_session(user: dict, response: Response) -> dict:
            VALUES (%s, %s, %s, %s)""",
         (user["id"], token_hash(token), csrf, expires),
     )
+    db.execute("UPDATE users SET last_seen_at = now() WHERE id = %s", (user["id"],))  # Admin › Contas: último acesso
     set_session_cookie(response, token)
     return _public(user, csrf)
 
@@ -113,8 +127,14 @@ def _start_session(user: dict, response: Response) -> dict:
 
 @router.get("/options")
 def options():
-    """O que a tela de login oferece (público): "Esqueci a senha" só com e-mail."""
-    return {"email": mailer.configured(), "invite_request": mailer.configured()}
+    """O que a tela de login oferece (público): "Esqueci a senha" só com e-mail;
+    "Solicitar convite" só com e-mail e se o admin o ligou (Para empresas; desligado
+    por padrão). `privacy_url`: a política de privacidade da instância (ou nulo)."""
+    return {"email": mailer.configured(), "invite_request": invite_request_open(), "privacy_url": org.get()["privacy_url"]}
+
+
+def invite_request_open() -> bool:
+    return mailer.configured() and bool(org.get()["invite_request_on"])
 
 
 def _reset_mail(email: str, link: str):
@@ -133,7 +153,7 @@ def _passkeys_mail(n: int):
              "A senha desta conta acabou de ser trocada pelo link de \"Esqueci a senha\".")
     m.blocks = [("As suas passkeys continuam valendo", [
         f"{n} passkey{'s' if n > 1 else ''} ainda entra{'m' if n > 1 else ''} nesta conta sem senha.",
-        "Não foi você? Entre, troque a senha e remova as passkeys em Configurações › Conta."])]
+        "Não foi você? Entre, troque a senha e remova as passkeys em Configurações > Conta."])]
     m.reason, m.settings_tab = "Aviso de segurança da sua conta.", None
     return m
 
@@ -154,7 +174,8 @@ def forgot(data: ForgotIn, request: Request):
     email = data.email.lower()
     if not reset_limiter.allow(f"ip:{client_ip(request)}") or not reset_email_limiter.allow(f"em:{email}"):
         raise HTTPException(status_code=429, detail="muitos pedidos, tente mais tarde")
-    user = db.query_one("SELECT id, email FROM users WHERE email = %s", (email,))
+    # Conta bloqueada pelo admin não recebe link (a resposta é a mesma).
+    user = db.query_one("SELECT id, email FROM users WHERE email = %s AND blocked_at IS NULL", (email,))
     if user:
         link = links.url("reset", links.issue(user["id"], "reset"))
         threading.Thread(target=_send_quiet, args=(user["email"], _reset_mail(user["email"], link)), daemon=True).start()
@@ -162,15 +183,28 @@ def forgot(data: ForgotIn, request: Request):
     return {"ok": True}
 
 
-@router.get("/link")
-def link_info(kind: Literal["invite", "reset"], token: str, request: Request):
-    """Para quem abriu o link: de que conta é (ou 404 se venceu/foi usado)."""
-    if not login_limiter.allow(f"ip:{client_ip(request)}"):
+@router.post("/link")
+def link_info(data: LinkPeekIn, request: Request):
+    """Para quem abriu o link: de que conta é (ou 404 se venceu/foi usado).
+    POST com o token no corpo: na URL ele iria para o log de acesso."""
+    return _link_info(data.kind, data.token, request)
+
+
+@router.get("/link", include_in_schema=False)
+def link_info_get(kind: Literal["invite", "reset"], token: str, request: Request):
+    """OBSOLETA, removida na 3.0 (use POST). Forma antiga (app em cache de antes da troca para POST). O nginx não grava
+    esta rota no log de acesso."""
+    return _link_info(kind, token, request)
+
+
+def _link_info(kind: str, token: str, request: Request) -> dict:
+    if not link_limiter.allow(f"ip:{client_ip(request)}"):
         raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
     row = links.peek(token, kind)
     if not row:
         raise HTTPException(status_code=404, detail="link inválido, vencido ou já usado")
-    return {"email": row["email"], "display_name": row["display_name"]}
+    # name_locked: nome definido pela administração (a tela de convite só mostra).
+    return {"email": row["email"], "display_name": row["display_name"], "name_locked": org.identity_managed(row["id"])}
 
 
 def _set_password(uid: int, password: str) -> None:
@@ -181,14 +215,14 @@ def _set_password(uid: int, password: str) -> None:
 @router.post("/invite/accept")
 def accept_invite(data: LinkPasswordIn, request: Request, response: Response):
     """Convidado cria a própria senha (e o nome) e já entra."""
-    if not login_limiter.allow(f"ip:{client_ip(request)}"):
+    if not link_limiter.allow(f"ip:{client_ip(request)}"):
         raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
     uid = links.consume(data.token, "invite")
     if not uid:
         raise HTTPException(status_code=400, detail="convite inválido, vencido ou já usado: peça um novo ao administrador")
     _set_password(uid, data.password)
     nome = " ".join((data.display_name or "").split()) or None
-    if nome:
+    if nome and not org.identity_managed(uid):  # nome definido pela administração: fica o do convite
         db.execute("UPDATE users SET display_name = %s WHERE id = %s", (nome, uid))
     audit.record({"user_id": uid, "actor": "web"}, "user.invite_accept", "user", uid)
     return _start_session(db.query_one("SELECT * FROM users WHERE id = %s", (uid,)), response)
@@ -198,7 +232,7 @@ def accept_invite(data: LinkPasswordIn, request: Request, response: Response):
 def reset_by_link(data: LinkPasswordIn, request: Request, response: Response):
     """Senha nova pelo link do e-mail: encerra as outras sessões e corta chaves
     de API e calendário (como a troca de senha) e já entra."""
-    if not login_limiter.allow(f"ip:{client_ip(request)}"):
+    if not link_limiter.allow(f"ip:{client_ip(request)}"):
         raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
     uid = links.consume(data.token, "reset")
     if not uid:
@@ -215,6 +249,54 @@ def reset_by_link(data: LinkPasswordIn, request: Request, response: Response):
     return _start_session(db.query_one("SELECT * FROM users WHERE id = %s", (uid,)), response)
 
 
+def _email_changed_mail(old: str, new: str, by_admin: bool):
+    from ..notify import Mail
+    m = Mail("O e-mail da sua conta do Nexus mudou", "E-mail da conta trocado",
+             f"O e-mail desta conta do Nexus passou de {old} para {new}"
+             + (" (alterado por quem administra o Nexus)." if by_admin else ", confirmado pelo link enviado ao endereço novo."))
+    m.blocks = [("Daqui em diante", [f"Entre com {new}. Os avisos do Nexus vão para lá."]),
+                ("Não reconhece esta troca?", ["Fale agora com quem administra o Nexus."])]
+    m.reason, m.settings_tab = "Aviso de segurança da sua conta.", None
+    return m
+
+
+def notify_email_change(old: str, new: str, by_admin: bool) -> None:
+    """Avisa o endereço antigo (e, na troca pelo admin, o novo) em segundo plano."""
+    if not mailer.configured():
+        return
+    for to in ([old, new] if by_admin else [old]):
+        threading.Thread(target=_send_quiet, args=(to, _email_changed_mail(old, new, by_admin)), daemon=True).start()
+
+
+@router.post("/email/confirm")
+def confirm_email(data: EmailConfirmIn, request: Request):
+    """Confirma o e-mail novo pelo link mandado a ele (Configurações > Conta >
+    Trocar e-mail). Uso único, vale 24 horas; só aqui o e-mail muda. Avisa o
+    endereço antigo. Não precisa estar logado (o link pode abrir em outro aparelho)."""
+    if not link_limiter.allow(f"ip:{client_ip(request)}"):
+        raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
+    row = links.consume_email(data.token)
+    if not row:
+        raise HTTPException(status_code=400, detail="link inválido, vencido ou já usado: peça a troca de novo em Configurações > Conta")
+    if org.identity_managed(row["user_id"]):  # a administração passou a definir os e-mails depois do pedido
+        raise HTTPException(status_code=403, detail=org.IDENTITY_LOCKED)
+    new = row["new_email"].lower()
+    user = db.query_one("SELECT id, email FROM users WHERE id = %s AND blocked_at IS NULL", (row["user_id"],))
+    if not user:
+        raise HTTPException(status_code=400, detail="link inválido, vencido ou já usado")
+    if db.query_one("SELECT 1 FROM users WHERE email = %s AND id <> %s", (new, user["id"])):
+        raise HTTPException(status_code=409, detail="esse e-mail passou a ser de outra conta: escolha outro")
+    try:
+        db.execute("UPDATE users SET email = %s WHERE id = %s", (new, user["id"]))
+    except UniqueViolation as e:  # corrida com outra conta pegando o mesmo e-mail
+        raise HTTPException(status_code=409, detail="esse e-mail passou a ser de outra conta: escolha outro") from e
+    links.cancel(user["id"], "reset")  # link de nova senha que foi para o endereço antigo deixa de valer
+    audit.record({"user_id": user["id"], "actor": "web"}, "email.change", "user", user["id"],
+                 before={"email": user["email"]}, after={"email": new})
+    notify_email_change(user["email"], new, by_admin=False)
+    return {"ok": True, "email": new}
+
+
 @router.post("/logout")
 def logout(request: Request, response: Response, session=Depends(web_user_csrf)):
     token = request.cookies.get(config.SESSION_COOKIE)
@@ -222,6 +304,24 @@ def logout(request: Request, response: Response, session=Depends(web_user_csrf))
         db.execute("DELETE FROM sessions WHERE token_hash = %s", (token_hash(token),))
     clear_session_cookie(response)
     return {"ok": True}
+
+
+@router.get("/sessions")
+def sessions(session=Depends(web_active)):
+    """Quantos outros aparelhos (navegadores) estão com a conta aberta."""
+    row = db.query_one("SELECT count(*)::int AS n FROM sessions WHERE user_id = %s AND id <> %s AND expires_at > now()",
+                       (session["user_id"], session["sid"]))
+    return {"others": row["n"]}
+
+
+@router.post("/logout-others")
+def logout_others(session=Depends(web_user_csrf)):
+    """Sai dos outros aparelhos sem trocar a senha (celular perdido, computador
+    emprestado). Esta sessão continua; chaves de API e calendário não mudam."""
+    rows = db.query_all("DELETE FROM sessions WHERE user_id = %s AND id <> %s RETURNING id",
+                        (session["user_id"], session["sid"]))
+    audit.record(session, "sessions.logout_others", "user", session["user_id"], after={"ended": len(rows)})
+    return {"ok": True, "ended": len(rows)}
 
 
 @router.get("/me")

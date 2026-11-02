@@ -75,16 +75,19 @@ def test_corrigir_data_pelo_patch_e_desfazer(usuario):
     assert _task(usuario, tid)["completed_at"] == antes
 
 
-def test_limite_configuravel(admin, usuario):
+def test_limite_fixo_em_60_dias(admin, usuario):
     hoje = dia_hoje(usuario)
     d90 = (hoje - timedelta(days=90)).isoformat()
+    d50 = (hoje - timedelta(days=50)).isoformat()
     assert usuario.post("/worklog", {"title": "x", "created_at": d90}).status_code == 400
+    assert usuario.post("/worklog", {"title": "x", "created_at": d50}).status_code == 201
+    assert usuario.get("/auth/me").json()["retro_days"] == 60
+    # O campo antigo do Admin é aceito e ignorado (obsoleto até a 3.0).
     assert usuario.put("/admin/settings", {"retro_days": 120}).status_code == 403
     r = admin.put("/admin/settings", {"retro_days": 120})
-    assert r.status_code == 200 and r.json()["retro_days"] == 120
-    assert usuario.post("/worklog", {"title": "x", "created_at": d90}).status_code == 201
-    assert usuario.get("/auth/me").json()["retro_days"] == 120
-    assert admin.put("/admin/settings", {"retro_days": 0}).status_code == 422
+    assert r.status_code == 200 and r.json()["retro_days"] == 60
+    assert usuario.post("/worklog", {"title": "x", "created_at": d90}).status_code == 400
+    assert usuario.get("/auth/me").json()["retro_days"] == 60
 
 
 def test_external_ref_idempotente_e_isolado(usuario, novo_usuario):

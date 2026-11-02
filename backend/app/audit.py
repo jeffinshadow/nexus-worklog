@@ -24,6 +24,9 @@ def _jsonable(value):
 
 def record(ctx: dict, action: str, entity: str, entity_id, before=None, after=None,
            user_id: int | None = None) -> None:
+    # Ação gravada no histórico de OUTRA pessoa (atribuir, transferir): a chave
+    # de API de quem agiu é dela, não de quem recebe ("atribuída por X" já diz quem foi).
+    alheio = user_id is not None and user_id != ctx.get("user_id")
     db.execute(
         """
         INSERT INTO audit_log (user_id, actor, token_id, token_name, action,
@@ -33,8 +36,8 @@ def record(ctx: dict, action: str, entity: str, entity_id, before=None, after=No
         (
             user_id or ctx["user_id"],
             ctx.get("actor", "web"),
-            ctx.get("token_id"),
-            ctx.get("token_name"),
+            None if alheio else ctx.get("token_id"),
+            None if alheio else ctx.get("token_name"),
             action,
             entity,
             entity_id,
@@ -47,11 +50,11 @@ def record(ctx: dict, action: str, entity: str, entity_id, before=None, after=No
 # Snapshots usados no antes/depois (e restaurados pelo desfazer).
 _WORKLOG_COLS = ("id, title, description, status, due_date, created_at, completed_at, "
                  "project_id, priority, ticket, after_hours, external_ref, assigned_by, assigned_at, "
-                 "blocked_reason, blocked_at, assigner_notified_at, follow_up_on, resolution, objective_id, exec_position, "
+                 "blocked_reason, blocked_at, assigner_notified_at, follow_up_on, resolution, objective_id, exec_position, remind_at, "
                  "(SELECT COALESCE(array_agg(x.project_id ORDER BY x.project_id), '{}') FROM worklog_task_projects x"
                  " WHERE x.task_id = worklog_tasks.id) AS extra_project_ids")
 _RECURRING_COLS = ("id, label, position, active, created_at, deactivated_at, "
-                   "freq, weekdays, month_day, interval_days, require_note, remind_at")
+                   "freq, weekdays, month_day, interval_days, require_note, remind_at, steps")
 
 
 def worklog_snapshot(task_id: int, user_id: int):

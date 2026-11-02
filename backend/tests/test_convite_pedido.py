@@ -1,7 +1,14 @@
 """Pedido de convite pela tela de login: só com e-mail, sem revelar contas,
 um aberto por e-mail, armadilha para robôs, admin convida ou recusa; e o tema."""
 from app import db, mailer, push
-from conftest import Api
+import pytest
+
+from conftest import Api, ligar_pedido_convite
+
+
+@pytest.fixture(autouse=True)
+def _pedido_ligado():
+    ligar_pedido_convite()
 
 
 def _corpo(**kw):
@@ -66,7 +73,7 @@ def test_limite_por_email(monkeypatch):
 
 
 def test_tema_da_conta(usuario):
-    assert usuario.get("/auth/me").json()["theme"] == "auto"
+    assert usuario.get("/auth/me").json()["theme"] == "dark"  # escuro é o padrão (sql/033)
     assert usuario.put("/me/theme", {"theme": "light"}).status_code == 200
     assert usuario.get("/auth/me").json()["theme"] == "light"
     assert usuario.put("/me/theme", {"theme": "rosa"}).status_code == 422

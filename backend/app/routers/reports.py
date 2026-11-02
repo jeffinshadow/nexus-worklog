@@ -120,7 +120,7 @@ def preview(
 ):
     """O que o PDF vai trazer (a frase do assistente antes de exportar)."""
     start, end, proj, _ = resolve_range(user["user_id"], start, end, project)
-    s = get_report_range(user["user_id"], start, end, proj)["summary"]
+    s = get_report_range(user["user_id"], start, end, proj, with_open=False)["summary"]  # só os números
     return {"start": start, "end": end, "pontual_done": s["pontual_done"], "minutes": s["minutes"],
             "recurring_done": s["recurring_done"], "recurring_total": s["recurring_total"],
             "active_days": s["active_days"]}

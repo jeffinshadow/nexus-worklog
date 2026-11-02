@@ -161,7 +161,7 @@ def test_mcp_prompts_e_ferramentas_novas(usuario):
     init = b.rpc("initialize", {"protocolVersion": "2025-06-18"}).json()["result"]
     assert "prompts" in init["capabilities"]
     nomes = [p["name"] for p in b.rpc("prompts/list").json()["result"]["prompts"]]
-    assert nomes == ["resumo_semanal", "daily"]
+    assert nomes[:2] == ["resumo_semanal", "daily"]  # R5-C: + planejar_dia, fechar_dia, resumo_projeto
     msg = b.rpc("prompts/get", {"name": "resumo_semanal", "arguments": {"para": "o cliente"}}).json()["result"]
     assert "o cliente" in msg["messages"][0]["content"]["text"]
     assert b.rpc("prompts/get", {"name": "nao_existe"}).json()["error"]["code"] == -32602

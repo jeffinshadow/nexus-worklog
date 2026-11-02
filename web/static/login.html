@@ -7,15 +7,15 @@
   <link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
   <link rel="manifest" href="/manifest.webmanifest">
-  <meta name="theme-color" content="#121213">
+  <meta name="theme-color" content="#131314">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Nexus">
   <link rel="preload" as="font" type="font/woff2" href="/fonts/GoogleSansFlex.woff2" crossorigin>
-  <script src="/js/tema.js?v=112"></script>
-  <link rel="stylesheet" href="/css/tokens.css?v=112">
-  <link rel="stylesheet" href="/css/app.css?v=112">
+  <script src="/js/tema.js?v=161"></script>
+  <link rel="stylesheet" href="/css/tokens.css?v=161">
+  <link rel="stylesheet" href="/css/app.css?v=161">
 </head>
 <body>
   <div class="auth-wrap">
@@ -28,6 +28,7 @@
 
 
       <form id="form-login" autocomplete="on">
+        <p class="sub">Registre o seu dia de trabalho: tarefas, rotinas e o que você fez.</p>
         <div class="field">
           <label for="login-email">E-mail</label>
           <input id="login-email" name="email" type="email" required autocomplete="username webauthn" maxlength="254">
@@ -39,9 +40,9 @@
           </div>
           <input id="login-password" name="password" type="password" required autocomplete="current-password" maxlength="128">
         </div>
-        <p class="error-text" id="login-error"></p>
+        <p class="error-text" id="login-error" role="alert"></p>
         <button class="btn btn-primary full" type="submit">Entrar</button>
-        <button class="btn btn-ghost full hidden" type="button" id="login-passkey">Entrar com passkey</button>
+        <button class="btn btn-ghost full hidden" type="button" id="login-passkey">Entrar com digital ou rosto</button>
       </form>
 
       <!-- Esqueci a senha (só com e-mail configurado no servidor). -->
@@ -52,7 +53,7 @@
           <label for="forgot-email">E-mail</label>
           <input id="forgot-email" type="email" required autocomplete="username" maxlength="254">
         </div>
-        <p class="error-text" id="forgot-error"></p>
+        <p class="error-text" id="forgot-error" role="alert"></p>
         <p class="ok-text hidden" id="forgot-ok" role="status"></p>
         <button class="btn btn-primary full" type="submit">Enviar o link</button>
         <button class="btn btn-text full" type="button" id="back-login">Voltar para entrar</button>
@@ -60,11 +61,11 @@
 
       <!-- Link do e-mail: convite (#convite=) ou senha nova (#senha=). -->
       <form id="form-link" class="hidden">
-        <h2 class="auth-title" id="link-title"></h2>
-        <p class="sub" id="link-sub"></p>
+        <h2 class="auth-title" id="link-title" tabindex="-1"></h2>
+        <p class="sub" id="link-sub" role="status"></p>
         <input type="email" id="link-email" autocomplete="username" class="sr-only" tabindex="-1" aria-hidden="true">
         <div class="field hidden" id="link-name-wrap">
-          <label for="link-name">Como você quer ser chamado</label>
+          <label for="link-name">Qual nome devemos usar?</label>
           <input id="link-name" type="text" maxlength="60" autocomplete="name">
         </div>
         <div class="field">
@@ -75,7 +76,7 @@
           <label for="link-pw2">Confirme a nova senha</label>
           <input id="link-pw2" type="password" required minlength="10" maxlength="128" autocomplete="new-password">
         </div>
-        <p class="error-text" id="link-error"></p>
+        <p class="error-text" id="link-error" role="alert"></p>
         <button class="btn btn-primary full" type="submit" id="link-submit"></button>
         <button class="btn btn-text full hidden" type="button" id="link-back">Ir para entrar</button>
       </form>
@@ -83,7 +84,7 @@
       <!-- Pedido de convite (só com e-mail configurado no servidor). -->
       <form id="form-request" class="hidden">
         <h2 class="auth-title">Solicitar convite</h2>
-        <p class="sub">O pedido vai para o administrador do Nexus. Se ele aprovar, o convite chega no seu e-mail.</p>
+        <p class="sub">O pedido vai para quem administra o Nexus. Com a aprovação, o convite chega no seu e-mail.</p>
         <div class="field">
           <label for="req-name">Nome</label>
           <input id="req-name" type="text" required maxlength="80" autocomplete="name">
@@ -97,8 +98,8 @@
           <select id="req-source" required>
             <option value="">Escolha…</option>
             <option value="colega">Indicação de colega</option>
-            <option value="site">Site da ShadowTec</option>
-            <option value="github">GitHub</option>
+            <option value="empresa">Pela empresa ou equipe</option>
+            <option value="internet">Internet ou redes sociais</option>
             <option value="outro">Outro</option>
           </select>
         </div>
@@ -112,17 +113,18 @@
         </div>
         <!-- Armadilha para robôs: invisível para gente (e fora do leitor de tela e do Tab). -->
         <div class="trap" aria-hidden="true"><label for="req-website">Site</label><input id="req-website" type="text" tabindex="-1" autocomplete="off"></div>
-        <p class="error-text" id="request-error"></p>
+        <p class="error-text" id="request-error" role="alert"></p>
         <p class="ok-text hidden" id="request-ok" role="status"></p>
         <button class="btn btn-primary full" type="submit" id="request-submit">Enviar o pedido</button>
         <button class="btn btn-text full" type="button" id="request-back">Voltar para entrar</button>
       </form>
 
-      <p class="auth-foot" id="auth-foot">acesso por convite · <button type="button" class="link-btn hidden" id="go-request">solicitar convite ao administrador</button><span id="foot-ask">peça ao administrador</span></p>
+      <p class="auth-foot" id="auth-foot">acesso por convite · <button type="button" class="link-btn hidden" id="go-request">solicitar convite</button><span id="foot-ask">peça a quem administra</span></p>
+      <p class="auth-foot hidden" id="privacy-foot"><a class="privacy-link" id="privacy-link" href="/login" target="_blank" rel="noopener">política de privacidade</a></p>
     </div>
   </div>
 
-  <script type="module" src="/js/login.js?v=112"></script>
-  <script type="module" src="/js/pwa.js?v=112"></script>
+  <script type="module" src="/js/login.js?v=161"></script>
+  <script type="module" src="/js/pwa.js?v=161"></script>
 </body>
 </html>

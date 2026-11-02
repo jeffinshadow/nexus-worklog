@@ -1,7 +1,9 @@
-from datetime import date, datetime, time
+import re
+from datetime import date, datetime, time, timedelta
 from typing import Literal, Optional
+from zoneinfo import ZoneInfo
 
-from pydantic import BaseModel, EmailStr, Field, model_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 from .config import config
 
@@ -10,22 +12,115 @@ Status = Literal["todo", "in_progress", "blocked", "done"]
 _PW = Field(min_length=config.MIN_PASSWORD_LEN, max_length=config.MAX_PASSWORD_LEN)
 
 
+RoleName = Literal["user", "admin", "assigner", "viewer"]
+
+
 class InviteIn(BaseModel):
     email: EmailStr
+    # Nome da conta até o primeiro acesso (no tour a pessoa confirma ou ajusta).
+    display_name: Optional[str] = Field(default=None, max_length=60)
+    # Papéis já no convite (mudam depois em Papéis…). Padrão: só Usuário.
+    roles: list[RoleName] = Field(default_factory=lambda: ["user"], min_length=1, max_length=4)
+    # Equipes já no convite (Admin › Equipes; mudam depois em Equipes…). Padrão: nenhuma.
+    team_ids: list[int] = Field(default_factory=list, max_length=50)
+
+
+class InviteChoiceIn(BaseModel):
+    """Convidar a partir de um pedido: nome (padrão: o do pedido), papéis (padrão: só Usuário) e equipes."""
+    display_name: Optional[str] = Field(default=None, max_length=60)
+    roles: list[RoleName] = Field(default_factory=lambda: ["user"], min_length=1, max_length=4)
+    team_ids: list[int] = Field(default_factory=list, max_length=50)
+
+
+TeamName = Field(min_length=1, max_length=60)
+
+
+class TeamIn(BaseModel):
+    """Admin › Equipes › Nova equipe: nome (único, sem diferença de maiúsculas) e quem entra."""
+    name: str = TeamName
+    member_ids: list[int] = Field(default_factory=list, max_length=2000)
+
+
+class TeamEditIn(BaseModel):
+    """Admin › Equipes › editar. Campo ausente = mantém. member_ids = a lista inteira de membros (em lote)."""
+    name: Optional[str] = Field(default=None, min_length=1, max_length=60)
+    archived: Optional[bool] = None
+    member_ids: Optional[list[int]] = Field(default=None, max_length=2000)
+
+
+class UserTeamsIn(BaseModel):
+    """Admin › Contas › pessoa › Equipes…: a lista inteira de equipes da pessoa."""
+    team_ids: list[int] = Field(default_factory=list, max_length=50)
+
+
+class MasterRolesIn(BaseModel):
+    """O admin master liga/desliga os próprios papéis "Vê a equipe" e "Manda tarefas". Ausente = mantém."""
+    viewer: Optional[bool] = None
+    assigner: Optional[bool] = None
+
+
+class MasterTransferIn(BaseModel):
+    """Transferir o papel de master: para quem (outro admin) e a senha do master."""
+    to_user_id: int
+    password: str = Field(min_length=1, max_length=config.MAX_PASSWORD_LEN)
+
+
+class MasterConfirmIn(BaseModel):
+    """O código de 6 dígitos mandado ao e-mail do master."""
+    code: str = Field(pattern=r"^\s*\d{6}\s*$")
+
+
+class OrgIn(BaseModel):
+    """Admin › Para empresas e instituições. Campo ausente = mantém."""
+    team_visibility: Optional[Literal["self", "managers"]] = None  # cada pessoa escolhe / visível para quem gerencia
+    assign_receive: Optional[Literal["self", "all"]] = None  # cada pessoa escolhe / todos recebem de quem atribui
+    identity_managed: Optional[bool] = None  # nome e e-mail definidos pela administração
+    invite_request_on: Optional[bool] = None  # oferecer "Solicitar convite" na tela de login (padrão: não)
+    # Política de privacidade da instância (link no login, na Conta e no convite); "" ou null = sem link.
+    privacy_url: Optional[str] = Field(default=None, max_length=300, pattern=r"^(https://\S+)?$")
+    # Endereço do sistema de chamados da instância ({id} = o número); "" ou null = sem endereço.
+    ticket_url: Optional[str] = Field(default=None, max_length=300, pattern=r"^(https?://\S+)?$")
+
+
+class AdminProfileIn(BaseModel):
+    """Admin › pessoa › Editar nome e e-mail. Campo ausente = mantém; nome vazio = derivado do e-mail."""
+    display_name: Optional[str] = Field(default=None, max_length=60)
+    email: Optional[EmailStr] = None
+
+
+class EmailChangeIn(BaseModel):
+    new_email: EmailStr
+    password: str = Field(min_length=1, max_length=config.MAX_PASSWORD_LEN)  # senha atual
+
+
+class EmailConfirmIn(BaseModel):
+    token: str = Field(min_length=20, max_length=100)
 
 
 class RolesIn(BaseModel):
-    roles: list[Literal["user", "admin", "assigner", "viewer"]] = Field(min_length=1, max_length=4)
+    roles: list[RoleName] = Field(min_length=1, max_length=4)
 
 
 class AppSettingsIn(BaseModel):
-    retro_days: int = Field(ge=1, le=366)  # tarefas: criar/concluir até N dias atrás
     support_contact: Optional[str] = Field(default=None, max_length=200)  # "Ajuda": a quem recorrer
-    photo_quota_mb: Optional[int] = Field(default=None, ge=0, le=100000)  # fotos por pessoa (MB); ausente = mantém
+    # Obsoletos (até a 3.0): aceitos e ignorados. O limite retroativo é fixo (60 dias) e a cota de fotos
+    # vem da variável PHOTO_QUOTA_MB.
+    retro_days: Optional[int] = None
+    photo_quota_mb: Optional[int] = None
 
 
 class DeleteUserIn(BaseModel):
     confirm_email: str = Field(max_length=320)  # o admin digita o e-mail da conta
+    transfer_to: Optional[int] = None  # quem recebe as tarefas abertas (papel Usuário); ausente = saem com a conta
+
+
+class BlockUserIn(BaseModel):
+    transfer_to: Optional[int] = None  # quem recebe as tarefas abertas (papel Usuário); ausente = ficam na conta
+
+
+class ResetPasswordIn(BaseModel):
+    # temp: senha temporária mostrada ao admin; link: link de nova senha por e-mail (só com SMTP)
+    method: Literal["temp", "link"] = "temp"
 
 
 class DeleteMeIn(BaseModel):
@@ -33,7 +128,7 @@ class DeleteMeIn(BaseModel):
 
 
 class ConsentIn(BaseModel):
-    accept: bool  # aceitar receber tarefas de um atribuidor
+    accept: bool  # aceitar (receber tarefas de um atribuidor / ser visto pelo visualizador)
 
 
 class AssignIn(BaseModel):
@@ -44,6 +139,9 @@ class AssignIn(BaseModel):
     priority: int = Field(default=2, ge=1, le=3)
     ticket: Optional[str] = Field(default=None, max_length=41)
     after_hours: bool = False
+    # Atribuir de novo uma tarefa que foi devolvida (o id dela): a devolução
+    # fica resolvida e sai de "Precisa de atenção".
+    from_return: Optional[int] = None
 
     @model_validator(mode="after")
     def _norm(self):
@@ -51,6 +149,37 @@ class AssignIn(BaseModel):
         self.title = self.title.strip()
         if not self.title:
             raise ValueError("título em branco")
+        return self
+
+
+class ReturnIn(BaseModel):
+    """Quem recebeu devolve a tarefa atribuída, com o porquê (vai para quem atribuiu)."""
+    reason: str = Field(min_length=1, max_length=120)
+
+    @model_validator(mode="after")
+    def _norm(self):
+        self.reason = " ".join(self.reason.split())
+        if len(self.reason) < 3:
+            raise ValueError("diga em poucas palavras por que está devolvendo")
+        return self
+
+
+class AssignEditIn(BaseModel):
+    """Quem atribuiu ajusta enquanto a tarefa está "a fazer". Só o que vier muda
+    (due_date ou description: null tira)."""
+    title: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    description: Optional[str] = Field(default=None, max_length=300)  # null ou vazio tira
+    due_date: Optional[date] = None
+    priority: Optional[int] = Field(default=None, ge=1, le=3)
+
+    @model_validator(mode="after")
+    def _norm(self):
+        if self.title is not None:
+            self.title = self.title.strip()
+            if not self.title:
+                raise ValueError("título em branco")
+        if self.description is not None:
+            self.description = self.description.strip() or None
         return self
 
 
@@ -68,20 +197,99 @@ class ForgotIn(BaseModel):
     email: EmailStr
 
 
+class LinkPeekIn(BaseModel):
+    """O token vai no corpo (POST), fora da URL e do log de acesso do servidor."""
+    kind: Literal["invite", "reset"]
+    token: str = Field(min_length=1, max_length=100)
+
+
 class LinkPasswordIn(BaseModel):
     token: str = Field(min_length=20, max_length=100)
     password: str = _PW
     display_name: Optional[str] = Field(default=None, max_length=60)  # só no convite
 
 
-Freq = Literal["daily", "weekly", "monthly", "interval"]
-_PARAM = {"weekly": "weekdays", "monthly": "month_day", "interval": "interval_days"}
+_HORA = re.compile(r"^(\d{1,2})(?:[:hH](\d{2})?)?$")
+
+
+def parse_hour(txt) -> tuple[int, int]:
+    """Hora escrita como se fala ou no relógio: "7h30", "7h", "07:30", "7:30",
+    "18". Mesmo formato para o cronômetro e o horário das rotinas."""
+    m = _HORA.match(str(txt).strip())
+    if not m or int(m.group(1)) > 23 or int(m.group(2) or 0) > 59:
+        raise ValueError(f"hora inválida: {txt} (use HH:MM, ex.: 07:30, ou 7h30)")
+    return int(m.group(1)), int(m.group(2) or 0)
+
+
+def _remind_at(v):
+    """remind_at aceita "7h30"/"7h" além de HH:MM (e HH:MM:SS do próprio app)."""
+    if isinstance(v, str) and v.strip() and v.count(":") < 2:
+        hh, mm = parse_hour(v)
+        return time(hh, mm)
+    return v
+
+
+_QUANDO = re.compile(r"^(?:(hoje|amanh[aã])\s+(?:às\s+|as\s+)?)?(\d{1,2}(?:[:hH]\d{0,2})?)$", re.I)
+
+
+def remind_when(v):
+    """Lembrar em (tarefa): data e hora ISO ("2026-11-03T15:00", sem fuso = fuso
+    da app) ou como se fala: "15h", "7h30", "15:30" (a próxima vez que der essa
+    hora: hoje, ou amanhã se já passou), "amanhã 8h", "hoje 15h"."""
+    if not isinstance(v, str):
+        return v
+    txt = v.strip()
+    if not txt:
+        return None
+    tz = ZoneInfo(config.APP_TZ)
+    m = _QUANDO.match(txt)
+    if m and (m.group(1) or not re.match(r"^\d{1,2}$", m.group(2))):  # "18" sozinho não é hora (seria ambíguo)
+        hh, mm = parse_hour(m.group(2))
+        now = datetime.now(tz)
+        when = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        if m.group(1) and m.group(1).lower() != "hoje":
+            when += timedelta(days=1)
+        elif not m.group(1) and when <= now:
+            when += timedelta(days=1)
+        return when
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", txt):
+        raise ValueError("lembrete precisa da hora: AAAA-MM-DDTHH:MM (só o dia é o prazo, due_date)")
+    try:
+        when = datetime.fromisoformat(txt.replace("Z", "+00:00"))
+    except ValueError:
+        raise ValueError("lembrete: use AAAA-MM-DDTHH:MM, ou como se fala (15h, amanhã 8h)") from None
+    return when if when.tzinfo else when.replace(tzinfo=tz)
+
+
+def _steps(v):
+    """Passos da rotina: até 12, cada um com até 80 caracteres; vazios saem.
+    Lista vazia = sem passos (null)."""
+    if v is None:
+        return None
+    if isinstance(v, str):
+        v = v.splitlines()
+    out = []
+    for x in v:
+        x = " ".join(str(x).split())
+        if not x:
+            continue
+        if len(x) > 80:
+            raise ValueError("cada passo com até 80 caracteres")
+        out.append(x)
+    if len(out) > 12:
+        raise ValueError("no máximo 12 passos por rotina")
+    return out or None
+
+
+Freq = Literal["daily", "weekly", "monthly", "interval", "after"]
+_PARAM = {"weekly": "weekdays", "monthly": "month_day", "interval": "interval_days", "after": "interval_days"}
 
 
 class _Agenda(BaseModel):
     """Agenda da recorrente. daily = dias úteis do dono (padrão); weekly exige
     weekdays (máscara, domingo = bit 0); monthly exige month_day (31 = último
-    dia); interval exige interval_days (a cada N dias desde a criação)."""
+    dia); interval exige interval_days (a cada N dias desde a criação); after
+    também (N dias depois da última marcação)."""
     freq: Optional[Freq] = None
     weekdays: Optional[int] = Field(default=None, ge=1, le=127)
     month_day: Optional[int] = Field(default=None, ge=1, le=31)
@@ -101,13 +309,16 @@ class _Agenda(BaseModel):
     def agenda(self) -> dict:
         """Colunas de agenda normalizadas (só o parâmetro da freq escolhida)."""
         need = _PARAM.get(self.freq)
-        return {"freq": self.freq, **{f: (getattr(self, f) if f == need else None) for f in _PARAM.values()}}
+        return {"freq": self.freq, **{f: (getattr(self, f) if f == need else None) for f in set(_PARAM.values())}}
 
 
 class RecurringIn(_Agenda):
     label: str = Field(min_length=1, max_length=200)
     require_note: bool = False  # marcar exige evidência (auditoria)
     remind_at: Optional[time] = None  # horário: a interface lembra (e toca) perto dele
+    remind_at_hora = field_validator("remind_at", mode="before")(_remind_at)
+    steps: Optional[list[str]] = Field(default=None, max_length=40)  # passos (até 12; marcar conta uma vez)
+    steps_ok = field_validator("steps", mode="before")(_steps)
 
 
 class RecurringUpdate(_Agenda):
@@ -116,6 +327,14 @@ class RecurringUpdate(_Agenda):
     label: Optional[str] = Field(default=None, min_length=1, max_length=200)
     require_note: Optional[bool] = None
     remind_at: Optional[time] = None  # null tira o horário (só se o campo vier)
+    remind_at_hora = field_validator("remind_at", mode="before")(_remind_at)
+    steps: Optional[list[str]] = Field(default=None, max_length=40)  # null ou [] tira os passos (só se o campo vier)
+    steps_ok = field_validator("steps", mode="before")(_steps)
+
+
+class PauseIn(BaseModel):
+    """Pausar a rotina de hoje até `until` (inclusive; no dia seguinte ela volta)."""
+    until: date
 
 
 class ToggleIn(BaseModel):
@@ -138,12 +357,22 @@ class PushDeviceIn(BaseModel):
 
 
 class PushPrefsIn(BaseModel):
-    routine: bool = True
-    follow_up: bool = True
-    deadline: bool = True
-    assigned: bool = True
-    morning_hour: int = Field(default=8, ge=0, le=23)
+    """Notificações nos aparelhos: um só interruptor (`enabled`) liga ou desliga tudo (rotina e lembrete
+    na hora, cobrar, prazos, atribuídas). Os campos por tipo e morning_hour são obsoletos (até a 3.0):
+    aceitos; sem `enabled`, vale "ligado se algum tipo estava ligado"."""
+    enabled: Optional[bool] = None
     hide_content: bool = False
+    routine: Optional[bool] = None
+    follow_up: Optional[bool] = None
+    deadline: Optional[bool] = None
+    assigned: Optional[bool] = None
+    morning_hour: Optional[int] = None
+
+    def is_on(self) -> bool:
+        if self.enabled is not None:
+            return self.enabled
+        old = [v for v in (self.routine, self.follow_up, self.deadline, self.assigned) if v is not None]
+        return any(old) if old else True
 
 
 class SnoozeIn(BaseModel):
@@ -157,17 +386,63 @@ class ThemeIn(BaseModel):
 class InviteRequestIn(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     email: EmailStr
-    source: Literal["colega", "site", "github", "outro"]
+    source: Literal["colega", "empresa", "internet", "outro"]  # genéricas (sql/037)
     source_note: Optional[str] = Field(default=None, max_length=120)
     reason: str = Field(min_length=3, max_length=600)
     website: Optional[str] = Field(default=None, max_length=200)  # armadilha: gente não vê, robô preenche
+    form_t: Optional[str] = Field(default=None, max_length=100)   # carimbo de GET /auth/invite-request/form (3 s a 1 h)
 
 
 class TokenIn(BaseModel):
     name: str = Field(min_length=1, max_length=60)
-    scope: Literal["read", "write"] = "write"
+    scope: Literal["read", "write", "append"] = "write"  # append = só registrar (deps.APPEND_ROUTES)
     # Validade em dias; None = sem validade (revogue quando não usar mais).
     expires_in_days: Optional[int] = Field(default=90, ge=1, le=365)
+
+
+class TokenRenewIn(BaseModel):
+    # Nova validade, contada de agora; None = sem validade.
+    expires_in_days: Optional[int] = Field(default=90, ge=1, le=365)
+
+
+def _events(events: list[str]) -> list[str]:
+    evs = [e.strip() for e in events]
+    if any(not re.fullmatch(r"\*|[a-z_]{1,30}\.(\*|[a-z_]{1,30})", e) for e in evs):
+        raise ValueError('eventos: "*", "entidade.*" ou "entidade.acao" (ex.: worklog.finish)')
+    from .webhooks import known_events  # import tardio: webhooks importa os routers
+    acts, groups = known_events()
+    bad = [e for e in evs if e != "*" and (e[:-2] not in groups if e.endswith(".*") else e not in acts)]
+    if bad:
+        raise ValueError(f"evento desconhecido: {', '.join(bad)}. Grupos válidos: "
+                         f"{', '.join(g + '.*' for g in sorted(groups))} (ou uma ação deles, como worklog.finish; "
+                         "lista completa em docs/API.md)")
+    return ["*"] if "*" in evs else sorted(set(evs))
+
+
+class WebhookIn(BaseModel):
+    url: str = Field(min_length=9, max_length=500)  # https://...
+    # "*" (tudo), a ação exata ("worklog.finish") ou o grupo ("worklog.*").
+    events: list[str] = Field(default=["*"], min_length=1, max_length=30)
+
+    @model_validator(mode="after")
+    def _norm(self):
+        self.url = self.url.strip()
+        self.events = _events(self.events)
+        return self
+
+
+class WebhookUpdate(BaseModel):
+    """Editar sem recriar (o segredo continua): só o que vier muda."""
+    url: Optional[str] = Field(default=None, min_length=9, max_length=500)
+    events: Optional[list[str]] = Field(default=None, min_length=1, max_length=30)
+
+    @model_validator(mode="after")
+    def _norm(self):
+        if self.url is not None:
+            self.url = self.url.strip()
+        if self.events is not None:
+            self.events = _events(self.events)
+        return self
 
 
 class BrandingIn(BaseModel):
@@ -187,19 +462,15 @@ class ProfileIn(BaseModel):
 
 class AssistantIn(BaseModel):
     enabled: bool = True
-    idle_on: bool = True
-    idle_minutes: int = Field(default=30, ge=5, le=480)
-    idle_start: int = Field(default=480, ge=0, le=1439)  # minutos do dia
-    idle_end: int = Field(default=1080, ge=1, le=1440)
-    reopen_on: bool = True                                 # fala fechada no X volta sozinha
-    reopen_minutes: int = Field(default=10, ge=1, le=240)
-    summary_from: int = Field(default=840, ge=0, le=1439)  # resumo do dia sem nada concluído: a partir de (min do dia)
-
-    @model_validator(mode="after")
-    def _janela(self):
-        if self.idle_start >= self.idle_end:
-            raise ValueError("o início da janela precisa ser antes do fim")
-        return self
+    # Obsoletos (até a 3.0): aceitos e ignorados; os valores são fixos (people.ASSISTANT_DEFAULTS).
+    idle_on: Optional[bool] = None
+    idle_minutes: Optional[int] = None
+    idle_start: Optional[int] = None
+    idle_end: Optional[int] = None
+    reopen_on: Optional[bool] = None
+    reopen_minutes: Optional[int] = None
+    summary_from: Optional[int] = None
+    stale_days: Optional[int] = None
 
 
 def _not_past(v):
@@ -244,8 +515,10 @@ class WorklogIn(BaseModel):
     completed_at: Optional[str] = When      # com status done (padrão: agora)
     external_ref: Optional[str] = Field(default=None, min_length=1, max_length=120)  # idempotência
     blocked_reason: Optional[str] = Field(default=None, max_length=120)  # o que se aguarda (status blocked)
-    follow_up_on: Optional[date] = None  # bloqueada: dia combinado para cobrar
+    follow_up_on: Optional[date] = None  # aguardando (blocked): dia combinado para cobrar
     resolution: Optional[str] = Field(default=None, max_length=1000)  # com status done: como foi resolvido
+    remind_at: Optional[datetime] = None  # lembrar em (data e hora; "15h", "amanhã 8h")
+    remind_when = field_validator("remind_at", mode="before")(remind_when)
 
     @model_validator(mode="after")
     def _norm(self):
@@ -275,7 +548,9 @@ class WorklogUpdate(BaseModel):
     completed_at: Optional[str] = When  # corrigir a data de uma tarefa concluída
     resolution: Optional[str] = Field(default=None, max_length=1000)  # como foi resolvido (null apaga)
     blocked_reason: Optional[str] = Field(default=None, max_length=120)  # o que se aguarda (status blocked)
-    follow_up_on: Optional[date] = None  # bloqueada: dia combinado para cobrar
+    follow_up_on: Optional[date] = None  # aguardando (blocked): dia combinado para cobrar
+    remind_at: Optional[datetime] = None  # lembrar em (null tira; só se o campo vier)
+    remind_when = field_validator("remind_at", mode="before")(remind_when)
 
     @model_validator(mode="after")
     def _norm(self):
@@ -309,6 +584,7 @@ class RenewalIn(BaseModel):
     project_id: Optional[int] = None
     note: Optional[str] = Field(default=None, max_length=200)
     renew_months: Optional[int] = Field(default=None, ge=1, le=120)  # repete a cada N meses (Renovei sugere)
+    team_id: Optional[int] = None  # compartilha com uma equipe dele (sql/044); sem = só dele
 
     @model_validator(mode="after")
     def _label(self):
@@ -322,6 +598,7 @@ class RenewalUpdate(BaseModel):
     project_id: Optional[int] = None
     note: Optional[str] = Field(default=None, max_length=200)
     renew_months: Optional[int] = Field(default=None, ge=1, le=120)  # null apaga
+    team_id: Optional[int] = None  # null deixa de compartilhar
 
     @model_validator(mode="after")
     def _label(self):
@@ -367,6 +644,7 @@ class TimerIn(BaseModel):
 
 class TimerStopIn(BaseModel):
     at: Optional[datetime] = None  # hora em que parou, no aparelho (sem sinal)
+    task_id: Optional[int] = None  # o cronômetro que a pessoa parou (a parada da fila não vale para outro)
 
 
 Color = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
@@ -379,9 +657,18 @@ def _ref(value):
     return (value or "").strip() or None
 
 
+# Ícones de projeto: a biblioteca fixa do app (sprite `#icon-proj-<nome>` em
+# index.html, mesma ordem da grade). Sem ícone escolhido = "pasta".
+PROJECT_ICONS = ("pasta", "predio", "loja", "clinica", "fabrica", "escola", "casa", "escritorio", "servidor", "rede",
+                 "wifi", "seguranca", "manutencao", "eletrica", "hidraulica", "veiculo", "pessoa", "maleta",
+                 "computador", "celular", "camera", "carrinho", "calendario", "estrela")
+ProjectIcon = Literal[PROJECT_ICONS]
+
+
 class ProjectIn(BaseModel):
     name: str = Field(min_length=1, max_length=60)
     color: Optional[str] = Color
+    icon: Optional[ProjectIcon] = None  # ausente ou null = pasta
     description: Optional[str] = Field(default=None, max_length=500)
     external_ref: Optional[str] = Ref
 
@@ -422,12 +709,45 @@ class TaskOrderIn(BaseModel):
 class ProjectUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=60)
     color: Optional[str] = Color
+    icon: Optional[ProjectIcon] = None  # null volta para a pasta
     description: Optional[str] = Field(default=None, max_length=500)  # null apaga
     archived: Optional[bool] = None
 
 
+class ArchiveIn(BaseModel):
+    """Arquivar com as tarefas em aberto (as que têm o projeto como principal):
+    keep = continuam como estão; done = concluídas agora; move = vão para move_to."""
+    open_tasks: Literal["keep", "done", "move"] = "keep"
+    move_to: Optional[int] = None
+
+    @model_validator(mode="after")
+    def _alvo(self):
+        if self.open_tasks == "move" and not self.move_to:
+            raise ValueError("informe move_to: o projeto que recebe as tarefas")
+        return self
+
+
 class NoteIn(BaseModel):
     body: str = Field(min_length=1, max_length=2000)
+    external_ref: Optional[str] = Ref  # repetida devolve a existente
+    at: Optional[datetime] = None  # hora do aparelho (feita sem sinal, enviada depois); até 24 h atrás
+
+    @model_validator(mode="after")
+    def _norm(self):
+        self.external_ref = _ref(self.external_ref)
+        return self
+
+
+class NoteUpdate(BaseModel):
+    """Corrigir o texto de uma anotação (a hora original fica)."""
+    body: str = Field(min_length=1, max_length=2000)
+
+    @model_validator(mode="after")
+    def _norm(self):
+        self.body = self.body.strip()
+        if not self.body:
+            raise ValueError("anotação em branco")
+        return self
 
 
 class ChecklistIn(BaseModel):
@@ -443,20 +763,40 @@ class TimeIn(BaseModel):
     minutes: int = Field(ge=1, le=1440)
     day: Optional[date] = None  # padrão: hoje
     note: Optional[str] = Field(default=None, max_length=200)
+    external_ref: Optional[str] = Ref  # repetido devolve o existente
+
+    @model_validator(mode="after")
+    def _norm(self):
+        self.external_ref = _ref(self.external_ref)
+        return self
 
 
-# Avisos por e-mail: os padrões daqui valem também quando o usuário ainda não
-# salvou nada (notify.get_prefs).
+class TimeUpdate(BaseModel):
+    """Corrigir um apontamento. Só o que vier muda (note: null ou vazio tira a observação)."""
+    minutes: Optional[int] = Field(default=None, ge=1, le=1440)
+    day: Optional[date] = None
+    note: Optional[str] = Field(default=None, max_length=200)
+
+
+# Avisos por e-mail: um só interruptor (`email_on`) liga Seu dia, Antes de encerrar e o Resumo da semana.
+# Os campos por tipo e os horários são obsoletos (até a 3.0): aceitos; sem `email_on`, vale "ligado se
+# algum tipo estava ligado". Valem também os padrões daqui quando a pessoa ainda não salvou nada.
 class PrefsIn(BaseModel):
-    morning: bool = False
-    morning_hour: int = Field(default=8, ge=0, le=23)
-    evening: bool = False
-    evening_hour: int = Field(default=17, ge=0, le=23)
-    weekly: bool = False
-    weekly_hour: int = Field(default=8, ge=0, le=23)
+    email_on: Optional[bool] = None
     show_titles: bool = True
     weekly_pdf: bool = False                 # o relatório da semana em PDF, anexado
     weekly_cc: Optional[EmailStr] = None     # cópia do resumo semanal (gestor, cliente)
+    morning: Optional[bool] = None           # obsoletos
+    morning_hour: Optional[int] = None
+    evening: Optional[bool] = None
+    evening_hour: Optional[int] = None
+    weekly: Optional[bool] = None
+    weekly_hour: Optional[int] = None
+
+    def is_on(self) -> bool:
+        if self.email_on is not None:
+            return self.email_on
+        return any(v for v in (self.morning, self.evening, self.weekly))
 
 
 class FeedIn(BaseModel):

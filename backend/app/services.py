@@ -5,6 +5,7 @@ sao as rotas (proprio usuario, ou alvo validado por require_admin). Assim a
 mesma logica serve tanto o usuario comum quanto a visao de admin.
 """
 
+import bisect
 import calendar
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -36,13 +37,13 @@ def week_start(d: date) -> date:
 DEFAULT_WORK_DAYS = 62
 # Marcação retroativa de recorrentes: até RETRO_DAYS dias antes de hoje.
 RETRO_DAYS = 7
+TASK_RETRO_DAYS = 60
 
 
 def task_retro_days() -> int:
-    """Até quantos dias para trás uma tarefa pode ser criada ou concluída
-    (configurável pelo admin; a linha id=1 sempre existe: sql/010)."""
-    row = db.query_one("SELECT retro_days FROM app_settings WHERE id = 1")
-    return row["retro_days"] if row else 60
+    """Até quantos dias para trás uma tarefa pode ser criada ou concluída: fixo em 60
+    (saiu do Admin; a coluna app_settings.retro_days fica no banco, obsoleta e ignorada)."""
+    return TASK_RETRO_DAYS
 
 
 def work_mask(user_id: int) -> int:
@@ -54,14 +55,42 @@ def is_work_day(d: date, mask: int) -> bool:
     return bool((mask >> _sun_index(d)) & 1)
 
 
+def pause_end(t: dict, d: date) -> date | None:
+    """Último dia da pausa que cobre `d` (None = não pausada nesse dia)."""
+    for s, e in t.get("pauses") or ():
+        if s <= d <= e:
+            return e
+    return None
+
+
+def _after_cycle(t: dict, d: date) -> tuple[date, bool]:
+    """freq 'after': (data em que o ciclo aberto em `d` venceu, marcada em `d`?).
+    O ciclo conta da última marcação ANTES de `d` (sem marcação: da última vez
+    da rotina substituída, `after_from`, ou da criação)."""
+    dates = t.get("done_dates") or []
+    i = bisect.bisect_left(dates, d)
+    # after_from: a última vez da rotina que esta substituiu (troca de agenda).
+    last = dates[i - 1] if i and dates[i - 1] >= t["start_d"] else (t.get("after_from") or t["start_d"])
+    return last + timedelta(days=t.get("interval_days") or 1), i < len(dates) and dates[i] == d
+
+
 def is_due(t: dict, d: date, mask: int) -> bool:
     """A recorrente `t` é devida no dia `d`? Uma regra só para tudo
     (indicadores, gráficos, quadro, PDF). Fora da agenda = extra.
 
     daily: dias úteis do dono | weekly: dias marcados em `weekdays` |
     monthly: `month_day` (31 = último dia; meses curtos usam o último) |
-    interval: a cada `interval_days` dias, contando da criação (start_d).
+    interval: a cada `interval_days` dias, contando da criação (start_d) |
+    after: N = `interval_days` dias depois da última marcação (sem marcação:
+    da criação). O ciclo vence em última + N e fica aberto até ser marcado;
+    cada ciclo conta UMA vez: como feito no dia em que foi marcado, ou como
+    falta no último dia do ciclo (vencimento + N - 1) se ninguém marcou — aí
+    abre o ciclo seguinte. Marcar antes de vencer é extra e move a próxima data.
+    Nos dias pausados (`pauses`) nenhuma é devida. Para "está para fazer hoje?"
+    (quadro, lembretes, avisos) use is_pending.
     """
+    if pause_end(t, d):
+        return False
     freq = t.get("freq") or "daily"
     if freq == "weekly":
         return bool(((t.get("weekdays") or 0) >> _sun_index(d)) & 1)
@@ -71,7 +100,30 @@ def is_due(t: dict, d: date, mask: int) -> bool:
     if freq == "interval":
         n = t.get("interval_days") or 1
         return (d - t["start_d"]).days % n == 0
+    if freq == "after":
+        due_from, done = _after_cycle(t, d)
+        if d < due_from:
+            return False
+        n = t.get("interval_days") or 1
+        return done or (d - due_from).days % n == n - 1
     return is_work_day(d, mask)
+
+
+def is_pending(t: dict, d: date, mask: int) -> bool:
+    """Está para fazer em `d`? Igual a is_due, exceto 'after': do vencimento
+    até ser marcada, todo dia (o quadro mostra, o lembrete toca)."""
+    if (t.get("freq") or "daily") == "after":
+        return not pause_end(t, d) and d >= _after_cycle(t, d)[0]
+    return is_due(t, d, mask)
+
+
+def next_due(t: dict, d: date) -> date | None:
+    """freq 'after': a próxima data vista do dia `d` (marcada em `d`: d + N;
+    senão o vencimento do ciclo aberto, que pode já ter passado)."""
+    if (t.get("freq") or "daily") != "after":
+        return None
+    due_from, done = _after_cycle(t, d)
+    return d + timedelta(days=t.get("interval_days") or 1) if done else due_from
 
 
 def _due_between(t: dict, start: date, end: date, mask: int) -> int:
@@ -87,7 +139,8 @@ def _due_between(t: dict, start: date, end: date, mask: int) -> int:
 
 # Projetos além do principal ([{id, name, color}], por nome): as etiquetas
 # "+ Filial" e o tempo por projeto, que conta a tarefa inteira em cada um.
-EXTRA_PROJECTS = """(SELECT COALESCE(json_agg(json_build_object('id', xp.id, 'name', xp.name, 'color', xp.color)
+EXTRA_PROJECTS = """(SELECT COALESCE(json_agg(json_build_object('id', xp.id, 'name', xp.name, 'color', xp.color,
+                                                        'icon', COALESCE(xp.icon, 'pasta'))
                                       ORDER BY lower(xp.name)), '[]'::json)
        FROM worklog_task_projects x JOIN projects xp ON xp.id = x.project_id
       WHERE x.task_id = w.id) AS extra_projects"""
@@ -99,13 +152,80 @@ TASK_COUNTS = """
     (SELECT count(*) FROM task_checklist c WHERE c.task_id = w.id AND c.done)::int AS check_done,
     (SELECT count(*) FROM task_notes n WHERE n.task_id = w.id)::int AS notes_count,
     (SELECT count(*) FROM photos f WHERE f.task_id = w.id AND f.user_id = w.user_id AND f.deleted_at IS NULL)::int AS photos_count,
-    (SELECT COALESCE(sum(t.minutes), 0) FROM time_entries t WHERE t.task_id = w.id)::int AS minutes,
+    -- só o tempo do dono atual: o de quem passou a tarefa (transferência) fica no registro dele
+    (SELECT COALESCE(sum(t.minutes), 0) FROM time_entries t WHERE t.task_id = w.id AND t.user_id = w.user_id)::int AS minutes,
     (SELECT o.title FROM project_objectives o WHERE o.id = w.objective_id) AS objective_title,
     """ + EXTRA_PROJECTS
 
 # Tarefa `w` no projeto %s: o principal ou um dos extras.
 IN_PROJECT = """(w.project_id = %s OR EXISTS (SELECT 1 FROM worklog_task_projects x
                                              WHERE x.task_id = w.id AND x.project_id = %s))"""
+
+
+# Ícone do projeto de uma tarefa (`p` = o projeto principal): "pasta" quando não
+# escolhido; nulo quando a tarefa não tem projeto.
+PROJECT_ICON = "COALESCE(p.icon, CASE WHEN p.id IS NOT NULL THEN 'pasta' END) AS project_icon"
+
+
+# Os números de cada projeto numa consulta só (agregação; nada de laço por
+# projeto nem JOIN com OR): tarefas da pessoa (principal e extras, unidas antes:
+# o OR no JOIN fazia o banco varrer as tarefas de todas as contas), tempo do mês,
+# objetivos concluídos e a última atividade (tarefa criada, concluída ou posta
+# em espera, tempo apontado, anotação).
+_STATS_SQL = """
+    WITH t AS (
+        SELECT id, project_id AS pid, status, GREATEST(created_at, completed_at, blocked_at) AS at
+          FROM worklog_tasks WHERE user_id = %(u)s AND project_id IS NOT NULL
+        UNION
+        SELECT w.id, x.project_id, w.status, GREATEST(w.created_at, w.completed_at, w.blocked_at)
+          FROM worklog_task_projects x JOIN worklog_tasks w ON w.id = x.task_id WHERE w.user_id = %(u)s
+    ), e AS (
+        SELECT task_id, COALESCE(sum(minutes) FILTER (WHERE day >= %(m)s), 0)::int AS mins, max(created_at) AS at
+          FROM time_entries WHERE user_id = %(u)s GROUP BY task_id
+    ), n AS (
+        SELECT task_id, max(created_at) AS at FROM task_notes
+         WHERE task_id IN (SELECT id FROM t) GROUP BY task_id
+    ), tp AS (
+        SELECT t.pid,
+               count(*) FILTER (WHERE t.status <> 'done')::int AS open_tasks,
+               count(*)::int AS total_tasks,
+               count(*) FILTER (WHERE t.status = 'done')::int AS done_tasks,
+               count(*) FILTER (WHERE t.status = 'blocked')::int AS waiting_tasks,
+               COALESCE(sum(e.mins), 0)::int AS minutes_month,
+               max(GREATEST(t.at, e.at, n.at)) AS at
+          FROM t LEFT JOIN e ON e.task_id = t.id LEFT JOIN n ON n.task_id = t.id
+         GROUP BY t.pid
+    ), ob AS (
+        -- objetivo concluído = todas as tarefas dele concluídas (como na tela do projeto)
+        SELECT o.project_id AS pid, count(*)::int AS objectives,
+               count(*) FILTER (WHERE s.total > 0 AND s.done = s.total)::int AS objectives_done,
+               max(o.created_at) AS at
+          FROM project_objectives o
+          LEFT JOIN (SELECT objective_id, count(*) AS total, count(*) FILTER (WHERE status = 'done') AS done
+                       FROM worklog_tasks WHERE user_id = %(u)s AND objective_id IS NOT NULL
+                      GROUP BY objective_id) s ON s.objective_id = o.id
+         WHERE o.user_id = %(u)s GROUP BY o.project_id
+    )
+    SELECT p.id, p.name, p.color, COALESCE(p.icon, 'pasta') AS icon, p.description, p.archived, p.created_at,
+           p.external_ref,
+           COALESCE(tp.open_tasks, 0) AS open_tasks, COALESCE(tp.total_tasks, 0) AS total_tasks,
+           COALESCE(tp.done_tasks, 0) AS done_tasks, COALESCE(tp.waiting_tasks, 0) AS waiting_tasks,
+           COALESCE(tp.minutes_month, 0) AS minutes_month,
+           COALESCE(ob.objectives, 0) AS objectives, COALESCE(ob.objectives_done, 0) AS objectives_done,
+           GREATEST(p.created_at, tp.at, ob.at) AS last_activity
+      FROM projects p LEFT JOIN tp ON tp.pid = p.id LEFT JOIN ob ON ob.pid = p.id
+     WHERE p.user_id = %(u)s {filtro}
+     ORDER BY p.archived, lower(p.name)
+"""
+
+
+def project_rows(uid: int, include_archived: bool = False, only_id: int | None = None) -> list[dict]:
+    """Projetos da pessoa com os números (lista, cartão e cabeçalho do projeto)."""
+    filtro = "" if include_archived or only_id is not None else "AND NOT p.archived"
+    if only_id is not None:
+        filtro += " AND p.id = %(id)s"
+    return db.query_all(_STATS_SQL.format(filtro=filtro),
+                        {"u": uid, "m": app_today().replace(day=1), "id": only_id})
 
 
 def default_project(user_id: int) -> int | None:
@@ -138,7 +258,7 @@ def extra_project_ids(task_id: int) -> list[int]:
 ASSIGNER_NAME = """(SELECT COALESCE(a.display_name, a.email) FROM users a WHERE a.id = w.assigned_by) AS assigned_by_name"""
 
 # Último movimento de uma tarefa aberta (edição, anotação, item, tempo): o
-# assistente usa para "bloqueada/parada há N dias".
+# assistente usa para "aguardando/parada há N dias".
 TOUCHED = """,
     GREATEST(w.created_at,
       (SELECT max(a.created_at) FROM audit_log a
@@ -164,8 +284,15 @@ def board_day_range(today: date) -> tuple[date, date]:
 # remoção só conta se ela foi feita nele (removeu sem fazer = não era mais para
 # fazer). Inativa sem data (legado anterior à 002) fica de fora. UMA regra para
 # quadro, marcação, indicadores, relatório e resumos: o filtro é em Python.
+# pauses = períodos [início, fim] da pausa; done_dates = marcações (só 'after',
+# que conta da última vez).
 _ROTINAS_SQL = """
     SELECT r.id, r.label, r.position, r.freq, r.weekdays, r.month_day, r.interval_days, r.require_note, r.remind_at,
+           r.steps, r.after_from,
+           ARRAY(SELECT ARRAY[p.start_d, p.end_d] FROM recurring_pauses p
+                  WHERE p.recurring_id = r.id AND p.start_d <= p.end_d ORDER BY p.start_d) AS pauses,
+           CASE WHEN r.freq = 'after' THEN ARRAY(SELECT x.completed_date FROM recurring_completions x
+                                                  WHERE x.task_id = r.id ORDER BY 1) END AS done_dates,
            (r.created_at AT TIME ZONE %(tz)s)::date AS start_d,
            CASE WHEN r.deactivated_at IS NULL THEN DATE '9999-12-31'  -- ativa: sem fim
                 WHEN EXISTS (SELECT 1 FROM recurring_completions x WHERE x.task_id = r.id
@@ -178,25 +305,34 @@ _ROTINAS_SQL = """
 
 def rotinas(user_id: int, task_id: int | None = None) -> list[dict]:
     extra = " AND r.id = %(id)s" if task_id is not None else ""
-    return db.query_all(_ROTINAS_SQL + extra + " ORDER BY r.position, r.id",
+    rows = db.query_all(_ROTINAS_SQL + extra + " ORDER BY r.position, r.id",
                         {"tz": config.APP_TZ, "uid": user_id, "id": task_id})
+    today = app_today()
+    for r in rows:
+        r["paused_until"] = pause_end(r, today)  # pausada hoje: até quando
+    return rows
 
 
 def recurring_vigente(task_id: int, user_id: int, day: date) -> bool:
     return any(r["start_d"] <= day <= r["end_d"] for r in rotinas(user_id, task_id))
 
 
-# Concluídas no quadro: as mais recentes (o resto fica no relatório/exportação).
+# Concluídas no quadro: as mais recentes; done_offset/done_limit pedem outras
+# páginas e done_total diz quantas há.
 BOARD_DONE_LIMIT = 200
 
 
-def get_board(user_id: int, day: date | None = None, project: int | None = None) -> dict:
+def get_board(user_id: int, day: date | None = None, project: int | None = None,
+              done_offset: int = 0, done_limit: int = BOARD_DONE_LIMIT) -> dict:
     """Quadro do usuário. `day` escolhe o dia das rotinas (padrão: hoje; a rota
     garante a janela de RETRO_DAYS): as vigentes naquele dia, com `due` (agenda)
     e `done_today` (feita no dia escolhido; nome mantido por compatibilidade).
-    `in_progress` = tarefas abertas (a fazer, em andamento, bloqueadas), na
-    ordem: atrasadas, vencem hoje, prioridade, prazo. `project` filtra as
-    tarefas (0 = sem projeto)."""
+    `in_progress` = tarefas abertas (a fazer, em andamento, aguardando), na
+    ordem: as escolhidas para começar hoje ("Primeiro amanhã", first_on =
+    hoje), atrasadas, vencem hoje, prioridade, prazo. `first_day`: o próximo
+    dia útil (para onde vai a escolha do "Primeiro amanhã" feita hoje). `project` filtra as
+    tarefas (0 = sem projeto). `done`: as concluídas mais recentes, da
+    posição done_offset, até done_limit; done_total = todas."""
     today = app_today()
     day = day or today
     mask = work_mask(user_id)
@@ -219,32 +355,52 @@ def get_board(user_id: int, day: date | None = None, project: int | None = None)
         return """
         SELECT w.id, w.title, w.description, w.status, w.due_date, w.created_at, w.completed_at,
                w.priority, w.project_id, w.ticket, w.after_hours, w.assigned_by, w.blocked_reason, w.blocked_at, w.follow_up_on,
-               p.name AS project_name, p.color AS project_color, """ + ASSIGNER_NAME + """,
+               w.remind_at, w.first_on, p.name AS project_name, p.color AS project_color, """ + PROJECT_ICON + ", " + ASSIGNER_NAME + """,
                """ + TASK_COUNTS + extra + """
           FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
          WHERE w.user_id = %s"""
+    # "Primeiro amanhã" que vale hoje: a escolha mais recente para hoje ou antes
+    # (até 7 dias). Escolha feita para um feriado ou folga em que o app não abriu
+    # continua no dia seguinte, em vez de sumir sem aviso.
+    first_hl = db.query_one(
+        "SELECT max(first_on) AS d FROM worklog_tasks WHERE user_id = %s AND first_on <= %s AND first_on > %s",
+        (user_id, today, today - timedelta(days=7)))["d"]
     in_progress = db.query_all(
         cols(TOUCHED) + " AND w.status <> 'done'" + filtro_proj
-        + """ ORDER BY COALESCE(w.due_date < %s, false) DESC, COALESCE(w.due_date = %s, false) DESC,
+        + """ ORDER BY COALESCE(w.first_on = %s, false) DESC, COALESCE(w.due_date < %s, false) DESC,
+                       COALESCE(w.due_date = %s, false) DESC,
                        w.priority, COALESCE(w.due_date, DATE '9999-12-31'), w.created_at""",
-        tuple(params) + (today, today),
+        tuple(params) + (first_hl, today, today),
     )
+    for t in in_progress:  # na resposta, a escolha que vale hoje sai com first_on = hoje (o selo do Hoje)
+        if first_hl and t["first_on"] == first_hl:
+            t["first_on"] = today
     done = db.query_all(
-        cols() + " AND w.status = 'done'" + filtro_proj + f" ORDER BY w.completed_at DESC NULLS LAST LIMIT {BOARD_DONE_LIMIT}",
-        tuple(params),
+        cols() + " AND w.status = 'done'" + filtro_proj
+        + " ORDER BY w.completed_at DESC NULLS LAST, w.id DESC LIMIT %s OFFSET %s",
+        tuple(params) + (max(1, min(int(done_limit), BOARD_DONE_LIMIT)), max(0, int(done_offset))),
     )
+    done_total = db.query_one(
+        "SELECT count(*)::int AS n FROM worklog_tasks w WHERE w.user_id = %s AND w.status = 'done'" + filtro_proj,
+        tuple(params))["n"]
     for r in recurring:
-        r["due"] = is_due(r, day, mask)
+        r["due"] = is_pending(r, day, mask)
+        r["paused_until"] = pause_end(r, day)  # pausada nesse dia: até quando
+        r["next_due"] = next_due(r, day)  # só 'after'
+        r.pop("done_dates", None)  # já usadas; não vão na resposta
+        r.pop("after_from", None)
     min_day, _ = board_day_range(today)
     return {
         "timer": running_timer(user_id),
         "recurring": recurring,
         "in_progress": in_progress,
         "done": done,
+        "done_total": done_total,
         "day": day,
         "today": today,
         "min_day": min_day,
         "work_day": is_work_day(day, mask),
+        "first_day": next_work_day(today, mask),
     }
 
 
@@ -297,7 +453,8 @@ def get_dashboard(user_id: int, month: date | None = None) -> dict:
         user_id, min(win["heat_start"], win["adh_start"]) - timedelta(days=_STREAK_LOOKBACK), win["end"]
     )
     out = get_dashboard_analytics(user_id, tasks, completions, mask, today, win)
-    first = first_record_day(user_id).replace(day=1)
+    first_day = first_record_day(user_id)
+    first = first_day.replace(day=1)
     months, m = [], today.replace(day=1)
     while m >= first:
         months.append(m.strftime("%Y-%m"))
@@ -305,7 +462,149 @@ def get_dashboard(user_id: int, month: date | None = None) -> dict:
     out["period"] = {"month": month.strftime("%Y-%m") if month else None,
                      "start": win["adh_start"], "end": win["end"], "now": win["now"]}
     out["months"] = months  # do mais recente ao primeiro registro
+    if month is not None:
+        out["overview"] = month_overview(user_id, month, first_day)
     return out
+
+
+OVERVIEW_BEHIND = 5        # rotinas com dias sem marcar listadas
+OVERVIEW_DELIVERIES = 300  # entregas listadas (do maior tempo ao menor)
+
+
+def _totals(r: dict) -> dict:
+    s = r["summary"]
+    return {"start": r["start"], "end": r["end"], "recurring_done": s["recurring_done"],
+            "recurring_total": s["recurring_total"], "pontual_done": s["pontual_done"], "minutes": s["minutes"]}
+
+
+TREND_MONTHS = 6           # meses da tendência (o escolhido e os 5 anteriores)
+# Faixa de "na média" (a palavra neutra dos indicadores): rotinas, até 5 pontos
+# percentuais da média; tarefas e horas, até 15% da média (no mínimo 1 tarefa e
+# 1 hora). Média = os meses anteriores da tendência em que a pessoa já registrava
+# (sem o primeiro, se começou no meio dele), pelo menos 2. No mês corrente, tarefas
+# e horas comparam com a média proporcional aos dias já passados, e só depois da
+# primeira semana (antes disso, cedo demais para dizer).
+AVG_MIN_MONTHS = 2
+AVG_BAND_PP = 5
+AVG_BAND_REL = 0.15
+AVG_BAND_MIN = {"pontual_done": 1, "minutes": 60}
+AVG_FIRST_DAYS = 7
+
+
+def _add_months(m: date, n: int) -> date:
+    y, mm = divmod(m.year * 12 + m.month - 1 + n, 12)
+    return date(y, mm + 1, 1)
+
+
+def _word(value: float, avg: float, band: float) -> str:
+    if value > avg + band:
+        return "acima"
+    if value < avg - band:
+        return "abaixo"
+    return "na média"
+
+
+def _compare(cur: dict, olds: list[dict], scale: float) -> tuple[dict | None, dict]:
+    """A média da pessoa nos meses anteriores e a palavra neutra de cada indicador."""
+    words = {"routines": None, "tasks": None, "minutes": None}
+    if len(olds) < AVG_MIN_MONTHS:
+        return None, words
+    n = len(olds)
+    due = sum(o["recurring_total"] for o in olds)
+    avg = {"months": n, "scale": round(scale, 3),
+           "recurring_pct": round(100 * sum(o["recurring_done"] for o in olds) / due, 1) if due else None,
+           "pontual_done": round(sum(o["pontual_done"] for o in olds) / n, 1),
+           "minutes": round(sum(o["minutes"] for o in olds) / n)}
+    if avg["recurring_pct"] is not None and cur["recurring_total"]:
+        words["routines"] = _word(100 * cur["recurring_done"] / cur["recurring_total"], avg["recurring_pct"], AVG_BAND_PP)
+    if scale:
+        for key, word in (("pontual_done", "tasks"), ("minutes", "minutes")):
+            ref = avg[key] * scale
+            words[word] = _word(cur[key], ref, max(AVG_BAND_MIN[key], AVG_BAND_REL * ref))
+    return avg, words
+
+
+def month_overview(user_id: int, month: date, first_day: date | None = None) -> dict:
+    """O resumo de Meu mês: os números do mês (os MESMOS do PDF do mês, porque
+    vêm de get_report_range), os do mês anterior inteiro, a tendência dos
+    últimos TREND_MONTHS meses (mesma conta, mês a mês) com a média da pessoa e
+    a palavra neutra, as semanas e os dias do mês (o calendário), as rotinas com
+    dias sem marcar, o tempo por projeto e as entregas com "como resolveu"."""
+    today = app_today()
+    end = min(_month_end(month), today)
+    prev = _add_months(month, -1)
+    first_day = first_day or first_record_day(user_id)
+    first_month = first_day.replace(day=1)
+    has_prev = prev >= first_month
+    trend_start = max(_add_months(month, 1 - TREND_MONTHS), first_month)
+    read_from = min(trend_start, prev) if has_prev else month
+    inputs = _report_inputs(user_id, read_from, end)  # uma leitura para todos os meses
+    cur = get_report_range(user_id, month, end, inputs=inputs, with_open=False)
+    old = get_report_range(user_id, prev, _month_end(prev), inputs=inputs, with_open=False) if has_prev else None
+
+    # Tendência: do mais antigo ao escolhido, só meses em que a pessoa já registrava.
+    trend, m = [], trend_start
+    while m < month:
+        r = old if old and m == prev else get_report_range(user_id, m, _month_end(m), inputs=inputs, with_open=False)
+        trend.append({**_totals(r), "month": m.strftime("%Y-%m")})
+        m = _add_months(m, 1)
+    now = end == today
+    trend.append({**_totals(cur), "month": month.strftime("%Y-%m"), "now": now})
+    # Média: os meses anteriores inteiros (sem o primeiro, se começou no meio dele).
+    olds = [t for t in trend[:-1] if not (t["month"] == first_month.strftime("%Y-%m") and first_day.day > 1)]
+    scale = 1.0
+    if now:
+        elapsed, size = (end - month).days + 1, _month_end(month).day
+        scale = elapsed / size if elapsed >= AVG_FIRST_DAYS else 0.0
+    average, compare = _compare(_totals(cur), olds, scale)
+
+    # Semanas do mês (domingo a sábado, cortadas no mês) e os dias (o calendário).
+    weeks: list[dict] = []
+    for s in cur["series"]:
+        if not weeks or s["date"].weekday() == 6:  # 6 = domingo
+            weeks.append({"start": s["date"], "end": s["date"], "pontual_done": 0, "minutes": 0})
+        w = weeks[-1]
+        w["end"] = s["date"]
+        w["pontual_done"] += s["pontual"]
+        w["minutes"] += s["minutes"]
+    days = [{"date": s["date"], "due": s["recurring_total"], "done": s["recurring_done"] - s["recurring_extra"],
+             "extra": s["recurring_extra"], "paused": s["paused"], "pontual_done": s["pontual"],
+             "minutes": s["minutes"]} for s in cur["series"]]
+
+    stats = [r for r in cur["recurring_stats"] if r["due"]]
+    behind = sorted((r for r in stats if r["done"] < r["due"]),
+                    key=lambda r: (r["done"] / r["due"], -r["due"], r["label"].lower()))
+    deliveries = sorted(cur["deliveries"], key=lambda w: (-w["minutes"], -w["completed_at"].timestamp()))
+    # "Antes do PDF": as concluídas do mês (as mesmas do PDF) sem tempo apontado
+    # ou sem "como resolveu", da mais antiga à mais recente, para completar.
+    incomplete = [w for w in cur["deliveries"] if not w["minutes"] or not (w["resolution"] or "").strip()]
+    return {
+        "month": {**_totals(cur), "now": now},
+        "previous": {**_totals(old), "month": prev.strftime("%Y-%m")} if old else None,
+        "trend": trend,
+        "average": average,
+        "compare": compare,
+        "weeks": weeks,
+        "days": days,
+        "routines": len(stats),
+        "routines_full": sum(1 for r in stats if r["done"] >= r["due"]),  # feitas em todos os dias previstos
+        # Primeiro dia da primeira rotina da pessoa (mês anterior a ele: "As rotinas começaram em dd/mm").
+        "first_routine": min((t["start_d"] for t in inputs["tasks"]), default=None),
+        "behind": [{"label": r["label"], "due": r["due"], "done": r["done"]} for r in behind[:OVERVIEW_BEHIND]],
+        "projects": [{"name": p["name"], "color": p["color"], "icon": p["icon"], "minutes": p["minutes"]}
+                     for p in cur["projects"] if p["minutes"]],
+        "multi_project": cur["multi_project"],
+        "deliveries": [{"id": w["id"], "title": w["title"], "project": w["project"],
+                        "project_color": w["project_color"], "project_icon": w["project_icon"], "minutes": w["minutes"],
+                        "resolution": (w["resolution"] or "")[:240] or None}
+                       for w in deliveries[:OVERVIEW_DELIVERIES]],
+        "incomplete_total": len(incomplete),
+        "incomplete": [{"id": w["id"], "title": w["title"], "project": w["project"],
+                        "project_color": w["project_color"], "project_icon": w["project_icon"],
+                        "done_date": w["done_date"], "minutes": w["minutes"],
+                        "resolution": bool((w["resolution"] or "").strip())}
+                       for w in incomplete[:OVERVIEW_DELIVERIES]],
+    }
 
 
 # Janelas dos gráficos analíticos (em dias / semanas, sempre no fuso do app).
@@ -364,7 +663,8 @@ def get_dashboard_analytics(user_id: int, tasks, completions, mask: int, today: 
           -- a tarefa em dois projetos conta o tempo inteiro em cada um
           LEFT JOIN LATERAL (SELECT w.project_id AS pid UNION
                              SELECT x.project_id FROM worklog_task_projects x WHERE x.task_id = w.id) tp ON true
-          LEFT JOIN projects p ON p.id = tp.pid
+          -- projeto de outra conta (tarefa que foi transferida) não entra: conta como "sem projeto"
+          LEFT JOIN projects p ON p.id = tp.pid AND p.user_id = e.user_id
          WHERE e.user_id = %s AND e.day BETWEEN %s AND %s
          GROUP BY p.name, p.color ORDER BY minutes DESC
         """,
@@ -409,6 +709,8 @@ def get_dashboard_analytics(user_id: int, tasks, completions, mask: int, today: 
             continue
         due_ids = {t["id"] for t in tasks if t["start_d"] <= d <= t["end_d"] and is_due(t, d, mask)}
         feitos = tasks_done_on.get(d, set())
+        if d == today:  # hoje ainda dá tempo: pendente não é falta (igual ao ranking e ao PDF)
+            due_ids &= feitos
         # Feito fora da agenda não entra (é extra). Dia sem nada devido = quadro vazio.
         heat_days.append({"date": d, "slots": len(due_ids), "done": len(feitos & due_ids)})
         d += timedelta(days=1)
@@ -476,10 +778,11 @@ def _report_inputs(user_id: int, start: date, end: date, project: dict | None = 
     pid = project["id"] if project else None
     pontuais = db.query_all(
         """
-        SELECT w.id, w.title, w.description, w.priority, w.created_at, w.completed_at,
-               p.name AS project, p.color AS project_color,
+        SELECT w.id, w.title, w.description, w.priority, w.created_at, w.completed_at, w.resolution,
+               p.name AS project, p.color AS project_color, """ + PROJECT_ICON + """,
                (w.completed_at AT TIME ZONE %s)::date AS done_date,
-               """ + TASK_COUNTS + """
+               (SELECT n.body FROM task_notes n WHERE n.task_id = w.id ORDER BY n.created_at DESC LIMIT 1) AS last_note,
+               """ + ASSIGNER_NAME + ", " + TASK_COUNTS + """
           FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
          WHERE w.user_id = %s AND w.status = 'done' AND w.completed_at IS NOT NULL
            AND (w.completed_at AT TIME ZONE %s)::date BETWEEN %s AND %s"""
@@ -489,16 +792,59 @@ def _report_inputs(user_id: int, start: date, end: date, project: dict | None = 
     entries = db.query_all(
         """
         SELECT e.day, e.minutes, e.note, w.title, w.after_hours, p.name AS project, p.color AS project_color,
+               """ + PROJECT_ICON + """,
                """ + EXTRA_PROJECTS + """
           FROM time_entries e
           JOIN worklog_tasks w ON w.id = e.task_id
-          LEFT JOIN projects p ON p.id = w.project_id
+          LEFT JOIN projects p ON p.id = w.project_id AND p.user_id = e.user_id
          WHERE e.user_id = %s AND e.day BETWEEN %s AND %s"""
         + _PROJ_FILTER + " ORDER BY e.day, e.created_at",
         (user_id, start, end, pid, pid, pid),
     )
     return {"mask": work_mask(user_id), "tasks": tasks, "completions": completions,
             "pontuais": pontuais, "entries": entries}
+
+
+def team_report_inputs(uids: list[int], start: date, end: date) -> dict[int, dict]:
+    """_report_inputs de várias pessoas em [start, end] com QUATRO leituras
+    (agenda, rotinas, marcações, concluídas e tempo de todas juntas), sem laço
+    por pessoa: o painel da Equipe soma get_report_range(inputs=...) de cada
+    uma, a mesma conta do PDF e de Meu mês. As concluídas vêm sem os contadores
+    (o painel só conta e reparte por projeto)."""
+    out = {u: {"mask": DEFAULT_WORK_DAYS, "tasks": [], "completions": [], "pontuais": [], "entries": []} for u in uids}
+    if not uids:
+        return out
+    tz = config.APP_TZ
+    for r in db.query_all("SELECT id, work_days FROM users WHERE id = ANY(%s)", (uids,)):
+        out[r["id"]]["mask"] = r["work_days"]
+    sql = (_ROTINAS_SQL.replace("SELECT r.id,", "SELECT r.user_id AS owner_id, r.id,", 1)
+           .replace("r.user_id = %(uid)s", "r.user_id = ANY(%(uids)s)", 1))
+    today = app_today()
+    for r in db.query_all(sql + " ORDER BY r.position, r.id", {"tz": tz, "uids": uids}):
+        r["paused_until"] = pause_end(r, today)
+        out[r.pop("owner_id")]["tasks"].append(r)
+    for c in db.query_all(
+            """SELECT user_id, task_id, completed_date, note FROM recurring_completions
+                WHERE user_id = ANY(%s) AND completed_date BETWEEN %s AND %s""", (uids, start, end)):
+        out[c.pop("user_id")]["completions"].append(c)
+    for w in db.query_all(
+            """SELECT w.user_id, w.id, w.title, w.completed_at, w.resolution,
+                      p.name AS project, p.color AS project_color, """ + PROJECT_ICON + """,
+                      (w.completed_at AT TIME ZONE %s)::date AS done_date, """ + EXTRA_PROJECTS + """
+                 FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
+                WHERE w.user_id = ANY(%s) AND w.status = 'done' AND w.completed_at IS NOT NULL
+                  AND (w.completed_at AT TIME ZONE %s)::date BETWEEN %s AND %s
+                ORDER BY w.completed_at""", (tz, uids, tz, start, end)):
+        out[w.pop("user_id")]["pontuais"].append(w)
+    for e in db.query_all(
+            """SELECT e.user_id, e.day, e.minutes, e.note, w.title, w.after_hours, p.name AS project,
+                      p.color AS project_color, """ + PROJECT_ICON + ", " + EXTRA_PROJECTS + """
+                 FROM time_entries e JOIN worklog_tasks w ON w.id = e.task_id
+                 LEFT JOIN projects p ON p.id = w.project_id AND p.user_id = e.user_id
+                WHERE e.user_id = ANY(%s) AND e.day BETWEEN %s AND %s
+                ORDER BY e.day, e.created_at""", (uids, start, end)):
+        out[e.pop("user_id")]["entries"].append(e)
+    return out
 
 
 def _slice_inputs(inp: dict, start: date, end: date) -> dict:
@@ -576,7 +922,7 @@ def get_report_range(user_id: int, start: date, end: date, project: dict | None 
             feito = t["id"] in done_ids
             devida = is_due(t, d, mask)
             if d == hoje and not feito:
-                st["marks"] += "P" if devida else "O"
+                st["marks"] += "P" if is_pending(t, d, mask) else "O"
                 continue  # hoje ainda dá tempo: pendente não é falta
             if devida:
                 st["due"] += 1
@@ -594,7 +940,10 @@ def get_report_range(user_id: int, start: date, end: date, project: dict | None 
         tempo = time_by_date.get(d, [])
         minutes = sum(e["minutes"] for e in tempo)
         series.append({"date": d, "work_day": is_work_day(d, mask), "recurring_done": n_done + len(extras),
-                       "recurring_total": len(rec), "pontual": len(pont), "minutes": minutes})
+                       "recurring_total": len(rec), "recurring_extra": len(extras),
+                       # pausado: nada previsto porque a(s) rotina(s) do dia estavam em pausa
+                       "paused": not rec and any(pause_end(t, d) for t in vigentes),
+                       "pontual": len(pont), "minutes": minutes})
         total_done += n_done
         total_slots += len(rec)
         total_extra += len(extras)
@@ -617,16 +966,16 @@ def get_report_range(user_id: int, start: date, end: date, project: dict | None 
     # A tarefa em mais de um projeto conta inteira em cada um (a soma pode
     # passar do total; o relatório diz isso).
     def each_project(r):
-        yield r["project"], r["project_color"]
+        yield r["project"], r["project_color"], r.get("project_icon")
         for x in r.get("extra_projects") or []:
-            yield x["name"], x["color"]
+            yield x["name"], x["color"], x.get("icon")
     for e in entries:
-        for name, color in each_project(e):
-            p = by_project.setdefault(name or "", {"name": name, "color": color, "minutes": 0, "done": 0})
+        for name, color, ic in each_project(e):
+            p = by_project.setdefault(name or "", {"name": name, "color": color, "icon": ic, "minutes": 0, "done": 0})
             p["minutes"] += e["minutes"]
     for w in pontuais:
-        for name, color in each_project(w):
-            p = by_project.setdefault(name or "", {"name": name, "color": color, "minutes": 0, "done": 0})
+        for name, color, ic in each_project(w):
+            p = by_project.setdefault(name or "", {"name": name, "color": color, "icon": ic, "minutes": 0, "done": 0})
             p["done"] += 1
 
     return {
@@ -693,7 +1042,8 @@ def _compact(r: dict) -> dict:
         "minutes_after_hours": s["minutes_after_hours"],
         "active_days": s["active_days"],
         "deliveries": [{"id": w["id"], "title": w["title"], "project": w["project"],
-                        "project_color": w["project_color"], "minutes": w["minutes"]} for w in r["deliveries"]],
+                        "project_color": w["project_color"], "project_icon": w["project_icon"], "minutes": w["minutes"],
+                        "assigned_by_name": w.get("assigned_by_name")} for w in r["deliveries"]],
         "projects": [p for p in r["projects"] if p["minutes"] or p["done"]],
         "missed": [x["label"] for x in r["recurring_stats"] if x["due"] > x["done"]],
     }

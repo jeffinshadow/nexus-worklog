@@ -52,18 +52,20 @@ export async function prepare(file) {
 }
 
 // Envia uma ou mais fotos para `path` (/worklog/{id}/photos ou /recurring/{id}/photos?day=).
+// Sem sinal, a foto (já reduzida) fica na fila do aparelho e vai depois.
 export async function upload(path, files) {
   const list = [...files].filter(isImage);
-  let ok = 0;
+  let ok = 0, queued = 0;
   for (const f of list) {
-    try { await api.post(path, await prepare(f)); ok++; }
+    try { const r = await api.post(path, await prepare(f)); ok++; if (r && r.queued) queued++; }
     catch (e) { errorToast(e, "Não foi possível enviar a foto."); break; }
   }
-  return ok;
+  if (queued) toast(queued > 1 ? `${queued} fotos guardadas: vão quando a conexão voltar.` : "Foto guardada: vai quando a conexão voltar.");
+  return queued ? 0 : ok;
 }
 
-export const thumbUrl = (id) => `/api/photos/${id}?thumb=true`;
-export const photoUrl = (id) => `/api/photos/${id}`;
+const thumbUrl = (id) => `/api/photos/${id}?thumb=true`;
+const photoUrl = (id) => `/api/photos/${id}`;
 
 // Grade de miniaturas + "Adicionar foto". onChange: recarregar quem mostra.
 export function photoGrid(photos, { path, onChange, label = "Fotos" }) {
@@ -95,7 +97,7 @@ export function photoGrid(photos, { path, onChange, label = "Fotos" }) {
 }
 
 // Foto grande, com anterior/próxima (setas do teclado), baixar e excluir (com desfazer).
-export function viewer(photos, start, onChange) {
+function viewer(photos, start, onChange) {
   let i = start;
   const img = h("img", { class: "photo-big", alt: "" });
   const count = h("span", { class: "photo-count mono" });
