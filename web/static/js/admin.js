@@ -140,26 +140,23 @@ async function mountUsers(root, me) {
   roleSel.value = st.role;
   roleSel.addEventListener("change", () => { st.role = roleSel.value; page = 1; paint(); });
   if (!STATUS.some(([k, , test]) => k === st.status && (k === "all" || users.some(test)))) st.status = "all";
-  const seg = h("div", { class: "seg seg-sm admin-status", role: "group", "aria-label": "Filtrar por situação" },
+  // Situação num seletor, ao lado do papel: a faixa de filtros fica numa linha só.
+  const statusSel = h("select", { "aria-label": "Filtrar por situação" },
     ...STATUS.filter(([k, , test]) => k === "all" || users.some(test)).map(([k, label, test]) =>
-      h("button", { type: "button", class: "chip-btn", "data-k": k, text: `${label} · ${users.filter(test).length}`,
-        onClick: () => { st.status = k; page = 1; paint(); } })));
+      h("option", { value: k, text: `${label} (${users.filter(test).length})` })));
+  statusSel.value = st.status;
+  statusSel.addEventListener("change", () => { st.status = statusSel.value; page = 1; paint(); });
   const list = h("section", { class: "panel admin-users" },
     h("div", { class: "panel-head" }, title, h("div", { class: "spacer" }), inviteBtn),
     // Os papéis de cada conta mudam no ⋮ dela ("Papéis…"); aqui, o que cada um pode.
     h("details", { class: "roles-help" }, h("summary", { text: "O que cada papel pode" }),
       h("dl", { class: "roles-legend" }, ...ROLES.flatMap(([k, n, d]) => [h("dt", { text: n }), h("dd", { text: roleDesc(k, d, me) })]))),
     many ? h("div", { class: "admin-filters" }, h("div", { class: "field admin-search" }, search),
-      h("div", { class: "field admin-role" }, roleSel), seg) : null,
+      h("div", { class: "field admin-role" }, roleSel), h("div", { class: "field admin-role" }, statusSel)) : null,
     box);
 
   function paint() {
     clear(box);
-    for (const b of seg.children) {
-      const on = b.dataset.k === st.status;
-      b.setAttribute("aria-pressed", String(on));
-      b.setAttribute("aria-selected", String(on)); // mesmo visual do .seg
-    }
     const test = STATUS.find(([k]) => k === st.status)[2];
     const f = many ? st : { q: "", role: "" };
     const shown = users.filter((u) => (!many || test(u)) && (!f.role || u.roles.includes(f.role)) && (!f.q || userText(u).includes(f.q)));
