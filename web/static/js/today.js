@@ -9,11 +9,13 @@ import { openRecurring, pauseRecurring, openWorklog, finishTask, askResolution, 
 import { openTask } from "./task.js";
 import { fillProjectSelect } from "./projects.js";
 import { summaryPanel } from "./summary.js";
-import { quickRegister, lastDone } from "./quick.js";
+import { quickRegister, lastDone, pasteHandler } from "./quick.js";
 import { todayCard } from "./assistant.js";
 import { timerButton } from "./timer.js";
 import { todayRenewals } from "./renewals.js";
 import { packButton } from "./pacotes.js";
+import { prepareButton } from "./fila.js";
+import { markWithSteps } from "./passos.js";
 
 const LAST_PROJECT = "nexus.quick.project";
 const OPEN_FILTER = "nexus.today.filter";
@@ -94,6 +96,12 @@ export async function mount(root, ctx, opts = {}) {
         refresh();
         return;
       }
+      // Rotina com passos (ronda): marcar abre a lista; os não feitos vão para a evidência.
+      if (cb.checked && r.steps && r.steps.length) {
+        cb.checked = false;
+        markWithSteps(r, b.day, refresh);
+        return;
+      }
       // Rotina que exige evidência: marcar abre o campo antes de salvar.
       if (cb.checked && r.require_note && !r.note) {
         cb.checked = false;
@@ -114,6 +122,7 @@ export async function mount(root, ctx, opts = {}) {
     const hint = [r.paused_until ? `pausada até ${shortDate(r.paused_until)}` : "", scheduleLabel(r, b.day),
       r.due === false && !r.paused_until ? "fora da agenda deste dia (se marcar, é extra)" : "",
       r.require_note && !r.done_today ? "exige evidência" : "",
+      r.steps && r.steps.length && !r.done_today ? `${r.steps.length} passos` : "",
       r.photos ? `${r.photos} foto${r.photos > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ");
     // Horário: perto dele (ou passado, sem marcar) a etiqueta acende, como o aviso.
     const at = r.remind_at ? r.remind_at.slice(0, 5) : null;
@@ -148,6 +157,9 @@ export async function mount(root, ctx, opts = {}) {
     .catch(() => {});
   const quick = h("input", { type: "text", maxlength: "200", "aria-label": "Registrar tarefa rápida",
     placeholder: "O que você fez? — 15min" });
+  // Colou uma lista (várias linhas): prévia com uma tarefa por linha.
+  quick.addEventListener("paste", pasteHandler({ project: () => (proj.value && proj.value !== "__new" ? Number(proj.value) : null),
+    onDone: () => mount(root, ctx, { day, summary: sum }) }));
   // "Já resolvido antes" também aqui (por onde entra a maioria das tarefas):
   // o título sem os marcadores, depois de uma pausa na digitação.
   const hint = h("div", { class: "similar hidden", "aria-live": "polite" });
@@ -195,7 +207,8 @@ export async function mount(root, ctx, opts = {}) {
     h("div", { class: "panel-head" }, h("h2", { text: "Em aberto" }),
       h("span", { class: "count" + (late.length || blocked.length ? " warn" : ""), text: [String(open.length),
         late.length ? `${late.length} atrasada${late.length > 1 ? "s" : ""}` : "",
-        blocked.length ? `${blocked.length} aguardando` : ""].filter(Boolean).join(" · ") })),
+        blocked.length ? `${blocked.length} aguardando` : ""].filter(Boolean).join(" · ") }),
+      open.length ? prepareButton({ compact: true }) : null),
     h("div", { class: "quick-row" }, quick, proj),
     h("p", { class: "quick-hint" }, "Enter registra. Projeto, chamado e prazo no próprio texto: ",
       h("button", { type: "button", class: "link-btn", text: "ver marcadores", onClick: () => window.dispatchEvent(new CustomEvent("nexus:help", { detail: "marcadores" })) })), hint);

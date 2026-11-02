@@ -1,6 +1,7 @@
 import re
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from typing import Literal, Optional
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
@@ -149,6 +150,58 @@ def _remind_at(v):
     return v
 
 
+_QUANDO = re.compile(r"^(?:(hoje|amanh[aã])\s+(?:às\s+|as\s+)?)?(\d{1,2}(?:[:hH]\d{0,2})?)$", re.I)
+
+
+def remind_when(v):
+    """Lembrar em (tarefa): data e hora ISO ("2026-11-03T15:00", sem fuso = fuso
+    da app) ou como se fala: "15h", "7h30", "15:30" (a próxima vez que der essa
+    hora: hoje, ou amanhã se já passou), "amanhã 8h", "hoje 15h"."""
+    if not isinstance(v, str):
+        return v
+    txt = v.strip()
+    if not txt:
+        return None
+    tz = ZoneInfo(config.APP_TZ)
+    m = _QUANDO.match(txt)
+    if m and (m.group(1) or not re.match(r"^\d{1,2}$", m.group(2))):  # "18" sozinho não é hora (seria ambíguo)
+        hh, mm = parse_hour(m.group(2))
+        now = datetime.now(tz)
+        when = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        if m.group(1) and m.group(1).lower() != "hoje":
+            when += timedelta(days=1)
+        elif not m.group(1) and when <= now:
+            when += timedelta(days=1)
+        return when
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", txt):
+        raise ValueError("lembrete precisa da hora: AAAA-MM-DDTHH:MM (só o dia é o prazo, due_date)")
+    try:
+        when = datetime.fromisoformat(txt.replace("Z", "+00:00"))
+    except ValueError:
+        raise ValueError("lembrete: use AAAA-MM-DDTHH:MM, ou como se fala (15h, amanhã 8h)") from None
+    return when if when.tzinfo else when.replace(tzinfo=tz)
+
+
+def _steps(v):
+    """Passos da rotina: até 12, cada um com até 80 caracteres; vazios saem.
+    Lista vazia = sem passos (null)."""
+    if v is None:
+        return None
+    if isinstance(v, str):
+        v = v.splitlines()
+    out = []
+    for x in v:
+        x = " ".join(str(x).split())
+        if not x:
+            continue
+        if len(x) > 80:
+            raise ValueError("cada passo com até 80 caracteres")
+        out.append(x)
+    if len(out) > 12:
+        raise ValueError("no máximo 12 passos por rotina")
+    return out or None
+
+
 Freq = Literal["daily", "weekly", "monthly", "interval", "after"]
 _PARAM = {"weekly": "weekdays", "monthly": "month_day", "interval": "interval_days", "after": "interval_days"}
 
@@ -185,6 +238,8 @@ class RecurringIn(_Agenda):
     require_note: bool = False  # marcar exige evidência (auditoria)
     remind_at: Optional[time] = None  # horário: a interface lembra (e toca) perto dele
     remind_at_hora = field_validator("remind_at", mode="before")(_remind_at)
+    steps: Optional[list[str]] = Field(default=None, max_length=40)  # passos (até 12; marcar conta uma vez)
+    steps_ok = field_validator("steps", mode="before")(_steps)
 
 
 class RecurringUpdate(_Agenda):
@@ -194,6 +249,8 @@ class RecurringUpdate(_Agenda):
     require_note: Optional[bool] = None
     remind_at: Optional[time] = None  # null tira o horário (só se o campo vier)
     remind_at_hora = field_validator("remind_at", mode="before")(_remind_at)
+    steps: Optional[list[str]] = Field(default=None, max_length=40)  # null ou [] tira os passos (só se o campo vier)
+    steps_ok = field_validator("steps", mode="before")(_steps)
 
 
 class PauseIn(BaseModel):
@@ -368,6 +425,8 @@ class WorklogIn(BaseModel):
     blocked_reason: Optional[str] = Field(default=None, max_length=120)  # o que se aguarda (status blocked)
     follow_up_on: Optional[date] = None  # aguardando (blocked): dia combinado para cobrar
     resolution: Optional[str] = Field(default=None, max_length=1000)  # com status done: como foi resolvido
+    remind_at: Optional[datetime] = None  # lembrar em (data e hora; "15h", "amanhã 8h")
+    remind_when = field_validator("remind_at", mode="before")(remind_when)
 
     @model_validator(mode="after")
     def _norm(self):
@@ -398,6 +457,8 @@ class WorklogUpdate(BaseModel):
     resolution: Optional[str] = Field(default=None, max_length=1000)  # como foi resolvido (null apaga)
     blocked_reason: Optional[str] = Field(default=None, max_length=120)  # o que se aguarda (status blocked)
     follow_up_on: Optional[date] = None  # aguardando (blocked): dia combinado para cobrar
+    remind_at: Optional[datetime] = None  # lembrar em (null tira; só se o campo vier)
+    remind_when = field_validator("remind_at", mode="before")(remind_when)
 
     @model_validator(mode="after")
     def _norm(self):

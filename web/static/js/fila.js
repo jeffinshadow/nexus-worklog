@@ -62,6 +62,19 @@ export async function enqueue(method, path, body) {
   return qid;
 }
 
+// Desfazer algo que ainda está na fila (o lote colado, por exemplo): sai dela sem ir
+// ao servidor. false = já foi enviado (ou está indo agora).
+export async function cancel(qid) {
+  if (sending) return false;
+  const found = await tx(STORE, "readwrite", (s) => {
+    const g = s.get(qid);
+    g.onsuccess = () => { if (g.result && !g.result.created) s.delete(qid); };
+    return { get result() { return !!(g.result && !g.result.created); } };
+  }).catch(() => false);
+  changed();
+  return found;
+}
+
 // Criações já enviadas por esta aba: qid -> id da tarefa (para um passo que chega atrasado).
 const sentIds = new Map();
 
@@ -248,6 +261,63 @@ export async function overlay(path, data) {
   return data;
 }
 
+// ------------------------------------------- deixar pronto para sem sinal --
+// Antes de sair para onde não há sinal: lê as telas de abrir o dia e o detalhe
+// de cada tarefa aberta (checklist, anotações), em série curta, e o service
+// worker guarda como sempre (nexus-dados). Até READY_MAX tarefas, as primeiras
+// na ordem do Hoje (atrasadas, vencem hoje, prioridade). Sair apaga tudo.
+const READY_KEY = "nexus.pronto", READY_MAX = 60;
+
+// { at, n } da última vez que ficou pronto (ou null).
+export function readyInfo() {
+  try { return JSON.parse(localStorage.getItem(READY_KEY) || "null"); } catch { return null; }
+}
+
+// onStep(feitas, total): para a tela mostrar o andamento. Devolve { n, total, at, failed }.
+export async function prepareOffline(onStep) {
+  if (!navigator.onLine) throw Object.assign(new Error("Sem conexão agora. Faça isto antes de sair, com sinal."), { status: 0 });
+  if (!sendFn) throw new Error("O app ainda está abrindo. Tente de novo.");
+  // Pede ao navegador para não apagar estes dados quando faltar espaço (quando ele deixa).
+  try { await navigator.storage?.persist?.(); } catch { /* opcional */ }
+  const board = await sendFn("GET", "/board");
+  await Promise.all(["/recurring/reminders", "/projects", "/timer", "/summary"].map((p) => sendFn("GET", p).catch(() => null)));
+  const open = (board.in_progress || []).slice(0, READY_MAX);
+  let n = 0, failed = 0;
+  for (const t of open) {
+    try { await sendFn("GET", `/worklog/${t.id}`); n++; } catch (e) { if (!e.status) break; failed++; }
+    if (onStep) onStep(n + failed, open.length);
+  }
+  const info = { at: new Date().toISOString(), n, total: (board.in_progress || []).length, failed };
+  try { localStorage.setItem(READY_KEY, JSON.stringify({ at: info.at, n })); } catch { /* sem armazenamento: vale a cópia do SW */ }
+  changed();
+  return info;
+}
+
+// Botão "Deixar pronto para sem sinal": um toque guarda e avisa no fim.
+// compact: só o ícone (cabeçalho do Em aberto no Hoje); senão, com o texto (Ajuda).
+export function prepareButton({ compact = false } = {}) {
+  const label = "Deixar pronto para sem sinal";
+  const hint = "Guarda no aparelho o detalhe das tarefas em aberto (checklist e anotações), para abrir sem sinal";
+  const btn = compact
+    ? h("button", { type: "button", class: "icon", title: `${label}: ${hint.toLowerCase()}`, "aria-label": label }, icon("download"))
+    : h("button", { type: "button", class: "btn btn-ghost btn-sm" }, icon("download"), label);
+  btn.addEventListener("click", async () => {
+    const { toast, errorToast } = await import("./ui.js");
+    btn.disabled = true;
+    btn.setAttribute("aria-busy", "true");
+    try {
+      const r = await prepareOffline((done, total) => { btn.title = `Guardando ${done} de ${total}…`; });
+      const hora = new Date(r.at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+      const tarefas = r.n === 1 ? "1 tarefa" : `${r.n} tarefas`;
+      toast(r.total > r.n + r.failed
+        ? `Pronto às ${hora}: ${tarefas} com checklist e anotações no aparelho (as ${READY_MAX} primeiras do Hoje).`
+        : `Pronto às ${hora}: ${tarefas} com checklist e anotações no aparelho.`);
+    } catch (e) { errorToast(e, "Não deu para guardar. Tente de novo com sinal."); }
+    finally { btn.disabled = false; btn.removeAttribute("aria-busy"); if (compact) btn.title = `${label}: ${hint.toLowerCase()}`; }
+  });
+  return btn;
+}
+
 // --------------------------------------------------------------- barra --
 let staleAt = null;  // hora da última leitura servida do cache
 export function markStale(iso) { staleAt = iso; changed(); }
@@ -260,11 +330,16 @@ async function changed() {
   const offline = !navigator.onLine || staleAt;
   if (!offline && !ops.length && !bad.length) { bar?.remove(); bar = null; return; }
   const hora = staleAt ? new Date(staleAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : null;
+  // "Deixar pronto para sem sinal" de hoje: a barra diz de que hora são os detalhes guardados.
+  const ready = readyInfo();
+  const readyHour = ready && new Date(ready.at).toDateString() === new Date().toDateString()
+    ? new Date(ready.at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : null;
   // A contagem vem primeiro: no celular a barra corta o fim.
   const parts = [
     ops.length ? (sending && navigator.onLine ? `enviando ${ops.length > 1 ? `${ops.length} alterações` : "1 alteração"}…`
       : `${ops.length} ${ops.length > 1 ? "alterações esperando envio" : "alteração esperando envio"}`) : null,
     offline ? (hora ? `sem conexão desde ${hora}` : "sem conexão") : null,
+    offline && readyHour ? `${ready.n} ${ready.n === 1 ? "tarefa guardada" : "tarefas guardadas"} às ${readyHour}` : null,
     bad.length ? `${bad.length} não ${bad.length > 1 ? "puderam" : "pôde"} ser ${bad.length > 1 ? "aplicadas" : "aplicada"}` : null,
   ].filter(Boolean);
   const content = [icon(offline ? "alert" : "clock"), h("span", { text: parts.join(" · ") }),
@@ -306,12 +381,14 @@ export const pendingCount = () => pending;
 // A fila fica: é trabalho ainda não enviado, e vai quando a mesma pessoa entrar
 // (outra conta entrando apaga tudo, em app.js).
 export async function wipeReads() {
+  try { localStorage.removeItem(READY_KEY); } catch { /* sem armazenamento */ }
   if ("caches" in window) await caches.delete("nexus-dados");  // o mesmo nome de sw.js
 }
 
 // Sair: a fila e as leituras guardadas não ficam no aparelho (pode ser compartilhado).
 export async function wipe() {
   try { await tx(STORE, "readwrite", (s) => s.clear()); await tx(FAILED, "readwrite", (s) => s.clear()); } catch { /* sem IndexedDB */ }
+  try { localStorage.removeItem(READY_KEY); } catch { /* sem armazenamento */ }
   if ("caches" in window) for (const k of await caches.keys()) if (k.startsWith("nexus-")) await caches.delete(k);
 }
 

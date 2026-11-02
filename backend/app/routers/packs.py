@@ -24,9 +24,9 @@ router = APIRouter(prefix="/api/routine-packs", tags=["recurring"])
 SEG, TER, QUA, QUI, SEX = 2, 4, 8, 16, 32  # máscara da semana: domingo = bit 0
 
 
-def _r(key, label, freq="daily", at=None, weekdays=None, month_day=None, interval_days=None, note=False):
+def _r(key, label, freq="daily", at=None, weekdays=None, month_day=None, interval_days=None, note=False, steps=None):
     return {"key": key, "label": label, "freq": freq, "weekdays": weekdays, "month_day": month_day,
-            "interval_days": interval_days, "remind_at": at, "require_note": note}
+            "interval_days": interval_days, "remind_at": at, "require_note": note, "steps": steps}
 
 
 # Linguagem de quem faz o trabalho; nada de TI onde a área não é TI.
@@ -34,7 +34,9 @@ PACKS = [
     {"id": "manutencao", "name": "Manutenção predial", "icon": "manutencao",
      "description": "Ronda, quadro elétrico, bombas e os equipamentos de segurança do prédio.",
      "items": [
-         _r("ronda", "Fazer a ronda do prédio", at="08:00"),
+         _r("ronda", "Fazer a ronda do prédio", at="08:00",
+            steps=["Casa de máquinas", "Bombas e caixa d'água", "Gerador", "Quadro geral", "Portões e acessos",
+                   "Áreas comuns e garagem"]),
          _r("bombas", "Conferir as bombas e o nível da caixa d'água", at="08:30"),
          _r("quadro", "Conferir o quadro elétrico (aquecimento e disjuntores)", "weekly", "09:00", weekdays=SEG),
          _r("extintores", "Conferir os extintores (validade e lacre)", "monthly", "10:00", month_day=1, note=True),
@@ -60,7 +62,8 @@ PACKS = [
     {"id": "campo", "name": "Redes e campo", "icon": "rede",
      "description": "Links e VPN, os equipamentos das filiais e o inventário.",
      "items": [
-         _r("material", "Conferir o material antes de sair para o campo", at="07:45"),
+         _r("material", "Conferir o material antes de sair para o campo", at="07:45",
+            steps=["Ferramentas", "Peças e cabos", "Notebook e carregador", "EPI", "Endereços e contatos do dia"]),
          _r("links", "Conferir os links de internet e a VPN", at="08:00"),
          _r("filiais", "Conferir os equipamentos das filiais", "weekly", "09:00", weekdays=SEG | QUI),
          _r("inventario", "Atualizar o inventário de equipamentos", "monthly", "10:00", month_day=5),
@@ -141,7 +144,8 @@ def apply_pack(pack_id: str, data: PackApplyIn, user: dict) -> dict:
             continue
         data_r = RecurringIn(label=i["label"], freq=i["freq"], weekdays=i["weekdays"], month_day=i["month_day"],
                              interval_days=i["interval_days"], require_note=i["require_note"],
-                             remind_at=time.fromisoformat(i["remind_at"]) if i["remind_at"] else None)
+                             remind_at=time.fromisoformat(i["remind_at"]) if i["remind_at"] else None,
+                             steps=i["steps"])
         created.append(recurring_routes.create(data_r, user=user))
     return {"pack": p["id"], "project": project, "created": created, "skipped": skipped}
 

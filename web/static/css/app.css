@@ -746,6 +746,7 @@ body:has(.rem-card) .idle-card:not(.rem-card) { display: none; }
 .rem-row p small { display: block; font-family: var(--font-label); font-size: var(--type-label); color: var(--dim); }
 .rem-row input { flex: 1 1 100%; order: 2; }
 .rem-row input + .btn { order: 3; margin-left: auto; }
+.rem-acts { display: flex; flex-wrap: wrap; gap: 4px; margin-left: auto; }  /* lembrete de tarefa: Abrir, Ok, Concluir */
 .rec-title { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .chip.rem-at { font-variant-numeric: tabular-nums; }
 .chip.rem-at.due { border-color: var(--warning); }  /* na hora: o mesmo contêiner, com contorno */
@@ -759,6 +760,9 @@ body:has(.rem-card) .idle-card:not(.rem-card) { display: none; }
 @keyframes timer-pulse { 50% { opacity: .35; } }
 .timer-task { flex: 1; min-width: 0; border: 0; background: transparent; color: inherit; font: inherit; font-weight: var(--weight-title);
   text-align: left; padding: 0; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.timer-task { display: flex; flex-direction: column; justify-content: center; }
+.timer-title, .timer-prev { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.timer-prev { font-size: var(--type-label); font-weight: var(--weight-body); }  /* interrompeu «…»: a que ficou parada */
 .timer-time { font-variant-numeric: tabular-nums; font-weight: var(--weight-title); color: inherit; }
 .timer-chip button.icon { width: 32px; height: 32px; }
 .timer-mobile { display: none; }
@@ -1660,3 +1664,14 @@ input:disabled { cursor: not-allowed; }
 .invite-roles .role-line { min-height: 44px; }
 .invite-roles .role-line small { color: var(--on-surface-variant); }
 .email-block { margin: 0 0 8px; }
+
+/* ------------------------------------------- R5-A: colar lista, passos -- */
+.paste-dialog { width: min(560px, calc(100vw - 32px)); }
+.paste-count { margin: 4px 0; font-size: var(--type-caption); color: var(--dim); }
+.paste-list, .steps-list { list-style: none; margin: 0 0 8px; padding: 0; max-height: min(50vh, 420px); overflow: auto; }
+.paste-list li + li, .steps-list li + li { border-top: 1px solid var(--outline-variant); }
+.paste-row { align-items: flex-start; padding: 8px 0; min-height: 44px; }
+.paste-text { display: flex; flex-direction: column; min-width: 0; }
+.paste-title { overflow-wrap: anywhere; }
+.paste-row small { font-size: var(--type-label); color: var(--dim); }
+.steps-list .check-line { min-height: 44px; }

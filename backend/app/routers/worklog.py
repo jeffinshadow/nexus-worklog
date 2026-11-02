@@ -9,7 +9,7 @@ from psycopg.errors import UniqueViolation
 from .. import audit, db
 from ..paging import clamp, put_total
 from ..deps import active_user, active_user_csrf
-from ..schemas import ChecklistIn, ChecklistUpdate, FinishIn, NoteIn, NoteUpdate, TimeIn, TimeUpdate, WorklogIn, WorklogUpdate
+from ..schemas import ChecklistIn, ChecklistUpdate, FinishIn, NoteIn, NoteUpdate, SnoozeIn, TimeIn, TimeUpdate, WorklogIn, WorklogUpdate
 from .assign import notify_assigner
 from .objectives import check_objective, next_position, objective_project
 from ..services import is_work_day, work_mask
@@ -145,6 +145,22 @@ def _reason(text):
     return " ".join((text or "").split()) or None
 
 
+# Lembrete no passado: um pouco de folga para o relógio do aparelho e o tempo de digitar.
+REMIND_GRACE = timedelta(minutes=2)
+
+
+def check_remind(when: Optional[datetime]) -> Optional[datetime]:
+    """Lembrar em: não no passado (nem a mais de um ano)."""
+    if when is None:
+        return None
+    now = datetime.now(timezone.utc)
+    if when < now - REMIND_GRACE:
+        raise HTTPException(status_code=400, detail="o horário do lembrete já passou; escolha um horário daqui para a frente")
+    if when > now + timedelta(days=366):
+        raise HTTPException(status_code=400, detail="lembrete: até um ano à frente")
+    return when
+
+
 def _by_ref(uid: int, ref: str):
     return db.query_one("SELECT id FROM worklog_tasks WHERE user_id = %s AND external_ref = %s", (uid, ref))
 
@@ -175,13 +191,16 @@ def create(data: WorklogIn, response: Response, user=Depends(active_user_csrf)):
         except HTTPException:  # conclusão inválida: o erro certo vem dela, logo abaixo
             created_at = now
     completed_at = resolve_completed(data.completed_at, created_at, now) if data.status == "done" else None
+    # Feita sem sinal (created_at do aparelho): o lembrete pode ter passado na fila; fica e avisa já.
+    remind = None if data.status == "done" else (data.remind_at if data.created_at else check_remind(data.remind_at))
     try:
         row = db.query_one(
             """
             INSERT INTO worklog_tasks (user_id, title, description, status, due_date, created_at, completed_at,
                                        project_id, priority, ticket, after_hours, external_ref,
-                                       blocked_reason, blocked_at, follow_up_on, resolution, objective_id, exec_position)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                       blocked_reason, blocked_at, follow_up_on, resolution, objective_id, exec_position,
+                                       remind_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
             (uid, data.title, data.description, data.status, data.due_date, created_at, completed_at,
@@ -190,7 +209,7 @@ def create(data: WorklogIn, response: Response, user=Depends(active_user_csrf)):
              now if data.status == "blocked" else None,
              follow_up_day(uid, data.follow_up_on) if data.status == "blocked" else None,
              ((data.resolution or "").strip() or None) if data.status == "done" else None,
-             data.objective_id, next_position(uid, project_id, data.objective_id)),
+             data.objective_id, next_position(uid, project_id, data.objective_id), remind),
         )
     except UniqueViolation:  # duas chamadas iguais ao mesmo tempo: a segunda devolve a primeira
         response.status_code = 200
@@ -258,7 +277,7 @@ def detail(task_id: int, user=Depends(active_user)):
         """
         SELECT w.id, w.title, w.description, w.status, w.due_date, w.created_at, w.completed_at,
                w.priority, w.project_id, w.ticket, w.after_hours, w.external_ref, w.assigned_by, w.assigned_at,
-               w.blocked_reason, w.blocked_at, w.follow_up_on, w.resolution,
+               w.blocked_reason, w.blocked_at, w.follow_up_on, w.resolution, w.remind_at, w.remind_snoozed_until,
                w.objective_id, (SELECT o.title FROM project_objectives o WHERE o.id = w.objective_id) AS objective_title,
                p.name AS project_name, p.color AS project_color, """ + PROJECT_ICON + ", " + ASSIGNER_NAME + ", " + EXTRA_PROJECTS + """
           FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
@@ -320,6 +339,11 @@ def update(task_id: int, data: WorklogUpdate, user=Depends(active_user_csrf)):
     elif "project_id" in sent and final_project != before["project_id"]:
         fields += ["objective_id = NULL", "exec_position = %s"]
         values.append(next_position(user["user_id"], final_project, None))
+    if "remind_at" in sent:  # null tira; novo horário volta a avisar (adiado e visto zeram)
+        if data.remind_at != before.get("remind_at"):
+            check_remind(data.remind_at)
+            fields += ["remind_at = %s", "remind_snoozed_until = NULL", "remind_seen_at = NULL"]
+            values.append(data.remind_at)
     if data.priority is not None:
         fields.append("priority = %s")
         values.append(data.priority)
@@ -407,6 +431,40 @@ def finish(task_id: int, data: Optional[FinishIn] = None, user=Depends(active_us
                  after=audit.worklog_snapshot(task_id, user["user_id"]))
     safe_notify(task_id)
     return {"ok": True}
+
+
+@router.post("/{task_id}/snooze")
+def snooze(task_id: int, data: SnoozeIn, user=Depends(active_user_csrf)):
+    """Adia o lembrete da tarefa (o aviso e as notificações dos aparelhos esperam)."""
+    t = _own_task(user["user_id"], task_id)
+    if not t.get("remind_at"):
+        raise HTTPException(status_code=400, detail="a tarefa não tem lembrete")
+    row = db.query_one("""UPDATE worklog_tasks SET remind_snoozed_until = now() + make_interval(mins => %s)
+                           WHERE id = %s AND user_id = %s RETURNING remind_snoozed_until""",
+                       (data.minutes, task_id, user["user_id"]))
+    return {"until": row["remind_snoozed_until"]}
+
+
+@router.post("/{task_id}/reminder-seen")
+def reminder_seen(task_id: int, user=Depends(active_user_csrf)):
+    """"Ok" no aviso: o lembrete foi visto e não toca mais (o horário fica na tarefa)."""
+    t = _own_task(user["user_id"], task_id)
+    if not t.get("remind_at"):
+        raise HTTPException(status_code=400, detail="a tarefa não tem lembrete")
+    db.execute("UPDATE worklog_tasks SET remind_seen_at = now() WHERE id = %s AND user_id = %s", (task_id, user["user_id"]))
+    return {"ok": True}
+
+
+def task_reminders(uid: int) -> list[dict]:
+    """Lembretes de tarefa para o aviso da interface: abertos, não vistos, de 24 h
+    atrás até 12 h à frente (o resto chega numa leitura seguinte)."""
+    return db.query_all(
+        """SELECT id, title, remind_at, remind_snoozed_until AS snoozed_until
+             FROM worklog_tasks
+            WHERE user_id = %s AND status <> 'done' AND remind_at IS NOT NULL
+              AND remind_at BETWEEN now() - interval '24 hours' AND now() + interval '12 hours'
+              AND (remind_seen_at IS NULL OR remind_seen_at < remind_at)
+            ORDER BY remind_at, id""", (uid,))
 
 
 @router.post("/{task_id}/duplicate", status_code=201)

@@ -107,7 +107,7 @@ export function offerNotifications(me) {
 
 // --------------------------------------------- Configurações > Avisos --
 const TYPES = [
-  ["routine", "Rotina na hora", "No horário da rotina, com Marcar feita e Adiar 10 min; repete 10 e 30 min depois até ser marcada."],
+  ["routine", "Rotina e lembrete na hora", "No horário da rotina, com Marcar feita e Adiar 10 min; repete 10 e 30 min depois até ser marcada. O mesmo no “Lembrar em” de uma tarefa, com Concluir e Adiar."],
   ["follow_up", "Cobrar hoje", "No horário da manhã (em Seu dia, abaixo), as tarefas aguardando com o dia de cobrar chegando."],
   ["deadline", "Prazos de hoje", "No horário da manhã (em Seu dia, abaixo), as atrasadas e o que vence hoje."],
   ["assigned", "Tarefa atribuída a você", "Quando alguém manda uma tarefa pelo Nexus."],

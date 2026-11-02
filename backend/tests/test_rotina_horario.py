@@ -15,7 +15,7 @@ def _lembrete(u, rid):
 def test_criar_com_horario_aparece_nos_lembretes(usuario):
     rid = _criar(usuario, remind_at="09:30")
     assert _lembrete(usuario, rid) == {"id": rid, "label": "Conferir backups", "remind_at": "09:30",
-                                       "require_note": False, "done": False}
+                                       "require_note": False, "steps": [], "done": False}
     assert next(x for x in usuario.get("/board").json()["recurring"] if x["id"] == rid)["remind_at"].startswith("09:30")
     usuario.post(f"/recurring/{rid}/toggle", {"done": True})
     assert _lembrete(usuario, rid)["done"] is True

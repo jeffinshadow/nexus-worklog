@@ -70,12 +70,18 @@ troca os seus na Conta, e o e-mail novo só vale depois de confirmado por link) 
   extintores todo dia 1, atualizações às sextas…); a pessoa marca os itens antes
   e edita tudo depois. Estão no tour, no + das rotinas e nas telas vazias; não
   duplicam o que já existe. A **ordem** das rotinas no Hoje é a da pessoa
-  (setas ou arrastar, com desfazer).
+  (setas ou arrastar, com desfazer). **Passos** opcionais (a ronda com casa de
+  máquinas, bombas, gerador…, até 12): marcar mostra a lista, todos marcados;
+  o que não foi feito vai para a evidência ("feita, exceto: gerador") e a
+  rotina continua contando uma vez. A ronda do pacote predial já vem com passos.
 - **Tarefas** — status, prioridade, prazo, projeto/cliente (uma tarefa pode
   atender **mais de um projeto**: aparece em cada um, com o tempo inteiro em
   cada um; e há um **projeto padrão** por pessoa para o que é criado sem projeto), checklist,
   anotações e apontamento de tempo; **cronômetro** (um por pessoa, vale em
-  qualquer aparelho); **número do chamado** (GLPI, TomTicket, Jira…) que vira
+  qualquer aparelho; trocou de tarefa por uma interrupção, ao parar ou concluir a
+  interrupção ele oferece **voltar** para a que ficou parada); **lembrete com hora**
+  ("Lembrar em": na hora, aviso na tela e notificação do aparelho com Concluir e
+  Adiar 10 min; também pela IA e no calendário); **número do chamado** (GLPI, TomTicket, Jira…) que vira
   link; **plantão** fora do horário, com o tempo separado no relatório; e
   **modelos** de tarefa com checklist pronto. Lançamento **retroativo** (criada e
   concluída em datas passadas, até um limite configurável pelo admin; padrão 60
@@ -90,7 +96,9 @@ troca os seus na Conta, e o e-mail novo só vale depois de confirmado por link) 
   para cobrar ganha uma pergunta: "quer marcar quando cobrar?"; com o dia
   combinado, o lembrete aparece no Hoje (com "Cobrei"), no calendário e no aviso da manhã.
   CSV de plantão (horas do mês) e CSV de rotinas e evidências (auditoria). Registro rápido
-  entende `@projeto #chamado !plantão !alta ^amanhã !aguarda motivo — 45min` (dois `@`, dois projetos); o detalhe da tarefa copia um resumo pronto para o chamado ou o cliente.
+  entende `@projeto #chamado !plantão !alta ^amanhã ^15h !aguarda motivo — 45min` (dois `@`, dois projetos;
+  `^15h`, `^amanhã 8h` = lembrete com hora); **colar uma lista** (uma por linha, do bloco de notas, WhatsApp ou planilha)
+  vira várias tarefas, com prévia e um Desfazer para o lote; o detalhe da tarefa copia um resumo pronto para o chamado ou o cliente.
 - **Vencimentos e base de conhecimento** — certificados, licenças, domínios e
   garantias avisam com antecedência (Hoje, e-mail da manhã, calendário); ao
   concluir, "como resolveu?" vira texto que a busca encontra — e a tarefa nova
@@ -152,7 +160,9 @@ troca os seus na Conta, e o e-mail novo só vale depois de confirmado por link) 
   desfazer, cota por pessoa e exportação em .zip.
 - **Sem sinal** — o app abre com as telas da última visita (avisando de que
   hora são) e guarda no aparelho o que for feito: registrar, concluir, anotar,
-  marcar rotina, fotos e o cronômetro, com a hora em que aconteceu. Uma tarefa
+  marcar rotina, fotos e o cronômetro, com a hora em que aconteceu. Antes de
+  sair, **Deixar pronto para sem sinal** (no Hoje e na Ajuda) guarda no aparelho
+  o detalhe das tarefas em aberto (checklist e anotações, até 60); uma tarefa
   nunca aberta com sinal abre com o que havia nas listas e aceita anotação, foto
   e conclusão. Na volta da conexão, vai sozinho e na ordem, sem duplicar (nem
   as fotos); o que for recusado fica com o texto inteiro para copiar. Sair limpa
