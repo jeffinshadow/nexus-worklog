@@ -45,7 +45,7 @@ export async function assignDialog({ fromReturn = null, edit = null, onDone } = 
   if (!edit && !accepting.length) {
     const dlg = modal(heading,
       h("p", { text: session.me.teams_on && !session.me.is_master && !(session.me.teams || []).length
-        ? "Você ainda não está em nenhuma equipe. Nesta instância, só dá para mandar tarefas para quem está numa equipe com você; quem define as equipes é a administração (Admin › Equipes)."
+        ? "Você ainda não está em nenhuma equipe. Nesta instância, só dá para atribuir tarefas para quem está numa equipe com você; quem define as equipes é a administração (Admin › Equipes)."
         : everyone ? "Ainda não há ninguém com o papel Usuário (e acesso liberado) para receber tarefas."
         : session.me.teams_on ? "Ninguém das suas equipes aceitou receber tarefas ainda. Cada pessoa liga isso em Configurações > Conta, em “Permitir que me atribuam tarefas”."
         : "Ninguém aceitou receber tarefas ainda. Cada pessoa liga isso em Configurações > Conta, em “Permitir que me atribuam tarefas”." }),

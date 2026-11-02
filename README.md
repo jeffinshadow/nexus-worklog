@@ -16,7 +16,7 @@ Cada pessoa vê **apenas** os próprios dados. As contas são criadas pelo
 **admin** (convite por link, ou senha temporária sem e-mail); não há cadastro público. Papéis
 acumuláveis, dados em **Admin > Contas > ⋮ > Papéis…**: **Usuário** (o próprio registro),
 **Admin** (convites, contas, papéis, configurações; não vê o registro de ninguém), **Manda tarefas** (libera, na tela Equipe, o
-botão Atribuir tarefa e a lista Tarefas que atribuí: manda tarefas a quem aceitou receber) e **Vê a equipe** (libera a tela Equipe: consulta, só
+botão Atribuir tarefa e a lista Tarefas que atribuí: atribui tarefas a quem aceitou receber) e **Vê a equipe** (libera a tela Equipe: consulta, só
 para leitura, o quadro, a retrospectiva, os relatórios, as horas e as fotos de
 quem **aceitou** em Configurações > Conta; contas novas começam sem o aceite, e
 os Papéis… de cada conta mostram quem liberou). O admin também tem o próprio registro;
@@ -94,7 +94,7 @@ mudança fica no histórico do admin. Toda conta nova faz o tour guiado no prime
   Para começar, **pacotes por área** (Manutenção predial, Suporte de TI,
   Atendimento e recepção, Redes e campo, Segurança da informação): num toque,
   o projeto da área com ícone e as rotinas com agenda e horário (ronda às 8h,
-  extintores todo dia 1, atualizações às sextas…); a pessoa marca os itens antes
+  extintores todo dia 1, atualizações às sextas…); a pessoa marca os passos antes
   e edita tudo depois. Estão no tour, no + das rotinas e nas telas vazias; não
   duplicam o que já existe. A **ordem** das rotinas no Hoje é a da pessoa
   (setas ou arrastar, com desfazer). **Passos** opcionais (a ronda com casa de
@@ -177,7 +177,7 @@ mudança fica no histórico do admin. Toda conta nova faz o tour guiado no prime
   pessoa; só entra quem aceitou ser visto (`GET /api/viewer/team`). No topo:
   Atribuir tarefa (diálogo por cima da tela), Horas da equipe (CSV do período) e PDF de uma pessoa ou projeto.
   Logo abaixo do painel, Tarefas que atribuí (filtro Em aberto / Devolvidas / Concluídas, 15 por página).
-  Quem só manda tarefas vê só essa lista e o botão, sem números nem pessoas.
+  Quem só atribui tarefas vê só essa lista e o botão, sem números nem pessoas.
 - **Histórico com desfazer**, **busca** sem acento (inclusive por `#chamado`),
   **feed de calendário (ICS)**, **avisos por e-mail** (opt-in), **lembrete** no
   app depois de X minutos sem registro, **atalhos de teclado** (`n`, `q`, `/`, `s`,

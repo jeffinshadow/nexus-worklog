@@ -340,7 +340,7 @@ MASTER_LOCKED = ("essa conta é a do admin master: só ela mesma passa o papel p
 ROLE_GAIN = {
     "user": ("Usuário", "Você passa a ter o seu próprio registro: Hoje, Tarefas, Rotinas e relatórios."),
     "admin": ("Admin", "Você administra o Nexus: convites, contas, papéis e configurações gerais (Admin, no menu)."),
-    "assigner": ("Manda tarefas", "Você pode mandar tarefas para quem aceitou receber e acompanhar o que mandou."),
+    "assigner": ("Manda tarefas", "Você pode atribuir tarefas a quem aceitou receber e acompanhar o que atribuiu."),
     "viewer": ("Vê a equipe", "Você vê, sem editar, o registro da equipe na tela Equipe."),
     # Não é um papel de user_roles: o aviso da transferência do master (routers/equipes.py) usa o mesmo aviso único.
     "master": ("Admin master", "Você é o admin master: com “Vê a equipe” e “Manda tarefas” ligados, vê e atribui para "

@@ -85,7 +85,7 @@ demais pessoas. Não há cadastro público. Os papéis são acumuláveis (Admin 
 | **Usuário** | O próprio registro (tarefas, rotinas, tempo, relatórios). O admin também o tem |
 | **Admin** | Convites, contas, papéis, configurações. **Não vê os registros de ninguém** |
 | **Vê a equipe** (viewer) | Libera a tela Equipe: consulta, só leitura, o quadro, o mês, os relatórios, as horas e as fotos de quem permitiu |
-| **Manda tarefas** (assigner) | Libera Atribuir tarefa na Equipe e a lista Tarefas que atribuí: manda tarefas a quem recebe |
+| **Manda tarefas** (assigner) | Libera Atribuir tarefa na Equipe e a lista Tarefas que atribuí: atribui tarefas a quem recebe |
 
 Todo sistema precisa de ao menos um admin; o último não sai (nem por exclusão). Quem ganha ou perde um papel é
 avisado no app (e por e-mail, se configurado).
@@ -104,7 +104,7 @@ filtra por equipe (ou "Sem equipe").
   MCP, no CSV e no PDF, no painel da Equipe e em "Precisa de atenção". Quem está **sem equipe** não é visto nem recebe
   tarefas de ninguém, exceto do admin master. A tela Equipe ganha um seletor de equipe para quem está em mais de uma;
   o Atribuir agrupa as pessoas pela equipe em comum. Tarefas atribuídas antes, entre quem não compartilha mais
-  equipe, continuam na lista de quem mandou, mas não se alteram nem se cancelam.
+  equipe, continuam na lista de quem atribuiu, mas não se alteram nem se cancelam.
 - **Para empresas** passa a valer só para quem está em alguma equipe: sem equipe, a pessoa volta às próprias
   escolhas (guardadas). Exceções globais: "Solicitar convite" na tela de login e a política de privacidade.
 - **Vencimentos compartilhados** (sql/044): ao cadastrar um vencimento, quem o cria pode compartilhá-lo com UMA das
@@ -116,7 +116,7 @@ filtra por equipe (ou "Sem equipe").
   sem equipes: o campo nem aparece.
 - **Admin master:** o primeiro admin da instância (a migração 043 marca o admin mais antigo); sempre existe
   exatamente um. Com os próprios papéis "Vê a equipe" e "Manda tarefas" ligados (um toque em Admin > Equipes), vê e
-  manda tarefas para **todos**, com ou sem equipe (ainda respeitando o aceite de cada pessoa ou Para empresas);
+  atribui tarefas para **todos**, com ou sem equipe (ainda respeitando o aceite de cada pessoa ou Para empresas);
   desligados, nada disso aparece para ele. O que ele abre do registro de outras pessoas vai para o log de admin
   (o Histórico dele). Não pode ser bloqueado, excluído nem perder o papel Admin enquanto for o master.
 - **Transferir o master:** só o próprio master, em Admin > Equipes > "Transferir o papel de master…": escolhe outro
