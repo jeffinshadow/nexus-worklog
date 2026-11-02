@@ -1186,11 +1186,6 @@ dialog .tour-intro { margin: 0 0 14px; line-height: 1.5; }
   .seg { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); border-radius: var(--radius-xl); }
   .seg:has(> :nth-child(4)) { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .seg button.chip-btn { text-align: center; white-space: normal; }
-  /* Vencimento: o prazo embaixo do nome (sem sobrepor), os botões à direita. */
-  .venc-row { display: grid; grid-template-columns: minmax(0, 1fr); grid-auto-columns: auto; column-gap: 6px; row-gap: 4px; align-items: center; }
-  .venc-row > .t { grid-column: 1; grid-row: 1; }
-  .venc-row > .chip { grid-column: 1; grid-row: 2; justify-self: start; }
-  .venc-row > button { grid-row: 1 / span 2; }
 }
 .venc-row > .chip, .venc-row > .btn { white-space: nowrap; }
 
@@ -1474,11 +1469,12 @@ li.mes-res { padding-top: 10px; border-top: 1px solid var(--outline-variant); }
 @media (max-width: 860px) { .page-actions .proj-more { width: 44px; height: 44px; } }
 .proj-bar .proj-back { margin: 0 0 0 -8px; }
 .dialog-note.intro { margin: -8px 0 16px; }
-/* Tela Vencimentos no celular: nome numa linha, prazo e botões na de baixo */
+/* Vencimento no celular (Hoje e tela própria): nome na largura toda, prazo e botões embaixo.
+   Com os botões ao lado, o nome ficava espremido e quebrava no meio da palavra. */
 @media (max-width: 860px) {
-  .venc-row.venc-full { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-  .venc-row.venc-full > .t { flex: 1 1 100%; }
-  .venc-row.venc-full > .chip { margin-right: 100%; }  /* prazo sozinho; botões na linha de baixo */
+  .venc-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .venc-row > .t { flex: 1 1 100%; }
+  .venc-row > .chip { margin-right: 100%; }  /* prazo sozinho; botões na linha de baixo */
 }
 
 /* Tema claro: o dragão padrão (branco) vira escuro; um logo enviado pelo admin fica como está. */

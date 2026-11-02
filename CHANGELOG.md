@@ -9,7 +9,11 @@ maior seguinte (política completa em [`docs/ADMIN.md`](docs/ADMIN.md#versioname
 não a da hora do deploy. As versões 0.x e 1.x foram numeradas depois, sobre o histórico do git
 (etiquetas `v0.1.0` … `v1.12.1`).
 
-## 2.0.0 — a publicar
+## 2.0.1 — 2026-11-02
+Vencimentos no celular: o nome usa a largura toda, com o prazo e os botões embaixo (no Hoje, o nome
+espremido ao lado dos botões quebrava no meio da palavra).
+
+## 2.0.0 — 2026-11-02
 
 Redesenho geral e quebras de contrato, resultado do "gauntlet geral" (rodadas de críticos, validação final
 e lotes de correção).

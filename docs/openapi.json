@@ -3,7 +3,7 @@
   "info": {
     "title": "Nexus Worklog",
     "description": "API REST do Nexus Worklog. Referência, erros e exemplos: docs/API.md.",
-    "version": "2.0.0"
+    "version": "2.0.1"
   },
   "paths": {
     "/api/health": {
