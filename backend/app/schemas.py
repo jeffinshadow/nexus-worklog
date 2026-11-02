@@ -102,9 +102,11 @@ class RolesIn(BaseModel):
 
 
 class AppSettingsIn(BaseModel):
-    retro_days: int = Field(ge=1, le=366)  # tarefas: criar/concluir até N dias atrás
     support_contact: Optional[str] = Field(default=None, max_length=200)  # "Ajuda": a quem recorrer
-    photo_quota_mb: Optional[int] = Field(default=None, ge=0, le=100000)  # fotos por pessoa (MB); ausente = mantém
+    # Obsoletos (até a 3.0): aceitos e ignorados. O limite retroativo é fixo (60 dias) e a cota de fotos
+    # vem da variável PHOTO_QUOTA_MB.
+    retro_days: Optional[int] = None
+    photo_quota_mb: Optional[int] = None
 
 
 class DeleteUserIn(BaseModel):

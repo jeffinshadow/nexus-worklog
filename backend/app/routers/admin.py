@@ -19,6 +19,8 @@ from ..deps import require_admin, require_admin_csrf
 from ..schemas import (AdminProfileIn, AppSettingsIn, BlockUserIn, DeleteUserIn, InviteIn, OrgIn, ResetPasswordIn,
                        RolesIn)
 from ..security import generate_temp_password, hash_password, revoke_access
+from .. import services
+from ..config import config
 from ..services import default_project
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -465,18 +467,18 @@ def account_counts(user_id: int) -> dict:
 
 @router.get("/settings")
 def get_settings(admin=Depends(require_admin)):
-    return db.query_one("SELECT retro_days, support_contact, photo_quota_mb FROM app_settings WHERE id = 1")
+    r = db.query_one("SELECT support_contact FROM app_settings WHERE id = 1")
+    # retro_days e photo_quota_mb: só leitura (fixos; ver config.PHOTO_QUOTA_MB e services.TASK_RETRO_DAYS).
+    return {**r, "retro_days": services.task_retro_days(), "photo_quota_mb": config.PHOTO_QUOTA_MB}
 
 
 @router.put("/settings")
 def put_settings(data: AppSettingsIn, admin=Depends(require_admin_csrf)):
     before = get_settings(admin)
     contact = " ".join((data.support_contact or "").split()) or None
-    db.execute("""UPDATE app_settings SET retro_days = %s, support_contact = %s, updated_at = now(),
-                         photo_quota_mb = COALESCE(%s, photo_quota_mb) WHERE id = 1""",
-               (data.retro_days, contact, data.photo_quota_mb))
+    db.execute("UPDATE app_settings SET support_contact = %s, updated_at = now() WHERE id = 1", (contact,))
     audit.record({**admin, "actor": "admin"}, "app.settings", "app_settings", 1,
-                 before=before, after=data.model_dump())
+                 before={"support_contact": before["support_contact"]}, after={"support_contact": contact})
     return get_settings(admin)
 
 
