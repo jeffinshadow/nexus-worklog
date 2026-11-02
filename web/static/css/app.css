@@ -1796,3 +1796,5 @@ input:disabled { cursor: not-allowed; }
 .admin-filters.has-teams .admin-search { flex-basis: 100%; }
 .admin-filters.has-teams .admin-role { flex: 1 1 180px; }
 @media (max-width: 560px) { .admin-filters.has-teams .admin-role { flex: 1 1 calc(50% - 5px); } }
+
+.team-pick-line[hidden] { display: none; }

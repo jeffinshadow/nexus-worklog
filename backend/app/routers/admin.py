@@ -395,6 +395,8 @@ def edit_profile(user_id: int, data: AdminProfileIn, admin=Depends(require_admin
     com ela desligada, para corrigir um convite). Campo ausente = mantém.
     Trocar o e-mail avisa o endereço antigo e o novo (conta que já entrou). Fica
     no log de admin (histórico de quem alterou)."""
+    if teams.is_master(user_id) and user_id != admin["user_id"]:
+        raise HTTPException(status_code=400, detail=MASTER_LOCKED)
     target = db.query_one("SELECT id, email, display_name, invite_pending FROM users WHERE id = %s", (user_id,))
     if not target:
         raise HTTPException(status_code=404, detail="usuário não encontrado")
@@ -541,6 +543,8 @@ def reset_password(user_id: int, data: ResetPasswordIn | None = None, admin=Depe
       também recebe o link, para mandar por outro canal se o e-mail falhar.
 
     Para a própria conta, use a troca normal."""
+    if teams.is_master(user_id) and user_id != admin["user_id"]:
+        raise HTTPException(status_code=400, detail=MASTER_LOCKED)
     if user_id == admin["user_id"]:
         raise HTTPException(status_code=400, detail="use a troca de senha da sua própria conta")
     target = _ensure_user(user_id)
