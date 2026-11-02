@@ -77,6 +77,15 @@ def test_registrar_nao_altera_nem_exclui(usuario):
     assert db.query_one("SELECT title FROM worklog_tasks WHERE id = %s", (tid,))["title"] == "Trocar reator"
 
 
+def _rotas():
+    """Todas as rotas, já com o prefixo (o FastAPI novo inclui os routers sob demanda)."""
+    for r in app.routes:
+        if hasattr(r, "effective_route_contexts"):
+            yield from r.effective_route_contexts()
+        else:
+            yield r
+
+
 def _usa(dep, alvo) -> bool:
     return any(d.call in alvo or _usa(d, alvo) for d in dep.dependencies)
 
@@ -87,7 +96,7 @@ def test_registrar_toda_rota_que_escreve_nasce_negada(usuario):
     b = Bearer(criar_chave(usuario, scope="append")["token"])
     alvo = {deps.active_user_csrf, deps.require_assigner_csrf}
     vistas = 0
-    for route in app.routes:
+    for route in _rotas():
         methods = (getattr(route, "methods", None) or set()) & {"POST", "PUT", "PATCH", "DELETE"}
         if not methods or not hasattr(route, "dependant") or not _usa(route.dependant, alvo):
             continue
@@ -98,11 +107,13 @@ def test_registrar_toda_rota_que_escreve_nasce_negada(usuario):
             if (m, route.path) in deps.APPEND_ROUTES:
                 continue
             r = b.c.request(m, path, json={}, headers=b.h)
-            assert r.status_code == 403 and r.json()["detail"] == deps.APPEND_DENIED, (m, route.path, r.status_code)
+            assert r.status_code == 403, (m, route.path, r.status_code)
+            if not _usa(route.dependant, {deps.require_assigner_csrf}):  # lá o papel é conferido antes
+                assert r.json()["detail"] == deps.APPEND_DENIED, (m, route.path)
             vistas += 1
     assert vistas >= 30  # a lista acima realmente percorreu as rotas
     for m, p in deps.APPEND_ROUTES:  # a lista fechada só tem rotas que existem
-        assert any(getattr(r, "path", None) == p and m in (getattr(r, "methods", None) or ()) for r in app.routes), (m, p)
+        assert any(getattr(r, "path", None) == p and m in (getattr(r, "methods", None) or ()) for r in _rotas()), (m, p)
 
 
 def test_registrar_no_mcp(usuario):
