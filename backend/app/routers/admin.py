@@ -3,7 +3,7 @@
 Ver os registros e relatórios das pessoas saiu daqui: é do Visualizador de
 tarefas (routers/viewer.py).
 """
-import json
+
 import logging
 import threading
 import unicodedata
@@ -12,6 +12,7 @@ from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException
 
 from psycopg.errors import UniqueViolation
+from psycopg.types.json import Jsonb
 
 from .. import audit, db, links, mailer, org, people, push, roles
 from ..deps import require_admin, require_admin_csrf
@@ -317,7 +318,7 @@ def role_notice(uid: int, email: str, added: set, removed: set, admin: dict) -> 
     rem = (old_rem - added) | (removed - old_add)
     notice = {"added": [k for k in ROLE_GAIN if k in add], "removed": [k for k in ROLE_GAIN if k in rem]}
     db.execute("UPDATE users SET role_notice = %s WHERE id = %s",
-               (json.dumps(notice) if (add or rem) else None, uid))
+               (Jsonb(notice) if (add or rem) else None, uid))
     if mailer.configured():
         from .assign import _spawn  # o mesmo envio em segundo plano da atribuição
         _spawn(email, _roles_mail(added, removed, people.profile(admin["user_id"])["name"]))
