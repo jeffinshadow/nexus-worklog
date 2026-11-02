@@ -165,6 +165,17 @@ def test_aviso_unico_para_quem_ja_usa(admin, usuario):
     assert usuario.get("/auth/me").json()["visibility_notice"] is False
 
 
+def test_admin_nao_recebe_o_aviso_da_propria_mudanca(admin, usuario):
+    """R6 admin A5: quem liga a opção já sabe; o aviso único vai só para os outros."""
+    db.execute("INSERT INTO user_roles (user_id, role) SELECT id, 'user' FROM users WHERE email = %s ON CONFLICT DO NOTHING",
+               (admin.get("/auth/me").json()["email"],))
+    _org(admin, team_visibility="managers", assign_receive="all")
+    me = admin.get("/auth/me").json()
+    assert me["visibility_notice"] is False and me["assign_notice"] is False
+    outro = usuario.get("/auth/me").json()
+    assert outro["visibility_notice"] is True and outro["assign_notice"] is True
+
+
 def test_log_de_admin_das_opcoes(admin):
     _org(admin, team_visibility="managers")
     _org(admin, team_visibility="managers")  # sem mudança: não registra

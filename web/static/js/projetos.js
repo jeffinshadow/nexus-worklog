@@ -162,7 +162,7 @@ async function mountProject(root, ctx, pid) {
   let o;
   try { o = await api.get(`/projects/${pid}/overview`); }
   catch (e) {
-    if (e.status === 404) { location.hash = "#/projetos"; return; }
+    if (e.status === 404) { toast("Projeto não encontrado (pode ter sido excluído).", { error: true }); location.hash = "#/projetos"; return; }
     throw e;
   }
   const refresh = () => mountProject(root, ctx, pid);
@@ -211,7 +211,8 @@ async function mountProject(root, ctx, pid) {
       h("p", { class: "proj-last", text: "última atividade " + quando(p.last_activity, today) })),
     progress(o.totals.done, o.totals.total),
     h("p", { class: "proj-card-meta", text: o.objectives.length
-      ? `${o.objectives.length} objetivo${o.objectives.length > 1 ? "s" : ""} · ${o.totals.objectives_open} em aberto · na ordem de execução`
+      // "não concluído": "em aberto", na mesma tela, é das tarefas.
+      ? `${o.objectives.length} objetivo${o.objectives.length > 1 ? "s" : ""} · ${o.totals.objectives_open} não concluído${o.totals.objectives_open === 1 ? "" : "s"} · na ordem de execução`
       : "Crie objetivos (as demandas principais) e ponha as tarefas na ordem em que vão ser feitas." }),
     upcoming));
 
@@ -242,7 +243,7 @@ function objectiveBlock(ob, index, o, pid, today, refresh) {
     st.open = page;
     Object.assign(list, { _ids: data.tasks.map((t) => t.id), _start: start, _count: rows.length });
     rows.forEach((t, j) => list.append(taskRow(t, start + j, data.tasks, oid, o, pid, today, refresh)));
-    if (!data.tasks.length) list.append(h("p", { class: "empty obj-empty", text: ob ? "Nenhuma tarefa aberta neste objetivo." : "Nada solto: todas as tarefas abertas têm objetivo." }));
+    if (!data.tasks.length) list.append(h("p", { class: "empty obj-empty", text: ob ? "Nenhuma tarefa aberta neste objetivo." : o.totals.total ? "Nada solto: todas as tarefas abertas têm objetivo." : "Nenhuma tarefa ainda." }));
     const nav = pager({ page, total: data.tasks.length, size: OPEN_PAGE, label: `tarefas abertas de ${ob ? ob.title : "Sem objetivo"}`, compact: true,
       onPage: (n) => { st.open = n; paintOpen(); if (!phone()) bindGrips(list); }, focus: heading });
     if (nav) openPages.append(nav);
@@ -503,7 +504,7 @@ function dragObjectives(blocks, pid, refresh) {
 // ------------------------------------------------------------- diálogos --
 
 function editObjective(pid, ob, refresh) {
-  const title = h("input", { type: "text", maxlength: "120", required: "required", value: ob ? ob.title : "", placeholder: "Ex.: Módulo de pagamentos" });
+  const title = h("input", { type: "text", maxlength: "120", required: "required", value: ob ? ob.title : "", placeholder: "Ex.: Trocar os quadros do bloco B" });
   const desc = h("textarea", { rows: "3", maxlength: "500", placeholder: "O que precisa estar pronto (opcional)" });
   desc.value = ob?.description || "";
   const due = h("input", { type: "date" });

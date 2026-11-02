@@ -71,7 +71,7 @@ export function taskChips(t, today) {
   // Lembrete com hora: o relógio e quando ("15:00", "amanhã 08:00").
   if (t.remind_at && t.status !== "done") {
     const quando = remindLabel(localDateTime(t.remind_at));
-    chips.push(h("span", { class: "chip rem-at", title: "Lembrar em " + quando }, icon("bell"), h("span", { class: "sr-only", text: "lembrete " }), quando));
+    chips.push(h("span", { class: "chip rem-at", title: "Lembrete às " + quando }, icon("bell"), h("span", { class: "sr-only", text: "lembrete " }), quando));
   }
   // Contexto (projeto, objetivo, chamado, quem mandou, plantão): uma linha de texto
   // com o ponto de cor, sem borda; em pílula fica só o estado (atrasada, aguardando...).
@@ -247,7 +247,7 @@ export function blockTask(t, onDone) {
   const form = h("form", {},
     h("h2", { text: "Aguardando" }),
     h("p", { class: "dialog-note", text: t.title }),
-    field("Aguardando o quê?", reason), field("Lembrar de cobrar em (opcional)", follow), err,
+    field("Aguardando o quê?", reason), field("Dia para cobrar (opcional)", follow), err,
     h("div", { class: "dialog-actions" },
       h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
       h("button", { type: "submit", class: "btn btn-primary", text: "Marcar como aguardando" })));
@@ -277,7 +277,7 @@ export function followUpTask(t, onDone) {
   const form = h("form", {},
     h("h2", { text: "Quando cobrar?" }),
     h("p", { class: "dialog-note", text: t.blocked_reason ? `${t.title}: aguardando ${t.blocked_reason}.` : t.title }),
-    field("Lembrar de cobrar em", follow),
+    field("Dia para cobrar", follow),
     h("p", { class: "dialog-note", text: "No dia, o assistente do Hoje lembra (e a notificação da manhã, se estiver ligada)." }), err,
     h("div", { class: "dialog-actions" },
       h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
@@ -585,6 +585,7 @@ export function openRecurring(item, onDone) {
     : null;
 
   document.getElementById("rec-cancel").onclick = () => dlg.close();
+  document.getElementById("rec-close").onclick = () => dlg.close();
   document.getElementById("form-recurring").onsubmit = busy(async (ev) => {
     ev.preventDefault();
     const label = input.value.trim();

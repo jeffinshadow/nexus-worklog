@@ -3,8 +3,9 @@
 // "feita, exceto: bombas" na evidência. A rotina conta UMA vez (nada muda nos
 // números, no PDF nem na matriz); a evidência já vai para o PDF e o CSV.
 import { api } from "./api.js";
-import { h, icon } from "./dom.js";
+import { h, icon, localDay } from "./dom.js";
 import { busy, modal, toast } from "./ui.js";
+import { photoGrid } from "./fotos.js";
 
 const NOTE_MAX = 200;
 
@@ -33,11 +34,24 @@ export function markWithSteps(r, day, onDone) {
     err.textContent = n ? "" : "Marque pelo menos um passo (ou cancele).";
   };
   list.addEventListener("change", sync);
+  // A foto da evidência aqui mesmo (no campo é o comum): entra na hora, como no diálogo da evidência.
+  const photoDay = day || localDay(Date.now());
+  const photoBox = h("div", { class: "field" }, h("span", { class: "field-label", text: "Fotos (opcional)" }));
+  const loadPhotos = async () => {
+    let got = [];
+    try { got = await api.get(`/recurring/${r.id}/photos?day=${photoDay}`); } catch { /* sem rede: só o botão */ }
+    photoBox.querySelector(".photo-grid")?.remove();
+    photoBox.append(photoGrid(got, { path: `/recurring/${r.id}/photos?day=${photoDay}`, onChange: loadPhotos }));
+  };
+  loadPhotos();
+  // Foto ainda subindo: o "Marcar feita" espera (fechar antes cortaria o envio).
+  photoBox.addEventListener("photo-busy", (ev) => { go.disabled = ev.detail || !boxes.some((b) => b.checked); });
   const form = h("form", {},
     h("h2", { text: r.label }),
-    h("p", { class: "dialog-note", text: "Desmarque o que não foi feito: vai para a evidência (no relatório em PDF). A rotina conta uma vez." }),
+    h("p", { class: "dialog-note", text: "Desmarque o que ficou sem fazer: isso fica anotado no PDF. A rotina conta como feita uma vez." }),
     list,
     h("label", { class: "field" }, r.require_note ? "Observação (esta rotina exige evidência)" : "Observação (opcional)", text),
+    photoBox,
     err,
     h("div", { class: "dialog-actions" },
       h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }), go));

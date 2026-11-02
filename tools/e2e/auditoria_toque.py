@@ -4,7 +4,8 @@ import websocket
 B = os.environ.get("NEXUS_E2E_URL", "http://localhost:8090")
 CONTAS = [("user", os.environ["NEXUS_E2E_USER"].split(":", 1)), ("admin", os.environ["NEXUS_E2E_ADMIN"].split(":", 1))]
 TELAS = {"user": ["hoje", "tarefas", "projetos", "vencimentos", "mes", "mes?aba=pdf", "historico", "busca?q=rede",
-                  "config?aba=modelos", "config?aba=avisos", "config?aba=calendario", "config?aba=ia", "config?aba=conta", "mais"],
+                  # Configurações é uma página só: o topo (Conta) e cada seção pelo link antigo, que rola até ela.
+                  "config", "config?aba=avisos", "config?aba=modelos", "config?aba=calendario", "config?aba=ia", "mais"],
          "admin": ["admin", "equipe"]}
 JS = r"""(()=>{
   const out=[];

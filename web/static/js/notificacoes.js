@@ -107,10 +107,10 @@ export function offerNotifications(me) {
 
 // --------------------------------------------- Configurações > Avisos --
 const TYPES = [
-  ["routine", "Rotina e lembrete na hora", "No horário da rotina, com Marcar feita e Adiar 10 min; repete 10 e 30 min depois até ser marcada. O mesmo no “Lembrar em” de uma tarefa, com Concluir e Adiar."],
+  ["routine", "Rotina e lembrete na hora", "No horário da rotina, com Marcar feita e Adiar 10 min; repete 10 e 30 min depois até ser marcada. O mesmo no “Lembrete com hora” de uma tarefa, com Concluir e Adiar."],
   ["follow_up", "Cobrar hoje", "No horário da manhã (em Seu dia, abaixo), as tarefas aguardando com o dia de cobrar chegando."],
   ["deadline", "Prazos de hoje", "No horário da manhã (em Seu dia, abaixo), as atrasadas e o que vence hoje."],
-  ["assigned", "Tarefas atribuídas", "Quando alguém manda uma tarefa para você, ou devolve uma que você mandou."],
+  ["assigned", "Tarefas atribuídas", "Quando alguém atribui uma tarefa a você, ou devolve uma que você atribuiu."],
 ];
 // O horário da manhã é um só para e-mail e notificações: o painel devolve `collect()`
 // (o corpo de PUT /push/prefs, sem o horário) e Configurações grava os dois a cada mudança.

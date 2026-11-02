@@ -196,15 +196,12 @@ try:
     mar.ev("document.querySelector('dialog.tour-dialog')?.close()")
     mar.wait("!!document.querySelector('.sum-week')", 8)
     mar.ev("document.querySelector('.sum-week').scrollIntoView({block: 'center'})"); time.sleep(.4)
-    check("card da semana com setas", mar.ev("document.querySelector('.sum-week .day-nav-label')?.textContent") == "Esta semana")
-    mar.click("document.querySelector('.sum-week [aria-label=\"Semana anterior\"]')")
-    check("semana passada", mar.wait("document.querySelector('.sum-week .day-nav-label')?.textContent === 'Semana passada'"))
-    mar.click("document.querySelector('.sum-week [aria-label=\"Semana anterior\"]')")
-    check("duas semanas atrás", mar.wait("/\\d\\d\\/\\d\\d a \\d\\d\\/\\d\\d/.test(document.querySelector('.sum-week .day-nav-label')?.textContent)"))
+    # R6 (produto): o cartão da semana sem setas para semanas antigas (o passado fica em Meu mês).
+    check("card da semana: Esta semana", mar.ev("document.querySelector('.sum-week h3')?.textContent") == "Esta semana")
+    check("card da semana sem setas", not mar.ev("!!document.querySelector('.sum-week [aria-label=\"Semana anterior\"]')"))
+    check("card da semana com a revisão", mar.ev("!!document.querySelector('.sum-week .sum-review')"))
     time.sleep(.3)
     mar.shot("c09-semanas")
-    check("próxima volta", mar.click("document.querySelector('.sum-week [aria-label=\"Próxima semana\"]')") and
-          mar.wait("document.querySelector('.sum-week .day-nav-label')?.textContent === 'Semana passada'"))
 
     # Limpeza.
     for u in adm.api("GET", "/admin/users")["j"]:

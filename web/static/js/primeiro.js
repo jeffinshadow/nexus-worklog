@@ -7,6 +7,7 @@
 import { api } from "./api.js";
 import { h, icon, clear, shortDate, addDays } from "./dom.js";
 import { errorToast, modal, pager, pageSlice, toast } from "./ui.js";
+import { projectChip } from "./projects.js";
 
 const FIRST_MAX = 3;
 const PAGE = 8;
@@ -60,7 +61,7 @@ export async function pickFirst(onDone, b = null) {
     for (const t of rows) {
       const on = chosen.has(t.id);
       const pick = h("button", { type: "button", class: "btn btn-sm btn-ghost review-pick", "aria-pressed": String(on),
-        "aria-label": `${on ? "Escolhida" : "Escolher"}: ${t.title}`, text: on ? "Escolhida" : "Escolher",
+        "aria-label": `Escolher: ${t.title}`, text: on ? "Escolhida" : "Escolher", // o estado vai só no aria-pressed (não lido duas vezes)
         onClick: () => {
           if (chosen.has(t.id)) chosen.delete(t.id);
           else if (chosen.size < FIRST_MAX) chosen.add(t.id);
@@ -72,7 +73,8 @@ export async function pickFirst(onDone, b = null) {
       if (t.due_date) chips.push(h("span", { class: "chip" + (t.due_date < b.today ? " late" : t.due_date === b.today ? " today" : ""),
         text: t.due_date < b.today ? `atrasada · ${shortDate(t.due_date)}` : t.due_date === b.today ? "vence hoje" : `prazo ${shortDate(t.due_date)}` }));
       if (t.priority === 1) chips.push(h("span", { class: "chip prio-1", text: "alta" }));
-      if (t.project_name) chips.push(h("span", { class: "chip", text: t.project_name }));
+      // O projeto como nos cartões (ícone e nome, sem a pílula): a coluna alinha com ou sem selo.
+      if (t.project_name) chips.push(projectChip({ project_name: t.project_name, project_color: t.project_color, project_icon: t.project_icon }));
       box.append(h("div", { class: "review-row" + (on ? " decided" : ""), "data-id": String(t.id) },
         h("div", { class: "review-t" }, h("span", { class: "review-title", text: t.title }),
           chips.length ? h("span", { class: "card-meta" }, ...chips) : null),

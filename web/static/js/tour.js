@@ -31,10 +31,11 @@ export async function visibilityNotice(me) {
   } });
   const dlg = modal(
     h("h2", { text: "Quem gerencia a equipe vê o seu registro" }),
-    h("p", { text: "Nesta instância do Nexus, quem gerencia a equipe vê as tarefas de todos (definido pela administração). Quem tem o papel “Vê a equipe” vê, sem editar, o seu quadro, os seus números, relatórios, horas e fotos." }),
+    h("p", { id: "vis-notice-text", text: "Nesta instância do Nexus, quem gerencia a equipe vê as tarefas de todos (definido pela administração). Quem tem o papel “Vê a equipe” vê, sem editar, o seu quadro, os seus números, relatórios, horas e fotos." }),
     h("p", { class: "dialog-note", text: viewers.length ? `Hoje, com esse papel: ${viewers.join(", ")}.` : "Hoje, ninguém tem esse papel." }),
     h("p", { class: "dialog-note", text: "A sua escolha em Configurações > Conta fica guardada e volta a valer se a administração mudar isso." }),
     h("div", { class: "dialog-actions" }, ok));
+  dlg.setAttribute("aria-describedby", "vis-notice-text"); // o leitor lê o porquê, não só o título e o "Entendi"
   ok.focus();
   return dlg;
 }
@@ -50,10 +51,11 @@ export function assignNotice(me) {
   } });
   const dlg = modal(
     h("h2", { text: "Você pode receber tarefas de quem atribui" }),
-    h("p", { text: ASSIGN_TEXT }),
+    h("p", { id: "assign-notice-text", text: ASSIGN_TEXT }),
     h("p", { class: "dialog-note", text: ASSIGN_OWN }),
     h("p", { class: "dialog-note", text: "A sua escolha em Configurações > Conta fica guardada e volta a valer se a administração mudar isso." }),
     h("div", { class: "dialog-actions" }, ok));
+  dlg.setAttribute("aria-describedby", "assign-notice-text");
   ok.focus();
   return dlg;
 }
@@ -66,6 +68,13 @@ const ROLE_INFO = {
   assigner: ["Manda tarefas", "Você pode mandar tarefas para quem aceitou receber e acompanhar o que mandou."],
   viewer: ["Vê a equipe", "Você vê, sem editar, o registro da equipe na tela Equipe, no menu."],
 };
+// Com Para empresas ligado, "Manda tarefas" e "Vê a equipe" valem para todos (sem aceite).
+function roleText(k, me) {
+  const org = me.org || {};
+  if (k === "assigner" && org.assign_receive === "all") return "Você pode mandar tarefas para todos da equipe (nesta instância, todos recebem de quem atribui) e acompanhar o que mandou, na tela Equipe.";
+  if (k === "viewer" && org.team_visibility === "managers") return "Você vê, sem editar, o registro de toda a equipe na tela Equipe, no menu (nesta instância, visível para quem gerencia).";
+  return ROLE_INFO[k][1];
+}
 export function roleNotice(me) {
   const n = me.role_notice || {};
   const added = (n.added || []).filter((k) => ROLE_INFO[k]), removed = (n.removed || []).filter((k) => ROLE_INFO[k]);
@@ -80,25 +89,37 @@ export function roleNotice(me) {
     h("h2", { text: title }),
     h("p", { class: "dialog-note intro", text: "Quem administra o Nexus mudou os seus papéis." }),
     h("ul", { class: "role-notice-list" },
-      ...added.map((k) => h("li", {}, h("strong", { text: `Novo: ${ROLE_INFO[k][0]}` }), h("span", { text: ROLE_INFO[k][1] }))),
+      ...added.map((k) => h("li", {}, h("strong", { text: `Novo: ${ROLE_INFO[k][0]}` }), h("span", { text: roleText(k, me) }))),
       ...removed.map((k) => h("li", {}, h("strong", { text: `Retirado: ${ROLE_INFO[k][0]}` }),
         h("span", { text: "O que vinha com esse papel saiu do menu. Os seus dados continuam guardados." })))),
     h("div", { class: "dialog-actions" }, ok));
+  const list = dlg.querySelector(".role-notice-list");
+  list.id = "role-notice-list";
+  dlg.setAttribute("aria-describedby", list.id);
   ok.focus();
   return dlg;
 }
 
 // me: o objeto da sessão (é atualizado e avisado com "nexus:me").
+// Onde a pessoa estava no tour (recarregou a página no meio): {uid, step} ou {uid, walk: true}.
+const TOUR_KEY = "nexus.tour.passo";
+const tourSaved = (me) => { try { const s = JSON.parse(localStorage.getItem(TOUR_KEY) || "null"); return s && s.uid === me.id ? s : null; } catch { return null; } };
+const tourSave = (me, s) => { try { localStorage.setItem(TOUR_KEY, JSON.stringify({ uid: me.id, ...s })); } catch { /* sem armazenamento */ } };
+const tourForget = () => { try { localStorage.removeItem(TOUR_KEY); } catch { /* idem */ } };
+
 export async function startTour(me) {
   if (running) return;
   running = true;
   const must = !!me.tour_required;
   let completed = false;
+  // Só o obrigatório retoma: aberto pela Ajuda, começa do começo.
+  const saved = must ? tourSaved(me) : null;
   try {
-    const go = await setup(me, must);
-    if (go === "walk") { await walk(must); completed = true; }
+    const go = saved && saved.walk ? "walk" : await setup(me, must, saved ? saved.step : 0);
+    if (go === "walk") { if (must) tourSave(me, { walk: true }); await walk(must); completed = true; }
   } finally {
     running = false;
+    if (completed) tourForget();
     // Visto (ou pulado, quando pode): não abre sozinho de novo; a Ajuda reabre.
     // Obrigatório e interrompido (aba fechada, erro): abre de novo no próximo acesso.
     if (!must || completed) {
@@ -119,9 +140,9 @@ function changed(me, res) {
 
 // ------------------------------------------------------ parte 1: configurar --
 // Devolve "walk" (seguir para o passeio) ou "close".
-function setup(me, must) {
+function setup(me, must, from = 0) {
   return new Promise((resolve) => {
-    let result = "close", step = 0, dir = 1;
+    let result = "close", step = from, dir = 1;
     const body = h("div", { class: "tour-body" });
     const dlg = h("dialog", { class: "tour-dialog", "aria-labelledby": "tour-title" }, body);
     document.body.append(dlg);
@@ -142,7 +163,12 @@ function setup(me, must) {
     const assignOn = org.assign_receive === "all";
     const steps = [welcome, profile, theme, ...(visOn ? [visibility] : []), ...(assignOn ? [receiving] : []),
       workDays, projects, defaultProject, routines, ready];
-    const total = steps.length - 2; // boas-vindas e "pronto" não contam
+    // Boas-vindas e "pronto" não contam; sem projetos, "Projeto padrão" é pulado e também não conta.
+    let noProjects = false;
+    listProjects().then((l) => { noProjects = !l.length; }).catch(() => {});
+    const dp = steps.indexOf(defaultProject);
+    const total = () => steps.length - 2 - (noProjects ? 1 : 0);
+    const shown = () => step - (noProjects && step > dp ? 1 : 0);
     const next = () => { step++; dir = 1; paint(); };
     const back = () => { step--; dir = -1; paint(); };
     const end = (r) => { ended = true; result = r; dlg.close(); };
@@ -157,6 +183,7 @@ function setup(me, must) {
         step = to;
         return paint();
       }
+      if (must) tourSave(me, { step }); // recarregou no meio: volta a este passo
       clear(body);
       body.append(...content);
       const first = body.querySelector("input:not([type=checkbox]), select, .btn-primary");
@@ -168,7 +195,7 @@ function setup(me, must) {
       const err = h("p", { class: "error-text" });
       const ok = h("button", { type: "submit", class: "btn btn-primary", text: primary });
       const form = h("form", {},
-        h("p", { class: "tour-step mono", text: `Configuração · ${step} de ${total}` }),
+        h("p", { class: "tour-step mono", text: `Configuração · ${shown()} de ${total()}` }),
         h("h2", { id: "tour-title", text: title }),
         h("p", { class: "tour-intro", text: intro }),
         ...controls, err,
@@ -193,7 +220,7 @@ function setup(me, must) {
         h("div", { class: "tour-hero" }, h("img", { src: "/img/dragon-mark.svg", alt: "", width: "40", height: "46" })),
         h("h2", { id: "tour-title", text: `Boas-vindas ao Nexus${nome}` }),
         h("p", { class: "tour-intro", text: "O Nexus guarda o seu dia de trabalho: as rotinas que você confere, as tarefas que aparecem e o tempo de cada uma. No fim do dia, da semana ou do mês, o relatório sai pronto." }),
-        h("p", { class: "tour-intro", text: `Primeiro, ${NUM[total] || total} passos rápidos para deixar o Nexus do seu jeito. Depois, um passeio de um minuto pela tela. ` +
+        h("p", { class: "tour-intro", text: `Primeiro, ${NUM[total()] || total()} passos rápidos para deixar o Nexus do seu jeito. Depois, um passeio de um minuto pela tela. ` +
           (must ? "Neste primeiro acesso o tour vai até o fim; dá para rever tudo depois pela Ajuda." : "Dá para rever tudo depois pela Ajuda.") }),
         h("div", { class: "dialog-actions tour-actions" },
           must ? null : h("button", { type: "button", class: "btn btn-text tour-skip", text: "Agora não", onClick: () => end("close") }),
@@ -292,6 +319,7 @@ function setup(me, must) {
         try {
           await api.post("/projects", { name });
           list = await listProjects(true);
+          noProjects = false;
           input.value = "";
           paintChips();
           // Criou: o botão deixa de dizer "sem projetos" (soava como descartar o que acabou de criar).
@@ -311,6 +339,7 @@ function setup(me, must) {
 
     async function defaultProject() {
       const list = await listProjects().catch(() => []);
+      noProjects = !list.length;
       if (!list.length) { step += dir; return steps[step](); } // sem projetos não há o que escolher: passa reto
       const sel = h("select", {},
         h("option", { value: "", text: "Nenhum (a tarefa fica sem projeto)" }),
@@ -438,11 +467,12 @@ function walk(must = false) {
     const title = h("h2", { id: "tour-pop-title" });
     const text = h("p", { id: "tour-pop-text" });
     const count = h("span", { class: "tour-step mono" });
+    const live = h("p", { class: "sr-only", "aria-live": "polite" }); // o foco fica no "Próximo": a parada nova é lida daqui
     const prev = h("button", { type: "button", class: "btn btn-text", text: "Voltar" });
     const next = h("button", { type: "button", class: "btn btn-primary" });
     if (must) prev.classList.add("tour-skip");
     const pop = h("div", { class: "tour-pop", role: "dialog", "aria-modal": "true", "aria-labelledby": "tour-pop-title", "aria-describedby": "tour-pop-text" },
-      count, title, text,
+      count, title, text, live,
       h("div", { class: "dialog-actions tour-actions" },
         must ? null : h("button", { type: "button", class: "btn btn-text tour-skip", text: "Encerrar", onClick: () => done() }), prev, next));
     // Fundo escuro em quatro faixas em volta do alvo (cima, baixo, esquerda, direita).
@@ -510,6 +540,8 @@ function walk(must = false) {
       title.textContent = t;
       text.textContent = body;
       count.textContent = `${i + 1} de ${stops.length}`;
+      live.textContent = "";
+      setTimeout(() => { live.textContent = `Parada ${i + 1} de ${stops.length}: ${t}. ${body}`; }, 60);
       prev.disabled = i === 0;
       next.textContent = i === stops.length - 1 ? "Concluir" : "Próximo";
       if (el) el.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });

@@ -65,8 +65,12 @@ export function popupMenu(x, y, items, anchorTop = null) {
   const menu = h("div", { class: "pop-menu", role: "menu" }, ...items.filter(Boolean).map(([label, ic, fn]) =>
     h("button", { type: "button", role: "menuitem", onClick: () => { close(); if (back && back.isConnected && back.focus) back.focus(); fn(); } }, icon(ic), h("span", { text: label }))));
   document.documentElement.append(menu);
+  // Mede no canto (largura inteira, sem ser espremido pela borda) e limita pela
+  // área visível sem a barra de rolagem (clientWidth, não innerWidth).
+  menu.style.left = "0px"; menu.style.top = "0px";
   const r = menu.getBoundingClientRect();
-  menu.style.left = Math.max(8, Math.min(x, innerWidth - r.width - 8)) + "px";
+  const vw = document.documentElement.clientWidth || innerWidth;
+  menu.style.left = Math.max(8, Math.min(x, vw - r.width - 8)) + "px";
   const top = anchorTop !== null && y + r.height + 8 > innerHeight ? anchorTop - r.height - 4 : y;
   menu.style.top = Math.max(8, Math.min(top, innerHeight - r.height - 8)) + "px";
   const btns = [...menu.querySelectorAll("button")];
@@ -442,10 +446,14 @@ export function busy(fn) {
       form.dataset.busy = "1";
     }
     const btns = form && form.querySelectorAll ? [...form.querySelectorAll("[type=submit]")] : [];
+    const had = btns.includes(document.activeElement) ? document.activeElement : null;
     btns.forEach((b) => { b.disabled = true; });
     try { return await fn(ev); } finally {
       if (form && form.dataset) delete form.dataset.busy;
       btns.forEach((b) => { b.disabled = false; });
+      // O botão desabilitado perdeu o foco (foi para o <body>): volta para ele (ex.: o envio falhou).
+      const a = document.activeElement;
+      if (had && had.isConnected && (!a || a === document.body)) had.focus({ preventScroll: true });
     }
   };
 }
@@ -494,7 +502,7 @@ export function warnBox(text) {
 // 44 px de alvo). page começa em 1.
 export function pager({ page, total, size, label, onPage, focus = null, compact = false }) {
   const pages = Math.max(1, Math.ceil(total / size));
-  if (pages <= 1) return null;
+  if (pages <= 1) return ""; // uma página só: nada (vazio, não null: append(null) escreveria "null")
   const cur = Math.min(Math.max(1, page), pages);
   const from = (cur - 1) * size + 1, to = Math.min(total, cur * size);
   let going = false;

@@ -242,6 +242,8 @@ function mountMore(el) {
       ...items.map(([v, ic, label]) => h("a", { href: "#/" + v, "data-view": v }, icon(ic), h("span", { text: label }))),
       // A revisão guiada da semana (também no card "Esta semana" do Hoje).
       has("user") ? h("button", { type: "button", class: "nav-btn", onClick: () => openReview() }, icon("check"), h("span", { text: "Revisão da semana" })) : null,
+      // Quem vai para o campo: com texto e à vista (no Hoje é só um ícone, lá embaixo).
+      has("user") ? h("button", { type: "button", class: "nav-btn", onClick: () => prepareButton().click() }, icon("download"), h("span", { text: "Deixar pronto para sem sinal" })) : null,
       h("button", { type: "button", class: "nav-btn", onClick: showHelp }, icon("help"), h("span", { text: "Ajuda" })),
       h("button", { type: "button", class: "nav-btn logout", onClick: logout }, icon("logout"), h("span", { text: "Sair" }))
     )

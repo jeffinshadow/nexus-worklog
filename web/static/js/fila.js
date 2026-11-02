@@ -333,7 +333,9 @@ async function changed() {
   const [ops, bad] = await Promise.all([all(), failures()]);
   pending = ops.length;
   const offline = !navigator.onLine || staleAt;
-  if (!offline && !ops.length && !bad.length) { bar?.remove(); bar = null; return; }
+  // A barra abre espaço no topo da página (body.has-offline-bar): não cobre o assistente.
+  if (!offline && !ops.length && !bad.length) { bar?.remove(); bar = null; document.body.classList.remove("has-offline-bar"); return; }
+  document.body.classList.add("has-offline-bar");
   const hora = staleAt ? new Date(staleAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : null;
   // "Deixar pronto para sem sinal" de hoje: a barra diz de que hora são os detalhes guardados.
   const ready = readyInfo();

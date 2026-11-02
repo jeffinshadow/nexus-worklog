@@ -599,7 +599,8 @@ async function mountOrg(root, me) {
       r.addEventListener("change", async () => {
         if (!r.checked) return;
         const reset = () => { for (const x of radios) x[0].checked = x[0].value === cfg[key]; };
-        if (!(await confirmDialog(confirmOf(v)))) { reset(); r.focus(); return; }
+        // Cancelou: o foco volta ao rádio que continua marcado (não ao recusado, que repetiria a pergunta na próxima seta).
+        if (!(await confirmDialog(confirmOf(v)))) { reset(); (radios.find((x) => x[0].checked) || [r])[0].focus(); return; }
         try { await save({ [key]: v }, msgOf(v)); }
         catch (e) { errorToast(e); reset(); }
       });
@@ -766,15 +767,17 @@ async function mountBranding(root) {
     applyBranding(b); // atualiza o menu na hora
   };
 
-  const saveText = h("button", { type: "button", class: "btn btn-primary", text: "Salvar textos", onClick: async () => {
+  // Toque duplo não manda duas vezes (enquanto um envio corre, o segundo é ignorado).
+  const once = (fn) => { let on = false; return async (ev) => { if (on) return; on = true; try { await fn(ev); } finally { on = false; } }; };
+  const saveText = h("button", { type: "button", class: "btn btn-primary", text: "Salvar textos", onClick: once(async () => {
     err.textContent = "";
     try {
       apply(await api.put("/admin/branding", { line1: l1.value.trim(), line2: l2.value.trim() }));
       toast("Textos salvos.");
     } catch (e) { err.textContent = e.message || "Não foi possível salvar."; }
-  } });
+  }) });
 
-  const upload = h("button", { type: "button", class: "btn btn-ghost", onClick: async () => {
+  const upload = h("button", { type: "button", class: "btn btn-ghost", onClick: once(async () => {
     err.textContent = "";
     const f = file.files && file.files[0];
     if (!f) { err.textContent = "Escolha um arquivo SVG, PNG ou WebP."; return; }
@@ -784,12 +787,12 @@ async function mountBranding(root) {
       file.value = "";
       toast("Logo atualizado.");
     } catch (e) { err.textContent = e.message || "Não foi possível enviar."; }
-  } }, icon("add"), "Enviar logo");
+  }) }, icon("add"), "Enviar logo");
 
-  const reset = h("button", { type: "button", class: "btn btn-text", text: "Restaurar dragão padrão", onClick: async () => {
+  const reset = h("button", { type: "button", class: "btn btn-text", text: "Restaurar dragão padrão", onClick: once(async () => {
     try { apply(await api.del("/admin/branding/logo")); toast("Logo padrão restaurado."); }
     catch (e) { errorToast(e); }
-  } });
+  }) });
 
   root.append(
     h("div", { class: "settings-grid" },

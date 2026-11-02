@@ -171,6 +171,9 @@ input::placeholder { color: var(--dim); }
 }
 .panel-head { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
 .panel-head h2 { font-size: var(--type-title); font-weight: var(--weight-title); letter-spacing: -.01em; flex: 1; }
+/* "Em aberto" no Hoje: o título não quebra em duas linhas; a contagem ao lado é que encolhe ou quebra. */
+.t-open > .panel-head h2 { white-space: nowrap; flex: none; }
+.t-open > .panel-head .count { flex: 1; min-width: 0; text-align: right; }
 .panel-head .count { font-family: var(--font-label); font-size: var(--type-label); color: var(--dim); }
 .empty { color: var(--dim); font-size: var(--type-body); padding: 6px 0; }
 
@@ -240,7 +243,7 @@ button.column-toggle { display: none; }
 /* Páginas (ui.js pager): "Anterior · Página N de M · Próxima" embaixo da lista,
    sem flutuar. Botões de 44 px; nos extremos, esmaecidos com aria-disabled (o foco
    continua neles). Compacto (dentro de cartões e blocos): 36 px de desenho e 44 de alvo. */
-.pager { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--outline-variant); }
+.pager { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--outline-variant); container-type: inline-size; }
 .pager-btn { min-height: 44px; min-width: 44px; padding: 0 16px; flex: none; }
 .pager-btn .ico { width: 18px; height: 18px; }
 .pager-prev { padding-left: 10px; }
@@ -255,10 +258,11 @@ button.column-toggle { display: none; }
 .pager-compact .pager-prev { padding-left: 8px; }
 .pager-compact .pager-next { padding-right: 8px; }
 .pager-compact .pager-info { font-size: var(--type-caption); }
-/* Celular estreito: o intervalo desce para baixo do "Página N de M"; abaixo de 360 px, só os ícones. */
-.pager-range::before { content: " · "; }
-@media (max-width: 520px) { .pager-range { display: block; } .pager-range::before { content: none; } }
-@media (max-width: 359px) { .pager-word { display: none; } .pager-btn { padding: 0; width: 44px; } }
+/* "Página N de M" e "1–20 de 21" nunca quebram: o intervalo fica numa segunda linha fixa, e, com a
+   lista estreita (celular, painel ao lado), os botões ficam só com a seta (o nome vai no aria-label). */
+.pager-n, .pager-range { white-space: nowrap; }
+.pager-range { display: block; }
+@container (max-width: 420px) { .pager-word { display: none; } .pager-btn, .pager-compact .pager-btn { padding: 0; width: 44px; justify-content: center; } }
 /* Link para a lista inteira em outra tela (Hoje → Tarefas, revisão → Tarefas). */
 .see-all { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin-top: 4px; color: var(--primary-hi); font-weight: var(--weight-label); font-size: var(--type-body-s); text-decoration: none; }
 .see-all:hover { text-decoration: underline; }
@@ -309,7 +313,7 @@ button.column-toggle { display: none; }
   border-radius: 12px; background: var(--primary-container); color: var(--on-primary-container); }
 .hist-filter > span { flex: 1 1 200px; font-weight: 500; }
 .hist-filter .btn { color: inherit; }
-.hist-row { display: grid; grid-template-columns: 92px 1fr auto; gap: 14px; align-items: center; padding: 12px 4px; border-bottom: 1px solid var(--outline-variant); }
+.hist-row { display: grid; grid-template-columns: 92px 1fr auto; gap: 14px; align-items: center; padding: 12px 4px; border-bottom: 1px solid var(--outline-variant); min-height: 53px; }  /* com ou sem Desfazer, a mesma altura */
 .hist-row:last-child { border-bottom: 0; }
 .hist-when { font-family: var(--font-label); font-size: var(--type-label); color: var(--dim); line-height: 1.35; }
 .hist-what { min-width: 0; font-size: var(--type-body); }
@@ -591,6 +595,7 @@ textarea.inline-desc { resize: none; overflow: hidden; line-height: 1.45; }
 .search-big { position: relative; display: flex; gap: 8px; align-items: center; margin-bottom: var(--gap); }
 .search-big .ico { position: absolute; left: 14px; color: var(--dim); pointer-events: none; }
 .search-big input { padding-left: 42px; height: 46px; border-radius: var(--radius-full); }
+.search-big .btn { height: 46px; padding: 0 20px; }  /* Buscar com a altura do campo */
 .search-row { padding: 12px 2px; border-bottom: 1px solid var(--outline-variant); }
 .search-row:last-child { border-bottom: 0; }
 .search-row .card-open { font-weight: var(--weight-title); font-size: var(--type-body); display: inline-block; margin-bottom: 6px; }
@@ -607,6 +612,7 @@ mark { background: var(--primary-container); color: var(--on-primary-container);
 .today-grid > .t-sum { grid-column: 1 / -1; }
 .sum-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
 @media (max-width: 900px) { .sum-grid { grid-template-columns: 1fr; } }
+.sum-one .sum-grid { grid-template-columns: 1fr; }  /* só a semana (o último dia útil sem nada): uma coluna */
 .sum-title { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
 .sum-title h3 { font-size: var(--type-title); font-weight: var(--weight-title); }
 .sum-title .mono { font-size: var(--type-label); }
@@ -700,6 +706,8 @@ mark { background: var(--primary-container); color: var(--on-primary-container);
 .idle-head p strong { color: var(--on-surface); }
 .idle-card .assist-actions { margin-top: 10px; }
 @media (max-width: 860px) { .idle-card { right: 16px; bottom: calc(86px + env(safe-area-inset-bottom)); } }
+/* Avisos de lembrete e de rotina (e o de tempo sem registro): botões de 44 px no toque. */
+@media (pointer: coarse), (max-width: 860px) { .idle-card .btn-sm { height: 44px; } }
 /* Convite para instalar o app (instalar.js): mesmo cartão do lembrete; some se um lembrete tocar. */
 /* Sem conexão (fila.js): barra fina no topo, com a fila e quando os dados são de antes. */
 .offline-bar { position: fixed; top: 0; left: 50%; transform: translateX(-50%); z-index: 95; display: flex; align-items: center; gap: 8px;
@@ -714,6 +722,8 @@ mark { background: var(--primary-container); color: var(--on-primary-container);
   background: var(--warning-container); color: var(--on-warning-container); font-size: var(--type-body-s); }
 .offline-note > .ico { width: 18px; height: 18px; color: var(--on-warning-container); flex: none; margin-top: 1px; }
 @media (max-width: 860px) { .offline-bar { top: calc(var(--bar-h, 56px) + env(safe-area-inset-top)); font-size: var(--type-caption); } }
+/* Com a barra à vista, a página desce o mesmo tanto: ela não cobre o assistente nem o título. */
+body.has-offline-bar .main::before { content: ""; display: block; height: 44px; }
 
 /* Tarefa em edição no detalhe: o concluir dela (cartão, linha, detalhe) esmaece até o "Pronto". */
 .editing button[aria-label^="Concluir"] { opacity: .38; pointer-events: none; }
@@ -781,6 +791,10 @@ body:has(.rem-card) .idle-card:not(.rem-card) { display: none; }
 .timer-prev { font-size: var(--type-label); font-weight: var(--weight-body); }  /* interrompeu «…»: a que ficou parada */
 .timer-time { font-variant-numeric: tabular-nums; font-weight: var(--weight-title); color: inherit; }
 .timer-chip button.icon { width: 32px; height: 32px; }
+/* Pista da interrompida (o cronômetro parado): "Voltar para «X»", num tom mais calmo que o rodando. */
+.timer-chip.timer-resume { background: var(--surface-container-high); color: var(--on-surface); }
+.timer-resume .timer-task { flex-direction: row; align-items: center; gap: 8px; }
+.timer-resume .timer-task .ico { width: 18px; height: 18px; flex: none; color: var(--primary-hi); }
 .timer-mobile { display: none; }
 @media (max-width: 860px) {
   .timer-mobile:not(.hidden) { display: flex; position: fixed; left: 16px; right: 16px; bottom: calc(80px + env(safe-area-inset-bottom)); z-index: 40;
@@ -1160,16 +1174,12 @@ dialog .tour-intro { margin: 0 0 14px; line-height: 1.5; }
 
 /* ----------------------------------------------------- ajustes do celular -- */
 @media (max-width: 860px) {
-  /* Botão segmentado que quebra linha (abas de Configurações, períodos do
-     relatório): vira um bloco arredondado e as opções dividem a largura. */
-  .seg { display: flex; border-radius: var(--radius-xl); }
-  .seg button.chip-btn { flex: 1 1 auto; text-align: center; }
-  /* Abas (Configurações, Admin, Meu mês): uma linha só, que rola de lado
-     (Material 3, abas roláveis); a ativa é trazida para a vista ao abrir. */
-  .seg[role="tablist"] { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; border-radius: var(--radius-full); max-width: 100%;
-    overscroll-behavior-x: contain; scroll-padding-inline: 12px; }
-  .seg[role="tablist"]::-webkit-scrollbar { display: none; }
-  .seg[role="tablist"] button.chip-btn { flex: 0 0 auto; white-space: nowrap; }
+  /* Botão segmentado (filtros, abas do Admin, períodos): as opções dividem a largura
+     por igual, numa linha até 3; com 4 ou mais, uma grade de 2 colunas. Nada fica
+     sozinho numa linha nem escondido numa rolagem lateral sem aviso. */
+  .seg { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); border-radius: var(--radius-xl); }
+  .seg:has(> :nth-child(4)) { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .seg button.chip-btn { text-align: center; white-space: normal; }
   /* Vencimento: o prazo embaixo do nome (sem sobrepor), os botões à direita. */
   .venc-row { display: grid; grid-template-columns: minmax(0, 1fr); grid-auto-columns: auto; column-gap: 6px; row-gap: 4px; align-items: center; }
   .venc-row > .t { grid-column: 1; grid-row: 1; }
@@ -1622,6 +1632,7 @@ dialog .review-count { margin: 0 0 4px; font-family: var(--font-label); font-siz
 .pdf-mins { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .pdf-mins input[type=number] { width: 96px; min-height: 44px; }
 .pdf-fill input[type=text] { min-height: 44px; }
+.pdf-fill .btn { height: 44px; }  /* 15/30/60 min e Salvar: alvos de 44 px (celular) */
 .pdf-fill .field-label { font-size: var(--type-body-s); color: var(--on-surface-variant); }
 .pdf-done { color: var(--on-success-container); background: var(--success-container); }
 .handoff-first { margin-top: 12px; }
@@ -1751,3 +1762,5 @@ input:disabled { cursor: not-allowed; }
 .task-dialog.side.expanded .task-main-actions.three { grid-template-columns: repeat(3, minmax(0, 200px)); }
 .task-main-actions.three .btn { padding: 0 8px; gap: 6px; line-height: 1.15; text-align: center; }
 @media (max-width: 380px) { .task-main-actions.three .btn .ico { display: none; } }  /* tela estreita: só o texto, sem cortar */
+/* Hoje: as rotinas fora da agenda do dia ficam recolhidas numa linha só, no fim da lista. */
+.rec-off-toggle { margin-top: 6px; min-height: 44px; }

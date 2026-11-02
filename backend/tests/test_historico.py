@@ -73,3 +73,13 @@ def test_historico_isolado_e_admin_registrado(admin, usuario, novo_usuario):
     assert convites and convites[0]["actor"] == "admin" and not convites[0]["can_undo"]
     h = hist(usuario)[0]
     assert outro.post(f"/history/{h['id']}/undo").status_code == 404
+
+
+def test_historico_diz_o_que_foi_desfeito(usuario):
+    """R6 produto 14: a linha do desfazer diz a ação e o item, não só "desfez uma ação"."""
+    tid = usuario.post("/worklog", {"title": "Troca do switch"}).json()["id"]
+    usuario.post(f"/worklog/{tid}/finish")
+    h = hist(usuario, entity="worklog", entity_id=tid)[0]
+    assert usuario.post(f"/history/{h['id']}/undo").status_code == 200
+    desfez = next(x for x in hist(usuario, entity="worklog", entity_id=tid) if x["action"] == "undo")
+    assert desfez["summary"] == "desfez: concluiu a tarefa “Troca do switch”"

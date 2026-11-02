@@ -91,7 +91,7 @@ mudança fica no histórico do admin. Toda conta nova faz o tour guiado no prime
   anotações e apontamento de tempo; **cronômetro** (um por pessoa, vale em
   qualquer aparelho; trocou de tarefa por uma interrupção, ao parar ou concluir a
   interrupção ele oferece **voltar** para a que ficou parada); **lembrete com hora**
-  ("Lembrar em": na hora, aviso na tela e notificação do aparelho com Concluir e
+  ("Lembrete com hora": na hora, aviso na tela e notificação do aparelho com Concluir e
   Adiar 10 min; também pela IA e no calendário); **número do chamado** (GLPI, TomTicket, Jira…) que vira
   link; **plantão** fora do horário, com o tempo separado no relatório; e
   **modelos** de tarefa com checklist pronto. Lançamento **retroativo** (criada e

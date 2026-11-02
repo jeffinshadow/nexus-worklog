@@ -254,8 +254,13 @@
   </div>
 
   <!-- Diálogos de edição (só na visão própria; a do admin é somente leitura) -->
-  <dialog id="dialog-recurring" aria-labelledby="dlg-rec-title">
-    <h2 id="dlg-rec-title">Rotina</h2>
+  <!-- Celular: tela cheia com Salvar no topo, como a Nova tarefa (o mesmo padrão de formulário). -->
+  <dialog id="dialog-recurring" class="form-dialog" aria-labelledby="dlg-rec-title">
+    <div class="dlg-bar">
+      <button type="button" class="icon only-mob" id="rec-close" title="Cancelar" aria-label="Cancelar"><svg class="ico"><use href="#icon-close"></use></svg></button>
+      <h2 id="dlg-rec-title">Rotina</h2>
+      <button type="submit" form="form-recurring" class="btn btn-primary btn-sm only-mob">Salvar</button>
+    </div>
     <p class="rec-pack hidden" id="rec-pack"><span>Começando? Há pacotes prontos por área, com agenda e horário.</span>
       <button type="button" class="btn btn-text" id="rec-pack-btn">Usar um pacote</button></p>
     <form id="form-recurring">
@@ -291,7 +296,7 @@
       <div class="field">
         <label for="rec-steps">Passos (opcional, um por linha)</label>
         <textarea id="rec-steps" rows="3" maxlength="1100" placeholder="ex.: Casa de máquinas&#10;Bombas&#10;Gerador"></textarea>
-        <p class="dialog-note">Até 12. Ao marcar, a rotina mostra os passos; o que não foi feito vai para a evidência. Conta uma vez.</p>
+        <p class="dialog-note">Até 12 passos. Ao marcar, desmarque o que ficou sem fazer: isso fica anotado no PDF. A rotina conta como feita uma vez.</p>
       </div>
       <div class="field field-check">
         <label class="check-line"><input id="rec-require-note" type="checkbox"><span>Exigir evidência ao marcar (o que foi conferido, para comprovar depois)</span></label>
@@ -368,7 +373,7 @@
           <input id="wl-blocked" type="text" maxlength="120" placeholder="ex.: retorno do fornecedor, aprovação da diretoria">
         </div>
         <div class="field">
-          <label for="wl-followup">Lembrar de cobrar em (opcional)</label>
+          <label for="wl-followup">Dia para cobrar (opcional)</label>
           <input id="wl-followup" type="date">
         </div>
       </div>
@@ -387,7 +392,7 @@
           <select id="wl-template"></select>
         </div>
         <div class="field" id="wl-remind-wrap">
-          <label for="wl-remind">Lembrar em (opcional)</label>
+          <label for="wl-remind">Lembrete com hora (opcional)</label>
           <input id="wl-remind" type="datetime-local">
           <p class="dialog-note">Na hora, o Nexus avisa (na tela e no aparelho), com Concluir e Adiar.</p>
         </div>

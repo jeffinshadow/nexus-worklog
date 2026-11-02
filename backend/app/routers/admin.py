@@ -466,12 +466,15 @@ def put_org(data: OrgIn, admin=Depends(require_admin_csrf)):
         db.execute("""UPDATE app_settings SET team_visibility = %s, updated_at = now(),
                              team_visibility_since = CASE WHEN %s = 'managers' THEN now() ELSE team_visibility_since END
                        WHERE id = 1""", (data.team_visibility, data.team_visibility))
+        # Quem mudou já sabe: o aviso único da mudança não aparece para o próprio admin.
+        db.execute("UPDATE users SET visibility_notice_at = now() WHERE id = %s", (admin["user_id"],))
         audit.record(ctx, "app.team_visibility", "app_settings", 1, before={"team_visibility": before["team_visibility"]},
                      after={"team_visibility": data.team_visibility, "by": admin["email"]})
     if data.assign_receive is not None and data.assign_receive != before["assign_receive"]:
         db.execute("""UPDATE app_settings SET assign_receive = %s, updated_at = now(),
                              assign_receive_since = CASE WHEN %s = 'all' THEN now() ELSE assign_receive_since END
                        WHERE id = 1""", (data.assign_receive, data.assign_receive))
+        db.execute("UPDATE users SET assign_notice_at = now() WHERE id = %s", (admin["user_id"],))
         audit.record(ctx, "app.assign_receive", "app_settings", 1, before={"assign_receive": before["assign_receive"]},
                      after={"assign_receive": data.assign_receive, "by": admin["email"]})
     for key in ("identity_managed", "invite_request_off"):

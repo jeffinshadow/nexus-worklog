@@ -134,7 +134,13 @@ def _label(row) -> str:
     snap = row["after"] or row["before"] or {}
     name = snap.get("title") or snap.get("label") or snap.get("name") or ""
     if row["action"] == "undo":
-        return "desfez uma ação"
+        # O que foi desfeito: a ação original (after.action) e o nome do item.
+        base = ACTION_LABELS.get((row["after"] or {}).get("action") or "")
+        if not base or base == ACTION_LABELS["undo"]:
+            return "desfez uma ação"
+        b = row["before"] or {}  # o estado que a ação original tinha deixado (o "after" dela)
+        item = b.get("title") or b.get("label") or b.get("name") or ""
+        return f"desfez: {base} “{item}”" if item else f"desfez: {base}"
     if row["action"].startswith("checklist."):
         item = snap.get("label") or ""
         if row["action"] == "checklist.update" and row["after"] and row["before"]:

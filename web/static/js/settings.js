@@ -1043,7 +1043,7 @@ function aiHelp() {
 // Os dois aceites num painel só: sem eles, ninguém manda tarefas nem vê o registro.
 function privacyPanel(me) {
   return h("section", { class: "panel" },
-    h("div", { class: "panel-head" }, h("h2", { text: "Quem vê e quem manda tarefas para você" })),
+    h("div", { class: "panel-head" }, h("h2", { text: "Quem vê o seu registro e quem atribui tarefas a você" })),
     h("h3", { class: "sum-h", text: "Receber tarefas" }), ...assignments(me),
     h("h3", { class: "sum-h", text: "Ver o seu registro" }), ...seenBy(me));
 }

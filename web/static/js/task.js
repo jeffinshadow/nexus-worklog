@@ -334,7 +334,7 @@ export async function openTask(taskId, onChange, opts = {}) {
     });
 
     // Lembrar em: data e hora do aviso (na tela e no aparelho). Vazio tira.
-    const remind = h("input", { type: "datetime-local", "aria-label": "Lembrar em" });
+    const remind = h("input", { type: "datetime-local", "aria-label": "Lembrete com hora" });
     const nowLocal = localDateTime(Date.now());
     remind.value = t.remind_at ? localDateTime(t.remind_at) : "";
     remind.min = remind.value && remind.value < nowLocal ? remind.value : nowLocal;  // um lembrete já passado fica como está
@@ -378,7 +378,7 @@ export async function openTask(taskId, onChange, opts = {}) {
     afterHours.addEventListener("change", () => save({ after_hours: afterHours.checked }));
 
     grid.append(field("Situação", status), field("Prazo", due),
-      ...(t.status !== "done" ? [field("Lembrar em", remind)] : []), field("Prioridade", prio), field("Projeto", proj, t.status !== "done" ? "wide" : ""),
+      ...(t.status !== "done" ? [field("Lembrete com hora", remind)] : []), field("Prioridade", prio), field("Projeto", proj, t.status !== "done" ? "wide" : ""),
       objField,
       h("div", { class: "field wide" }, h("span", { class: "field-label", text: "Outros projetos" }), extras.el),
       h("div", { class: "field" }, h("label", { for: ticket.id, text: "Nº do chamado ou OS" }),
@@ -392,7 +392,7 @@ export async function openTask(taskId, onChange, opts = {}) {
       const reason = h("input", { type: "text", maxlength: "120", placeholder: "ex.: retorno do fornecedor", "aria-label": "Aguardando o quê?" });
       reason.value = t.blocked_reason || "";
       inline(reason, () => cur.blocked_reason || "", (v) => ({ blocked_reason: v || null }));
-      const follow = h("input", { type: "date", "aria-label": "Lembrar de cobrar em" });
+      const follow = h("input", { type: "date", "aria-label": "Dia para cobrar" });
       follow.value = t.follow_up_on || "";
       // Hoje ou depois — mas uma cobrança já atrasada pode ficar como está.
       follow.min = t.follow_up_on && t.follow_up_on < today ? t.follow_up_on : today;
@@ -401,7 +401,7 @@ export async function openTask(taskId, onChange, opts = {}) {
         follow.value = day || "";
         save({ follow_up_on: day });
       });
-      grid.append(field("Aguardando o quê?", reason), field("Lembrar de cobrar em", follow));
+      grid.append(field("Aguardando o quê?", reason), field("Dia para cobrar", follow));
     }
     if (t.status === "done") {
       const now = localDateTime(Date.now());

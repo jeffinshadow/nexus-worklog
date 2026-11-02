@@ -187,9 +187,14 @@ function attentionLine(x) {
 }
 
 function attentionTile(a, sent) {
-  const tile = (...body) => mes.tile(7, "eq-att-tile", "Precisa de atenção", "agora: o que foi devolvido, está aguardando, vencendo ou parado", ...body);
+  // Celular: "Tarefas que atribuí" fica a algumas telas daqui; um atalho leva até lá.
+  const jump = sent ? h("button", { type: "button", class: "btn btn-text btn-sm eq-sent-jump", onClick: () => {
+    sent.el.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    const t = sent.el.querySelector("h2"); if (t) { t.tabIndex = -1; t.focus({ preventScroll: true }); }
+  } }, icon("send"), "Ver as tarefas que atribuí") : null;
+  const tile = (...body) => mes.tile(7, "eq-att-tile", "Precisa de atenção", "agora: o que foi devolvido, está aguardando, vencendo ou ainda não começado", ...body, jump);
   if (!a.people.length && !a.attention.length) return tile(h("p", { class: "mes-ok", text: "Quando alguém compartilhar o dia a dia, aparece aqui o que está aguardando ou vencendo." }));
-  if (!a.attention.length) return tile(h("p", { class: "mes-ok" }, icon("check"), h("span", { text: "Nada devolvido, aguardando, vencendo nos próximos 7 dias ou parado." })));
+  if (!a.attention.length) return tile(h("p", { class: "mes-ok" }, icon("check"), h("span", { text: "Nada devolvido, aguardando, vencendo nos próximos 7 dias ou ainda não começado." })));
   // A devolvida não existe mais no quadro de ninguém: abre a linha dela em Tarefas que atribuí.
   const open = (x) => (x.kind === "returned" && sent ? sent.focusReturned(x.task_id) : openPerson(x.user_id, "quadro", x.task_id));
   return tile(h("ul", { class: "eq-att-list" }, ...a.attention.map((x) => h("li", {},
