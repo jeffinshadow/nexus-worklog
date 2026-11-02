@@ -110,7 +110,7 @@ try:
 
     # Tarefas pelo campo do bloco (Enter), em sequência.
     for t in ("Tela de login", "Recuperar senha", "Login social"):
-        ev(f"(() => {{ const i = document.querySelector('.obj-block[data-id] .obj-add'); i.value = {json.dumps(t)}; i.dispatchEvent(new KeyboardEvent('keydown', {{key: 'Enter', bubbles: true}})); }})()")
+        ev(f"(() => {{ const i = document.querySelector('.obj-block[data-id] .obj-add'); i.value = {json.dumps(t)}; i.form.requestSubmit(); }})()")
         wait(f"[...document.querySelectorAll('.obj-block')[0].querySelectorAll('.card-open')].some(b => b.textContent === {json.dumps(t)})")
     check("tarefas no objetivo, na ordem", titles(0) == ["Tela de login", "Recuperar senha", "Login social"], titles(0))
     check("progresso 0 de 3", "0 de 3" in ev("document.querySelector('.obj-block[data-id] .obj-progress-l').textContent"))

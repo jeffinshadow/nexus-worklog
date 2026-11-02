@@ -287,7 +287,7 @@ function showHelp(focus) {
       ["Configurações", user ? "A sua conta (dias úteis, projeto padrão, quem vê e quem atribui tarefas), avisos, calendário e IA." : "A sua conta, e IA e API."],
     ])),
     user ? sec("add", "Registro rápido (no Hoje)",
-      h("p", { class: "help", text: "Escreva o que fez e aperte Enter. Marcadores opcionais no fim, em qualquer ordem:" }),
+      h("p", { class: "help", text: "Escreva o que fez e aperte Enter (ou a seta ao lado). Marcadores opcionais no fim, em qualquer ordem:" }),
       list([
         ["@Projeto", "projeto; um segundo @ põe a tarefa nos dois", true],
         ["#4821", "número do chamado", true],

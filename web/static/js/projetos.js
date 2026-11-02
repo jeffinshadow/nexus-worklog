@@ -3,7 +3,7 @@
 // Ordem: arrastar pela alça no computador; no celular e no teclado, pelo ⋮
 // (subir, descer, mover para outro objetivo). Progresso e status vêm do servidor.
 import { api } from "./api.js";
-import { h, icon, clear, field, shortDate, localDay, daysBetween } from "./dom.js";
+import { h, icon, clear, field, shortDate, localDay, daysBetween, sendRow } from "./dom.js";
 import { busy, confirmDialog, errorToast, hashPage, modal, pager, pageSlice, popupMenu, setHashPage, sheet, toast, undoLatest } from "./ui.js";
 import { finishTask, openWorklog, taskChips } from "./board.js";
 import { duration, editingTaskId, openTask } from "./task.js";
@@ -251,19 +251,17 @@ function objectiveBlock(ob, index, o, pid, today, refresh) {
   paintOpen();
   if (!phone()) dragTasks(list, pid, refresh);
 
-  // + Tarefa: título e Enter, já neste objetivo (no fim da fila).
-  const add = h("input", { type: "text", maxlength: "200", class: "obj-add", placeholder: "+ Tarefa e Enter",
+  // + Tarefa: título e Enter (ou a seta), já neste objetivo (no fim da fila).
+  const add = h("input", { type: "text", maxlength: "200", class: "obj-add", placeholder: "+ Tarefa",
     "aria-label": ob ? `Nova tarefa em ${ob.title}` : "Nova tarefa sem objetivo" });
-  add.addEventListener("keydown", async (ev) => {
-    if (ev.key !== "Enter" || !add.value.trim()) return;
-    ev.preventDefault();
+  const addTask = async () => {
     add.disabled = true;
     try {
       await api.post("/worklog", oid ? { title: add.value.trim(), objective_id: oid } : { title: add.value.trim(), project_id: pid });
       await refresh(); // e o cursor volta ao campo do mesmo bloco (lote de tarefas seguidas)
       document.querySelector(`.obj-block[data-objective-block="${oid ?? ""}"] .obj-add`)?.focus();
     } catch (e) { add.disabled = false; errorToast(e, "Não foi possível criar a tarefa."); }
-  });
+  };
 
   // Concluídas: recolhidas, de 10 em 10. As primeiras vêm na visão geral; as
   // páginas além delas, de /projects/{id}/done.
@@ -319,7 +317,7 @@ function objectiveBlock(ob, index, o, pid, today, refresh) {
       h("span", { class: "obj-sub", text: "tarefas do projeto que ainda não entraram num objetivo" })));
   }
   const sec = h("section", { class: "panel obj-block" + (ob ? "" : " unassigned"), "data-objective-block": oid === null ? "" : String(oid) },
-    ...head, list, openPages, add, doneToggle, doneList);
+    ...head, list, openPages, sendRow(add, addTask, "Criar a tarefa", "obj-add-row"), doneToggle, doneList);
   if (ob) sec.dataset.id = String(ob.id);
   return sec;
 }

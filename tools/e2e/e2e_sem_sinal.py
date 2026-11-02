@@ -55,7 +55,7 @@ try:
     check("barra 'sem conexão' com a hora", "sem conexão desde" in (ev("document.querySelector('.offline-bar')?.innerText") or ""), ev("document.querySelector('.offline-bar')?.innerText"))
     # registro rápido com tempo
     ev(f"""(()=>{{const q=document.querySelector('[aria-label="Registrar tarefa rápida"]');q.value='E5 registro offline {marca} — 15min';
-      q.dispatchEvent(new KeyboardEvent('keydown',{{key:'Enter',bubbles:true}}))}})()"""); time.sleep(2)
+      q.form.requestSubmit()}})()"""); time.sleep(2)
     # rotina
     ev(f"[...document.querySelectorAll('.check-row')].find(x=>x.textContent.includes('E5 rotina {marca}')).querySelector('input').click()"); time.sleep(2)
     check("rotina aparece marcada (fila por cima)", ev(f"[...document.querySelectorAll('.check-row')].find(x=>x.textContent.includes('E5 rotina {marca}')).querySelector('input').checked"))

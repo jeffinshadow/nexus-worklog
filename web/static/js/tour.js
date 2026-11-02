@@ -402,7 +402,7 @@ function setup(me, must, from = 0) {
 // Cada parada: seletores candidatos (o primeiro visível vale: computador ou
 // celular), título e texto. Parada sem alvo visível é pulada.
 const QUICK = [[".quick-row input"], "Registro rápido",
-  "Escreva o que fez e aperte Enter. Dois atalhos ajudam: @Projeto escolhe o projeto e “— 30min” já conclui com o tempo. Ex.: “Troca do disjuntor @Matriz — 45min”. Os outros (#chamado, !alta, ^amanhã) estão na Ajuda."];
+  "Escreva o que fez e aperte Enter (ou a seta ao lado). Dois atalhos ajudam: @Projeto escolhe o projeto e “— 30min” já conclui com o tempo. Ex.: “Troca do disjuntor @Matriz — 45min”. Os outros (#chamado, !alta, ^amanhã) estão na Ajuda."];
 const ROUTINES = [[".t-rec"], "Rotinas do dia",
   "Marque o que conferiu. Depois de marcar, o bloquinho anota a evidência; no ⋮, um achado vira tarefa. As setas voltam até 7 dias para marcar o que ficou para trás."];
 const HANDOFF = [["#page-actions .btn-ghost"], "Passagem de turno",

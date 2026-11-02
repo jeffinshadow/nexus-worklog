@@ -1,7 +1,7 @@
 // Tela inicial "Hoje": o dia em um olhar e as ações mais comuns sem trocar de
 // tela. É o único lugar das rotinas (marcar até 7 dias atrás, editar, achado).
 import { api } from "./api.js";
-import { h, icon, clear, weekdayDate, localDay, addDays, shortDate } from "./dom.js";
+import { h, icon, clear, weekdayDate, localDay, addDays, shortDate, sendRow } from "./dom.js";
 import { errorToast, modal, toast, busy, refocusBy, actionMenu, calmMotion, undoLatest } from "./ui.js";
 import { reminderState, refreshReminders } from "./lembretes.js";
 import { photoGrid } from "./fotos.js";
@@ -202,9 +202,7 @@ export async function mount(root, ctx, opts = {}) {
           h("p", { text: s.resolution.length > 140 ? s.resolution.slice(0, 139) + "…" : s.resolution }))));
     }, 500);
   });
-  quick.addEventListener("keydown", async (ev) => {
-    if (ev.key !== "Enter" || !quick.value.trim()) return;
-    ev.preventDefault();
+  const register = async () => {
     clearTimeout(hintTimer); hintSeq++; // a sugestão pendente não serve mais
     const project_id = proj.value && proj.value !== "__new" ? Number(proj.value) : null;
     quick.disabled = true;
@@ -223,14 +221,14 @@ export async function mount(root, ctx, opts = {}) {
       return;
     }
     mount(root, ctx, { day, focusQuick: true, summary: sum });
-  });
+  };
   const openPanel = h("section", { class: "panel t-open" },
     h("div", { class: "panel-head" }, h("h2", { text: "Em aberto" }),
       h("span", { class: "count" + (late.length || blocked.length ? " warn" : ""), text: [String(open.length),
         late.length ? `${late.length} atrasada${late.length > 1 ? "s" : ""}` : "",
         blocked.length ? `${blocked.length} aguardando` : ""].filter(Boolean).join(" · ") })),
-    h("div", { class: "quick-row" }, quick, proj),
-    h("p", { class: "quick-hint" }, "Enter registra. Projeto, chamado e prazo no próprio texto: ",
+    sendRow(quick, register, "Registrar", "quick-row", proj),
+    h("p", { class: "quick-hint" }, "Enter ou a seta registra. Projeto, chamado e prazo no próprio texto: ",
       h("button", { type: "button", class: "link-btn", text: "ver marcadores", onClick: () => window.dispatchEvent(new CustomEvent("nexus:help", { detail: "marcadores" })) })), hint);
   // Filtro (fica na aba): o número de cada opção ajuda a decidir antes de clicar.
   let filter = sessionStorage.getItem(OPEN_FILTER) || "all";

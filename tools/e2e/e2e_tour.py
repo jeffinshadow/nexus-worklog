@@ -163,7 +163,7 @@ try:
     # ---- registro rápido com dois @ e o padrão
     nomes = list(pid)
     a, b2 = nomes[0], nomes[1]
-    ev(f"(() => {{ const q = document.querySelector('.quick-row input'); q.value = 'E2E dois projetos @{a} @{b2}'; q.dispatchEvent(new KeyboardEvent('keydown', {{key: 'Enter', bubbles: true}})); }})()")
+    ev(f"(() => {{ const q = document.querySelector('.quick-row input'); q.value = 'E2E dois projetos @{a} @{b2}'; q.form.requestSubmit(); }})()")
     time.sleep(1.5)
     found = api("GET", "/search?q=E2E%20dois%20projetos")["j"]["tasks"]
     t = found[0] if found else None

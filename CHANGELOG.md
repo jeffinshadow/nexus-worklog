@@ -9,6 +9,11 @@ maior seguinte (política completa em [`docs/ADMIN.md`](docs/ADMIN.md#versioname
 não a da hora do deploy. As versões 0.x e 1.x foram numeradas depois, sobre o histórico do git
 (etiquetas `v0.1.0` … `v1.12.1`).
 
+## 2.0.3 — 2026-11-02
+Celular: o registro de uma linha do Hoje, o "+ Tarefa" dos projetos e o "Adicionar item" do checklist ganham o
+botão de enviar (a seta) e passam a enviar pelo Enter do teclado em qualquer teclado (antes, alguns teclados mandavam
+o Enter como tecla desconhecida e nada acontecia).
+
 ## 2.0.2 — 2026-11-02
 Projeto aberto: "Todos os projetos" volta para cima do título, no cabeçalho da página (estava abaixo do título
 e dos botões, fora de onde se procura a volta).

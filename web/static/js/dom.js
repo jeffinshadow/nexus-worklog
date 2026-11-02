@@ -32,6 +32,18 @@ export function icon(name) {
   return svg;
 }
 
+// Campo de uma linha que registra ao enviar. No celular, o Enter do teclado nem
+// sempre chega como tecla (o teclado ainda compõe a palavra e manda "tecla
+// desconhecida"); dentro de um <form>, o botão de enviar do teclado submete do
+// mesmo jeito. E o botão de enviar fica à vista, para quem não tem Enter.
+export function sendRow(input, onSend, label, cls = "", ...extra) {
+  input.setAttribute("enterkeyhint", "send");
+  const form = h("form", { class: "send-row" + (cls ? " " + cls : ""), novalidate: "" }, input, ...extra,
+    h("button", { type: "submit", class: "icon send-btn", title: label, "aria-label": label }, icon("send")));
+  form.addEventListener("submit", (ev) => { ev.preventDefault(); if (input.value.trim() && !input.disabled) onSend(); });
+  return form;
+}
+
 // Campo com rótulo associado (for/id): leitor de tela anuncia o nome e o
 // clique no rótulo foca o campo.
 let fieldSeq = 0;

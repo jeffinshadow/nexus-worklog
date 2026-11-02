@@ -4,7 +4,7 @@
 // Abaixo, checklist, tempo apontado e anotações.
 // Abre por cima do quadro/Hoje; ao fechar, quem abriu recarrega (onChange).
 import { api } from "./api.js";
-import { h, icon, clear, addDays, shortDate, dateTime, field, localDateTime, localDay } from "./dom.js";
+import { h, icon, clear, addDays, shortDate, dateTime, field, localDateTime, localDay, sendRow } from "./dom.js";
 import { overlay } from "./fila.js";
 import { errorToast, modal, toast, undoLatest, busy, sheet, syncRail, growFrom, refocusBy, actionMenu, pager, pageSlice } from "./ui.js";
 
@@ -447,17 +447,12 @@ export async function openTask(taskId, onChange, opts = {}) {
           } catch (e) { errorToast(e); }
         } }, icon("trash"))));
     }
-    const input = h("input", { type: "text", maxlength: "200", placeholder: "Adicionar item e Enter", "aria-label": "Novo item do checklist" });
-    input.addEventListener("keydown", async (ev) => {
-      if (ev.key !== "Enter") return;
-      ev.preventDefault();
-      const label = input.value.trim();
-      if (!label) return;
+    const input = h("input", { type: "text", maxlength: "200", placeholder: "Adicionar item", "aria-label": "Novo item do checklist" });
+    sec.append(sendRow(input, async () => {
       input.disabled = true;
-      try { await api.post(`/worklog/${t.id}/checklist`, { label }); await touch(); focusLast(".task-sec input[type=text]"); }
+      try { await api.post(`/worklog/${t.id}/checklist`, { label: input.value.trim() }); await touch(); focusLast(".task-sec input[type=text]"); }
       catch (e) { input.disabled = false; errorToast(e); }
-    });
-    sec.append(h("div", { class: "task-add" }, input));
+    }, "Adicionar item", "task-add"));
     return sec;
   }
 
