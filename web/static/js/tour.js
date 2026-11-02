@@ -513,7 +513,9 @@ function walk(must = false) {
       }
       spot.classList.remove("hidden");
       const r = target.getBoundingClientRect();
-      const pad = 6, x = r.left / z - pad, y = r.top / z - pad, w = r.width / z + pad * 2, hh = r.height / z + pad * 2;
+      // Alvo mais alto que meia tela (o painel de Rotinas): destaca só o começo dele
+      // (título e as primeiras linhas), e o cartão vem logo abaixo, sem cobrir o destaque.
+      const pad = 6, x = r.left / z - pad, y = r.top / z - pad, w = r.width / z + pad * 2, hh = Math.min(r.height / z + pad * 2, vh * 0.45);
       rect(spot, x, y, w, hh);
       rect(shades[0], 0, 0, vw, y);
       rect(shades[1], 0, y + hh, vw, vh - y - hh);
@@ -544,7 +546,8 @@ function walk(must = false) {
       setTimeout(() => { live.textContent = `Parada ${i + 1} de ${stops.length}: ${t}. ${body}`; }, 60);
       prev.disabled = i === 0;
       next.textContent = i === stops.length - 1 ? "Concluir" : "Próximo";
-      if (el) el.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+      const tall = el && el.getBoundingClientRect().height / zoom() > (innerHeight / zoom()) * 0.45;
+      if (el) el.scrollIntoView({ block: tall ? "start" : "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
       requestAnimationFrame(place);
       setTimeout(place, 350); // depois da rolagem suave
       next.focus();

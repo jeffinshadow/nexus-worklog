@@ -41,16 +41,16 @@ mudança fica no histórico do admin. Toda conta nova faz o tour guiado no prime
 
 - **Hoje** — o dia em um olhar, com um **assistente**: saudação, o que está
   pra hoje, o que saiu ontem, o resumo do dia e por onde começar. Avisa tarefa
-  aguardando há dias, prazo de amanhã e tempo esquecido, e copia o texto da
-  daily. Cada aviso tem o próprio X; tudo é calculado a partir dos registros da
-  pessoa, sem IA chamada a cada tela. As abertas filtram por "vence hoje"
-  (com as atrasadas) ou "prioritárias", e o resumo da semana volta semana a
-  semana, cada uma comparada com a anterior. **Revisão da semana** guiada, em
-  3 passos (o que fechou, com "como resolveu"; o que ficou, um toque em
-  manter, reagendar, aguardando ou concluir; o que vem, até 3 prioridades), que
+  aguardando há dias, prazo de amanhã e tempo esquecido (as sugestões). Cada
+  aviso tem o próprio X; tudo é calculado a partir dos registros da
+  pessoa, sem IA chamada a cada tela. As abertas filtram por "até hoje"
+  (o que vence hoje e as atrasadas) ou "prioridade alta"; as rotinas fora da
+  agenda do dia ficam recolhidas numa linha só. **Revisão da semana** guiada, em
+  3 passos (o que fechou, com "como resolveu"; o que ficou, mudando só o que
+  precisar: reagendar, aguardando ou concluir; o Primeiro amanhã, até 3), que
   termina com o texto da semana pronto para copiar; o assistente convida no
-  último dia útil, uma vez. **Primeiro amanhã**: no resumo do dia do assistente
-  ou na Passagem de turno, até 3 tarefas para começar o próximo dia útil; nesse
+  último dia útil, uma vez. **Primeiro amanhã**: na Passagem de turno (o texto
+  do dia) ou na revisão da semana, até 3 tarefas para começar o próximo dia útil; nesse
   dia elas abrem as abertas com o selo "primeiro hoje" e saem sozinhas depois
   (as prioridades da revisão da semana entram no mesmo lugar). No primeiro acesso, um **tour
   guiado** configura o essencial (nome, dias úteis, projetos, projeto padrão,

@@ -1764,3 +1764,6 @@ input:disabled { cursor: not-allowed; }
 @media (max-width: 380px) { .task-main-actions.three .btn .ico { display: none; } }  /* tela estreita: só o texto, sem cortar */
 /* Hoje: as rotinas fora da agenda do dia ficam recolhidas numa linha só, no fim da lista. */
 .rec-off-toggle { margin-top: 6px; min-height: 44px; }
+/* Tour: o painel alto (Rotinas) rola até o começo, sem ficar sob a barra do topo do celular. */
+.t-rec { scroll-margin-top: 16px; }
+@media (max-width: 860px) { .t-rec { scroll-margin-top: 72px; } }
