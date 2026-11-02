@@ -1,9 +1,8 @@
-// Resumos do Hoje: o último dia útil e a semana até agora, só com os totais.
+// Resumo do Hoje: o último dia útil, só com os totais.
 // Dados de /api/summary. (O passado fica em Meu mês e na revisão da semana.)
 import { h, icon, longDate, shortDate, addDays } from "./dom.js";
 import { projectChip, corProjeto } from "./projects.js";
 import { duration, openTask } from "./task.js";
-import { openReview } from "./review.js";
 
 function pct(done, total) {
   return total ? Math.round((100 * done) / total) : null;
@@ -18,9 +17,7 @@ function figures(s) {
     fig(s.minutes ? duration(s.minutes) : "—", "tempo apontado"));
 }
 
-// opts.missed: a lista "Rotinas que ficaram para trás" (só no cartão da semana; no
-// do último dia útil, o número basta, sem repetir a mesma lista duas vezes).
-function card(title, sub, s, onChange, opts = {}) {
+function card(title, sub, s, onChange) {
   const body = [figures(s)];
   if (s.deliveries.length) {
     body.push(h("p", { class: "sum-h", text: "Concluído" }));
@@ -33,11 +30,7 @@ function card(title, sub, s, onChange, opts = {}) {
   }
   if (s.projects.some((p) => p.minutes))
     body.push(h("p", { class: "sum-h", text: "Tempo por projeto" }), ...projectBars(s.projects));
-  if (opts.missed && s.missed.length) {
-    body.push(h("p", { class: "sum-h", text: "Rotinas que ficaram para trás" }),
-      h("p", { class: "missed" }, ...s.missed.map((m) => h("span", { class: "chip late", text: m }))));
-  }
-  if (!s.deliveries.length && !s.minutes && !s.recurring_done && !(opts.missed && s.missed.length))
+  if (!s.deliveries.length && !s.minutes && !s.recurring_done)
     body.push(h("p", { class: "empty", text: "Nada registrado." }));
   return h("div", { class: "sum-card" }, h("div", { class: "sum-title" }, h("h3", { text: title }), h("span", { class: "mono muted", text: sub })), ...body);
 }
@@ -55,18 +48,7 @@ function projectBars(items) {
   });
 }
 
-// A semana até agora (só os totais, sem cara de cobrança) e a revisão guiada. As semanas
-// anteriores ficam em Meu mês (ritmo por semana) e na revisão: aqui, sem setas.
-function weekSlot(data, onChange) {
-  const w = data.week;
-  const c = card("Esta semana", `desde ${longDate(w.start).split(",")[0]}`, w, onChange, { missed: true });
-  // Revisão guiada (o que fechou, o que ficou, o que vem): em qualquer dia, daqui.
-  c.append(h("button", { type: "button", class: "btn btn-ghost btn-sm sum-review",
-    onClick: () => openReview(onChange) }, icon("check"), data.review && data.review.reviewed ? "Revisar a semana de novo" : "Revisar a semana"));
-  return h("div", { class: "sum-week" }, c);
-}
-
-// Hoje: o último dia útil e a semana até agora, só com os totais.
+// Hoje: só o último dia útil (a semana vive em Meu mês e na revisão da semana).
 export function summaryPanel(data, onChange) {
   const last = data.last_day;
   // Do último dia útil até ontem: na segunda, sexta a domingo (plantão incluso).
@@ -75,6 +57,6 @@ export function summaryPanel(data, onChange) {
   const lastSub = ontem ? longDate(last.start) : `${shortDate(last.start)} a ${shortDate(last.end)}`;
   // Nada previsto nem feito no último dia útil (a conta nova, por exemplo): sem um cartão vazio.
   const vazio = !last.recurring_total && !last.recurring_done && !last.pontual_done && !last.minutes && !last.deliveries.length;
-  return h("section", { class: "panel t-sum" + (vazio ? " sum-one" : "") },
-    h("div", { class: "sum-grid" }, vazio ? null : card(lastTitle, lastSub, last, onChange), weekSlot(data, onChange)));
+  if (vazio) return null;
+  return h("section", { class: "panel t-sum" }, card(lastTitle, lastSub, last, onChange));
 }

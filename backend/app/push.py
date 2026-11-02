@@ -283,17 +283,6 @@ def _morning(uid: int, p: dict, now: datetime, mask: int) -> list[str]:
             title = "Cobrar hoje" if len(cobrar) == 1 else f"Cobrar hoje: {len(cobrar)} tarefas"
             send(uid, _msg(title, body, "/#/tarefas", f"cobrar-{today}", "cobrar", hide, "Cobranças de hoje"))
             done.append("cobrar")
-        # Aguardando há N dias sem dia para cobrar: no dia N e de 7 em 7 (não todo dia).
-        from .review import stale_days, stale_line, stale_to_remind
-        paradas = stale_to_remind(abertas, today, stale_days(uid))
-        if paradas and _claim(uid, "parada", "manha", today):
-            if len(paradas) == 1:
-                title, body = "Aguardando faz tempo", stale_line(paradas[0])
-            else:
-                title = f"{len(paradas)} tarefas aguardando faz tempo"
-                body = ", ".join(x["title"] for x in paradas[:3]) + ("…" if len(paradas) > 3 else "") + ". Quer marcar quando cobrar?"
-            send(uid, _msg(title, body, "/#/hoje", f"parada-{today}", "parada", hide, "Tarefa aguardando"))
-            done.append("parada")
     return done
 
 

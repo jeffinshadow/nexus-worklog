@@ -240,7 +240,7 @@ function mountMore(el) {
       h("span", { class: "who-text" }, h("span", { class: "who-name", text: me.name, title: me.name }), h("span", { class: "who-email", text: me.email, title: me.email }))),
     h("div", { class: "menu-list" },
       ...items.map(([v, ic, label]) => h("a", { href: "#/" + v, "data-view": v }, icon(ic), h("span", { text: label }))),
-      // A revisão guiada da semana (também no card "Esta semana" do Hoje).
+      // A revisão guiada da semana (também no convite do assistente, no último dia útil).
       has("user") ? h("button", { type: "button", class: "nav-btn", onClick: () => openReview() }, icon("check"), h("span", { text: "Revisão da semana" })) : null,
       // Quem vai para o campo: com texto e à vista (no Hoje é só um ícone, lá embaixo).
       has("user") ? h("button", { type: "button", class: "nav-btn", onClick: () => prepareButton().click() }, icon("download"), h("span", { text: "Deixar pronto para sem sinal" })) : null,

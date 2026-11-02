@@ -449,20 +449,15 @@ class ProfileIn(BaseModel):
 
 class AssistantIn(BaseModel):
     enabled: bool = True
-    idle_on: bool = True
-    idle_minutes: int = Field(default=30, ge=5, le=480)
-    idle_start: int = Field(default=480, ge=0, le=1439)  # minutos do dia
-    idle_end: int = Field(default=1080, ge=1, le=1440)
-    reopen_on: bool = True                                 # fala fechada no X volta sozinha
-    reopen_minutes: int = Field(default=10, ge=1, le=240)
-    summary_from: int = Field(default=840, ge=0, le=1439)  # resumo do dia sem nada concluído: a partir de (min do dia)
-    stale_days: int = Field(default=5, ge=1, le=60)        # aguardando há N dias sem data de cobrança: o assistente avisa
-
-    @model_validator(mode="after")
-    def _janela(self):
-        if self.idle_start >= self.idle_end:
-            raise ValueError("o início da janela precisa ser antes do fim")
-        return self
+    # Obsoletos (até a 3.0): aceitos e ignorados; os valores são fixos (people.ASSISTANT_DEFAULTS).
+    idle_on: Optional[bool] = None
+    idle_minutes: Optional[int] = None
+    idle_start: Optional[int] = None
+    idle_end: Optional[int] = None
+    reopen_on: Optional[bool] = None
+    reopen_minutes: Optional[int] = None
+    summary_from: Optional[int] = None
+    stale_days: Optional[int] = None
 
 
 def _not_past(v):

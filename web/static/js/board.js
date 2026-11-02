@@ -236,18 +236,23 @@ export function followUpDay(day) {
   return fd;
 }
 
+// Ao marcar Aguardando, o "Dia para cobrar" já vem sugerido: 5 dias úteis à frente (a pessoa muda ou limpa).
+export const FOLLOW_UP_DAYS = 5;
+export const suggestedFollowUp = () =>
+  addWorkDays(localDateTime(Date.now()).slice(0, 10), FOLLOW_UP_DAYS, (session.me && session.me.work_days) || 62);
+
 export const canBlock = (t) => t.status !== "done" && t.status !== "blocked";
 
 // "Marcar como aguardando…" direto do menu: pergunta o que falta e, se quiser, quando cobrar.
 export function blockTask(t, onDone) {
   const back = keepFocus(); // depois do redesenho, o foco volta ao cartão
   const reason = h("input", { type: "text", maxlength: "120", required: "required", placeholder: "Ex.: peça do fornecedor, acesso à sala, aprovação" });
-  const follow = h("input", { type: "date", min: localDateTime(Date.now()).slice(0, 10) });
+  const follow = h("input", { type: "date", min: localDateTime(Date.now()).slice(0, 10), value: suggestedFollowUp() });
   const err = h("p", { class: "error-text", role: "alert" });
   const form = h("form", {},
     h("h2", { text: "Aguardando" }),
     h("p", { class: "dialog-note", text: t.title }),
-    field("Aguardando o quê?", reason), field("Dia para cobrar (opcional)", follow), err,
+    field("Aguardando o quê?", reason), field("Dia para cobrar (pode limpar)", follow), err,
     h("div", { class: "dialog-actions" },
       h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
       h("button", { type: "submit", class: "btn btn-primary", text: "Marcar como aguardando" })));
@@ -376,6 +381,8 @@ export function openWorklog(onDone, opts = {}) {
   const followUp = document.getElementById("wl-followup");
   followUp.value = "";
   followUp.min = now.slice(0, 10);
+  delete followUp.dataset.touched;
+  followUp.oninput = () => { followUp.dataset.touched = "1"; };  // limpou de propósito: não sugere de novo
   const resolution = document.getElementById("wl-resolution");
   resolution.value = "";
   // Lembrar em (data e hora): só em tarefa que fica aberta.
@@ -388,6 +395,7 @@ export function openWorklog(onDone, opts = {}) {
     blockedWrap.classList.toggle("hidden", statusSel.value !== "blocked");
     document.getElementById("wl-remind-wrap").classList.toggle("hidden", statusSel.value === "done");
     followUp.disabled = statusSel.value !== "blocked"; // escondido e desabilitado: o navegador não valida
+    if (statusSel.value === "blocked" && !followUp.value && !followUp.dataset.touched) followUp.value = suggestedFollowUp();
   };
   statusSel.onchange = syncDates;
   syncDates();

@@ -20,7 +20,7 @@ class WeekDoneIn(BaseModel):
 @router.get("/week")
 def week(user=Depends(active_user)):
     """O que fechou, o que ficou (aberto e aguardando), sugestões para a próxima
-    semana, tarefas paradas e se a revisão desta semana já foi feita."""
+    semana e se a revisão desta semana já foi feita."""
     return review.week_review(user["user_id"])
 
 

@@ -1055,9 +1055,6 @@ def t_get_week_review(ctx, args):
     sug = {t["id"]: t for t in r["open"]}
     linhas += ["", "Sugestões para a próxima semana:"]
     linhas += [f"- #{i} {_quoted(sug[i], sug[i]['title'])}" for i in r["suggestions"]] or ["- nada em aberto"]
-    if r["stale"]:
-        linhas += ["", f"Aguardando há {r['stale_days']}+ dias sem dia para cobrar (sugira combinar uma data com follow_up_on):"]
-        linhas += [f"- #{x['id']} {x['title']} (há {x['days']} dias)" for x in r["stale"]]
     return "\n".join(linhas)
 
 

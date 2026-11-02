@@ -228,72 +228,22 @@ function profilePanel(me, rerender) {
 
 // ------------------------------------------------------------- assistente --
 
-const hhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
-const toMin = (v) => { const [a, b] = v.split(":").map(Number); return a * 60 + (b || 0); };
-
 function assistantPanel(me) {
-  const a = me.assistant;
+  // Um só interruptor; o resto (lembrete de inatividade, reabrir fala fechada) é fixo.
   const falas = h("input", { type: "checkbox" });
-  falas.checked = a.enabled;
-  const idle = h("input", { type: "checkbox" });
-  idle.checked = a.idle_on;
-  const mins = h("input", { type: "number", min: "5", max: "480", step: "5", value: String(a.idle_minutes), class: "input-sm", "aria-label": "Minutos sem registro" });
-  const from = h("input", { type: "time", value: hhmm(a.idle_start), class: "input-sm", "aria-label": "Início do horário" });
-  const to = h("input", { type: "time", value: hhmm(Math.min(a.idle_end, 1439)), class: "input-sm", "aria-label": "Fim do horário" });
-  const reopen = h("input", { type: "checkbox" });
-  reopen.checked = a.reopen_on;
-  const reopenMins = h("input", { type: "number", min: "1", max: "240", value: String(a.reopen_minutes), class: "input-sm", "aria-label": "Minutos até reabrir" });
-  const summaryFrom = h("input", { type: "time", value: hhmm(a.summary_from ?? 840), class: "input-sm", "aria-label": "Horário do resumo do dia" });
-  const staleDays = h("input", { type: "number", min: "1", max: "60", value: String(a.stale_days ?? 5), class: "input-sm", "aria-label": "Dias aguardando sem data de cobrança" });
-  const sync = () => {
-    for (const el of [mins, from, to]) el.disabled = !idle.checked;
-    reopen.disabled = !falas.checked;
-    summaryFrom.disabled = !falas.checked;
-    staleDays.disabled = !falas.checked;
-    reopenMins.disabled = !falas.checked || !reopen.checked;
-  };
-  for (const el of [idle, falas, reopen]) el.addEventListener("change", sync);
-  sync();
-  // Salva a cada mudança (o número e a hora, ao sair do campo); o painel inteiro vai junto.
-  const err = errorLine();
-  const nums = [mins, reopenMins, staleDays];
-  const save = saver(async () => {
-    const bad = nums.find((el) => !el.disabled && !el.checkValidity());
-    if (bad) { fieldError(err, bad, `Use um número entre ${bad.min} e ${bad.max}.`); return; }
-    const body = { enabled: falas.checked, idle_on: idle.checked, idle_minutes: Number(mins.value),
-      idle_start: toMin(from.value || "08:00"), idle_end: toMin(to.value || "18:00"),
-      reopen_on: reopen.checked, reopen_minutes: Number(reopenMins.value),
-      summary_from: Math.min(toMin(summaryFrom.value || "14:00"), 1439),
-      stale_days: Math.min(Math.max(Number(staleDays.value) || 5, 1), 60) };
-    if (body.idle_start >= body.idle_end) { fieldError(err, [from, to], "O início do horário precisa ser antes do fim."); return; }
-    fieldError(err, [...nums, from, to], "");
+  falas.checked = me.assistant.enabled;
+  const guard = lockWhileSaving(falas);
+  falas.addEventListener("change", () => guard(async () => {
     try {
-      meChanged(me, { assistant: await api.put("/me/assistant", body) });
+      meChanged(me, { assistant: await api.put("/me/assistant", { enabled: falas.checked }) });
       toast("Assistente salvo.");
-    } catch (e) { errorToast(e, "Não foi possível salvar o assistente."); }
-  }, 300);
-  for (const el of [falas, idle, reopen, mins, from, to, reopenMins, summaryFrom, staleDays]) el.addEventListener("change", save);
+    } catch (e) { falas.checked = !falas.checked; errorToast(e, "Não foi possível salvar o assistente."); }
+  }));
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Assistente" })),
     h("div", { class: "notice-row" },
       h("label", { class: "notice-main" }, falas, h("span", {}, h("strong", { text: "Falas do assistente" }),
-        h("small", { text: "A saudação e o resumo do Hoje, a prévia do PDF em Meu mês, e as notas em Tarefas e Busca. Tudo calculado a partir dos seus próprios registros." })))),
-    h("div", { class: "idle-config" },
-      h("label", {}, reopen, "Reabrir uma fala fechada no X depois de", reopenMins, "min"),
-      h("small", { class: "muted", text: "Desligado: a fala fechada só volta ao recarregar a página." })),
-    h("div", { class: "idle-config" },
-      h("label", {}, "Resumo do dia a partir de", summaryFrom),
-      h("small", { class: "muted", text: "Ou antes, assim que a primeira tarefa ou rotina do dia for concluída." })),
-    h("div", { class: "idle-config" },
-      h("label", {}, "Perguntar quando cobrar após", staleDays, "dias aguardando"),
-      h("small", { class: "muted", text: "Só para tarefas aguardando sem dia marcado para cobrar." })),
-    h("div", { class: "notice-row" },
-      h("label", { class: "notice-main" }, idle, h("span", {}, h("strong", { text: "Lembrete quando passar um tempo sem registro" }),
-        h("small", { text: "Só com o app aberto, nos seus dias úteis e dentro do horário abaixo. Vale registro de qualquer origem: app, celular ou IA." })))),
-    h("div", { class: "idle-config" },
-      h("label", {}, "Avisar após", mins, "min sem registro"),
-      h("label", {}, "entre", from, "e", to)),
-    err);
+        h("small", { text: "A saudação e os avisos do Hoje, o lembrete quando passa um tempo sem registro, a prévia do PDF em Meu mês e as notas em Tarefas e Busca. Tudo calculado a partir dos seus próprios registros." })))));
 }
 
 // ---------------------------------------------------------------- modelos --

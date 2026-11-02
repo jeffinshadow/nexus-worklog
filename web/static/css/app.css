@@ -610,9 +610,6 @@ mark { background: var(--primary-container); color: var(--on-primary-container);
 @media (max-width: 900px) { #view-busca { grid-template-columns: 1fr; } }
 
 .today-grid > .t-sum { grid-column: 1 / -1; }
-.sum-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
-@media (max-width: 900px) { .sum-grid { grid-template-columns: 1fr; } }
-.sum-one .sum-grid { grid-template-columns: 1fr; }  /* só a semana (o último dia útil sem nada): uma coluna */
 .sum-title { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
 .sum-title h3 { font-size: var(--type-title); font-weight: var(--weight-title); }
 .sum-title .mono { font-size: var(--type-label); }
@@ -628,7 +625,6 @@ mark { background: var(--primary-container); color: var(--on-primary-container);
 .sum-track { height: 6px; border-radius: var(--radius-full); background: var(--surface-container-high); overflow: hidden; }
 .sum-track > span { display: block; height: 100%; border-radius: var(--radius-full); }
 .sum-bar-v { font-size: var(--type-label); color: var(--on-surface-variant); }
-.missed { display: flex; flex-wrap: wrap; gap: 6px; }
 .small { font-size: var(--type-caption); }
 
 .notice-row { display: flex; align-items: center; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--outline-variant); }
@@ -1625,7 +1621,6 @@ dialog .review-count { margin: 0 0 4px; font-family: var(--font-label); font-siz
   .review-dialog > form.review-form, .review-dialog > .review-form { display: block; }
   .review-body { overflow: visible; }
 }
-.sum-review { margin-top: 12px; }
 /* Primeiro amanhã e Antes do PDF: o mesmo diálogo, com um formulário em volta. */
 .review-dialog > form.review-form, .review-dialog > .review-form { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .first-dialog h2, .pdf-dialog h2 { padding-right: 40px; }
