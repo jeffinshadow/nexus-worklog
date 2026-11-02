@@ -9,6 +9,10 @@ maior seguinte (política completa em [`docs/ADMIN.md`](docs/ADMIN.md#versioname
 não a da hora do deploy. As versões 0.x e 1.x foram numeradas depois, sobre o histórico do git
 (etiquetas `v0.1.0` … `v1.12.1`).
 
+## 2.0.4 — 2026-11-02
+Android: o Enter do teclado no registro rápido do Hoje registra. Com o seletor de projeto no mesmo formulário, o
+Chrome do Android trocava o Enter por "próximo" (pulava para o projeto); o seletor saiu do formulário do campo.
+
 ## 2.0.3 — 2026-11-02
 Celular: o registro de uma linha do Hoje, o "+ Tarefa" dos projetos e o "Adicionar item" do checklist ganham o
 botão de enviar (a seta) e passam a enviar pelo Enter do teclado em qualquer teclado (antes, alguns teclados mandavam

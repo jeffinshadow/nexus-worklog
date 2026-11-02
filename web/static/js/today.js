@@ -227,7 +227,9 @@ export async function mount(root, ctx, opts = {}) {
       h("span", { class: "count" + (late.length || blocked.length ? " warn" : ""), text: [String(open.length),
         late.length ? `${late.length} atrasada${late.length > 1 ? "s" : ""}` : "",
         blocked.length ? `${blocked.length} aguardando` : ""].filter(Boolean).join(" · ") })),
-    sendRow(quick, register, "Registrar", "quick-row", proj),
+    // O projeto fica fora do <form> do campo: com outro campo no mesmo form, o Chrome do
+    // Android troca o Enter do teclado por "próximo" (pula para o projeto e não registra).
+    h("div", { class: "quick-row" }, sendRow(quick, register, "Registrar", "quick-send"), proj),
     h("p", { class: "quick-hint" }, "Enter ou a seta registra. Projeto, chamado e prazo no próprio texto: ",
       h("button", { type: "button", class: "link-btn", text: "ver marcadores", onClick: () => window.dispatchEvent(new CustomEvent("nexus:help", { detail: "marcadores" })) })), hint);
   // Filtro (fica na aba): o número de cada opção ajuda a decidir antes de clicar.

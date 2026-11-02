@@ -304,6 +304,9 @@ button.column-toggle { display: none; }
 .send-row > input { flex: 1; min-width: 0; }
 .send-row > .send-btn { flex: none; width: 44px; height: 44px; color: var(--primary-hi); }
 .quick-row input { flex: 1; min-width: 0; }
+.quick-send { display: contents; }  /* o form some do layout: campo, projeto e seta na mesma fila */
+.quick-row select { order: 1; }
+.quick-row .send-btn { order: 2; }
 .quick-row select { flex: none; max-width: 40%; height: 44px; }
 .list-row { display: flex; align-items: center; gap: 10px; padding: 9px 2px; border-bottom: 1px solid var(--outline-variant); }
 .list-row:last-child { border-bottom: 0; }
@@ -644,7 +647,7 @@ mark { background: var(--primary-container); color: var(--on-primary-container);
 .row-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
 
 .panel-head .count.warn { color: var(--warning); }
-@media (max-width: 560px) { .quick-row { flex-wrap: wrap; } .quick-row select { order: 1; max-width: none; width: 100%; } }  /* texto e enviar numa linha, projeto embaixo */
+@media (max-width: 560px) { .quick-row { flex-wrap: wrap; } .quick-row input { flex-basis: calc(100% - 52px); } .quick-row .send-btn { order: 1; } .quick-row select { order: 2; max-width: none; width: 100%; } }  /* texto e enviar numa linha, projeto embaixo */
 
 /* ------------------------------------------------------ perfil e assistente -- */
 .avatar { flex: none; display: inline-grid; place-items: center; border-radius: 50%; object-fit: cover;
