@@ -336,32 +336,16 @@ function workDays(me) {
 
 // ------------------------------------------------------------------ avisos --
 
-const KINDS = [
-  ["morning", "Seu dia", "De manhã: atrasadas, o que vence hoje, rotinas do dia e prioridades altas. Só nos dias úteis."],
-  ["evening", "Antes de encerrar", "No fim do dia, se ainda faltar alguma rotina de hoje. Não sai se você já fez tudo."],
-  ["weekly", "Resumo da semana", "Às segundas: rotinas, tarefas concluídas, tempo por projeto e o que ficou para trás na semana anterior."],
-];
-const HOURS = Array.from({ length: 24 }, (_, i) => i);
-
-// push: o painel das notificações (o mesmo Salvar e o mesmo horário da manhã valem para ele).
+// push: o painel das notificações dos aparelhos (grava junto, a cada mudança).
 async function notices(push) {
   const p = await api.get("/notifications");
-  const rows = KINDS.map(([key, title, help]) => {
-    const on = h("input", { type: "checkbox", "aria-label": title });
-    on.checked = p[key];
-    const hour = h("select", { class: "select-sm", "aria-label": `Horário de ${title}` },
-      ...HOURS.map((x) => h("option", { value: String(x), text: `${String(x).padStart(2, "0")}:00` })));
-    hour.value = String(p[`${key}_hour`]);
-    // O horário da manhã vale também para as notificações (cobranças e prazos): fica sempre editável.
-    const sync = () => { hour.disabled = !on.checked && key !== "morning"; };
-    on.addEventListener("change", sync);
-    sync();
-    return { key, on, hour, el: h("div", { class: "notice-row" },
-      h("label", { class: "notice-main" }, on, h("span", {}, h("strong", { text: title }), h("small", { text: help }))),
-      key === "morning" ? h("span", { class: "hour-shared" }, hour, h("small", { text: "horário da manhã: e-mail e notificações" })) : hour) };
-  });
+  // Um só interruptor: Seu dia (manhã, dias úteis), Antes de encerrar (se faltar rotina) e o Resumo da semana (segunda).
+  const mailOn = h("input", { type: "checkbox", "aria-label": "Receber avisos por e-mail" });
+  mailOn.checked = p.email_on;
+  const mailRow = h("div", { class: "notice-row" }, h("label", { class: "notice-main" }, mailOn, h("span", {},
+    h("strong", { text: "Receber avisos por e-mail" }),
+    h("small", { text: "De manhã (nos dias úteis): atrasadas, o que vence hoje, rotinas e prioridades. No fim do dia, se faltar alguma rotina. Às segundas, o resumo da semana. Só sai e-mail quando há algo a avisar." }))));
   // Semanal: o PDF anexado e uma cópia (quem acompanha o trabalho) — só valem com o resumo da semana ligado.
-  const weekly = rows.find((r) => r.key === "weekly");
   const pdf = h("input", { type: "checkbox" });
   pdf.checked = !!p.weekly_pdf;
   const cc = h("input", { type: "email", maxlength: "254", value: p.weekly_cc || "", placeholder: "ex.: colega@empresa.com.br",
@@ -370,23 +354,23 @@ async function notices(push) {
     h("label", { class: "check-line" }, pdf, h("span", { text: "Anexar o relatório da semana em PDF (o mesmo de Meu mês, com os títulos das tarefas)" })),
     field("Mandar cópia para quem acompanha meu trabalho (opcional)", cc),
     h("p", { class: "dialog-note", text: "A cópia recebe o mesmo e-mail, com o PDF se estiver ligado. Use só com quem já acompanha o seu trabalho." }));
-  const syncWeekly = () => { pdf.disabled = cc.disabled = !weekly.on.checked; weeklyExtra.classList.toggle("off", !weekly.on.checked); };
-  weekly.on.addEventListener("change", syncWeekly);
+  const syncWeekly = () => { pdf.disabled = cc.disabled = !mailOn.checked; weeklyExtra.classList.toggle("off", !mailOn.checked); };
+  mailOn.addEventListener("change", syncWeekly);
   syncWeekly();
   const titles = h("input", { type: "checkbox" });
   titles.checked = p.show_titles;
-  // Salva a cada mudança (e-mail e notificações juntos: o horário da manhã é um só).
+  // Salva a cada mudança (e-mail e notificações juntos).
   // O e-mail da cópia salva ao sair do campo; inválido, fica marcado com a frase embaixo.
   const ccErr = errorLine();
   weeklyExtra.children[1].after(ccErr);
   const save = saver(async () => {
     const body = { show_titles: titles.checked, weekly_pdf: pdf.checked, weekly_cc: cc.value.trim() || null };
-    for (const r of rows) { body[r.key] = r.on.checked; body[`${r.key}_hour`] = Number(r.hour.value); }
+    body.email_on = mailOn.checked;
     if (body.weekly_cc && !cc.checkValidity()) { fieldError(ccErr, cc, "O e-mail da cópia não parece válido."); body.weekly_cc = p.weekly_cc || null; }
     else fieldError(ccErr, cc, "");
     try {
       await api.put("/notifications", body);
-      await api.put("/push/prefs", { ...push.collect(), morning_hour: body.morning_hour });
+      await api.put("/push/prefs", push.collect());
       p.weekly_cc = body.weekly_cc;
       toast("Avisos salvos.");
     }
@@ -418,7 +402,7 @@ async function notices(push) {
       h("p", { class: "help" }, "Enviados para ", h("strong", { class: "mono", text: p.email }),
         ". Sem rastreamento de abertura ou de cliques; só sai e-mail quando há algo a avisar."),
       p.mail_configured ? null : warnBox("O envio de e-mail ainda não está configurado neste servidor. Você pode deixar tudo escolhido; os avisos começam quando ele for ligado."),
-      ...rows.flatMap((r) => (r === weekly ? [r.el, weeklyExtra] : [r.el])),
+      mailRow, weeklyExtra,
       h("label", { class: "check-line notice-titles" }, titles, h("span", { text: "Mostrar os títulos das tarefas no e-mail (desligado: só os números)" })),
       h("div", { class: "row-actions" }, test, testWeek));
   // Qualquer escolha dos dois painéis (a cópia, ao sair do campo) grava.

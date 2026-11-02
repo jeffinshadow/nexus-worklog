@@ -106,14 +106,9 @@ export function offerNotifications(me) {
 }
 
 // --------------------------------------------- Configurações > Avisos --
-const TYPES = [
-  ["routine", "Rotina e lembrete na hora", "No horário da rotina, com Marcar feita e Adiar 10 min; repete 10 e 30 min depois até ser marcada. O mesmo no “Lembrete com hora” de uma tarefa, com Concluir e Adiar."],
-  ["follow_up", "Cobrar hoje", "No horário da manhã (em Seu dia, abaixo), as tarefas aguardando com o dia de cobrar chegando."],
-  ["deadline", "Prazos de hoje", "No horário da manhã (em Seu dia, abaixo), as atrasadas e o que vence hoje."],
-  ["assigned", "Tarefas atribuídas", "Quando alguém atribui uma tarefa a você, ou devolve uma que você atribuiu."],
-];
-// O horário da manhã é um só para e-mail e notificações: o painel devolve `collect()`
-// (o corpo de PUT /push/prefs, sem o horário) e Configurações grava os dois a cada mudança.
+// Um só interruptor: rotina e lembrete na hora, cobranças e prazos da manhã, tarefas atribuídas.
+const ON_HELP = "Rotina e lembrete na hora (com Marcar feita, Concluir e Adiar), de manhã o que cobrar e os prazos de hoje, e as tarefas que alguém atribui a você.";
+// `collect()` devolve o corpo de PUT /push/prefs; Configurações grava os dois painéis a cada mudança.
 export async function pushPanel(rerender) {
   const sub = await currentSubscription();
   const p = await api.get("/push" + (sub ? "?endpoint=" + encodeURIComponent(sub.endpoint) : ""));
@@ -138,17 +133,13 @@ export async function pushPanel(rerender) {
   }
 
   // Tipos e privacidade
-  const checks = TYPES.map(([key, title, help]) => {
-    const on = h("input", { type: "checkbox", "aria-label": title });
-    on.checked = p.prefs[key];
-    return { key, on, el: h("label", { class: "notice-main notice-row" }, on, h("span", {}, h("strong", { text: title }), h("small", { text: help }))) };
-  });
+  const on = h("input", { type: "checkbox", "aria-label": "Receber notificações" });
+  on.checked = p.prefs.enabled;
+  const onRow = h("label", { class: "notice-main notice-row" }, on, h("span", {}, h("strong", { text: "Receber notificações" }), h("small", { text: ON_HELP })));
   const hide = h("input", { type: "checkbox" });
   hide.checked = p.prefs.hide_content;
   const collect = () => {
-    const body = { hide_content: hide.checked };
-    for (const c of checks) body[c.key] = c.on.checked;
-    return body;
+    return { enabled: on.checked, hide_content: hide.checked };
   };
   const test = h("button", { type: "button", class: "btn btn-ghost" }, icon("bell"), "Testar notificação");
   test.disabled = !p.devices.length;
@@ -163,7 +154,7 @@ export async function pushPanel(rerender) {
     h("div", { class: "panel-head" }, h("h2", { text: "Notificações nos aparelhos" })),
     h("p", { class: "help", text: "Avisos do sistema no celular e no computador, mesmo com o Nexus fechado. Cada aparelho liga separado; o conteúdo vai criptografado, sem serviço de terceiros além do push do próprio navegador." }),
     h("div", { class: "push-here" }, h("p", { text: status }), action),
-    ...checks.map((c) => c.el),
+    onRow,
     h("label", { class: "check-line notice-titles" }, hide, h("span", { text: "Esconder nomes de tarefas e rotinas na tela bloqueada (só o tipo do aviso)" })),
     h("div", { class: "row-actions" }, test),
     p.devices.length ? h("div", { class: "push-devices" },

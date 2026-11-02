@@ -43,7 +43,7 @@ ALLOWED_SUFFIXES = (".push.apple.com", ".notify.windows.com")
 STEPS = (0, 10, 30)       # minutos depois do horário da rotina
 LATE_MIN = 15             # passou disso do disparo (backend fora do ar): não manda mais
 MORNING_CATCH_UP_H = 2    # como nos e-mails: "bom dia" às 15h não serve
-DEFAULT_PREFS = {"routine": True, "follow_up": True, "deadline": True, "assigned": True,
+DEFAULT_PREFS = {"enabled": True, "routine": True, "follow_up": True, "deadline": True, "assigned": True,
                  "morning_hour": 8, "hide_content": False}
 
 
@@ -153,7 +153,11 @@ def send(uid: int, message: dict, urgency: str = "normal", ttl: int = 3600, only
 def prefs(uid: int) -> dict:
     row = db.query_one("""SELECT routine, follow_up, deadline, assigned, morning_hour, hide_content
                             FROM push_prefs WHERE user_id = %s""", (uid,))
-    return dict(row) if row else dict(DEFAULT_PREFS)
+    if not row:
+        return dict(DEFAULT_PREFS)
+    # Um interruptor só: ligado se algum dos tipos antigos estava ligado (rotina e lembrete na hora seguem).
+    on = bool(row["routine"] or row["follow_up"] or row["deadline"] or row["assigned"])
+    return {**row, "enabled": on, "routine": on, "follow_up": on, "deadline": on, "assigned": on}
 
 
 # ------------------------------------------------------------- mensagens --

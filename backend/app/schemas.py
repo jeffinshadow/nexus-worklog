@@ -355,12 +355,22 @@ class PushDeviceIn(BaseModel):
 
 
 class PushPrefsIn(BaseModel):
-    routine: bool = True
-    follow_up: bool = True
-    deadline: bool = True
-    assigned: bool = True
-    morning_hour: int = Field(default=8, ge=0, le=23)
+    """Notificações nos aparelhos: um só interruptor (`enabled`) liga ou desliga tudo (rotina e lembrete
+    na hora, cobrar, prazos, atribuídas). Os campos por tipo e morning_hour são obsoletos (até a 3.0):
+    aceitos; sem `enabled`, vale "ligado se algum tipo estava ligado"."""
+    enabled: Optional[bool] = None
     hide_content: bool = False
+    routine: Optional[bool] = None
+    follow_up: Optional[bool] = None
+    deadline: Optional[bool] = None
+    assigned: Optional[bool] = None
+    morning_hour: Optional[int] = None
+
+    def is_on(self) -> bool:
+        if self.enabled is not None:
+            return self.enabled
+        old = [v for v in (self.routine, self.follow_up, self.deadline, self.assigned) if v is not None]
+        return any(old) if old else True
 
 
 class SnoozeIn(BaseModel):
@@ -763,18 +773,25 @@ class TimeUpdate(BaseModel):
     note: Optional[str] = Field(default=None, max_length=200)
 
 
-# Avisos por e-mail: os padrões daqui valem também quando o usuário ainda não
-# salvou nada (notify.get_prefs).
+# Avisos por e-mail: um só interruptor (`email_on`) liga Seu dia, Antes de encerrar e o Resumo da semana.
+# Os campos por tipo e os horários são obsoletos (até a 3.0): aceitos; sem `email_on`, vale "ligado se
+# algum tipo estava ligado". Valem também os padrões daqui quando a pessoa ainda não salvou nada.
 class PrefsIn(BaseModel):
-    morning: bool = False
-    morning_hour: int = Field(default=8, ge=0, le=23)
-    evening: bool = False
-    evening_hour: int = Field(default=17, ge=0, le=23)
-    weekly: bool = False
-    weekly_hour: int = Field(default=8, ge=0, le=23)
+    email_on: Optional[bool] = None
     show_titles: bool = True
     weekly_pdf: bool = False                 # o relatório da semana em PDF, anexado
     weekly_cc: Optional[EmailStr] = None     # cópia do resumo semanal (gestor, cliente)
+    morning: Optional[bool] = None           # obsoletos
+    morning_hour: Optional[int] = None
+    evening: Optional[bool] = None
+    evening_hour: Optional[int] = None
+    weekly: Optional[bool] = None
+    weekly_hour: Optional[int] = None
+
+    def is_on(self) -> bool:
+        if self.email_on is not None:
+            return self.email_on
+        return any(v for v in (self.morning, self.evening, self.weekly))
 
 
 class FeedIn(BaseModel):
