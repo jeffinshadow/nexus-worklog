@@ -9,14 +9,14 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 
-from .. import assignable, audit, db, links, mailer, org, people, roles
+from .. import assignable, audit, db, links, mailer, org, people, roles, teams
 from ..deps import clear_session_cookie
 from ..security import login_limiter, verify_password
 from ..deps import web_active, web_active_csrf
 from ..schemas import (AssistantIn, ConsentIn, DefaultProjectIn, DeleteMeIn, EmailChangeIn, ProfileIn, ThemeIn,
                        TicketUrlIn, TourIn)
 from ..services import running_timer
-from ..visibility import visible_sql
+from ..visibility import scope_sql, visible_sql
 
 router = APIRouter(prefix="/api/me", tags=["me"])
 
@@ -35,7 +35,7 @@ def _sniff(data: bytes) -> str | None:
 
 @router.put("/profile")
 def put_profile(data: ProfileIn, user=Depends(web_active_csrf)):
-    org.ensure_identity_editable()  # "Nome e e-mail definidos pela administração": só o admin muda
+    org.ensure_identity_editable(user["user_id"])  # "Nome e e-mail definidos pela administração": só o admin muda
     uid = user["user_id"]
     before = people.profile(uid)["display_name"]
     name = " ".join(data.display_name.split()) if data.display_name else None  # sem espaços duplicados
@@ -61,7 +61,7 @@ def request_email_change(data: EmailChangeIn, user=Depends(web_active_csrf)):
     confirmação ao endereço NOVO (24 horas, uso único). O e-mail só muda quando
     a pessoa confirma (POST /api/auth/email/confirm); o antigo recebe um aviso.
     Bloqueado quando a administração define nome e e-mail."""
-    org.ensure_identity_editable()
+    org.ensure_identity_editable(user["user_id"])
     uid = user["user_id"]
     if not mailer.configured():
         raise HTTPException(status_code=400, detail="o servidor não manda e-mail: peça a troca a quem administra o Nexus")
@@ -130,9 +130,9 @@ def _avatar_visible(user: dict, user_id: int) -> bool:
         return True
     conds = []
     if "viewer" in roles:
-        conds.append(visible_sql("u"))
+        conds.append(visible_sql("u", int(user["user_id"])))
     if "assigner" in roles:
-        conds.append(assignable.receive_sql("u"))
+        conds.append(assignable.receive_sql("u", int(user["user_id"])))
     if not conds:
         return False
     return bool(db.query_one(
@@ -181,17 +181,34 @@ def put_assistant(data: AssistantIn, user=Depends(web_active_csrf)):
 
 @router.get("/visibility")
 def visibility(user=Depends(web_active)):
-    """Quem, além da pessoa, tem papel que alcança o registro dela (Configurações >
-    Conta): visualizador (registro, relatórios e fotos de quem aceitou, ver
-    PUT /me/viewers) e admin (que concede papéis). Só nome e papel; sem e-mail."""
+    """Transparência (Configurações > Conta): quem, além da pessoa, tem papel que
+    alcança o registro dela: admin (que concede papéis), "Vê a equipe" e "Manda
+    tarefas", estes só de quem está no escopo (com equipes: compartilha equipe
+    com a pessoa, ou é o admin master com o papel; visibility.py e
+    assignable.py). `sees`/`assigns`: se vê o registro / pode atribuir AGORA
+    (com o aceite ou "Para empresas"). Só nome e papéis; sem e-mail."""
+    me_ = int(user["user_id"])
+    m = f"FROM users m WHERE m.id = {me_}"
     rows = db.query_all(
-        """SELECT u.email, u.display_name, array_agg(r.role ORDER BY r.role) AS roles
-             FROM users u JOIN user_roles r ON r.user_id = u.id
-            WHERE r.role IN ('admin', 'viewer') AND u.id <> %s
-            GROUP BY u.id ORDER BY lower(COALESCE(u.display_name, u.email))""",
-        (user["user_id"],),
+        f"""SELECT * FROM (
+              SELECT u.email, u.display_name,
+                     ARRAY(SELECT r.role FROM user_roles r WHERE r.user_id = u.id
+                              AND (r.role = 'admin'
+                                   OR (r.role = 'viewer' AND EXISTS (SELECT 1 {m} AND {scope_sql('m', 'u.id')}))
+                                   OR (r.role = 'assigner' AND EXISTS (SELECT 1 {m} AND {assignable.scope_sql('m', 'u.id')})))
+                            ORDER BY r.role) AS roles,
+                     EXISTS (SELECT 1 FROM user_roles r WHERE r.user_id = u.id AND r.role = 'viewer')
+                       AND EXISTS (SELECT 1 {m} AND {visible_sql('m', 'u.id')}) AS sees,
+                     EXISTS (SELECT 1 FROM user_roles r WHERE r.user_id = u.id AND r.role = 'assigner')
+                       AND EXISTS (SELECT 1 {m} AND {assignable.receive_sql('m', 'u.id')}) AS assigns
+                FROM users u
+               WHERE u.id <> %s AND u.blocked_at IS NULL AND NOT u.invite_pending) x
+            WHERE cardinality(x.roles) > 0
+            ORDER BY lower(COALESCE(x.display_name, x.email))""",
+        (me_,),
     )
-    return [{"name": r["display_name"] or people.name_from_email(r["email"]), "roles": r["roles"]} for r in rows]
+    return [{"name": r["display_name"] or people.name_from_email(r["email"]), "roles": r["roles"],
+             "sees": r["sees"], "assigns": r["assigns"]} for r in rows]
 
 
 @router.get("/activity")
@@ -208,7 +225,7 @@ def put_ticket_url(data: TicketUrlIn, user=Depends(web_active_csrf)):
     Com o endereço definido pela administração (Admin › Para empresas), 409: o
     da instância vale para todos; o da pessoa fica guardado e volta a valer se
     o admin esvaziar o global."""
-    if org.get()["ticket_url"]:
+    if org.effective(user["user_id"])["ticket_url"]:
         raise HTTPException(status_code=409, detail=TICKETS_BY_ADMIN)
     url = (data.ticket_url or "").strip() or None
     db.execute("UPDATE users SET ticket_url = %s WHERE id = %s", (url, user["user_id"]))
@@ -288,7 +305,7 @@ def put_assignments(data: ConsentIn, user=Depends(web_active_csrf)):
     """Consentimento para receber tarefas de um atribuidor (só pelo app).
     Desligar não mexe nas tarefas já recebidas. Com "Todos recebem de quem
     atribui" (Admin › Para empresas), 409: a escolha fica guardada como está."""
-    if org.get()["assign_receive"] == "all":
+    if org.effective(user["user_id"])["assign_receive"] == "all":
         raise HTTPException(status_code=409, detail=org.ASSIGN_LOCKED + " A sua escolha fica guardada e volta a valer se isso mudar.")
     uid = user["user_id"]
     before = db.query_one("SELECT accepts_assignments_at FROM users WHERE id = %s", (uid,))["accepts_assignments_at"]
@@ -307,7 +324,7 @@ def put_assignments(data: ConsentIn, user=Depends(web_active_csrf)):
 def put_viewers(data: ConsentIn, user=Depends(web_active_csrf)):
     """Aceite do visualizador (só pelo app): com ele, quem tem o papel viewer vê
     o registro da pessoa em Equipe (quadro, números, PDF, horas, fotos)."""
-    if org.get()["team_visibility"] == "managers":
+    if org.effective(user["user_id"])["team_visibility"] == "managers":
         # A escolha fica guardada como está e volta a valer quando a administração
         # voltar para "Cada pessoa escolhe"; enquanto isso, não muda.
         raise HTTPException(status_code=409, detail=org.VISIBILITY_LOCKED + " A sua escolha fica guardada e volta a valer se isso mudar.")
@@ -331,8 +348,14 @@ def delete_me(data: DeleteMeIn, response: Response, user=Depends(web_active_csrf
         raise HTTPException(status_code=400, detail="senha incorreta")
     if "admin" in user["roles"] and roles.admins_count() <= 1:
         raise HTTPException(status_code=400, detail="você é o único admin: dê o papel de admin a outra pessoa antes")
+    if teams.is_master(uid):
+        raise HTTPException(status_code=400, detail=MASTER_DELETE)
     if not roles.delete_account(uid):
         raise HTTPException(status_code=400, detail="você é o único admin: dê o papel de admin a outra pessoa antes")
     logging.getLogger("uvicorn.error").info("conta %s excluída pela própria pessoa", uid)
     clear_session_cookie(response)
     return {"ok": True}
+
+
+MASTER_DELETE = ("você é o admin master: passe esse papel para outro admin (Admin › Equipes › Transferir) "
+                 "antes de excluir a conta")

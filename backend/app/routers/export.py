@@ -8,7 +8,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
-from .. import db
+from .. import db, teams
 from ..visibility import visible_sql
 from ..deps import active_user
 from ..labels import PRIO_PT, STATUS_PT
@@ -74,20 +74,22 @@ def _period(start: date | None, end: date | None) -> tuple[date | None, date | N
     return start, end
 
 
-def time_csv(uid: int | None, filename: str, viewable_only: bool = False,
-             start: date | None = None, end: date | None = None) -> Response:
+def time_csv(uid: int | None, filename: str, viewer: int | None = None,
+             start: date | None = None, end: date | None = None, extra: str = "TRUE") -> Response:
     """Apontamentos em CSV. uid=None = de todos (visualizador: horas da equipe
     por cliente; o projeto vai por nome, pois cada pessoa tem os seus).
-    viewable_only = só de quem o visualizador pode ver (visibility.visible_sql). start/end: só esse período."""
+    viewer = só de quem esse visualizador pode ver (visibility.visible_sql;
+    `extra`: o recorte do seletor de equipe). start/end: só esse período."""
+    vis = f"{visible_sql('u', int(viewer))} AND {extra}" if viewer is not None else "TRUE"
     rows = db.query_all(
         f"""SELECT e.day, e.minutes, w.id AS task_id, w.title, p.name AS project, e.note, e.actor, e.token_name,
                   w.ticket, w.after_hours, u.email
              FROM time_entries e JOIN worklog_tasks w ON w.id = e.task_id
              JOIN users u ON u.id = e.user_id
              LEFT JOIN projects p ON p.id = w.project_id AND p.user_id = e.user_id
-            WHERE (%(uid)s::bigint IS NULL OR e.user_id = %(uid)s) AND (NOT %(vo)s OR {visible_sql('u')})
+            WHERE (%(uid)s::bigint IS NULL OR e.user_id = %(uid)s) AND {vis}
               AND (%(s)s::date IS NULL OR e.day >= %(s)s) AND (%(e)s::date IS NULL OR e.day <= %(e)s)
-            ORDER BY e.day, u.email, e.id""", {"uid": uid, "vo": viewable_only, "s": start, "e": end})
+            ORDER BY e.day, u.email, e.id""", {"uid": uid, "s": start, "e": end})
     header = ["data", "minutos", "horas", "tarefa_id", "tarefa", "projeto", "observacao", "origem", "chamado", "plantao"]
     data = [[r["day"], r["minutes"], str(round(r["minutes"] / 60, 2)).replace(".", ","), r["task_id"], r["title"],
              r["project"] or "", r["note"] or "", r["token_name"] or r["actor"], r["ticket"] or "",
@@ -221,7 +223,7 @@ def export(kind: str, start: Optional[date] = Query(None), end: Optional[date] =
             "exported_at": datetime.now(app_tz()),
             "user": db.query_one("SELECT email, work_days, created_at FROM users WHERE id = %s", (uid,)),
             "profile": db.query_one(
-                """SELECT display_name, theme, COALESCE((SELECT s.ticket_url FROM app_settings s WHERE s.id = 1), ticket_url) AS ticket_url,
+                f"""SELECT display_name, theme, COALESCE((SELECT s.ticket_url FROM app_settings s WHERE s.id = 1 AND {teams.company_sql('users.id')}), ticket_url) AS ticket_url,
                           default_project_id, accepts_assignments_at, viewers_allowed,
                           EXISTS (SELECT 1 FROM user_avatars a WHERE a.user_id = users.id) AS has_avatar
                      FROM users WHERE id = %s""", (uid,)),

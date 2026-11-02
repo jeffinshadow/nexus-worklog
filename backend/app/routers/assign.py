@@ -1,6 +1,7 @@
 """Atribuição de tarefas: o Atribuidor manda uma tarefa para quem pode receber
 (quem consentiu ou, com "Todos recebem de quem atribui", todo Usuário: a regra
-mora em assignable.py).
+mora em assignable.py; com equipes, só quem compartilha equipe com quem
+atribui, ou o admin master com o papel "Manda tarefas" ligado).
 
 A tarefa nasce na conta de quem recebe (ele é o dono: edita, conclui, exclui)
 com "atribuída por". Quem atribuiu acompanha o status em "Tarefas que
@@ -21,10 +22,11 @@ ajustáveis) ou encerrar (POST /api/assign/{id}/close).
 """
 import logging
 import threading
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
-from .. import assignable, audit, db, mailer, people, push
+from .. import assignable, audit, db, mailer, people, push, teams
 from ..deps import active_user_csrf, require_assigner, require_assigner_csrf, require_people_list
 from ..labels import PRIO_PT
 from ..schemas import AssignEditIn, AssignIn, ReturnIn
@@ -37,7 +39,7 @@ log = logging.getLogger("uvicorn.error")
 
 
 @router.get("/people")
-def list_people(user=Depends(require_people_list)):
+def list_people(team: Annotated[str | None, Query(max_length=20)] = None, user=Depends(require_people_list)):
     """Contas com registro próprio e se podem receber tarefas agora (`accepts`,
     a regra de assignable.py) e desde quando aceitaram (`accepts_assignments_at`;
     com "Todos recebem de quem atribui" fica a escolha guardada da pessoa).
@@ -48,18 +50,30 @@ def list_people(user=Depends(require_people_list)):
     Quem não é admin (o papel Manda tarefas) vê com nome e e-mail só quem pode
     receber (e a própria conta). Quem não pode receber vem só como
     `{"accepts": false, "everyone": …}`, sem id, e-mail nem bloqueio: conta
-    para "as outras N ainda não aceitam", sem expor quem disse não."""
+    para "as outras N ainda não aceitam", sem expor quem disse não. Com equipes
+    (sql/043), quem está fora do escopo de quem atribui nem entra na conta
+    (o admin continua vendo todos, com `accepts` pela regra dele).
+
+    `teams`: as equipes que a pessoa compartilha com quem pede (o master com o
+    papel: todas as dela), para agrupar o Atribuir; `team` filtra por uma
+    (o mesmo seletor da Equipe, teams.filter_sql)."""
+    uid = user["user_id"]
+    is_admin = "admin" in (user.get("roles") or [])
+    master = teams.selector(uid, "assigner")["master"]
+    cut = teams.filter_sql("u", uid, "assigner", team) if "assigner" in (user.get("roles") or []) else "TRUE"
+    scope = "TRUE" if is_admin else assignable.scope_sql("u", uid)
+    names = teams.names_sql("u.id") if master else teams.shared_names_sql(uid, "u.id")
     rows = db.query_all(
         f"""SELECT u.id, u.email, u.accepts_assignments_at, u.blocked_at IS NOT NULL AS blocked,
-                   {assignable.receive_sql('u')} AS accepts
+                   {assignable.receive_sql('u', uid)} AS accepts, {names} AS teams
              FROM users u
             WHERE EXISTS (SELECT 1 FROM user_roles r WHERE r.user_id = u.id AND r.role = 'user')
-            ORDER BY NOT {assignable.receive_sql('u')}, lower(u.email)""")
-    is_admin = "admin" in (user.get("roles") or [])
-    everyone = assignable.everyone()
+              AND ({scope} OR u.id = %s) AND {cut}
+            ORDER BY NOT {assignable.receive_sql('u', uid)}, lower(u.email)""", (uid,))
     out = []
     for r in rows:
-        if not is_admin and not r["accepts"] and r["id"] != user["user_id"]:
+        everyone = assignable.everyone_for(r["id"])
+        if not is_admin and not r["accepts"] and r["id"] != uid:
             out.append({"accepts": False, "everyone": everyone})
             continue
         p = people.profile(r["id"])
@@ -69,18 +83,25 @@ def list_people(user=Depends(require_people_list)):
     return out
 
 
-def _mail_reason() -> str:
-    if assignable.everyone():
+@router.get("/teams")
+def assign_teams(user=Depends(require_assigner)):
+    """O seletor de equipe do Atribuir: as equipes de quem atribui (o master com
+    "Manda tarefas" ligado: todas, mais "Sem equipe"). `on`: a instância tem equipes."""
+    return teams.selector(user["user_id"], "assigner")
+
+
+def _mail_reason(to_id: int) -> str:
+    if assignable.everyone_for(to_id):
         return ("Você recebe este e-mail porque, nesta instância do Nexus, todos recebem tarefas "
                 "de quem atribui (definido pela administração).")
     return "Você recebe este e-mail porque aceitou receber tarefas atribuídas (Configurações > Conta)."
 
 
-def _assignment_mail(task: dict, by_name: str):
+def _assignment_mail(task: dict, by_name: str, to_id: int):
     from ..notify import Mail  # import tardio: notify importa rotas
     m = Mail(f"Nova tarefa para você: {task['title']}", f"{by_name} atribuiu uma tarefa a você",
              "Ela já está nas suas tarefas no Nexus.")
-    m.reason = _mail_reason()
+    m.reason = _mail_reason(to_id)
     m.settings_tab = "conta"
     m.link = f"/#/tarefas?id={task['id']}"
     itens = [task["title"]]
@@ -113,11 +134,12 @@ def assign(data: AssignIn, user=Depends(require_assigner_csrf)):
     if data.user_id == user["user_id"]:
         raise HTTPException(status_code=400, detail="para você mesmo, crie a tarefa normalmente")
     target = db.query_one(
-        f"""SELECT u.id, u.email, {assignable.receive_sql('u')} AS accepts FROM users u
+        f"""SELECT u.id, u.email, {assignable.receive_sql('u', user['user_id'])} AS accepts FROM users u
             WHERE u.id = %s AND u.blocked_at IS NULL AND EXISTS (SELECT 1 FROM user_roles r WHERE r.user_id = u.id AND r.role = 'user')""",
         (data.user_id,),
     )
-    if not target:
+    if not target or not assignable.in_scope(user["user_id"], target["id"]):
+        # Fora das equipes de quem atribui: como quem não existe (sem revelar a conta).
         raise HTTPException(status_code=404, detail="usuário não encontrado")
     if not target["accepts"]:
         raise HTTPException(status_code=403, detail="essa pessoa não aceitou receber tarefas atribuídas")
@@ -140,7 +162,7 @@ def assign(data: AssignIn, user=Depends(require_assigner_csrf)):
                         **({"from_return": data.from_return} if data.from_return is not None else {})})
     emailed = mailer.configured()
     if emailed:
-        _spawn(target["email"], _assignment_mail({**snap, "due_date": data.due_date}, by_name))
+        _spawn(target["email"], _assignment_mail({**snap, "due_date": data.due_date}, by_name, target["id"]))
     threading.Thread(target=push.notify_assigned, args=(target["id"], {"id": tid, "title": data.title}, by_name), daemon=True).start()
     return {"id": tid, "to": to_name, "emailed": emailed}
 
@@ -179,7 +201,9 @@ def sent(user=Depends(require_assigner)):
     rows = db.query_all(
         f"""SELECT w.id, w.title, w.description, w.status, w.due_date, w.assigned_at, w.completed_at, w.priority, w.blocked_reason,
                    w.user_id AS to_id, u.email AS to_email,
-                   (w.status = 'todo' AND NOT EXISTS ({_STARTED.format(t="w.id")})) AS editable
+                   (w.status = 'todo' AND NOT EXISTS ({_STARTED.format(t="w.id")})
+                    AND {assignable.scope_sql('u', int(user['user_id']))}) AS editable,
+                   {assignable.scope_sql('u', int(user['user_id']))} AS same_team
               FROM worklog_tasks w JOIN users u ON u.id = w.user_id
              WHERE w.assigned_by = %s
              ORDER BY w.assigned_at DESC NULLS LAST, w.id DESC
@@ -332,15 +356,19 @@ def _touched(task_id: int, to_id: int) -> list[str]:
             if any(k in (r["before"] or {}) and k in (r["after"] or {}) and r["before"][k] != r["after"][k] for r in rows)]
 
 
-def _change_mail(title: str, by_name: str, verb: str, lines: list[str], link: str):
+def _change_mail(title: str, by_name: str, verb: str, lines: list[str], link: str, to_id: int):
     from ..notify import Mail  # import tardio: notify importa rotas
     m = Mail(f"Tarefa {verb[:-2].lower()}ada: {title}", f"{by_name} {verb.lower()} uma tarefa que tinha atribuído a você",
              "Era uma das suas tarefas a fazer no Nexus.")
-    m.reason = _mail_reason()
+    m.reason = _mail_reason(to_id)
     m.settings_tab = "conta"
     m.link = link
     m.blocks = [("Tarefa", lines)]
     return m
+
+
+OUT_OF_TEAM_MSG = ("vocês não estão mais na mesma equipe: a tarefa continua na sua lista, "
+                   "mas só quem recebeu pode mudá-la agora")
 
 
 @router.patch("/{task_id}")
@@ -349,6 +377,10 @@ def update_sent(task_id: int, data: AssignEditIn, user=Depends(require_assigner_
     começou. Só o que de fato muda; campo que quem recebeu já mudou não é
     regravado por cima (409, nada muda)."""
     row = _own_sent(task_id, user["user_id"])
+    if not assignable.in_scope(user["user_id"], row["user_id"]):
+        # Atribuição antiga entre quem não compartilha mais equipe: fica no
+        # histórico de quem mandou (Tarefas que atribuí), mas não se altera.
+        raise HTTPException(status_code=403, detail=OUT_OF_TEAM_MSG)
     before = audit.worklog_snapshot(task_id, row["user_id"])
     changes = {k: v for k, v in data.model_dump(exclude_unset=True).items() if v is not None or k in ("due_date", "description")}
     changes = {k: v for k, v in changes.items() if audit._jsonable(v) != audit._jsonable(before[k])}
@@ -383,7 +415,7 @@ def update_sent(task_id: int, data: AssignEditIn, user=Depends(require_assigner_
         if after["due_date"]:
             lines.append(f"Prazo: {after['due_date'].strftime('%d/%m/%Y')}")
         lines.append(f"Prioridade {PRIO_PT[after['priority']]}")
-        _spawn(row["email"], _change_mail(after["title"], by_name, "Alterou", lines, f"/#/tarefas?id={task_id}"))
+        _spawn(row["email"], _change_mail(after["title"], by_name, "Alterou", lines, f"/#/tarefas?id={task_id}", row["user_id"]))
     return {"id": task_id, "title": after["title"], "description": after["description"], "due_date": after["due_date"],
             "priority": after["priority"]}
 
@@ -394,6 +426,8 @@ def cancel_sent(task_id: int, user=Depends(require_assigner_csrf)):
     sem nada mudado por quem recebeu) sai da conta dela, que é avisada por
     e-mail. No histórico dela fica a exclusão (worklog.delete, desfazível)."""
     row = _own_sent(task_id, user["user_id"])
+    if not assignable.in_scope(user["user_id"], row["user_id"]):
+        raise HTTPException(status_code=403, detail=OUT_OF_TEAM_MSG)
     before = audit.worklog_snapshot(task_id, row["user_id"])
     if _touched(task_id, row["user_id"]):
         raise HTTPException(status_code=409, detail=(
@@ -418,7 +452,7 @@ def cancel_sent(task_id: int, user=Depends(require_assigner_csrf)):
     audit.record(user, "assign.cancel", "assignment", task_id,
                  before={"title": row["title"], "to": people.profile(row["user_id"])["name"]})
     if mailer.configured() and not row["blocked"]:
-        _spawn(row["email"], _change_mail(row["title"], by_name, "Cancelou", [row["title"], "A tarefa saiu da sua lista; não precisa fazer nada."], "/#/tarefas"))
+        _spawn(row["email"], _change_mail(row["title"], by_name, "Cancelou", [row["title"], "A tarefa saiu da sua lista; não precisa fazer nada."], "/#/tarefas", row["user_id"]))
     return {"ok": True}
 
 @router.post("/{task_id}/close")
