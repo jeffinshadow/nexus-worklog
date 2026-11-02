@@ -77,11 +77,11 @@ export async function mountTeams(root, me) {
   }
 
   root.append(h("div", { class: "settings-grid" },
-    masterPanel(master, users, me, reload),
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, title, h("div", { class: "spacer" }), newBtn),
       h("p", { class: "help", text: "Com equipes, “Vê a equipe” e “Manda tarefas” valem só entre quem está na mesma equipe (somado ao aceite de cada pessoa ou às opções de Para empresas). Quem fica sem equipe não é visto nem recebe tarefas de ninguém, exceto do admin master. As opções de Para empresas valem só para quem está em alguma equipe; o pedido de convite e a política de privacidade valem para todos." }),
-      list)));
+      list),
+    masterPanel(master, users, me, reload)));  // o master vem depois da lista (no celular, as equipes ficam no topo)
 }
 
 // ------------------------------------------------- o diálogo da equipe --

@@ -459,7 +459,8 @@ async function mountUsers(root, me) {
         const res = req ? await api.post(`/admin/invite-requests/${req.id}/invite`, body)
           : await api.post("/admin/users", { email: input.value.trim(), ...body });
         dlg.close();
-        if (res.invite_url) showInvite(res); else showPassword(res.email, res.temp_password);
+        const nomes = teams.filter((t) => body.team_ids.includes(t.id)).map((t) => t.name);
+        if (res.invite_url) showInvite(res, nomes); else showPassword(res.email, res.temp_password);
         mountUsers(root, me); // recarrega a lista com o novo usuário
       } catch (e) {
         err.textContent =
@@ -475,12 +476,13 @@ async function mountUsers(root, me) {
     (req ? name : input).focus();
   }
 
-  function showInvite(res) {
+  function showInvite(res, equipes = []) {
     const dlg = modal(
       h("h2", { text: res.emailed ? "Convite enviado" : "Convite criado" }),
       res.emailed
         ? h("p", {}, "Mandamos o convite para ", h("strong", { text: res.email }), ". Se não chegar, mande este link por outro canal:")
         : warnBox(`O e-mail para ${res.email} não saiu. Mande este link por outro canal (WhatsApp, chat):`),
+      equipes.length ? h("p", { class: "dialog-note", text: `Equipes: ${equipes.join(", ")}.` }) : null,
       codeBox(res.invite_url),
       h("p", { class: "dialog-note", text: "Vale por 7 dias e funciona uma vez só. Reenviar gera um link novo e o anterior deixa de valer." }),
       h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Pronto", onClick: () => dlg.close() })));

@@ -51,6 +51,17 @@ async function panelView(root, ctx) {
   const afterAssign = () => { sent.load(); if (canView) load().catch(errorToast); };
   const assignBtn = canAssign ? h("button", { type: "button", class: "btn btn-primary", "data-fab": "",
     onClick: () => assignDialog({ onDone: afterAssign }) }, icon("send"), "Atribuir tarefa") : null;
+  const me = session.me || {};
+  if (canView && me.teams_on && !me.is_master && !(me.teams || []).length) {
+    // Tem o papel, mas não está em nenhuma equipe: em vez de um painel de zeros, o que fazer.
+    ctx.setActions(assignBtn);
+    clear(root);
+    root.append(h("section", { class: "panel" },
+      h("div", { class: "panel-head" }, h("h2", { text: "Você ainda não está em nenhuma equipe" })),
+      h("p", { class: "help", text: "Nesta instância, a tela Equipe mostra só quem está numa equipe com você. Peça a quem administra o Nexus para incluir você na sua equipe (Admin › Equipes)." })));
+    if (sent) { await sent.load(); root.append(sent.el); }
+    return;
+  }
   if (!canView) {
     // Só atribui: a lista e o botão, nada da equipe.
     ctx.setActions(assignBtn);
