@@ -49,6 +49,9 @@ export function taskChips(t, today) {
   // Só o estado que informa: "a fazer" é o normal de quem está em aberto (sem chip);
   // concluída, a coluna já diz e fica só a data de fim.
   const chips = t.status === "done" || t.status === "todo" ? [] : [h("span", { class: "chip " + t.status, text: STATUS_LABELS[t.status] + blockedDays(t, today) })];
+  // "Primeiro amanhã" escolhido para hoje: abre a lista (some sozinho depois do dia).
+  if (t.first_on && t.first_on === today && t.status !== "done")
+    chips.unshift(h("span", { class: "chip first", title: "Você escolheu começar por ela hoje (Primeiro amanhã)" }, icon("play"), "primeiro hoje"));
   if (t.status === "blocked" && t.follow_up_on)
     chips.push(h("span", { class: "chip " + (t.follow_up_on <= today ? "late" : "blocked-reason"), title: "Dia combinado para cobrar",
       text: t.follow_up_on < today ? "cobrança atrasada · " + shortDate(t.follow_up_on)

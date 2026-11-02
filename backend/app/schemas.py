@@ -32,6 +32,7 @@ class InviteChoiceIn(BaseModel):
 class OrgIn(BaseModel):
     """Admin › Para empresas e instituições. Campo ausente = mantém."""
     team_visibility: Optional[Literal["self", "managers"]] = None  # cada pessoa escolhe / visível para quem gerencia
+    assign_receive: Optional[Literal["self", "all"]] = None  # cada pessoa escolhe / todos recebem de quem atribui
     identity_managed: Optional[bool] = None  # nome e e-mail definidos pela administração
     invite_request_off: Optional[bool] = None  # sem "Solicitar convite" na tela de login
     # Endereço do sistema de chamados da instância ({id} = o número); "" ou null = sem endereço.

@@ -171,7 +171,7 @@ export async function openReview(onDone) {
     const sug = new Set(r.suggestions);
     const ordem = [...abertas.filter((t) => sug.has(t.id)), ...abertas.filter((t) => !sug.has(t.id))];
     intro.textContent = ordem.length
-      ? `Escolha até ${NEXT_MAX} prioridades para a próxima semana. Se quiser, marque prioridade alta ou um prazo.`
+      ? `Escolha até ${NEXT_MAX} prioridades para a próxima semana. Elas também abrem o Hoje do próximo dia útil (o “Primeiro amanhã”). Se quiser, marque prioridade alta ou um prazo.`
       : "Nada em aberto para a próxima semana. Se já sabe de algo, escreva abaixo.";
     const count = h("p", { class: "review-count", "aria-live": "polite" });
     const paintCount = () => { count.textContent = `${chosen.size} de ${NEXT_MAX} escolhidas`; };
@@ -253,7 +253,8 @@ export async function openReview(onDone) {
     step = 3;
     stepLabel.textContent = "Pronto";
     title.textContent = "Sua semana";
-    intro.textContent = "Revisão feita. O texto abaixo está pronto para colar no chat da equipe ou guardar.";
+    intro.textContent = "Revisão feita. O texto abaixo está pronto para colar no chat da equipe ou guardar." +
+      (res.first && res.first.length ? ` ${res.first.length === 1 ? "A prioridade escolhida abre" : "As prioridades escolhidas abrem"} o Hoje de ${shortDate(res.first_day)}.` : "");
     clear(body);
     const area = h("textarea", { rows: "12", readonly: "readonly", class: "handoff-text", "aria-label": "Texto da semana" });
     area.value = res.text;

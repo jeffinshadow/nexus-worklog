@@ -1,4 +1,6 @@
-"""Atribuição de tarefas: o Atribuidor manda uma tarefa para quem consentiu.
+"""Atribuição de tarefas: o Atribuidor manda uma tarefa para quem pode receber
+(quem consentiu ou, com "Todos recebem de quem atribui", todo Usuário: a regra
+mora em assignable.py).
 
 A tarefa nasce na conta de quem recebe (ele é o dono: edita, conclui, exclui)
 com "atribuída por". Quem atribuiu acompanha o status em "Tarefas que
@@ -22,7 +24,7 @@ import threading
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from .. import audit, db, mailer, people, push
+from .. import assignable, audit, db, mailer, people, push
 from ..config import config
 from ..deps import active_user_csrf, require_assigner, require_assigner_csrf, require_people_list
 from ..labels import PRIO_PT
@@ -37,30 +39,41 @@ log = logging.getLogger("uvicorn.error")
 
 @router.get("/people")
 def list_people(user=Depends(require_people_list)):
-    """Contas com registro próprio e se aceitam receber tarefas (desde quando).
-    Conta com acesso bloqueado não aceita (`blocked`: a tela diz por quê). A
-    foto só de quem aceita (a mesma regra de GET /api/me/avatar/{id}); o admin vê todas."""
+    """Contas com registro próprio e se podem receber tarefas agora (`accepts`,
+    a regra de assignable.py) e desde quando aceitaram (`accepts_assignments_at`;
+    com "Todos recebem de quem atribui" fica a escolha guardada da pessoa).
+    Conta com acesso bloqueado não recebe (`blocked`: a tela diz por quê).
+    `everyone`: a instância está em "Todos recebem". A foto só de quem pode
+    receber (a mesma regra de GET /api/me/avatar/{id}); o admin vê todas."""
     rows = db.query_all(
-        """SELECT u.id, u.email, u.accepts_assignments_at, u.blocked_at IS NOT NULL AS blocked
+        f"""SELECT u.id, u.email, u.accepts_assignments_at, u.blocked_at IS NOT NULL AS blocked,
+                   {assignable.receive_sql('u')} AS accepts
              FROM users u
             WHERE EXISTS (SELECT 1 FROM user_roles r WHERE r.user_id = u.id AND r.role = 'user')
-            ORDER BY u.accepts_assignments_at IS NULL OR u.blocked_at IS NOT NULL, lower(u.email)""")
+            ORDER BY NOT {assignable.receive_sql('u')}, lower(u.email)""")
     is_admin = "admin" in (user.get("roles") or [])
+    everyone = assignable.everyone()
     out = []
     for r in rows:
-        accepts = r["accepts_assignments_at"] is not None and not r["blocked"]
         p = people.profile(r["id"])
-        if not accepts and not is_admin:
+        if not r["accepts"] and not is_admin:
             p["avatar"] = None
-        out.append({**r, "accepts": accepts, **p})
+        out.append({**r, **p, "everyone": everyone})
     return out
+
+
+def _mail_reason() -> str:
+    if assignable.everyone():
+        return ("Você recebe este e-mail porque, nesta instância do Nexus, todos recebem tarefas "
+                "de quem atribui (definido pela administração).")
+    return "Você recebe este e-mail porque aceitou receber tarefas atribuídas (Configurações > Conta)."
 
 
 def _assignment_mail(task: dict, by_name: str):
     from ..notify import Mail  # import tardio: notify importa rotas
     m = Mail(f"Nova tarefa para você: {task['title']}", f"{by_name} atribuiu uma tarefa a você",
              "Ela já está nas suas tarefas no Nexus.")
-    m.reason = "Você recebe este e-mail porque aceitou receber tarefas atribuídas (Configurações > Conta)."
+    m.reason = _mail_reason()
     m.settings_tab = "conta"
     m.link = f"/#/tarefas?id={task['id']}"
     itens = [task["title"]]
@@ -93,13 +106,13 @@ def assign(data: AssignIn, user=Depends(require_assigner_csrf)):
     if data.user_id == user["user_id"]:
         raise HTTPException(status_code=400, detail="para você mesmo, crie a tarefa normalmente")
     target = db.query_one(
-        """SELECT u.id, u.email, u.accepts_assignments_at FROM users u
+        f"""SELECT u.id, u.email, {assignable.receive_sql('u')} AS accepts FROM users u
             WHERE u.id = %s AND u.blocked_at IS NULL AND EXISTS (SELECT 1 FROM user_roles r WHERE r.user_id = u.id AND r.role = 'user')""",
         (data.user_id,),
     )
     if not target:
         raise HTTPException(status_code=404, detail="usuário não encontrado")
-    if target["accepts_assignments_at"] is None:
+    if not target["accepts"]:
         raise HTTPException(status_code=403, detail="essa pessoa não aceitou receber tarefas atribuídas")
     if data.from_return is not None and not any(r["id"] == data.from_return for r in open_returns(user["user_id"])):
         raise HTTPException(status_code=409, detail=RESOLVED_MSG)
@@ -316,7 +329,7 @@ def _change_mail(title: str, by_name: str, verb: str, lines: list[str], link: st
     from ..notify import Mail  # import tardio: notify importa rotas
     m = Mail(f"Tarefa {verb[:-2].lower()}ada: {title}", f"{by_name} {verb.lower()} uma tarefa que tinha atribuído a você",
              "Era uma das suas tarefas a fazer no Nexus.")
-    m.reason = "Você recebe este e-mail porque aceitou receber tarefas atribuídas (Configurações > Conta)."
+    m.reason = _mail_reason()
     m.settings_tab = "conta"
     m.link = link
     m.blocks = [("Tarefa", lines)]

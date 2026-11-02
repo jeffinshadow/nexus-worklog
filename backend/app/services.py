@@ -327,7 +327,9 @@ def get_board(user_id: int, day: date | None = None, project: int | None = None,
     garante a janela de RETRO_DAYS): as vigentes naquele dia, com `due` (agenda)
     e `done_today` (feita no dia escolhido; nome mantido por compatibilidade).
     `in_progress` = tarefas abertas (a fazer, em andamento, aguardando), na
-    ordem: atrasadas, vencem hoje, prioridade, prazo. `project` filtra as
+    ordem: as escolhidas para começar hoje ("Primeiro amanhã", first_on =
+    hoje), atrasadas, vencem hoje, prioridade, prazo. `first_day`: o próximo
+    dia útil (para onde vai a escolha do "Primeiro amanhã" feita hoje). `project` filtra as
     tarefas (0 = sem projeto). `done`: as concluídas mais recentes, da
     posição done_offset, até done_limit; done_total = todas."""
     today = app_today()
@@ -352,15 +354,16 @@ def get_board(user_id: int, day: date | None = None, project: int | None = None,
         return """
         SELECT w.id, w.title, w.description, w.status, w.due_date, w.created_at, w.completed_at,
                w.priority, w.project_id, w.ticket, w.after_hours, w.assigned_by, w.blocked_reason, w.blocked_at, w.follow_up_on,
-               w.remind_at, p.name AS project_name, p.color AS project_color, """ + PROJECT_ICON + ", " + ASSIGNER_NAME + """,
+               w.remind_at, w.first_on, p.name AS project_name, p.color AS project_color, """ + PROJECT_ICON + ", " + ASSIGNER_NAME + """,
                """ + TASK_COUNTS + extra + """
           FROM worklog_tasks w LEFT JOIN projects p ON p.id = w.project_id
          WHERE w.user_id = %s"""
     in_progress = db.query_all(
         cols(TOUCHED) + " AND w.status <> 'done'" + filtro_proj
-        + """ ORDER BY COALESCE(w.due_date < %s, false) DESC, COALESCE(w.due_date = %s, false) DESC,
+        + """ ORDER BY COALESCE(w.first_on = %s, false) DESC, COALESCE(w.due_date < %s, false) DESC,
+                       COALESCE(w.due_date = %s, false) DESC,
                        w.priority, COALESCE(w.due_date, DATE '9999-12-31'), w.created_at""",
-        tuple(params) + (today, today),
+        tuple(params) + (today, today, today),
     )
     done = db.query_all(
         cols() + " AND w.status = 'done'" + filtro_proj
@@ -387,6 +390,7 @@ def get_board(user_id: int, day: date | None = None, project: int | None = None,
         "today": today,
         "min_day": min_day,
         "work_day": is_work_day(day, mask),
+        "first_day": next_work_day(today, mask),
     }
 
 
@@ -561,6 +565,9 @@ def month_overview(user_id: int, month: date, first_day: date | None = None) -> 
     behind = sorted((r for r in stats if r["done"] < r["due"]),
                     key=lambda r: (r["done"] / r["due"], -r["due"], r["label"].lower()))
     deliveries = sorted(cur["deliveries"], key=lambda w: (-w["minutes"], -w["completed_at"].timestamp()))
+    # "Antes do PDF": as concluídas do mês (as mesmas do PDF) sem tempo apontado
+    # ou sem "como resolveu", da mais antiga à mais recente, para completar.
+    incomplete = [w for w in cur["deliveries"] if not w["minutes"] or not (w["resolution"] or "").strip()]
     return {
         "month": {**_totals(cur), "now": now},
         "previous": {**_totals(old), "month": prev.strftime("%Y-%m")} if old else None,
@@ -581,6 +588,12 @@ def month_overview(user_id: int, month: date, first_day: date | None = None) -> 
                         "project_color": w["project_color"], "project_icon": w["project_icon"], "minutes": w["minutes"],
                         "resolution": (w["resolution"] or "")[:240] or None}
                        for w in deliveries[:OVERVIEW_DELIVERIES]],
+        "incomplete_total": len(incomplete),
+        "incomplete": [{"id": w["id"], "title": w["title"], "project": w["project"],
+                        "project_color": w["project_color"], "project_icon": w["project_icon"],
+                        "done_date": w["done_date"], "minutes": w["minutes"],
+                        "resolution": bool((w["resolution"] or "").strip())}
+                       for w in incomplete[:OVERVIEW_DELIVERIES]],
     }
 
 

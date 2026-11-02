@@ -1,6 +1,7 @@
 """E2E na homologação (túnel 8090): tour guiado, filtro do Hoje, vários projetos, projeto padrão
 e o tour OBRIGATÓRIO do primeiro acesso (Admin › Para empresas): conta nova convidada com nome e
-papel, sem Pular/Esc, nome do convite no passo do nome, parada de visibilidade, conclusão no servidor.
+papel, sem Pular/Esc, nome do convite no passo do nome, paradas de visibilidade e de "todos recebem de
+quem atribui", conclusão no servidor.
 Uso: e2e_tour.py SAIDA [desktop|mobile]   (precisa de NEXUS_E2E_USER e NEXUS_E2E_ADMIN)"""
 import base64, json, subprocess, sys, tempfile, time, urllib.request
 import websocket
@@ -210,7 +211,7 @@ try:
     cmd("Page.navigate", url=B + "/login"); time.sleep(1)
     check("admin entra", login(AEMAIL, APW) == 200)
     org0 = api("GET", "/admin/org")["j"]
-    api("PUT", "/admin/org", {"team_visibility": "managers", "identity_managed": False})  # o tour é sempre obrigatório para conta nova
+    api("PUT", "/admin/org", {"team_visibility": "managers", "assign_receive": "all", "identity_managed": False})  # o tour é sempre obrigatório para conta nova
     nova = f"e2e.tour.{int(time.time())}@example.com"
     r = api("POST", "/admin/users", {"email": nova, "display_name": "Pessoa E2E", "roles": ["user"]})
     check("convite com nome e papel", r["s"] == 201 and r["j"]["display_name"] == "Pessoa E2E")
@@ -235,16 +236,19 @@ try:
     click(btn("Começar"))
     check("nome do convite no passo do nome", wait("document.querySelector('dialog.tour-dialog input')?.value === 'Pessoa E2E'"))
     shot("t61-obrigatorio-nome")
-    viu_vis = False
+    viu_vis = viu_rec = False
     for _ in range(12):  # Salvar e seguir / Seguir / Entendi / Criar e seguir, até o "pronto"
         t = ev("document.querySelector('#tour-title')?.textContent || ''")
         if "Quem vê" in t and not viu_vis:
             viu_vis = True; shot("t62-obrigatorio-visibilidade")
+        if "quem atribui" in t and not viu_rec:
+            viu_rec = True; shot("t63-obrigatorio-receber-tarefas")
         if "dia a dia" in t:
             break
         check(f"sem Pular em: {t}", ev(sem_pular))
         click("document.querySelector('dialog.tour-dialog .btn-primary')"); time.sleep(1.2)
     check("parada de visibilidade (só quando ativa)", viu_vis)
+    check("parada de receber tarefas (só quando ativa)", viu_rec)
     click(btn("Fazer o passeio"))
     check("passeio abre", wait("!!document.querySelector('.tour-pop')", 15))
     check("passeio sem Encerrar", ev(sem_pular))
@@ -255,6 +259,7 @@ try:
     time.sleep(1)
     me = api("GET", "/auth/me")["j"]
     check("concluído no servidor", bool(me["tour_done_at"]) and me["tour_required"] is False)
+    check("passou pela parada: sem o aviso único depois", me["assign_notice"] is False and me["visibility_notice"] is False)
     cmd("Page.navigate", url=B + "/#/hoje"); time.sleep(2.5)
     check("tour obrigatório não reabre", not ev("!!document.querySelector('dialog.tour-dialog[open]')"))
     # Limpeza: a conta de teste sai e as opções voltam como estavam.
@@ -262,7 +267,7 @@ try:
     login(AEMAIL, APW)
     uid_nova = next(u["id"] for u in api("GET", "/admin/users")["j"] if u["email"] == nova)
     api("POST", f"/admin/users/{uid_nova}/delete", {"confirm_email": nova})
-    api("PUT", "/admin/org", {k: org0[k] for k in ("team_visibility", "identity_managed")})
+    api("PUT", "/admin/org", {k: org0[k] for k in ("team_visibility", "assign_receive", "identity_managed")})
 finally:
     p.terminate()
     print("OK:", len(ok)); print("FALHAS:", falhas or "nenhuma"); print("ERROS JS:", erros or "nenhum")

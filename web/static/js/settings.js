@@ -970,12 +970,18 @@ function privacyPanel(me) {
 }
 
 // Consentimento: sem ele, ninguém consegue mandar tarefas para esta pessoa.
+// "Todos recebem de quem atribui" (Admin › Para empresas): a chave fica
+// bloqueada, à vista, com o motivo; a escolha fica guardada para quando voltar.
 function assignments(me) {
+  const managed = !!(me.org && me.org.assign_receive === "all");
   const cb = h("input", { type: "checkbox" });
-  cb.checked = !!me.accepts_assignments_at;
+  cb.checked = managed || !!me.accepts_assignments_at;
+  if (managed) { cb.disabled = true; cb.setAttribute("aria-describedby", "assign-locked"); }
   const since = h("p", { class: "dialog-note" });
   const sync = () => {
-    since.textContent = me.accepts_assignments_at
+    since.textContent = managed
+      ? "Cada tarefa recebida chega por e-mail e aparece em Tarefas com “de” e o nome de quem mandou."
+      : me.accepts_assignments_at
       ? `Aceito desde ${dateTime(me.accepts_assignments_at)}. Cada tarefa recebida chega por e-mail e aparece em Tarefas com “de” e o nome de quem mandou.`
       : "Desligado: ninguém pode atribuir tarefas a você.";
   };
@@ -990,10 +996,15 @@ function assignments(me) {
     } catch (e) { cb.checked = !cb.checked; errorToast(e); }
     finally { cb.disabled = false; }
   });
+  const lock = managed ? h("p", { class: "dialog-note lock-note", id: "assign-locked" }, icon("lock"),
+    "Nesta instância do Nexus, todos recebem tarefas de quem atribui (definido pela administração). " +
+    `A sua escolha (${me.accepts_assignments_at ? "permitir" : "não permitir"}) fica guardada e volta a valer se isso mudar.`) : null;
   return [
-    h("p", { class: "help", text: "Quem tem o papel “Manda tarefas” (tela Equipe) pode mandar tarefas para você, mas só se você permitir aqui. A tarefa recebida é sua: você edita, conclui, exclui ou devolve com o motivo. Quem mandou só corrige ou cancela enquanto ela está a fazer e você não registrou nada nela." }),
-    h("label", { class: "check-line" }, cb, h("span", { text: "Permitir que me atribuam tarefas" })),
-    since];
+    h("p", { class: "help", text: (managed ? "Quem tem o papel “Manda tarefas” (tela Equipe) pode mandar tarefas para você."
+      : "Quem tem o papel “Manda tarefas” (tela Equipe) pode mandar tarefas para você, mas só se você permitir aqui.") +
+      " A tarefa recebida é sua: você edita, conclui, exclui ou devolve com o motivo. Quem mandou só corrige ou cancela enquanto ela está a fazer e você não registrou nada nela." }),
+    h("label", { class: "check-line" + (managed ? " is-locked" : "") }, cb, h("span", { text: "Permitir que me atribuam tarefas" })),
+    lock, since];
 }
 
 // --------------------------------------------------------- excluir a conta --

@@ -62,11 +62,12 @@ def _admin_log(admin, action):
 
 def test_tudo_desligado_por_padrao(admin, usuario):
     assert admin.get("/admin/org").json() == {"team_visibility": "self", "team_visibility_since": None,
+                                              "assign_receive": "self", "assign_receive_since": None,
                                               "identity_managed": False, "invite_request_off": False,
                                               "ticket_url": None, "mail_configured": False}
     me = usuario.get("/auth/me").json()
-    assert me["org"] == {"team_visibility": "self", "identity_managed": False}
-    assert me["visibility_notice"] is False and me["email_pending"] is None
+    assert me["org"] == {"team_visibility": "self", "assign_receive": "self", "identity_managed": False}
+    assert me["visibility_notice"] is False and me["assign_notice"] is False and me["email_pending"] is None
     # Só o admin mexe nas opções.
     assert usuario.get("/admin/org").status_code == 403
     assert usuario.put("/admin/org", {"identity_managed": True}).status_code == 403

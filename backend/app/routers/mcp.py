@@ -283,6 +283,11 @@ def t_get_today(ctx, args):
                   + " (extra: fora da agenda)" for r in extra]
     lines.append("")
     open_ = b["in_progress"]
+    # "Primeiro amanhã": o que a pessoa escolheu ontem para começar hoje (já no topo das abertas).
+    first = [t for t in open_ if t.get("first_on") == today]
+    if first:
+        lines.append("Escolhidas para começar hoje (Primeiro amanhã): " + ", ".join(f"#{t['id']} {t['title']}" for t in first))
+        lines.append("")
     lines.append(f"Tarefas abertas ({len(open_)}):")
     lines += [f"  {_task_line(t, today)}" for t in open_] or ["  (nenhuma)"]
     done_today = [t for t in b["done"] if t["completed_at"] and t["completed_at"].astimezone(services.app_tz()).date() == today]
@@ -1374,7 +1379,7 @@ TOOLS = {
                     "Passagem de turno/plantão: em aberto, aguardando (o quê e há quantos dias), concluídas nas "
                     "últimas 12 h, rotinas pendentes e vencimentos no aviso, em texto pronto pra colar no chat da equipe.",
                     {"type": "object", "properties": {}}),
-    "list_assignable": (t_list_assignable, False, "Atribuidor: pessoas que aceitam receber tarefas atribuídas.",
+    "list_assignable": (t_list_assignable, False, "Atribuidor: pessoas que podem receber tarefas atribuídas (aceitaram, ou a instância diz que todos recebem).",
                         {"type": "object", "properties": {}}),
     "assign_task": (t_assign_task, True,
                     "Atribuidor: manda uma tarefa para outra pessoa (que aceitou receber). Ela vira dona da "

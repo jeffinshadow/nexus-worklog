@@ -60,6 +60,7 @@ ACTION_LABELS = {
     "renewal.delete": "excluiu o vencimento",
     "app.settings": "alterou as configurações gerais",
     "app.team_visibility": "alterou a visibilidade da equipe",
+    "app.assign_receive": "alterou quem recebe tarefas atribuídas",
     "app.identity_managed": "alterou quem define nome e e-mail",
     "app.tour_required": "alterou o tour obrigatório",
     "app.invite_request_off": "alterou o pedido de convite na tela de login",
@@ -179,6 +180,10 @@ def _label(row) -> str:
         return ("ligou “Visível para quem gerencia”: quem tem o papel Vê a equipe vê o registro de todos"
                 if row["after"].get("team_visibility") == "managers"
                 else "voltou para “Cada pessoa escolhe” quem vê o registro")
+    if row["action"] == "app.assign_receive" and row["after"]:
+        return ("ligou “Todos recebem de quem atribui”: todo Usuário recebe tarefas de quem tem o papel Manda tarefas"
+                if row["after"].get("assign_receive") == "all"
+                else "voltou para “Cada pessoa escolhe” quem recebe tarefas atribuídas")
     if row["action"] == "app.identity_managed" and row["after"]:
         return ("ligou “Nome e e-mail definidos pela administração”" if row["after"].get("identity_managed")
                 else "desligou “Nome e e-mail definidos pela administração”")

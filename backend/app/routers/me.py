@@ -9,7 +9,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 
-from .. import audit, db, links, mailer, org, people, roles
+from .. import assignable, audit, db, links, mailer, org, people, roles
 from ..deps import clear_session_cookie
 from ..security import login_limiter, verify_password
 from ..deps import web_active, web_active_csrf
@@ -132,7 +132,7 @@ def _avatar_visible(user: dict, user_id: int) -> bool:
     if "viewer" in roles:
         conds.append(visible_sql("u"))
     if "assigner" in roles:
-        conds.append("(u.accepts_assignments_at IS NOT NULL AND u.blocked_at IS NULL)")
+        conds.append(assignable.receive_sql("u"))
     if not conds:
         return False
     return bool(db.query_one(
@@ -253,11 +253,13 @@ def put_tour(data: TourIn, user=Depends(web_active_csrf)):
         """UPDATE users SET tour_done_at = CASE WHEN %(d)s THEN now() END,
                             tour_first_access = CASE WHEN %(d)s THEN false ELSE tour_first_access END,
                             visibility_notice_at = CASE WHEN %(d)s AND EXISTS (SELECT 1 FROM app_settings
-                                 WHERE id = 1 AND team_visibility = 'managers') THEN now() ELSE visibility_notice_at END
+                                 WHERE id = 1 AND team_visibility = 'managers') THEN now() ELSE visibility_notice_at END,
+                            assign_notice_at = CASE WHEN %(d)s AND EXISTS (SELECT 1 FROM app_settings
+                                 WHERE id = 1 AND assign_receive = 'all') THEN now() ELSE assign_notice_at END
             WHERE id = %(u)s RETURNING tour_done_at""",
         {"d": data.done, "u": user["user_id"]})
     return {"tour_done_at": row["tour_done_at"], **{k: v for k, v in org.for_user(user["user_id"]).items()
-                                                   if k in ("tour_required", "visibility_notice")}}
+                                                   if k in ("tour_required", "visibility_notice", "assign_notice")}}
 
 
 @router.put("/visibility-notice")
@@ -265,6 +267,13 @@ def seen_visibility_notice(user=Depends(web_active_csrf)):
     """"Entendi" no aviso único de que quem gerencia a equipe vê o registro de todos."""
     db.execute("UPDATE users SET visibility_notice_at = now() WHERE id = %s", (user["user_id"],))
     return {"visibility_notice": False}
+
+
+@router.put("/assign-notice")
+def seen_assign_notice(user=Depends(web_active_csrf)):
+    """"Entendi" no aviso único de que todos recebem tarefas de quem atribui."""
+    db.execute("UPDATE users SET assign_notice_at = now() WHERE id = %s", (user["user_id"],))
+    return {"assign_notice": False}
 
 
 @router.put("/role-notice")
@@ -277,7 +286,10 @@ def seen_role_notice(user=Depends(web_active_csrf)):
 @router.put("/assignments")
 def put_assignments(data: ConsentIn, user=Depends(web_active_csrf)):
     """Consentimento para receber tarefas de um atribuidor (só pelo app).
-    Desligar não mexe nas tarefas já recebidas."""
+    Desligar não mexe nas tarefas já recebidas. Com "Todos recebem de quem
+    atribui" (Admin › Para empresas), 409: a escolha fica guardada como está."""
+    if org.get()["assign_receive"] == "all":
+        raise HTTPException(status_code=409, detail=org.ASSIGN_LOCKED + " A sua escolha fica guardada e volta a valer se isso mudar.")
     uid = user["user_id"]
     before = db.query_one("SELECT accepts_assignments_at FROM users WHERE id = %s", (uid,))["accepts_assignments_at"]
     if data.accept and before is None:
