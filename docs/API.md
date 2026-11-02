@@ -9,6 +9,24 @@ modelos Pydantic em `backend/app/schemas.py`. Corpos e respostas em JSON; datas
 `AAAA-MM-DD` no fuso `APP_TZ`; timestamps ISO 8601 com fuso. Receitas prontas no fim:
 [Integração passo a passo](#integração-passo-a-passo) e [avisos e planilha](#receitas-avisos-e-planilha).
 
+## Versões e compatibilidade
+
+O Nexus segue [SemVer](https://semver.org/lang/pt-BR/) (`MAJOR.MINOR.PATCH`). A versão atual (2.0.0) está em
+`info.version` do [`openapi.json`](openapi.json), no `serverInfo` do MCP e em `backend/app/version.py`; o histórico,
+no [`CHANGELOG`](../CHANGELOG.md).
+
+- **MAJOR**: quebra de contrato (API REST ou MCP) ou redesenho profundo de como o app é usado.
+- **MINOR**: recurso novo, sem quebrar (rotas, campos e ferramentas novos).
+- **PATCH**: só correção.
+- **Quebras só em versão maior.** Numa mesma maior, rota, campo ou ferramenta antiga continua funcionando; quando há
+  forma melhor, a antiga é marcada **obsoleta** aqui e no changelog, e só sai na maior seguinte. Hoje, obsoleto:
+  `GET /api/auth/link` (use `POST /api/auth/link`). Campos novos podem aparecer em qualquer resposta: o cliente deve
+  ignorar o que não conhece.
+
+Quebras da 2.0.0 em relação à 1.x: `POST /api/auth/link` no lugar do GET; `GET /api/assign/people` para quem não é
+admin; pedido de convite opt-in (`invite_request_on`); `409` ao mudar o status de uma tarefa concluída; aceite do
+visualizador para contas novas; instruções do MCP por escopo da chave.
+
 ## Autenticação
 
 ### Chave de API — para IA, scripts e automações
@@ -102,7 +120,7 @@ Legenda: **S** = só sessão do app · **W** = exige escopo `write` (chave) ou C
 | `GET /me` | | `{id, email, display_name, name, avatar, assistant, role, roles, retro_days, support_contact, accepts_assignments_at, viewers_allowed, ticket_url, ticket_url_managed, must_change_password, work_days, tz, org, tour_required, visibility_notice, role_notice, email_pending, csrf_token}` — `name` é o de exibição ou, sem ele, o derivado do e-mail; `role` só espelha `admin` (compatibilidade). `org` = `{team_visibility, assign_receive, identity_managed}` (Admin › Para empresas); `tour_required` = esta conta (nova) está no primeiro acesso: o tour é obrigatório para toda conta nova até concluir (contas que já existiam antes de 01/11 nunca são forçadas); `visibility_notice` = falta o aviso único de "visível para quem gerencia"; `assign_notice` = falta o aviso único de "todos recebem de quem atribui"; `role_notice` = `{added, removed}` papéis que o admin deu ou tirou e a pessoa ainda não viu (ou `null`); `email_pending` = e-mail novo aguardando confirmação; `ticket_url` = o endereço do sistema de chamados que vale para esta pessoa: o da instância (Admin › Para empresas), se definido (`ticket_url_managed: true`), senão o dela; `privacy_url` = a política de privacidade da instância (ou `null`) |
 | `GET /options` | público | `{email, invite_request, privacy_url}` — o que a tela de login oferece: "Esqueci a senha" (com e-mail no servidor), "Solicitar convite" (com e-mail e **só se o admin ligou** em Para empresas; desligado por padrão) e o link da política de privacidade da instância (`null` = sem link) |
 | `POST /invite-request` | público | `{name, email, source: "colega"\|"empresa"\|"internet"\|"outro", source_note?, reason}` → 202 sempre (não revela contas); 404 quando o pedido está fora (sem e-mail ou não ligado pelo admin). Limites: 5 por hora por IP, 2 por dia por e-mail e **20 por dia somando todos** (429). A confirmação mandada a quem pediu não repete o nome digitado |
-| `POST /link` | público | `{kind: "invite"\|"reset", token}` → `{email, display_name, name_locked}` de quem abriu o link do e-mail (404 vencido ou usado). O token vai no corpo, fora da URL e do log de acesso (a forma antiga `GET /link?kind=&token=` ainda responde, fora do log, para app em cache) |
+| `POST /link` | público | `{kind: "invite"\|"reset", token}` → `{email, display_name, name_locked}` de quem abriu o link do e-mail (404 vencido ou usado). O token vai no corpo, fora da URL e do log de acesso (**obsoleto:** a forma antiga `GET /link?kind=&token=` ainda responde, fora do log, para app em cache, mas use `POST`; sai na próxima versão maior) |
 | `POST /email/confirm` | público | `{token}` (do link `#email=` mandado ao endereço novo) → `{ok, email}`; 24 h, uso único; avisa o endereço antigo; link de nova senha ainda aberto deixa de valer; 409 se o e-mail virou de outra conta, 403 se a administração passou a definir os e-mails |
 | `POST /change-password` | S W | `{current_password, new_password}`; encerra as outras sessões e revoga chaves e calendário |
 | `POST /settings` | W | `{work_days}` — máscara, domingo = bit 0 (seg–sex = 62). Não reescreve o passado: rotinas "dias úteis" com história são encerradas com os dias antigos e recomeçam hoje; não se desfaz pelo histórico |
