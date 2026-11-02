@@ -13,7 +13,7 @@ import threading
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from .. import audit, db, mailer, people, push
+from .. import audit, db, mailer, push
 from ..deps import client_ip, require_admin, require_admin_csrf
 from ..schemas import InviteChoiceIn, InviteIn, InviteRequestIn
 from ..security import invite_req_email_limiter, invite_req_limiter

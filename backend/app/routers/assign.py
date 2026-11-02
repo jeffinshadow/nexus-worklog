@@ -25,7 +25,6 @@ import threading
 from fastapi import APIRouter, Depends, HTTPException
 
 from .. import assignable, audit, db, mailer, people, push
-from ..config import config
 from ..deps import active_user_csrf, require_assigner, require_assigner_csrf, require_people_list
 from ..labels import PRIO_PT
 from ..schemas import AssignEditIn, AssignIn, ReturnIn

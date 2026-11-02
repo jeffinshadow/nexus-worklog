@@ -9,7 +9,6 @@ users.role espelha "admin" só por compatibilidade (rollback e código antigo).
 """
 from . import db
 
-ROLES = ("user", "admin", "assigner", "viewer")
 LABELS = {"user": "Usuário", "admin": "Admin", "assigner": "Manda tarefas", "viewer": "Vê a equipe"}
 
 # Subconsulta para as leituras de sessão/chave (deps): papéis como lista.
