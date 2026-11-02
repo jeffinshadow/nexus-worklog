@@ -9,10 +9,10 @@ import { install, installed } from "./instalar.js";
 const DISMISS_KEY = "nexus.notificacoes.dispensado";
 const DISMISS_DAYS = 30;
 
-export const supported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+const supported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 const ios = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
 // iPhone/iPad fora do app instalado: o navegador nem oferece (precisa instalar antes).
-export const needsInstall = () => ios() && !installed();
+const needsInstall = () => ios() && !installed();
 
 // "Chrome · Android", "Safari · iPhone", "Edge · Windows"…
 function deviceLabel() {
@@ -30,7 +30,7 @@ async function registration() {
   return navigator.serviceWorker.ready;
 }
 
-export async function currentSubscription() {
+async function currentSubscription() {
   if (!supported()) return null;
   try { return await (await registration()).pushManager.getSubscription(); } catch { return null; }
 }
@@ -41,7 +41,7 @@ async function save(sub) {
 }
 
 // Liga neste aparelho. Precisa vir de um clique (o navegador só pergunta assim).
-export async function enable() {
+async function enable() {
   if (!supported()) throw new Error("Este navegador não tem notificações.");
   const perm = await Notification.requestPermission();
   if (perm !== "granted") throw new Error(perm === "denied"
@@ -55,7 +55,7 @@ export async function enable() {
   return sub;
 }
 
-export async function disable(deviceId) {
+async function disable(deviceId) {
   const sub = await currentSubscription();
   if (sub) await sub.unsubscribe().catch(() => {});
   if (deviceId) await api.del(`/push/devices/${deviceId}`).catch(() => {});

@@ -58,7 +58,7 @@ function elapsed(ms) {
   return (hh ? `${hh}:${String(mm).padStart(2, "0")}` : String(mm)) + ":" + String(ss).padStart(2, "0");
 }
 
-export function setTimer(t) {
+function setTimer(t) {
   state = t || null;
   clearInterval(tick);
   for (const id of ["timer-side", "timer-mobile"]) {

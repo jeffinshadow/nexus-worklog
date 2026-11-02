@@ -144,7 +144,7 @@ export async function quickRegister(text, project_id = null) {
 const LIST_MAX = 50;
 const BULLET = /^\s*(?:[-–—*•·▪◦‣]\s+|\d{1,3}[.)]\s+|[-*]?\s*\[[ xX]?\]\s*)/;
 
-export function pastedLines(text) {
+function pastedLines(text) {
   return String(text || "").split(/\r?\n/)
     .map((l) => l.replace(BULLET, "").replace(/\s+/g, " ").trim().slice(0, 200)).filter(Boolean);
 }

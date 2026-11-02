@@ -186,7 +186,7 @@ try:
 
     # ---- detalhe: editar extras
     tid = t["id"]
-    cmd("Page.navigate", url=B + f"/#/tarefas"); time.sleep(2)
+    cmd("Page.navigate", url=B + "/#/tarefas"); time.sleep(2)
     ev(f"import('/js/task.js').then(m => m.openTask({tid}, () => {{}}))"); time.sleep(1.2)
     shot("t50-detalhe-leitura")
     click("document.querySelector('dialog[open] .edit-toggle')"); time.sleep(.8)

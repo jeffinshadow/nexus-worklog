@@ -1,5 +1,5 @@
 """Áreas de toque no celular (390 px): todo controle clicável visível menor que 44 px (altura ou largura)."""
-import json, os, subprocess, sys, tempfile, time, urllib.request, collections
+import json, os, subprocess, tempfile, time, urllib.request, collections
 import websocket
 B = os.environ.get("NEXUS_E2E_URL", "http://localhost:8090")
 CONTAS = [("user", os.environ["NEXUS_E2E_USER"].split(":", 1)), ("admin", os.environ["NEXUS_E2E_ADMIN"].split(":", 1))]

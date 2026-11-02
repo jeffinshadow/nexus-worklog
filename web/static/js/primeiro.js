@@ -8,12 +8,12 @@ import { api } from "./api.js";
 import { h, icon, clear, shortDate, addDays } from "./dom.js";
 import { errorToast, modal, pager, pageSlice, toast } from "./ui.js";
 
-export const FIRST_MAX = 3;
+const FIRST_MAX = 3;
 const PAGE = 8;
 const WEEK = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
 
 // "amanhã" ou "na segunda (03/11)": o próximo dia útil, dito como se fala.
-export function firstDayLabel(day, today) {
+function firstDayLabel(day, today) {
   if (day === addDays(today, 1)) return "amanhã";
   const wd = new Date(day + "T12:00:00").getDay();
   return `${wd === 0 || wd === 6 ? "no" : "na"} ${WEEK[wd]} (${shortDate(day)})`;

@@ -2,12 +2,11 @@
 // rotinas e projetos. Rota #/busca?q=… ; o termo aparece destacado.
 import { api } from "./api.js";
 import { h, icon, clear, localDay } from "./dom.js";
-import { errorToast, toast } from "./ui.js";
+import { errorToast, hashPage, pager, setHashPage, toast } from "./ui.js";
 import { openRecurring, taskChips } from "./board.js";
 import { corProjeto, iconeProjeto } from "./projects.js";
 import { openTask } from "./task.js";
 import { card, enabled } from "./assistant.js";
-import { hashPage, pager, setHashPage } from "./ui.js";
 
 const TASKS = 20; // linha alta (título, etiquetas e até 3 trechos)
 const SIDE = 10;  // rotinas e projetos: lista lateral curta

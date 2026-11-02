@@ -7,10 +7,10 @@ import { confirmDialog, errorToast, hashPage, pager, setHashPage, toast } from "
 const SIZE = 30; // linhas de uma linha (hora + frase): cabem em ~2 telas no computador
 
 const WHO = {
-  web: (r) => ["web", null, "app"],
+  web: () => ["web", null, "app"],
   api: (r) => ["api", "key", r.token_name || "chave"],
   mcp: (r) => ["mcp", "spark", `IA · ${r.token_name || "chave"}`],
-  admin: (r) => ["admin", "admin", "admin"],
+  admin: () => ["admin", "admin", "admin"],
 };
 
 export async function mount(root) {

@@ -1,6 +1,6 @@
 """Pedido de convite (login → admin), tema da conta e avatar padrão.
 Uso: source e2e.env && python e2e_tema_convite.py SAIDA  (precisa do Mailpit da homologação em 127.0.0.1:8025)"""
-import base64, json, os, subprocess, sys, tempfile, time, urllib.request
+import json, os, subprocess, sys, tempfile, time, urllib.request
 import websocket
 
 B = os.environ.get("NEXUS_E2E_URL", "http://localhost:8090")

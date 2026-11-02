@@ -14,7 +14,7 @@ aderência do período de relance.
 
 import io
 import unicodedata
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
 
 from fontTools.ttLib import TTFont
@@ -41,10 +41,8 @@ LINE = (223, 226, 235)      # #DFE2EB divisor sutil
 HAIR = (233, 233, 238)      # #E9E9EE linhas finas e trilhos
 ACCENT = (26, 106, 181)     # #1A6AB5 primário
 ACCENT_MID = (166, 195, 237)  # #A6C3ED secundário (rotinas, extras)
-ACCENT_SOFT = (207, 225, 255)  # #CFE1FF contêiner primário
 BAD = (181, 31, 33)         # #B51F21 erro
 WARN = (119, 102, 0)        # #776600 aviso
-WHITE = (255, 255, 255)
 BAND = (19, 19, 20)  # #131314, o fundo do app: o ícone do logo
 
 M = 18  # margem lateral (mm)

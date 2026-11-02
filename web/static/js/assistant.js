@@ -177,7 +177,7 @@ function closing(sum, pendentes) {
 }
 
 // Resumo para a equipe: Ontem (desde o último dia útil), Hoje e Aguardando.
-export function dailyText(b, sum) {
+function dailyText(b, sum) {
   const today = b.today;
   const lines = [];
   const last = sum && sum.last_day;

@@ -44,7 +44,7 @@ function card(title, sub, s, onChange, nav = null) {
 }
 
 // Barras "tempo por projeto" (resumo do Hoje e Meu mês): {name, color, minutes}.
-export function projectBars(items) {
+function projectBars(items) {
   const comTempo = items.filter((p) => p.minutes);
   const top = Math.max(...comTempo.map((p) => p.minutes), 1);
   return comTempo.map((p) => {

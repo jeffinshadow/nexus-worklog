@@ -27,7 +27,6 @@ from .services import is_pending, rotinas, work_mask
 
 log = logging.getLogger("uvicorn.error")
 
-EVENTS = ("followup.due", "recurring.due", "renewal.warning")
 WARN_GRACE_DAYS = 7
 DEFAULT_MORNING_HOUR = 8  # a mesma hora padrão das notificações da manhã (push.DEFAULT_PREFS)
 
