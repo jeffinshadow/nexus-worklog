@@ -91,7 +91,7 @@ export async function assignDialog({ fromReturn = null, edit = null, onDone } = 
     ? "Nesta instância, todos recebem tarefas de quem atribui (definido pela administração)."
     : accepting.length === 1 ? "Aparece só quem aceita receber tarefas (1 pessoa)." : `Aparecem as ${accepting.length} pessoas que aceitam receber tarefas.`;
   const outras = !others ? "" : everyone
-    ? (others === 1 ? " Fica de fora 1 conta com acesso bloqueado ou convite ainda não aceito." : ` Ficam de fora ${others} contas com acesso bloqueado ou convite ainda não aceito.`)
+    ? (others === 1 ? " Fica de fora 1 conta (sem equipe em comum, bloqueada ou com convite pendente)." : ` Ficam de fora ${others} contas (sem equipe em comum, bloqueadas ou com convite pendente).`)
     : (others === 1 ? " A outra pessoa ainda não aceita" : ` As outras ${others} ainda não aceitam`) + " (cada uma liga em Configurações > Conta).";
   const form = h("form", {},
     fromReturn ? h("p", { class: "eq-returned-note" }, icon("undo"),

@@ -684,7 +684,7 @@ async function mountOrg(root, me) {
 
   root.append(h("div", { class: "settings-grid" }, h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Para empresas e instituições" })),
-    h("p", { class: "help", text: "O Nexus nasce como organizador pessoal: cada pessoa decide o que mostra. Quando ele é de uma empresa ou instituição, estas opções ajudam. Todas começam desligadas; cada mudança vale na hora e fica no seu histórico." }),
+    h("p", { class: "help", text: "O Nexus nasce como organizador pessoal: cada pessoa decide o que mostra. Quando ele é de uma empresa ou instituição, estas opções ajudam. Todas começam desligadas; cada mudança vale na hora e fica no seu histórico. Com equipes cadastradas, as opções abaixo valem só para quem está em alguma equipe (quem está sem equipe segue as próprias escolhas); “Solicitar convite” e a política de privacidade valem para todos." }),
     h("fieldset", { class: "org-option" }, h("legend", { text: "Visibilidade da equipe" }), ...radios.map(([, l]) => l)),
     h("fieldset", { class: "org-option" }, h("legend", { text: "Receber tarefas atribuídas" }), ...receive),
     h("fieldset", { class: "org-option" }, h("legend", { text: "Nome e e-mail" }),

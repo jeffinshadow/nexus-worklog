@@ -1061,7 +1061,7 @@ function teamsLine(me) {
   const mine = me.teams || [];
   return [h("h3", { class: "sum-h", text: "Suas equipes" }),
     h("p", { class: "help account-teams-line" }, mine.length
-      ? [h("strong", { text: mine.join(", ") }), " (definido pela administração). Só quem está numa equipe com você pode ver o seu registro ou mandar tarefas para você."]
+      ? [h("strong", { text: mine.join(", ") }), " (definido pela administração). Só quem está numa equipe com você — e o admin master, se tiver os papéis ativos — pode ver o seu registro ou mandar tarefas para você."]
       : ["Você ainda não está em nenhuma equipe (quem define é a administração). Assim, só o admin master pode ver o seu registro ou mandar tarefas para você, e só se você permitir aqui. As opções da empresa não valem para você: tudo depende das suas escolhas abaixo."])];
 }
 
