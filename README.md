@@ -10,6 +10,8 @@ Prioridades: **simples > seguro > funcional > elegante**.
 [`CHANGELOG.md`](CHANGELOG.md). Para quem hospeda e administra:
 [`docs/ADMIN.md`](docs/ADMIN.md) (instalação, variáveis, e-mail e push, backup e restauração, atualização, opções do Admin).
 
+A base de todas as decisões do projeto está em [docs/CONSTITUICAO.md](docs/CONSTITUICAO.md).
+
 Cada pessoa vê **apenas** os próprios dados. As contas são criadas pelo
 **admin** (convite por link, ou senha temporária sem e-mail); não há cadastro público. Papéis
 acumuláveis, dados em **Admin > Contas > ⋮ > Papéis…**: **Usuário** (o próprio registro),
