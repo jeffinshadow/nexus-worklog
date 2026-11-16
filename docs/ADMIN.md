@@ -287,7 +287,7 @@ reconstruídas a cada `deploy.sh`); mantenha o túnel/proxy com HTTPS; crie ao m
 | "Solicitar convite" não aparece no login | Opt-in: ligue em Admin > Para empresas, e é preciso e-mail no servidor |
 | Link do e-mail aponta para o endereço errado | `APP_URL` no `.env` (o padrão do código é de outro domínio) |
 | Notificações não chegam | Exigem HTTPS e a permissão do aparelho; veja a linha Push da Saúde. Chave VAPID refeita = reativar nos aparelhos |
-| Foto não sobe | Cota por pessoa estourada (Admin > Geral) ou arquivo grande demais |
+| Foto não sobe | Cota por pessoa estourada (variável `PHOTO_QUOTA_MB`; o uso aparece na Saúde do Nexus) ou arquivo grande demais |
 | Equipe vazia | Cada pessoa precisa permitir (Configurações > Conta), ou ligue "Visível para quem gerencia"; quem vê precisa do papel Vê a equipe |
 | Atribuir diz que a pessoa não aceita | Ela ainda não ligou "Receber tarefas atribuídas", ou use "Todos recebem de quem atribui" |
 | Container *unhealthy* | `docker compose logs <serviço>`; o vigia (seção 8) reinicia e avisa |

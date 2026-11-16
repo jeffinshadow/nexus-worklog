@@ -2,6 +2,8 @@
 .env
 .env.*
 !.env.example
+# Credenciais dos roteiros de ponta a ponta (tools/e2e: "source e2e.env")
+*.env
 
 # Cloudflare Tunnel (credenciais e config com token)
 tunnel/config.yml

@@ -70,7 +70,7 @@ def _banco_limpo():
     for limiter in (security.login_limiter, security.login_email_limiter,
                     security.pdf_limiter, security.reset_limiter, security.reset_email_limiter,
                     security.invite_req_limiter, security.invite_req_email_limiter, security.link_limiter,
-                    security.webhook_test_limiter):
+                    security.webhook_test_limiter, security.token_limiter, security.client_error_limiter):
         limiter._hits.clear()
     yield
 

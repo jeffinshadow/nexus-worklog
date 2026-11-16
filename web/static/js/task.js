@@ -450,13 +450,15 @@ export async function openTask(taskId, onChange, opts = {}) {
     const input = h("input", { type: "text", maxlength: "200", placeholder: "Adicionar item", "aria-label": "Novo item do checklist" });
     sec.append(sendRow(input, async () => {
       input.disabled = true;
-      try { await api.post(`/worklog/${t.id}/checklist`, { label: input.value.trim() }); await touch(); focusLast(".task-sec input[type=text]"); }
+      try { await api.post(`/worklog/${t.id}/checklist`, { label: input.value.trim() }); await touch(); focusIn(".task-add input"); }
       catch (e) { input.disabled = false; errorToast(e); }
     }, "Adicionar item", "task-add"));
     return sec;
   }
 
-  function focusLast(sel) {
+  // Depois de adicionar um item, o foco volta ao campo "Adicionar item" (redesenhado), para o
+  // próximo; o seletor antigo pegava o primeiro campo de texto do detalhe (o do chamado, na edição).
+  function focusIn(sel) {
     const el = dlg.querySelector(sel);
     if (el) el.focus();
   }
@@ -615,11 +617,18 @@ export async function openTask(taskId, onChange, opts = {}) {
       h("div", { class: "task-sec-head" }, icon("note"), h("h3", { text: "Anotações" }),
         t.notes.length ? h("span", { class: "count", text: String(t.notes.length) }) : null));
     const text = h("textarea", { rows: "2", maxlength: "2000", placeholder: "Progresso, decisão, pendência… (Ctrl+Enter salva)", "aria-label": "Nova anotação" });
+    let sending = false;  // dois toques no Anotar (ou Ctrl+Enter repetido) gravavam a anotação duas vezes
     const send = async () => {
       const v = text.value.trim();
-      if (!v) return;
-      try { await api.post(`/worklog/${t.id}/notes`, { body: v }); entryPages.notes = 1; touch(); }
-      catch (e) { errorToast(e); }
+      if (!v || sending) return;
+      sending = true;
+      try {
+        await api.post(`/worklog/${t.id}/notes`, { body: v });
+        entryPages.notes = 1;
+        text.value = "";  // já gravada: se a releitura falhar (sem sinal), o texto não fica no campo para ir de novo
+        await touch();
+      } catch (e) { errorToast(e); }
+      finally { sending = false; }
     };
     text.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); send(); } });
     sec.append(h("div", { class: "note-form" }, text,

@@ -24,21 +24,31 @@ def name_from_email(email: str) -> str:
     return first[:1].upper() + first[1:].lower() if first else "você"
 
 
-def profile(user_id: int) -> dict:
-    r = db.query_one(
-        """SELECT u.email, u.display_name, extract(epoch FROM a.updated_at)::bigint AS av
-             FROM users u LEFT JOIN user_avatars a ON a.user_id = u.id
-            WHERE u.id = %s""",
-        (user_id,),
-    )
+_PROFILE_SQL = """SELECT u.id, u.email, u.display_name, extract(epoch FROM a.updated_at)::bigint AS av
+                    FROM users u LEFT JOIN user_avatars a ON a.user_id = u.id"""
+
+
+def _profile(r: dict | None) -> dict:
     if not r:
         return {"display_name": None, "name": "você", "avatar": None}
     return {
         "display_name": r["display_name"],
         "name": r["display_name"] or name_from_email(r["email"]),
         # URL versionada: trocar a foto muda a URL e o cache não segura a antiga.
-        "avatar": f"/api/me/avatar/{user_id}?v={r['av']}" if r["av"] else None,
+        "avatar": f"/api/me/avatar/{r['id']}?v={r['av']}" if r["av"] else None,
     }
+
+
+def profile(user_id: int) -> dict:
+    return _profile(db.query_one(_PROFILE_SQL + " WHERE u.id = %s", (user_id,)))
+
+
+def profiles(user_ids) -> dict[int, dict]:
+    """profile() de várias pessoas numa consulta só: {id: perfil}. Para as
+    listas (Contas, Equipe, Atribuir), que faziam uma consulta por pessoa."""
+    ids = sorted({int(i) for i in user_ids if i is not None})
+    found = {r["id"]: r for r in db.query_all(_PROFILE_SQL + " WHERE u.id = ANY(%s)", (ids,))} if ids else {}
+    return {i: _profile(found.get(i)) for i in ids}
 
 
 def label(user_id: int, email: str) -> str:

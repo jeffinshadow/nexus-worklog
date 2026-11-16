@@ -137,6 +137,13 @@ def archive_project(project_id: int, data: ArchiveIn, user=Depends(active_user_c
 
 @router.delete("/{project_id}")
 def delete_project(project_id: int, user=Depends(active_user_csrf)):
+    # Tudo ou nada: o que é guardado para o desfazer, a troca do projeto principal
+    # das tarefas, a exclusão e a linha do histórico vão juntos.
+    with db.transaction():
+        return _delete_project(project_id, user)
+
+
+def _delete_project(project_id: int, user: dict) -> dict:
     uid = user["user_id"]
     if not db.query_one("SELECT 1 FROM projects WHERE id = %s AND user_id = %s", (project_id, uid)):
         raise HTTPException(status_code=404, detail="projeto não encontrado (pode ter sido excluído)")

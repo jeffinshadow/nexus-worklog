@@ -108,8 +108,8 @@ export function dateTime(ts) {
   });
 }
 
-// Dia (YYYY-MM-DD) de um timestamp no fuso da app.
-export function localDay(ts) {
+// Dia (YYYY-MM-DD) de um timestamp no fuso da app; sem argumento, o de agora.
+export function localDay(ts = Date.now()) {
   return new Date(ts).toLocaleDateString("sv-SE", { timeZone: TZ });
 }
 

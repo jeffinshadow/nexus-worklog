@@ -9,6 +9,53 @@ maior seguinte (política completa em [`docs/ADMIN.md`](docs/ADMIN.md#versioname
 não a da hora do deploy. As versões 0.x e 1.x foram numeradas depois, sobre o histórico do git
 (etiquetas `v0.1.0` … `v1.12.1`).
 
+## 2.1.0 — 2026-11-16
+
+Rodada de robustez ("gauntlet loop"): pontos frágeis achados na leitura do código, sem mudar como o app é usado.
+
+### Tudo ou nada
+- **Transações** (`db.transaction()`): criar, editar, concluir, excluir e atribuir tarefa, excluir projeto ou objetivo,
+  trocar a agenda de uma rotina, mudar os dias úteis e **desfazer** gravam a mudança e a linha do histórico juntas. Antes,
+  cada comando gravava sozinho: uma falha no meio deixava a tarefa excluída sem a cópia para o desfazer, ou o desfazer
+  pela metade (tarefa de volta sem as anotações).
+- Dois "Desfazer" da mesma ação ao mesmo tempo: o segundo responde 409 e não repete nada.
+
+### Correções
+- **Exportar tudo (JSON)** dava erro para quem teve tarefas transferidas a outra pessoa e continuou com a conta. O tempo
+  apontado nessas tarefas agora vai em `time_on_transferred_tasks` (campo novo).
+- Título, anotação, item de checklist e nome de rotina **só com espaços** são recusados (422); anotação e item em branco
+  davam erro 500. Os espaços das pontas saem.
+- **MCP**: `params` que não é objeto (ou `name` que não é texto) devolve o erro `-32602` do protocolo, não mais 500.
+- **Passkey**: conta bloqueada não entra, mesmo que uma passkey tenha sobrado (403, como no login por senha).
+- Excluir de novo uma rotina já excluída não grava outra linha no histórico; convite repetido ao mesmo tempo responde
+  409 em vez de 500.
+- Histórico: cadastrar ou remover passkey e convidar ou recusar um pedido de convite aparecem com frase, não com o nome
+  interno da ação.
+- App: o detalhe da tarefa aberto sem sinal mostrava "Invalid Date"; depois de adicionar um item, o foco volta ao campo
+  "Adicionar item"; "Concluir" na revisão da semana não trava se o servidor recusar; "foto grande demais" aparece com
+  essa frase; o aviso "daqui a pouco" de uma rotina fechado com Ok volta no dia seguinte (com o app aberto de um dia
+  para o outro, ficava calado); dois toques em "Anotar" ou em "Marcar como aguardando" não gravam duas vezes; o Hoje
+  não aparece em dobro quando duas atualizações se cruzam; trocar de aba no Admin antes de a anterior carregar não
+  mistura as duas, e uma aba que falha ao carregar mostra a frase em vez de ficar em branco.
+- `deploy.sh`: se o `git pull` ou o `docker compose up` falhar, o script diz o que aconteceu e como voltar atrás (saía
+  sem as instruções); backup recusado na conferência não fica na pasta.
+
+### Novo
+- `GET /api/worklog?project=<id>`: a lista por período só com as tarefas do projeto (principal ou extra). A ferramenta
+  `list_tasks` da IA usa o mesmo filtro: num período com mais de 500 tarefas, as do projeto podiam ficar de fora.
+
+### Desempenho
+- A lista de tarefas por período compara os dias pelo índice de datas.
+- Histórico: "pode desfazer" é calculado só para as linhas da página, pelo índice (ordenava o histórico inteiro da
+  pessoa a cada página, a cada Desfazer e a cada aviso com Desfazer).
+- Contas (Admin), Equipe e Atribuir leem os perfis numa consulta só (era uma por pessoa; no Atribuir, três).
+- Reordenar rotinas e objetivos é um comando só.
+- O app instalado descarta a cópia da versão anterior dos arquivos ao guardar a nova.
+
+### Documentação
+- `docs/API.md`: `get_week` na lista de ferramentas da IA; a cota de fotos é a variável `PHOTO_QUOTA_MB` e o limite
+  retroativo é fixo em 60 dias (o texto ainda falava nas opções do Admin).
+
 ## 2.0.4 — 2026-11-02
 Android: o Enter do teclado no registro rápido do Hoje registra. Com o seletor de projeto no mesmo formulário, o
 Chrome do Android trocava o Enter por "próximo" (pulava para o projeto); o seletor saiu do formulário do campo.

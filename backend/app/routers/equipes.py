@@ -54,7 +54,8 @@ def _team(team_id: int) -> dict:
 def _members(team_id: int) -> list[dict]:
     rows = db.query_all("""SELECT u.id, u.email FROM team_members m JOIN users u ON u.id = m.user_id
                             WHERE m.team_id = %s""", (team_id,))
-    out = [{"id": r["id"], "email": r["email"], "name": people.profile(r["id"])["name"]} for r in rows]
+    perfis = people.profiles(r["id"] for r in rows)
+    out = [{"id": r["id"], "email": r["email"], "name": perfis[r["id"]]["name"]} for r in rows]
     return sorted(out, key=lambda r: (r["name"].lower(), r["email"]))
 
 

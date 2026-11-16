@@ -258,8 +258,7 @@ export function blockTask(t, onDone) {
       h("button", { type: "submit", class: "btn btn-primary", text: "Marcar como aguardando" })));
   const dlg = modal(form);
   reason.addEventListener("input", () => markInvalid([reason], err, false));
-  form.addEventListener("submit", async (ev) => {
-    ev.preventDefault();
+  form.addEventListener("submit", busy(async () => {  // busy: o segundo toque não manda de novo
     const body = { status: "blocked", blocked_reason: reason.value.trim().replace(/^aguardando\s+/i, "") };
     if (follow.value) body.follow_up_on = followUpDay(follow.value);
     try {
@@ -268,7 +267,7 @@ export function blockTask(t, onDone) {
       toast(`Aguardando: ${body.blocked_reason}.`);
       Promise.resolve(onDone && onDone()).then(back);
     } catch (e) { err.textContent = e.message; markInvalid([reason], err); }
-  });
+  }));
   setTimeout(() => reason.focus(), 0);
 }
 

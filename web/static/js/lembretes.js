@@ -39,7 +39,10 @@ export function startReminders(refresh) {
 // Chamado quando uma rotina muda (marcou, editou o horário) para o aviso acompanhar.
 export async function refreshReminders() {
   lastFetch = Date.now(); // falhou: tenta de novo no próximo intervalo, sem martelar
+  const before = today;
   try { ({ items, today, tasks = [] } = await api.get("/recurring/reminders")); } catch { return; }
+  // Virou o dia com o app aberto: o "Ok" de ontem no aviso das 8h não cala o de hoje.
+  if (before && before !== today) seenSoon.clear();
   // Marcada (aqui, no celular ou pela IA): a notificação deste aparelho sai da bandeja.
   for (const r of items) if (r.done) closeRoutine(r.id, today);
   check();

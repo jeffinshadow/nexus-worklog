@@ -184,8 +184,12 @@ def order_of(uid: int, project_id: int) -> list[int]:
 
 
 def _renumber(ids: list[int]) -> None:
-    for i, oid in enumerate(ids):
-        db.execute("UPDATE project_objectives SET position = %s WHERE id = %s", (i, oid))
+    """A ordem inteira num comando só (posição a partir de 0)."""
+    if ids:
+        db.execute(
+            """UPDATE project_objectives o SET position = n.pos - 1
+                 FROM unnest(%s::bigint[]) WITH ORDINALITY AS n(id, pos)
+                WHERE o.id = n.id""", (list(ids),))
 
 
 @router.post("/projects/{project_id}/objectives", status_code=201)
@@ -246,11 +250,15 @@ def delete_objective(objective_id: int, user=Depends(active_user_csrf)):
         "SELECT id, exec_position FROM worklog_tasks WHERE user_id = %s AND objective_id = %s ORDER BY exec_position NULLS LAST, id",
         (uid, objective_id))
     start = next_position(uid, before["project_id"], None)
-    for i, t in enumerate(tasks):
-        db.execute("UPDATE worklog_tasks SET objective_id = NULL, exec_position = %s WHERE id = %s", (start + i, t["id"]))
-    db.execute("DELETE FROM project_objectives WHERE id = %s AND user_id = %s", (objective_id, uid))
-    audit.record(user, "objective.delete", "objective", objective_id,
-                 before={**before, "tasks": [{"id": t["id"], "exec_position": t["exec_position"]} for t in tasks]})
+    with db.transaction():  # as tarefas saem do objetivo, ele some e o histórico registra: juntos
+        if tasks:
+            db.execute(
+                """UPDATE worklog_tasks w SET objective_id = NULL, exec_position = %s + n.pos - 1
+                     FROM unnest(%s::bigint[]) WITH ORDINALITY AS n(id, pos)
+                    WHERE w.id = n.id AND w.user_id = %s""", (start, [t["id"] for t in tasks], uid))
+        db.execute("DELETE FROM project_objectives WHERE id = %s AND user_id = %s", (objective_id, uid))
+        audit.record(user, "objective.delete", "objective", objective_id,
+                     before={**before, "tasks": [{"id": t["id"], "exec_position": t["exec_position"]} for t in tasks]})
     return {"ok": True, "tasks": len(tasks)}
 
 
@@ -286,11 +294,14 @@ def order_tasks(project_id: int, data: TaskOrderIn, user=Depends(active_user_csr
         (uid, project_id, data.task_ids))}
     if len(rows) != len(data.task_ids):
         raise HTTPException(status_code=400, detail="tarefa de outro projeto ou inexistente")
-    for i, tid in enumerate(data.task_ids):
-        moved = rows[tid]["objective_id"] != data.objective_id
-        before = audit.worklog_snapshot(tid, uid) if moved else None
-        db.execute("UPDATE worklog_tasks SET objective_id = %s, exec_position = %s WHERE id = %s",
-                   (data.objective_id, i, tid))
-        if moved:
-            audit.record(user, "worklog.update", "worklog", tid, before=before, after=audit.worklog_snapshot(tid, uid))
+    with db.transaction():  # a ordem inteira ou nada (parar no meio deixava posições repetidas)
+        # Em ordem de id (a posição vem da lista): dois pedidos ao mesmo tempo travam as
+        # tarefas na mesma sequência, em vez de um esperar o outro em círculo.
+        for i, tid in sorted(enumerate(data.task_ids), key=lambda x: x[1]):
+            moved = rows[tid]["objective_id"] != data.objective_id
+            before = audit.worklog_snapshot(tid, uid) if moved else None
+            db.execute("UPDATE worklog_tasks SET objective_id = %s, exec_position = %s WHERE id = %s AND user_id = %s",
+                       (data.objective_id, i, tid, uid))
+            if moved:
+                audit.record(user, "worklog.update", "worklog", tid, before=before, after=audit.worklog_snapshot(tid, uid))
     return {"ok": True}

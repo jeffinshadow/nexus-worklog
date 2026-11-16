@@ -46,7 +46,8 @@ export async function prepare(file) {
     image = await encode(big, q);
     if (image.size <= MAX_BYTES) break;
   }
-  if (image.size > MAX_BYTES) throw new Error("A foto ficou grande demais mesmo reduzida.");
+  // status: o aviso de erro só mostra mensagens que têm um (as da API); sem ele, esta virava a genérica.
+  if (image.size > MAX_BYTES) throw Object.assign(new Error("A foto ficou grande demais mesmo reduzida."), { status: 413 });
   const thumb = await encode(canvasFor(bitmap, THUMB_SIDE), 0.7);
   return { image: await toB64(image), thumb: await toB64(thumb), width: big.width, height: big.height };
 }

@@ -15,6 +15,18 @@ _PW = Field(min_length=config.MIN_PASSWORD_LEN, max_length=config.MAX_PASSWORD_L
 RoleName = Literal["user", "admin", "assigner", "viewer"]
 
 
+def _filled(msg: str):
+    """Texto obrigatório: tira os espaços das pontas e recusa o que sobra vazio
+    (só espaços passava no min_length e virava título em branco, ou 500 no CHECK do banco)."""
+    def check(v):
+        if isinstance(v, str):
+            v = v.strip()
+            if not v:
+                raise ValueError(msg)
+        return v
+    return check
+
+
 class InviteIn(BaseModel):
     email: EmailStr
     # Nome da conta até o primeiro acesso (no tour a pessoa confirma ou ajusta).
@@ -314,6 +326,7 @@ class _Agenda(BaseModel):
 
 class RecurringIn(_Agenda):
     label: str = Field(min_length=1, max_length=200)
+    label_ok = field_validator("label")(_filled("informe o nome da rotina"))
     require_note: bool = False  # marcar exige evidência (auditoria)
     remind_at: Optional[time] = None  # horário: a interface lembra (e toca) perto dele
     remind_at_hora = field_validator("remind_at", mode="before")(_remind_at)
@@ -325,6 +338,7 @@ class RecurringUpdate(_Agenda):
     """Nome e agenda. Remover = DELETE; voltar atrás = desfazer pelo histórico
     (reativar por aqui reescreveria a vigência e apagaria o passado)."""
     label: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    label_ok = field_validator("label")(_filled("informe o nome da rotina"))
     require_note: Optional[bool] = None
     remind_at: Optional[time] = None  # null tira o horário (só se o campo vier)
     remind_at_hora = field_validator("remind_at", mode="before")(_remind_at)
@@ -502,6 +516,7 @@ When = Field(default=None, min_length=10, max_length=40)
 
 class WorklogIn(BaseModel):
     title: str = Field(min_length=1, max_length=200)
+    title_ok = field_validator("title")(_filled("informe o título da tarefa"))
     description: Optional[str] = Field(default=None, max_length=300)
     status: Status = "todo"
     due_date: Optional[date] = None
@@ -536,6 +551,7 @@ class WorklogIn(BaseModel):
 
 class WorklogUpdate(BaseModel):
     title: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    title_ok = field_validator("title")(_filled("informe o título da tarefa"))
     description: Optional[str] = Field(default=None, max_length=300)
     status: Optional[Status] = None
     due_date: Optional[date] = None
@@ -729,6 +745,7 @@ class ArchiveIn(BaseModel):
 
 class NoteIn(BaseModel):
     body: str = Field(min_length=1, max_length=2000)
+    body_ok = field_validator("body")(_filled("anotação em branco"))
     external_ref: Optional[str] = Ref  # repetida devolve a existente
     at: Optional[datetime] = None  # hora do aparelho (feita sem sinal, enviada depois); até 24 h atrás
 
@@ -752,10 +769,12 @@ class NoteUpdate(BaseModel):
 
 class ChecklistIn(BaseModel):
     label: str = Field(min_length=1, max_length=200)
+    label_ok = field_validator("label")(_filled("informe o item"))
 
 
 class ChecklistUpdate(BaseModel):
     label: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    label_ok = field_validator("label")(_filled("informe o item"))
     done: Optional[bool] = None
 
 

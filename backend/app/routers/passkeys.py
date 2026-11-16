@@ -171,6 +171,11 @@ def login(data: LoginPasskeyIn, request: Request, response: Response):
     user = db.query_one("SELECT * FROM users WHERE id = %s", (cred["user_id"],))
     if not user:
         falhou("conta excluída")
+    if user["blocked_at"]:
+        # O bloqueio já apaga as passkeys; isto vale para uma que tenha sobrado
+        # (a mesma resposta do login por senha).
+        log.warning("login por passkey recusado: conta bloqueada, ip=%s", ip)
+        raise HTTPException(status_code=403, detail="Seu acesso foi bloqueado por quem administra o Nexus. Para voltar a entrar, peça que libere o acesso.")
     db.execute("UPDATE webauthn_credentials SET sign_count = %s, last_used_at = now() WHERE id = %s",
                (v.new_sign_count, cred["id"]))
     return _start_session(user, response)

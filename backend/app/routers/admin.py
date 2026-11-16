@@ -71,7 +71,8 @@ def list_users(admin=Depends(require_admin)):
                               WHERE m.user_id = u.id AND t.archived_at IS NULL), '[]'::json) AS teams,
                    (u.id IS NOT DISTINCT FROM (SELECT s.master_user_id FROM app_settings s WHERE s.id = 1)) AS is_master
               FROM users u""")
-    out = [{**r, **people.profile(r["id"])} for r in rows]
+    perfis = people.profiles(r["id"] for r in rows)  # uma consulta para a lista toda
+    out = [{**r, **perfis[r["id"]]} for r in rows]
     out.sort(key=lambda r: (_sort_key(r["name"] or r["email"]), r["email"]))
     return out
 
@@ -95,13 +96,15 @@ def invite_user(data: InviteIn, admin=Depends(require_admin_csrf)):
     papeis = sorted(set(data.roles))
     from .equipes import check_teams, set_user_teams  # import tardio: equipes importa admin.role_notice
     equipes = check_teams(data.team_ids)
-    db.execute(
-        """INSERT INTO users (email, password_hash, role, must_change_password, invite_pending, display_name)
-           VALUES (%s, %s, 'user', %s, %s, %s)""",
-        # no convite por link a senha é aleatória e ninguém a vê: só o link entra
-        (email, hash_password(generate_temp_password(32) if by_link else temp), not by_link, by_link, nome),
-    )
-    novo = db.query_one("SELECT id FROM users WHERE email = %s", (email,))
+    try:
+        novo = db.query_one(
+            """INSERT INTO users (email, password_hash, role, must_change_password, invite_pending, display_name)
+               VALUES (%s, %s, 'user', %s, %s, %s) RETURNING id""",
+            # no convite por link a senha é aleatória e ninguém a vê: só o link entra
+            (email, hash_password(generate_temp_password(32) if by_link else temp), not by_link, by_link, nome),
+        )
+    except UniqueViolation:  # dois convites para o mesmo e-mail ao mesmo tempo
+        raise HTTPException(status_code=409, detail="e-mail já cadastrado") from None
     roles.grant(novo["id"], papeis)
     if equipes:
         set_user_teams(novo["id"], equipes)

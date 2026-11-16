@@ -53,7 +53,7 @@ export async function mount(root) {
             try {
               await api.post(`/history/${r.id}/undo`);
               toast("Desfeito.");
-              render();
+              render().catch((e) => errorToast(e, "Desfeito, mas a lista não atualizou. Recarregue a tela."));
             } catch (e) {
               errorToast(e, "Não foi possível desfazer.");
             }

@@ -59,7 +59,8 @@ def list_users(team: TeamQ = None, viewer=Depends(require_viewer)):
     cut = teams.filter_sql("u", viewer["user_id"], "viewer", team)
     rows = db.query_all(f"""SELECT u.id, u.email FROM users u
                              WHERE {visible_sql('u', viewer['user_id'])} AND {active_sql('u')} AND {cut}""")
-    return sorted(({**r, **people.profile(r["id"])} for r in rows), key=lambda x: (x["name"].lower(), x["email"]))
+    perfis = people.profiles(r["id"] for r in rows)
+    return sorted(({**r, **perfis[r["id"]]} for r in rows), key=lambda x: (x["name"].lower(), x["email"]))
 
 
 @router.get("/users/{user_id}/board")

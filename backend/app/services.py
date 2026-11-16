@@ -242,12 +242,13 @@ def set_extra_projects(user_id: int, task_id: int, ids) -> None:
     principal = db.query_one("SELECT project_id FROM worklog_tasks WHERE id = %s AND user_id = %s",
                              (task_id, user_id))["project_id"]
     ids = [] if principal is None else sorted({int(i) for i in ids or []} - {principal})
-    db.execute("DELETE FROM worklog_task_projects WHERE task_id = %s", (task_id,))
-    if ids:
-        db.execute(
-            """INSERT INTO worklog_task_projects (task_id, project_id)
-               SELECT %s, p.id FROM projects p WHERE p.user_id = %s AND p.id = ANY(%s)""",
-            (task_id, user_id, ids))
+    with db.transaction():  # tira e põe juntos: uma falha entre os dois deixava a tarefa sem os extras
+        db.execute("DELETE FROM worklog_task_projects WHERE task_id = %s", (task_id,))
+        if ids:
+            db.execute(
+                """INSERT INTO worklog_task_projects (task_id, project_id)
+                   SELECT %s, p.id FROM projects p WHERE p.user_id = %s AND p.id = ANY(%s)""",
+                (task_id, user_id, ids))
 
 
 def extra_project_ids(task_id: int) -> list[int]:

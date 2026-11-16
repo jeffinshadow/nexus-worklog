@@ -30,8 +30,11 @@ def record(ctx: dict, action: str, entity: str, entity_id, before=None, after=No
     db.execute(
         """
         INSERT INTO audit_log (user_id, actor, token_id, token_name, action,
-                               entity, entity_id, before, after)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                               entity, entity_id, before, after, created_at)
+        -- clock_timestamp(): a hora de agora, não a do início da transação (db.transaction).
+        -- O feed e os webhooks esperam 2 s antes de ler uma linha; com a hora do início,
+        -- uma transação demorada apareceria "velha" e poderia ser pulada pelo cursor.
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, clock_timestamp())
         """,
         (
             user_id or ctx["user_id"],

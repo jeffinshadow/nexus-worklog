@@ -329,10 +329,6 @@ def _with_counts(uid: int, rows: list) -> list:
     return [t | extra.get(t["id"], {}) for t in rows]
 
 
-def _in_project(t: dict, pid: int) -> bool:
-    return t.get("project_id") == pid or any(x["id"] == pid for x in t.get("extra_projects") or [])
-
-
 def t_list_tasks(ctx, args):
     uid = ctx["user_id"]
     status = args.get("status", "open")
@@ -341,12 +337,12 @@ def t_list_tasks(ctx, args):
     pid = _resolve_project(uid, args.get("project"))
     if args.get("from") or args.get("to") or args.get("by"):
         lim = max(1, min(limit, 500))
+        # O projeto filtra no banco (a rota pagina já filtrada): antes, lia até 500 do período
+        # e filtrava aqui, e num período com mais de 500 tarefas as do projeto ficavam de fora.
         rows = _call(worklog_routes.list_tasks, start=_day(args.get("from")), end=_day(args.get("to")),
                      by=args.get("by") or "created", status=args.get("status", "all"),
-                     limit=500 if pid else lim, offset=0 if pid else offset, user=ctx)
+                     limit=lim, offset=offset, project=pid, user=ctx)
         rows = _with_counts(uid, rows)
-        if pid:
-            rows = [t for t in rows if _in_project(t, pid)][offset:offset + lim]
         today = services.app_today()
         out = "\n".join(f"criada {_created(t)} · {_task_line(t, today)}" for t in rows)
         if len(rows) == lim:
@@ -1629,6 +1625,9 @@ def _handle(ctx, msg):
     rid, method, params = msg.get("id"), msg["method"], msg.get("params") or {}
     if rid is None:  # notificação (ex.: notifications/initialized): sem resposta
         return None
+    # params tem de ser objeto e o nome, texto: lista ou número aqui virava erro 500.
+    if not isinstance(params, dict) or not isinstance(params.get("name", ""), str):
+        return _rpc_error(rid, -32602, "params deve ser um objeto JSON (e name, um texto)")
 
     if method == "initialize":
         asked = params.get("protocolVersion")

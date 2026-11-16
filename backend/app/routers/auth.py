@@ -364,17 +364,20 @@ def save_settings(data: SettingsIn, session=Depends(active_user_csrf)):
     if before == data.work_days:
         return {"ok": True, "work_days": before}
     today = app_today()
-    for r in db.query_all(
-            """SELECT id FROM recurring_tasks WHERE user_id = %s AND COALESCE(freq, 'daily') = 'daily'
-                  AND (active OR deactivated_at IS NOT NULL)""", (uid,)):
-        snap = audit.recurring_snapshot(r["id"], uid)
-        freeze = {"freq": "weekly", "weekdays": before}
-        if snap["active"] and snap["created_at"].astimezone(app_tz()).date() < today:
-            replace_routine(session, snap, {"label": snap["label"], "freq": "daily"}, freeze)
-        elif not snap["active"]:
-            db.execute("UPDATE recurring_tasks SET freq = 'weekly', weekdays = %s WHERE id = %s AND user_id = %s",
-                       (before, r["id"], uid))
-    db.execute("UPDATE users SET work_days = %s WHERE id = %s", (data.work_days, uid))
-    audit.record(session, "settings.update", "user", uid,
-                 before={"work_days": before}, after={"work_days": data.work_days})
+    # Tudo ou nada: com metade das rotinas congeladas e os dias úteis antigos
+    # ainda valendo, os números do passado mudariam sem ninguém ter pedido.
+    with db.transaction():
+        for r in db.query_all(
+                """SELECT id FROM recurring_tasks WHERE user_id = %s AND COALESCE(freq, 'daily') = 'daily'
+                      AND (active OR deactivated_at IS NOT NULL)""", (uid,)):
+            snap = audit.recurring_snapshot(r["id"], uid)
+            freeze = {"freq": "weekly", "weekdays": before}
+            if snap["active"] and snap["created_at"].astimezone(app_tz()).date() < today:
+                replace_routine(session, snap, {"label": snap["label"], "freq": "daily"}, freeze)
+            elif not snap["active"]:
+                db.execute("UPDATE recurring_tasks SET freq = 'weekly', weekdays = %s WHERE id = %s AND user_id = %s",
+                           (before, r["id"], uid))
+        db.execute("UPDATE users SET work_days = %s WHERE id = %s", (data.work_days, uid))
+        audit.record(session, "settings.update", "user", uid,
+                     before={"work_days": before}, after={"work_days": data.work_days})
     return {"ok": True, "work_days": data.work_days}
