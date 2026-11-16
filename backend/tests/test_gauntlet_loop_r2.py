@@ -34,7 +34,8 @@ def test_datas_fora_de_faixa_sao_recusadas_e_as_antigas_nao_derrubam_nada(usuari
     assert usuario.get("/summary/handoff").status_code == 200
     path = usuario.post("/calendar", {"include_recurring": True}).json()["path"]
     ics = usuario.c.get(path)
-    assert ics.status_code == 200 and "Prazo normal" not in ics.text  # o evento da data absurda fica de fora
+    # Os eventos das datas absurdas (ano 9999 e ano 1) ficam de fora; o feed sai.
+    assert ics.status_code == 200 and "Prazo normal" not in ics.text and "Certificado" not in ics.text
 
 
 def test_quem_acompanha_nao_recebe_ranking_nem_backlog(admin, usuario):

@@ -229,8 +229,11 @@ async function finishLeave() {
   try { pending = localStorage.getItem(LEAVE_KEY); } catch { return false; }
   if (!pending) return false;
   if (pending !== me.csrf_token) { try { localStorage.removeItem(LEAVE_KEY); } catch { /* nada */ } return false; }
-  try { await api.post("/auth/logout"); } catch (e) { if (e && e.status === 0) return false; }  // ainda sem rede: tenta na próxima
-  try { localStorage.removeItem(LEAVE_KEY); } catch { /* nada */ }
+  let ended = true;
+  // Sem rede de novo, ou servidor com erro: a sessão segue viva. A marca fica (tenta na próxima
+  // abertura) e a conta não aparece: quem mandou sair não volta a ver os dados sem entrar de novo.
+  try { await api.post("/auth/logout"); } catch (e) { if (e && (e.status === 0 || e.status >= 500)) ended = false; }
+  if (ended) { try { localStorage.removeItem(LEAVE_KEY); } catch { /* nada */ } }
   await wipe();
   location.href = "/login";
   return true;

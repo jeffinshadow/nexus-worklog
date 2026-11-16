@@ -41,6 +41,9 @@ async function tx(store, mode, fn) {
     const r = fn(t.objectStore(store));
     t.oncomplete = () => ok(r && "result" in r ? r.result : undefined);
     t.onerror = () => fail(t.error);
+    // Aparelho sem espaço (fotos na fila): a gravação é abortada sem passar pelo "error", e a
+    // promessa nunca terminava (o formulário ficava travado, sem aviso).
+    t.onabort = () => fail(t.error || new Error("gravação no aparelho abortada"));
   });
 }
 

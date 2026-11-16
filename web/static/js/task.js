@@ -271,18 +271,20 @@ export async function openTask(taskId, onChange, opts = {}) {
   let rowEdit = null; // "time:<id>" ou "note:<id>": a linha que está sendo corrigida
   let pending = Promise.resolve(); // o último salvamento (o "Pronto" espera ele)
   const saved = h("span", { class: "saved-mark", "aria-live": "polite" });
-  function save(patch, redraw = false) {
-    pending = doSave(patch, redraw);
+  // keepText: campo de texto (título, descrição, como resolveu). Sem conexão ele fica como a pessoa
+  // escreveu, e sair dele de novo salva. Os de escolha (situação, prioridade, prazo, projeto) não têm
+  // essa segunda chance: sem redesenhar, ficariam mostrando um valor que o servidor não tem.
+  function save(patch, redraw = false, keepText = false) {
+    pending = doSave(patch, redraw, keepText);
     return pending;
   }
-  async function doSave(patch, redraw) {
+  async function doSave(patch, redraw, keepText) {
     try { await api.patch(`/worklog/${taskId}`, patch); }
     catch (e) {
       errorToast(e, "Não foi possível salvar.");
-      // Sem conexão: o campo fica como a pessoa escreveu (redesenhar trazia a cópia guardada e
-      // apagava o texto digitado); sair do campo de novo, com rede, salva. Recusado pelo servidor:
-      // redesenha com o que está lá.
-      if (e.status !== 0) await render();
+      // Texto sem conexão: fica no campo (redesenhar trazia a cópia guardada e apagava o que foi
+      // digitado). O resto, e toda recusa do servidor: redesenha com o que está lá.
+      if (!(keepText && e.status === 0)) await render();
       return;
     }
     Object.assign(cur, patch);
@@ -302,7 +304,7 @@ export async function openTask(taskId, onChange, opts = {}) {
       if (v === original()) return;
       const patch = toPatch(v);
       if (!patch) { el.value = original(); grow(el); return; }
-      save(patch);
+      save(patch, false, true);
     };
     el.addEventListener("keydown", (ev) => {
       if (ev.key === "Escape" && el.value.trim() !== original()) { ev.preventDefault(); ev.stopPropagation(); el.value = original(); grow(el); }

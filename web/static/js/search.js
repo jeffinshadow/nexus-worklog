@@ -35,7 +35,11 @@ export function highlight(text, q) {
   return out;
 }
 
+// Duas cargas ao mesmo tempo (refinou o termo antes da resposta): só a mais nova desenha.
+let mountSeq = 0;
+
 export async function mount(root, ctx) {
+  const mine = ++mountSeq;
   const q = queryFromHash();
   clear(root);
   const input = h("input", { type: "search", value: q, maxlength: "100", placeholder: "Tarefas, anotações, projetos…", "aria-label": "Buscar" });
@@ -65,9 +69,10 @@ export async function mount(root, ctx) {
     const fix = (k, total, size) => { const last = Math.max(1, Math.ceil(total / size)); if (pg[k] > last) { pg[k] = last; return true; } return false; };
     if ([fix("tasks", r.total_tasks, TASKS), fix("rec", r.total_recurring, SIDE), fix("proj", r.total_projects, SIDE)].some(Boolean)) r = await fetchPage();
   } catch (e) {
-    root.append(h("p", { class: "empty", text: e.message || "Não foi possível buscar." }));
+    if (mine === mountSeq) root.append(h("p", { class: "empty", text: e.message || "Não foi possível buscar." }));
     return;
   }
+  if (mine !== mountSeq) return;
   setHashPage("p", pg.tasks, "busca"); setHashPage("pr", pg.rec, "busca"); setHashPage("pp", pg.proj, "busca");
   const today = localDay(Date.now()); // só para os chips (prazo, atrasada)
   const refresh = () => mount(root, ctx);
@@ -89,8 +94,7 @@ export async function mount(root, ctx) {
   };
   const count = (total) => h("span", { class: "count", text: String(total) });
   const tasksBox = h("div", { class: "search-box" }), sideBox = h("div", { class: "search-box" });
-  // Duas cargas ao mesmo tempo (refinou o termo antes da resposta): fica só o campo e o resultado desta.
-  root.replaceChildren(form, tasksBox, sideBox);
+  root.append(tasksBox, sideBox);
 
   function paint() {
     clear(tasksBox); clear(sideBox);
