@@ -11,7 +11,6 @@ import * as admin from "./admin.js";
 import * as equipe from "./equipe.js";
 import { newRenewal, renewalsPanel } from "./renewals.js";
 import * as search from "./search.js";
-import { highlight } from "./search.js";
 import { loadBranding } from "./branding.js";
 import { avatar } from "./profile.js";
 import { startIdle } from "./idle.js";
@@ -22,11 +21,10 @@ import { pendingCount, startQueue, wipe } from "./fila.js";
 import { configure as configureAssistant } from "./assistant.js";
 import { session } from "./session.js";
 import { initTimer, stopTimer, timerState } from "./timer.js";
-import { openWorklog } from "./board.js";
 import { openTask, closeSidePanel } from "./task.js";
 import { startTour, changesNotice } from "./tour.js";
 import { openReview } from "./review.js";
-import { modal, busy, initTooltips, initRailPeek, syncRail, calmMotion, toast, singleKeysOn, repaintBadges } from "./ui.js";
+import { modal, busy, confirmDialog, initTooltips, initRailPeek, syncRail, calmMotion, toast, singleKeysOn, repaintBadges } from "./ui.js";
 
 let me = null;
 
@@ -149,7 +147,15 @@ async function route() {
     loadingMsg.classList.remove("hidden");
   }, 250);
   try {
-    await view.mount(el, { me, setActions: actions, setBack: back, setEyebrow, setAssist: assist, go });
+    // setEyebrow e setTitle com a mesma guarda das ações: uma tela que termina de carregar depois
+    // da troca (projeto aberto com rede lenta) não escreve o título dela por cima da tela atual.
+    const eyebrowOf = (text) => { if (seq === routeSeq) setEyebrow(text); };
+    const titleOf = (text, ...nodes) => {
+      if (seq !== routeSeq) return;
+      document.getElementById("page-title").replaceChildren(...(nodes.length ? nodes : [text]));
+      document.title = `${text} · Nexus Worklog`;
+    };
+    await view.mount(el, { me, setActions: actions, setBack: back, setEyebrow: eyebrowOf, setTitle: titleOf, setAssist: assist, go });
   } catch (e) {
     clear(el);
     // Servidor fora (ou o app abriu do cache do aparelho): a frase e o botão, como na abertura.
@@ -210,14 +216,36 @@ function go(name) {
 
 // Sair com coisas ainda na fila: elas se perdem (o aparelho pode ser de outra pessoa).
 async function confirmLeave(n) {
-  const { confirmDialog } = await import("./ui.js");
   return confirmDialog({ title: "Sair sem enviar?", text: `${n} ${n > 1 ? "alterações feitas" : "alteração feita"} sem conexão ainda não ${n > 1 ? "foram" : "foi"} para o servidor. Saindo agora, ${n > 1 ? "elas se perdem" : "ela se perde"}.`, confirm: "Sair mesmo assim", danger: true });
+}
+
+// "Sair" feito sem conexão: a sessão que ficou para encerrar (o CSRF dela, que é único por sessão).
+const LEAVE_KEY = "nexus.sair";
+
+// Na abertura: se a sessão viva é a que a pessoa mandou encerrar sem conexão, encerra agora.
+// true = saiu (a tela vai para o login). Outra sessão (entrou de novo depois) não é tocada.
+async function finishLeave() {
+  let pending = null;
+  try { pending = localStorage.getItem(LEAVE_KEY); } catch { return false; }
+  if (!pending) return false;
+  if (pending !== me.csrf_token) { try { localStorage.removeItem(LEAVE_KEY); } catch { /* nada */ } return false; }
+  try { await api.post("/auth/logout"); } catch (e) { if (e && e.status === 0) return false; }  // ainda sem rede: tenta na próxima
+  try { localStorage.removeItem(LEAVE_KEY); } catch { /* nada */ }
+  await wipe();
+  location.href = "/login";
+  return true;
 }
 
 async function logout() {
   const n = pendingCount();
   if (n && !(await confirmLeave(n))) return;
-  try { await api.post("/auth/logout"); } catch { /* ignora */ }
+  try { await api.post("/auth/logout"); }
+  catch (e) {
+    // Sem conexão, o servidor não soube da saída e o cookie da sessão continua valendo: fica
+    // anotado qual sessão era, e na próxima vez que o app abrir com rede ela é encerrada antes
+    // de mostrar qualquer coisa (aparelho compartilhado: quem abrisse depois entrava na conta).
+    if (e && e.status === 0 && me) { try { localStorage.setItem(LEAVE_KEY, me.csrf_token); } catch { /* sem armazenamento */ } }
+  }
   await wipe();  // fila e leituras guardadas não ficam no aparelho
   if ("clearAppBadge" in navigator) navigator.clearAppBadge().catch(() => {});
   location.href = "/login";
@@ -391,6 +419,7 @@ async function boot() {
   }
   document.getElementById("boot-splash")?.remove();
   api.setCsrf(me.csrf_token);
+  if (await finishLeave()) return;  // "Sair" ficou pendente (foi sem conexão): encerra antes de mostrar a conta
   setTimeZone(me.tz);
   if (window.nexusTheme && me.theme && me.theme !== window.nexusTheme.get()) window.nexusTheme.set(me.theme);  // a escolha da conta vale aqui também
   // Outra conta neste aparelho: nada do que ficou guardado da anterior serve.
@@ -472,12 +501,12 @@ async function boot() {
       const tasks = r.tasks.slice(0, 5), projs = r.projects.slice(0, 2);
       for (const t of tasks)
         sugg.append(h("button", { type: "button", class: "sugg-item", onClick: () => { hideSugg(); sideQ.value = ""; openTask(t.id, route); } },
-          icon("tasks"), h("span", { class: "sugg-t" }, ...highlight(t.title, q)), t.status === "done" ? h("small", { text: "concluída" }) : null));
+          icon("tasks"), h("span", { class: "sugg-t" }, ...search.highlight(t.title, q)), t.status === "done" ? h("small", { text: "concluída" }) : null));
       for (const p of projs)
         sugg.append(h("button", { type: "button", class: "sugg-item", onClick: () => {
           hideSugg(); sideQ.value = "";
           location.hash = "#/projetos?id=" + p.id;  // a tela do projeto, como na Busca
-        } }, icon("folder"), h("span", { class: "sugg-t" }, ...highlight(p.name, q)), h("small", { text: "projeto" })));
+        } }, icon("folder"), h("span", { class: "sugg-t" }, ...search.highlight(p.name, q)), h("small", { text: "projeto" })));
       if (!tasks.length && !projs.length) sugg.append(h("p", { class: "sugg-empty", text: "Nada encontrado." }));
       sugg.append(h("button", { type: "submit", class: "sugg-all", text: "Ver todos os resultados" }));
       sugg.classList.remove("hidden");
@@ -501,7 +530,7 @@ async function boot() {
       if (getComputedStyle(sideQ).display !== "none" && sideQ.offsetParent) sideQ.focus();
       else location.hash = "#/busca";
     }],
-    n: ["Nova tarefa", () => openWorklog(route)],
+    n: ["Nova tarefa", () => board.openWorklog(route)],
     // O registro rápido fica depois das rotinas na ordem do Tab: uma tecla leva até ele.
     q: ["Registro rápido (no Hoje)", () => {
       const el = document.querySelector('#view-hoje [aria-label="Registrar tarefa rápida"]');
@@ -534,7 +563,7 @@ async function boot() {
     const acao = takeShortcut();
     return () => {
       if (!has("user")) return;
-      if (acao === "nova") openWorklog(route);
+      if (acao === "nova") board.openWorklog(route);
       else if (acao === "rapido") document.querySelector('#view-hoje [aria-label="Registrar tarefa rápida"]')?.focus();
     };
   };
@@ -545,7 +574,7 @@ async function boot() {
   // Texto ou link compartilhado de outro app: abre a Nova tarefa já preenchida (salva só ao confirmar).
   const shared = has("user") ? await sharedTask() : null;
   if (shared) {
-    openWorklog(route, shared);
+    board.openWorklog(route, shared);
     if (shared.files.length) toast(`${shared.files.length > 1 ? `As ${shared.files.length} fotos entram` : "A foto entra"} na tarefa ao salvar.`);
     else if (shared.note) toast("O texto compartilhado é longo: ao salvar, ele entra inteiro como anotação da tarefa.");
   } else {
@@ -554,7 +583,7 @@ async function boot() {
   }
   syncOnBoot();
   // Admin: pedidos de convite abertos viram um número no item Admin do menu.
-  if (has("admin")) api.get("/admin/invite-requests").then((l) => import("./admin.js").then((m) => m.setRequestsBadge(l.filter((r) => r.status === "pending").length))).catch(() => {});
+  if (has("admin")) api.get("/admin/invite-requests").then((l) => admin.setRequestsBadge(l.filter((r) => r.status === "pending").length)).catch(() => {});
   startQueue(route, { ready: has("user") });  // sem sinal: a fila do aparelho vai quando a conexão voltar
   // Primeiro acesso: o tour guiado abre sozinho (uma vez; a Ajuda reabre).
   if (has("user") && !me.tour_done_at) setTimeout(() => startTour(me), 700);

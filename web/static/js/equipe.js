@@ -45,10 +45,13 @@ async function panelView(root, ctx) {
   peoplePage = hashPage("pp");
   ctx.setEyebrow(canView ? "a equipe no mês" : "as tarefas que você atribuiu");
   let data = null;
+  // O painel (load, mais abaixo) só existe para quem passa dos retornos antecipados: sem esta marca,
+  // cancelar ou encerrar uma tarefa na tela "sem equipe" chamava load() antes de ele estar pronto e dava erro.
+  let panelReady = false;
 
   // Tarefas que atribuí (logo abaixo do painel) e o diálogo de atribuir, por cima da tela.
-  const sent = canAssign ? sentPanel({ onChange: () => { if (canView) load().catch(errorToast); } }) : null;
-  const afterAssign = () => { sent.load(); if (canView) load().catch(errorToast); };
+  const sent = canAssign ? sentPanel({ onChange: () => { if (canView && panelReady) load().catch(errorToast); } }) : null;
+  const afterAssign = () => { sent.load(); if (canView && panelReady) load().catch(errorToast); };
   const assignBtn = canAssign ? h("button", { type: "button", class: "btn btn-primary", "data-fab": "",
     onClick: () => assignDialog({ onDone: afterAssign }) }, icon("send"), "Atribuir tarefa") : null;
   const me = session.me || {};
@@ -107,6 +110,7 @@ async function panelView(root, ctx) {
   };
 
   let seq = 0;
+  panelReady = true;
   async function load() {
     const my = ++seq;
     content.classList.add("refreshing");

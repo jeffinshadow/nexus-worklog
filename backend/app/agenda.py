@@ -41,6 +41,16 @@ def _users() -> list[int]:
             ORDER BY u.id""")]
 
 
+def _seen(uid: int, action: str, item_id: int, occurrence) -> bool:
+    """Este aviso já foi gravado? Pelo índice único (sql/039). Conferir antes poupa a cópia da
+    tarefa e um INSERT recusado por minuto, que ainda gastava um id do histórico a cada vez
+    (buracos no cursor do feed)."""
+    return bool(db.query_one(
+        """SELECT 1 FROM audit_log WHERE user_id = %s AND actor = 'system' AND action = %s
+              AND entity_id = %s AND after->>'occurrence' = %s""",
+        (uid, action, item_id, audit._jsonable(occurrence))))
+
+
 def _emit(uid: int, action: str, item_id: int, occurrence, data: dict) -> bool:
     """Grava o aviso (uma vez por item e ocorrência). True = era novo."""
     after = audit._jsonable({**data, "occurrence": occurrence})
@@ -62,6 +72,8 @@ def _followups(uid: int, today) -> list[str]:
     for t in db.query_all(
             """SELECT id FROM worklog_tasks
                 WHERE user_id = %s AND status = 'blocked' AND follow_up_on = %s ORDER BY id""", (uid, today)):
+        if _seen(uid, "followup.due", t["id"], today):
+            continue
         snap = audit.worklog_snapshot(t["id"], uid)
         if snap and _emit(uid, "followup.due", t["id"], today, snap):
             out.append(f"followup:{t['id']}")
@@ -75,6 +87,8 @@ def _renewals(uid: int, today) -> list[str]:
         # No dia em que entra no aviso (até WARN_GRACE_DAYS depois, se o servidor
         # estava fora): um vencimento antigo não dispara ao criar a 1ª chave.
         if not r["warning"] or (today - r["warn_from"]).days > WARN_GRACE_DAYS:
+            continue
+        if _seen(uid, "renewal.warning", r["id"], r["expires_on"]):
             continue
         data = {k: r[k] for k in ("id", "label", "expires_on", "warn_days", "project_id", "note", "renew_months", "days_left", "team_id", "team_name")}
         if _emit(uid, "renewal.warning", r["id"], r["expires_on"], data):
@@ -92,6 +106,8 @@ def _routines(uid: int, now: datetime) -> list[str]:
                 or not is_pending(r, today, mask)):
             continue
         if now < datetime.combine(today, r["remind_at"], tzinfo=now.tzinfo):
+            continue
+        if _seen(uid, "recurring.due", r["id"], today):
             continue
         snap = audit.recurring_snapshot(r["id"], uid)
         if snap and _emit(uid, "recurring.due", r["id"], today, {**snap, "day": today}):

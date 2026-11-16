@@ -87,11 +87,12 @@ def set_user_teams(user_id: int, team_ids: list[int]) -> tuple[list[int], list[i
     """Troca as equipes ativas da pessoa pela lista (as arquivadas ficam como estão).
     Devolve (antes, depois) só das ativas."""
     before = [t["id"] for t in teams.of_user(user_id)]
-    db.execute("""DELETE FROM team_members m USING teams t
-                   WHERE m.team_id = t.id AND t.archived_at IS NULL AND m.user_id = %s AND NOT (m.team_id = ANY(%s))""",
-               (user_id, team_ids))
-    for tid in team_ids:
-        db.execute("INSERT INTO team_members (team_id, user_id) VALUES (%s, %s) ON CONFLICT DO NOTHING", (tid, user_id))
+    with db.transaction():  # sair das antigas e entrar nas novas: juntos (no meio, a pessoa ficava sem equipe)
+        db.execute("""DELETE FROM team_members m USING teams t
+                       WHERE m.team_id = t.id AND t.archived_at IS NULL AND m.user_id = %s AND NOT (m.team_id = ANY(%s))""",
+                   (user_id, team_ids))
+        for tid in team_ids:
+            db.execute("INSERT INTO team_members (team_id, user_id) VALUES (%s, %s) ON CONFLICT DO NOTHING", (tid, user_id))
     return before, [t["id"] for t in teams.of_user(user_id)]
 
 
@@ -141,9 +142,10 @@ def edit_team(team_id: int, data: TeamEditIn, admin=Depends(require_admin_csrf))
     if data.member_ids is not None:
         ids = _check_users(data.member_ids)
         before = [m["id"] for m in _members(team_id)]
-        db.execute("DELETE FROM team_members WHERE team_id = %s AND NOT (user_id = ANY(%s))", (team_id, ids))
-        for uid in ids:
-            db.execute("INSERT INTO team_members (team_id, user_id) VALUES (%s, %s) ON CONFLICT DO NOTHING", (team_id, uid))
+        with db.transaction():  # a lista inteira ou nada
+            db.execute("DELETE FROM team_members WHERE team_id = %s AND NOT (user_id = ANY(%s))", (team_id, ids))
+            for uid in ids:
+                db.execute("INSERT INTO team_members (team_id, user_id) VALUES (%s, %s) ON CONFLICT DO NOTHING", (team_id, uid))
         if set(before) != set(ids):
             audit.record(ctx, "team.members", "team", team_id,
                          before={"members": before},

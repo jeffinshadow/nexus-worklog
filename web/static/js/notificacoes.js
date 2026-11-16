@@ -42,9 +42,11 @@ async function save(sub) {
 
 // Liga neste aparelho. Precisa vir de um clique (o navegador só pergunta assim).
 async function enable() {
-  if (!supported()) throw new Error("Este navegador não tem notificações.");
+  // status: o aviso de erro só mostra mensagens que têm um (ui.errorToast); sem ele, saía só "Não foi possível ligar".
+  const fail = (msg) => Object.assign(new Error(msg), { status: 400 });
+  if (!supported()) throw fail("Este navegador não tem notificações.");
   const perm = await Notification.requestPermission();
-  if (perm !== "granted") throw new Error(perm === "denied"
+  if (perm !== "granted") throw fail(perm === "denied"
     ? "As notificações estão bloqueadas para o Nexus neste navegador. Libere nas configurações do site (o cadeado na barra de endereço) e tente de novo."
     : "Sem permissão, o aparelho não recebe as notificações.");
   const { public_key: key } = await api.get("/push");

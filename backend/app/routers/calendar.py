@@ -118,6 +118,8 @@ def build_ics(uid: int, include_recurring: bool, cal_name: str) -> str:
     ]
 
     def event(uid_: str, start: date, summary: str, desc: str, extra: list[str] = ()):
+        if start.year >= 9999:  # data absurda gravada antes do limite dos schemas: sem o evento, mas o feed sai
+            return
         lines.extend(["BEGIN:VEVENT", f"UID:{uid_}@nexus-worklog", f"DTSTAMP:{now}",
                       f"DTSTART;VALUE=DATE:{_d(start)}", f"DTEND;VALUE=DATE:{_d(start + timedelta(days=1))}",
                       f"SUMMARY:{_esc(summary)}", f"DESCRIPTION:{_esc(desc)}", "TRANSP:TRANSPARENT", *extra,

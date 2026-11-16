@@ -16,7 +16,7 @@ from .. import audit, db, teams
 from ..deps import active_user, active_user_csrf
 from ..people import profile
 from ..schemas import RenewalIn, RenewalUpdate
-from datetime import timedelta
+from datetime import date, timedelta
 
 from ..services import app_today, is_work_day, work_mask
 
@@ -29,21 +29,30 @@ COLS = ("r.id, r.label, r.expires_on, r.warn_days, r.project_id, r.note, r.renew
 def warn_start(expires_on, warn_days: int, mask: int):
     """Primeiro dia do aviso; caindo em dia não útil, antecipa para o último dia útil
     (um aviso curto não some no fim de semana)."""
-    d = expires_on - timedelta(days=warn_days)
-    for _ in range(7):
-        if is_work_day(d, mask):
-            return d
-        d -= timedelta(days=1)
-    return d
+    try:
+        d = expires_on - timedelta(days=warn_days)
+        for _ in range(7):
+            if is_work_day(d, mask):
+                return d
+            d -= timedelta(days=1)
+        return d
+    except OverflowError:  # data absurda gravada antes do limite dos schemas: não derruba a lista
+        return date.min
 
 
 def _visible_sql(uid: int) -> str:
-    """Os dele, mais os compartilhados com uma equipe ativa de que ele é membro."""
-    return f"(r.user_id = {int(uid)} OR (r.team_id IS NOT NULL AND {teams.member_of_sql(int(uid), 'r.team_id')}))"
+    """Os dele, mais os compartilhados com uma equipe ativa de que ele é membro, enquanto quem
+    criou continua nela (ou é o admin master, que compartilha com qualquer equipe): quem muda de
+    setor não deixa o vencimento, com a observação, à vista da equipe antiga."""
+    dono_na_equipe = ("(EXISTS (SELECT 1 FROM team_members od WHERE od.team_id = r.team_id AND od.user_id = r.user_id)"
+                      " OR r.user_id = (SELECT ms.master_user_id FROM app_settings ms WHERE ms.id = 1))")
+    return (f"(r.user_id = {int(uid)} OR (r.team_id IS NOT NULL AND {teams.member_of_sql(int(uid), 'r.team_id')}"
+            f" AND {dono_na_equipe}))")
 
 
 def _is_admin(user: dict) -> bool:
-    return "admin" in (user.get("roles") or [])
+    """Admin pelo app. Chave de API nunca age como admin, mesmo a de um admin (a regra de deps.py)."""
+    return "admin" in (user.get("roles") or []) and user.get("actor") == "web"
 
 
 def list_for(uid: int) -> list[dict]:

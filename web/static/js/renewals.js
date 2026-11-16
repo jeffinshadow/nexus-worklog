@@ -36,9 +36,11 @@ function row(r, onChange, compact = false) {
         // external_ref: o servidor devolve a que já existe para este vencimento (sem duplicar).
         const res = await api.post("/worklog", { title, due_date: r.expires_on, project_id: r.project_id || null,
           external_ref: `renewal:${r.id}:${r.expires_on}` });
-        toast(res.existing ? "Essa tarefa de renovação já existe em Tarefas." : "Tarefa de renovação criada em Tarefas.");
-        btn.textContent = "Tarefa criada";
-        btn.setAttribute("aria-label", `Tarefa criada: ${r.label}`);
+        const fila = !!(res && res.queued);
+        toast(fila ? "Sem conexão: a tarefa de renovação fica guardada e vai quando a conexão voltar."
+          : res.existing ? "Essa tarefa de renovação já existe em Tarefas." : "Tarefa de renovação criada em Tarefas.");
+        btn.textContent = fila ? "Tarefa guardada" : "Tarefa criada";
+        btn.setAttribute("aria-label", `${fila ? "Tarefa guardada" : "Tarefa criada"}: ${r.label}`);
       } catch (e) { btn.disabled = false; errorToast(e); }
     } }, "Virar tarefa"),
     h("button", { type: "button", class: "btn btn-ghost btn-sm", title: "Informar a nova data de vencimento", "aria-label": `Renovei: ${r.label}`, onClick: () => openRenewal(r, onChange, true) }, "Renovei"),

@@ -35,6 +35,13 @@ FORGOTTEN = timedelta(hours=12)
 
 
 def stop_running(user: dict, only_task: int | None = None, ended_at: datetime | None = None):
+    # Tirar o cronômetro, apontar o tempo e guardar o intervalo vão juntos: parando no
+    # meio, o cronômetro sumia sem o apontamento (o tempo trabalhado se perdia sem aviso).
+    with db.transaction():
+        return _stop_running(user, only_task, ended_at)
+
+
+def _stop_running(user: dict, only_task: int | None = None, ended_at: datetime | None = None):
     """Para o cronômetro e aponta o tempo. Devolve o apontamento ou None.
     only_task: só para se estiver rodando nessa tarefa. ended_at: parou antes
     de agora (feito sem sinal). Esquecido (mais de 12 h): para sem apontar e
@@ -107,16 +114,19 @@ def start(data: TimerIn, user=Depends(active_user_csrf)):
         raise HTTPException(status_code=409, detail="o cronômetro já mudou em outro aparelho; nada foi alterado")
     if at is not None and (o := overlap(user["user_id"], at)):  # início antigo, depois de outro aparelho parar
         raise HTTPException(status_code=409, detail=overlap_msg(o))
-    stopped = stop_running(user, ended_at=at)  # trocar de tarefa aponta o tempo da anterior
-    db.execute("INSERT INTO task_timers (user_id, task_id, started_at) VALUES (%s, %s, COALESCE(%s, now()))",
-               (user["user_id"], data.task_id, at))
-    if task["status"] == "todo":  # quem começa a cronometrar está fazendo (edição comum, desfazível)
-        db.execute("UPDATE worklog_tasks SET status = 'in_progress' WHERE id = %s AND user_id = %s",
-                   (data.task_id, user["user_id"]))
-        audit.record(user, "worklog.update", "worklog", data.task_id, before=task,
-                     after=audit.worklog_snapshot(data.task_id, user["user_id"]))
-    # Entidade própria: não conta como "última ação da tarefa" para o desfazer.
-    audit.record(user, "timer.start", "timer", data.task_id, after={"task_id": data.task_id, "title": task["title"]})
+    with db.transaction():  # apontar a anterior e começar a nova: juntos
+        stopped = stop_running(user, ended_at=at)  # trocar de tarefa aponta o tempo da anterior
+        # ON CONFLICT: dois aparelhos iniciando ao mesmo tempo. O segundo fica valendo, em vez de erro 500.
+        db.execute("""INSERT INTO task_timers (user_id, task_id, started_at) VALUES (%s, %s, COALESCE(%s, now()))
+                      ON CONFLICT (user_id) DO UPDATE SET task_id = EXCLUDED.task_id, started_at = EXCLUDED.started_at""",
+                   (user["user_id"], data.task_id, at))
+        if task["status"] == "todo":  # quem começa a cronometrar está fazendo (edição comum, desfazível)
+            db.execute("UPDATE worklog_tasks SET status = 'in_progress' WHERE id = %s AND user_id = %s",
+                       (data.task_id, user["user_id"]))
+            audit.record(user, "worklog.update", "worklog", data.task_id, before=task,
+                         after=audit.worklog_snapshot(data.task_id, user["user_id"]))
+        # Entidade própria: não conta como "última ação da tarefa" para o desfazer.
+        audit.record(user, "timer.start", "timer", data.task_id, after={"task_id": data.task_id, "title": task["title"]})
     return {"timer": running_timer(user["user_id"]), "stopped": stopped}
 
 

@@ -89,7 +89,8 @@ export async function mount(root, ctx) {
   };
   const count = (total) => h("span", { class: "count", text: String(total) });
   const tasksBox = h("div", { class: "search-box" }), sideBox = h("div", { class: "search-box" });
-  root.append(tasksBox, sideBox);
+  // Duas cargas ao mesmo tempo (refinou o termo antes da resposta): fica só o campo e o resultado desta.
+  root.replaceChildren(form, tasksBox, sideBox);
 
   function paint() {
     clear(tasksBox); clear(sideBox);

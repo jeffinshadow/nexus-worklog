@@ -70,7 +70,8 @@ def for_user(user_id: int) -> dict:
                           FROM users WHERE id = %s""", (user_id,)) or {}
     managed = o["team_visibility"] == "managers"
     # Entrou numa equipe depois da mudança (sql/043): o aviso vale a partir da entrada.
-    joined = teams.joined_at(user_id) if teams.any_active() else None
+    teams_on = teams.any_active()  # uma leitura (esta rota abre o app e cada aba)
+    joined = teams.joined_at(user_id) if teams_on else None
     since = max(x for x in (o["team_visibility_since"], joined) if x) if (o["team_visibility_since"] or joined) else None
     notice = bool(managed and u.get("is_user") and since
                   and (u.get("visibility_notice_at") is None or u["visibility_notice_at"] < since))
@@ -87,7 +88,7 @@ def for_user(user_id: int) -> dict:
         # Equipes (sql/043): as da pessoa (só leitura na Conta), se a instância
         # tem equipes e se ela é o admin master.
         "teams": [t["name"] for t in teams.of_user(user_id)],
-        "teams_on": teams.any_active(),
+        "teams_on": teams_on,
         "is_master": teams.is_master(user_id),
         # Primeiro acesso de conta nova: o tour é obrigatório (sem "Pular" até concluir).
         "tour_required": bool(u.get("tour_first_access") and u.get("tour_done_at") is None),

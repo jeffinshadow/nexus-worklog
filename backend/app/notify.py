@@ -251,37 +251,47 @@ def run_once(now: datetime, send=None) -> list[tuple[int, str, str]]:
              FROM notification_prefs p JOIN users u ON u.id = p.user_id
             WHERE (p.morning OR p.evening OR p.weekly) AND NOT u.must_change_password""")
     for u in users:
-        mask = work_mask(u["id"])
-        for kind in KINDS:
-            if now.hour < u[f"{kind}_hour"]:
+        try:
+            done += _user_pass(u, now, today, send)
+        except Exception:  # noqa: BLE001 — uma pessoa com erro (banco lento) não tira o aviso das outras
+            log.exception("avisos por e-mail do usuário %s falharam nesta passada", u["id"])
+    return done
+
+
+def _user_pass(u: dict, now: datetime, today: date, send) -> list[tuple[int, str, str]]:
+    """Os avisos de uma pessoa nesta passada."""
+    done = []
+    mask = work_mask(u["id"])
+    for kind in KINDS:
+        if now.hour < u[f"{kind}_hour"]:
+            continue
+        if kind == "weekly":
+            if today.weekday() != 0:  # segunda
                 continue
-            if kind == "weekly":
-                if today.weekday() != 0:  # segunda
-                    continue
-            elif not is_work_day(today, mask) and not _rotina_devida(u["id"], today, mask):
-                continue  # dia não útil sem rotina na agenda: sem aviso
-            # Backend fora do ar no horário: recupera até 2h depois; mais que
-            # isso o aviso perdeu o sentido ("bom dia" às 15h) e fica para amanhã.
-            if now.hour - u[f"{kind}_hour"] > CATCH_UP_HOURS:
-                continue
-            if not _claim(u["id"], kind, today):
-                continue
-            try:
-                mail = BUILDERS[kind](u["id"], today, u["show_titles"])
-            except Exception as e:  # noqa: BLE001 — registra; o dia não se perde em silêncio
-                _finish(u["id"], kind, today, False, f"falha ao montar: {e}"[:300])
-                log.exception("aviso %s para usuário %s não montou", kind, u["id"])
-                done.append((u["id"], kind, "error"))
-                continue
-            cc = None
-            if kind == "weekly" and not mail.empty:
-                if u["weekly_pdf"]:
-                    try:
-                        attach_week_pdf(mail, u["id"], u["email"], today)
-                    except Exception:  # noqa: BLE001 — o resumo sai mesmo sem o anexo
-                        log.exception("PDF da semana do usuário %s não montou", u["id"])
-                cc = u["weekly_cc"]
-            done.append((u["id"], kind, deliver(u["id"], u["email"], kind, today, mail, send, cc=cc)))
+        elif not is_work_day(today, mask) and not _rotina_devida(u["id"], today, mask):
+            continue  # dia não útil sem rotina na agenda: sem aviso
+        # Backend fora do ar no horário: recupera até 2h depois; mais que
+        # isso o aviso perdeu o sentido ("bom dia" às 15h) e fica para amanhã.
+        if now.hour - u[f"{kind}_hour"] > CATCH_UP_HOURS:
+            continue
+        if not _claim(u["id"], kind, today):
+            continue
+        try:
+            mail = BUILDERS[kind](u["id"], today, u["show_titles"])
+        except Exception as e:  # noqa: BLE001 — registra; o dia não se perde em silêncio
+            _finish(u["id"], kind, today, False, f"falha ao montar: {e}"[:300])
+            log.exception("aviso %s para usuário %s não montou", kind, u["id"])
+            done.append((u["id"], kind, "error"))
+            continue
+        cc = None
+        if kind == "weekly" and not mail.empty:
+            if u["weekly_pdf"]:
+                try:
+                    attach_week_pdf(mail, u["id"], u["email"], today)
+                except Exception:  # noqa: BLE001 — o resumo sai mesmo sem o anexo
+                    log.exception("PDF da semana do usuário %s não montou", u["id"])
+            cc = u["weekly_cc"]
+        done.append((u["id"], kind, deliver(u["id"], u["email"], kind, today, mail, send, cc=cc)))
     return done
 
 
@@ -292,6 +302,25 @@ async def scheduler() -> None:
     from . import agenda, push, webhooks
     tz = ZoneInfo(config.APP_TZ)
     log.info("agendador ativo: e-mail %s, notificações nos aparelhos", config.SMTP_HOST or "desligado")
+
+    async def hooks() -> None:
+        """Os webhooks em laço próprio: um destino lento (até 15 s por evento) atrasava a
+        passada inteira, e as notificações de rotina e lembrete (que valem 15 min) se perdiam."""
+        while True:
+            try:
+                await asyncio.to_thread(webhooks.run_once)
+            except Exception:  # noqa: BLE001
+                log.exception("entrega dos webhooks falhou nesta passada")
+            await asyncio.sleep(60 - datetime.now(tz).second + 5)  # logo depois dos avisos de agenda do minuto
+
+    hooks_task = asyncio.create_task(hooks())
+    try:
+        await _passes(tz, agenda, push)
+    finally:
+        hooks_task.cancel()
+
+
+async def _passes(tz, agenda, push) -> None:
     while True:
         now = datetime.now(tz)
         if config.SMTP_HOST:
@@ -307,10 +336,6 @@ async def scheduler() -> None:
             await asyncio.to_thread(agenda.run_once, now)
         except Exception:  # noqa: BLE001
             log.exception("avisos de agenda falharam nesta passada")
-        try:
-            await asyncio.to_thread(webhooks.run_once)
-        except Exception:  # noqa: BLE001
-            log.exception("entrega dos webhooks falhou nesta passada")
         if now.minute == 0:  # uma vez por hora: fotos excluídas há 7 dias e de tarefas que não voltam mais
             try:
                 from .routers.photos import cleanup

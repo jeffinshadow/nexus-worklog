@@ -2,7 +2,7 @@
 // Aqui ele aparece no menu (e, no celular, acima da barra) e é ligado/parado
 // pelos botões das tarefas. Ao parar, o servidor aponta o tempo na tarefa.
 import { api } from "./api.js";
-import { h, icon, clear } from "./dom.js";
+import { h, icon, clear, dateTime } from "./dom.js";
 import { duration, openTask } from "./task.js";
 import { errorToast, toast, keepFocus } from "./ui.js";
 
@@ -105,7 +105,7 @@ function setTimer(t) {
 
 // Cronômetro esquecido (mais de 12 h): o servidor parou sem apontar; a pessoa informa o tempo.
 function forgotten(st) {
-  const when = new Date(st.started_at).toLocaleString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  const when = dateTime(st.started_at);  // no fuso da app, como o resto das horas
   toast(`O cronômetro de «${st.title}» rodava desde ${when}: parei sem apontar. Informe o tempo certo.`,
     { action: "Apontar", onAction: () => openTask(st.task_id) });
 }

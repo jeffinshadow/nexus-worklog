@@ -261,7 +261,8 @@ export async function openTask(taskId, onChange, opts = {}) {
       : [appbar, head, mainActs, editing ? details(t, today) : null, checklist(t), photosSection(t, touch), timePanel(t, today), notesPanel(t)]).filter(Boolean));
     if (title) requestAnimationFrame(() => { grow(title); grow(body.querySelector(".inline-desc")); }); // a altura só existe com o campo na tela (e o painel aberto)
     // Redesenhou com o foco num campo (ex.: trocou o status): volta para ele.
-    if (refocus) { const el = body.querySelector(`[aria-label="${refocus}"]`); if (el) el.focus(); refocus = null; }
+    // CSS.escape: o nome pode ser o texto de um item do checklist (com aspas, quebrava o seletor e todo redesenho seguinte).
+    if (refocus) { const name = refocus; refocus = null; const el = body.querySelector(`[aria-label="${CSS.escape(name)}"]`); if (el) el.focus(); }
   }
 
   // ---- edição no lugar
@@ -276,7 +277,14 @@ export async function openTask(taskId, onChange, opts = {}) {
   }
   async function doSave(patch, redraw) {
     try { await api.patch(`/worklog/${taskId}`, patch); }
-    catch (e) { errorToast(e, "Não foi possível salvar."); await render(); return; }
+    catch (e) {
+      errorToast(e, "Não foi possível salvar.");
+      // Sem conexão: o campo fica como a pessoa escreveu (redesenhar trazia a cópia guardada e
+      // apagava o texto digitado); sair do campo de novo, com rede, salva. Recusado pelo servidor:
+      // redesenha com o que está lá.
+      if (e.status !== 0) await render();
+      return;
+    }
     Object.assign(cur, patch);
     notify();
     saved.textContent = "Salvo";

@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 
 from .. import audit, db
 from ..config import config
-from ..visibility import visible_sql
+from ..visibility import active_sql, visible_sql
 from ..deps import web_active, web_active_csrf
 from .board import check_board_day
 from .me import _sniff
@@ -135,7 +135,7 @@ def list_routine(recurring_id: int, day: date, user=Depends(web_active)):
 def get_photo(photo_id: int, thumb: bool = False, user=Depends(web_active)):
     # Foto de outra pessoa: só o visualizador, e só se ela aceitou (como em routers/viewer.py).
     row = db.query_one(f"""SELECT f.user_id, f.mime, f.{'thumb' if thumb else 'image'} AS data,
-                                  {visible_sql('u', int(user['user_id']))} AS viewable
+                                  ({visible_sql('u', int(user['user_id']))} AND {active_sql('u')}) AS viewable
                              FROM photos f JOIN users u ON u.id = f.user_id
                             WHERE f.id = %s AND f.deleted_at IS NULL""", (photo_id,))
     if not row or (row["user_id"] != user["user_id"]
@@ -174,7 +174,8 @@ def cleanup() -> None:
     db.execute(
         """DELETE FROM photos p WHERE p.task_id IS NOT NULL
              AND NOT EXISTS (SELECT 1 FROM worklog_tasks w WHERE w.id = p.task_id)
-             AND NOT EXISTS (SELECT 1 FROM audit_log a WHERE a.entity = 'worklog' AND a.entity_id = p.task_id
+             AND NOT EXISTS (SELECT 1 FROM audit_log a WHERE a.user_id = p.user_id  -- pelo índice (user_id, entity, entity_id)
+                               AND a.entity = 'worklog' AND a.entity_id = p.task_id
                                AND a.action = 'worklog.delete' AND a.created_at > now() - make_interval(days => %s))""",
         (UNDO_DAYS,))
 

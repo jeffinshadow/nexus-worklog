@@ -40,6 +40,32 @@ Rodada de robustez ("gauntlet loop"): pontos frágeis achados na leitura do cód
 - `deploy.sh`: se o `git pull` ou o `docker compose up` falhar, o script diz o que aconteceu e como voltar atrás (saía
   sem as instruções); backup recusado na conferência não fica na pasta.
 
+### Privacidade e permissões
+- **Sair sem conexão** não encerrava a sessão no servidor: quem abrisse o app depois, no mesmo aparelho, entrava na
+  conta. Agora a saída fica anotada e a sessão é encerrada na primeira abertura com rede, antes de mostrar qualquer coisa.
+- Quem acompanha a equipe não recebe mais, na API, o ranking por rotina (com a sequência de dias) nem o backlog por
+  idade da pessoa: a tela já não mostrava; a resposta ainda trazia.
+- **Vencimento compartilhado** deixa de aparecer para a equipe quando quem criou sai dela. Editar ou excluir o
+  vencimento de um colega como admin vale só pelo app, não por chave de API.
+- Conta bloqueada ou com convite pendente fica fora do CSV de horas da equipe e das fotos, como já ficava do painel.
+
+### Correções (áreas revisadas pelos críticos)
+- Prazo, dia de cobrar e vencimento aceitam datas de 2000 a 2100. Uma data como 9999-12-31 ("nunca vence") ou o ano 1
+  derrubava o calendário (ICS), a lista de vencimentos, a passagem de turno e o e-mail da manhã, inclusive os de quem
+  divide a equipe; as que já estiverem gravadas não derrubam mais nada.
+- **Cronômetro**: parar ou trocar de tarefa é tudo ou nada (uma falha ao apontar não some mais com o cronômetro e o
+  tempo); dois aparelhos iniciando ao mesmo tempo não dão erro.
+- Painel e Meu mês com mês de ano inválido (`month=0001-01`) respondem 400, não 500.
+- **Sem sinal**: tarefa criada sem conexão aparece em Tarefas só com o título e "esperando conexão" (com as ações, o
+  cronômetro iniciado nela era recusado depois e o tempo se perdia); o texto digitado no detalhe não some quando o
+  salvamento falha por falta de rede; "+ Tarefa" no projeto e "Virar tarefa" nos vencimentos dizem que a tarefa ficou
+  guardada, sem erro falso nem duplicação; foto que não abre não segura a tarefa compartilhada; Tarefas e Projetos
+  abrem sem sinal mesmo sem terem sido visitadas antes.
+- "Antes do PDF" não aponta o tempo duas vezes quando o "como resolveu" falha; o lembrete de inatividade não cria duas
+  tarefas com dois toques; a busca não mostra dois blocos de resultado; o título de um projeto não aparece em outra
+  tela; a Equipe de quem não está em nenhuma equipe não dá erro falso; as notificações bloqueadas explicam como liberar;
+  a hora do cronômetro esquecido segue o fuso da app.
+
 ### Novo
 - `GET /api/worklog?project=<id>`: a lista por período só com as tarefas do projeto (principal ou extra). A ferramenta
   `list_tasks` da IA usa o mesmo filtro: num período com mais de 500 tarefas, as do projeto podiam ficar de fora.
@@ -51,6 +77,10 @@ Rodada de robustez ("gauntlet loop"): pontos frágeis achados na leitura do cód
 - Contas (Admin), Equipe e Atribuir leem os perfis numa consulta só (era uma por pessoa; no Atribuir, três).
 - Reordenar rotinas e objetivos é um comando só.
 - O app instalado descarta a cópia da versão anterior dos arquivos ao guardar a nova.
+- Notificações da manhã leem só os prazos e as cobranças (liam o quadro inteiro a cada minuto, por duas horas, por
+  pessoa); os avisos de agenda conferem antes de gravar (regravavam a cada minuto e gastavam ids do histórico).
+- Os webhooks são entregues em laço próprio: um destino lento não atrasa mais as notificações de rotina e lembrete.
+- A abertura do app faz menos consultas; a faxina das fotos usa o índice do histórico.
 
 ### Documentação
 - `docs/API.md`: `get_week` na lista de ferramentas da IA; a cota de fotos é a variável `PHOTO_QUOTA_MB` e o limite

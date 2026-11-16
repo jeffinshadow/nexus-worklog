@@ -31,7 +31,7 @@ from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 
 from . import db
 from .config import config
-from .services import app_today, get_board, is_pending, is_work_day, rotinas, work_mask
+from .services import app_today, is_pending, is_work_day, rotinas, work_mask
 
 log = logging.getLogger("uvicorn.error")
 
@@ -268,7 +268,16 @@ def _morning(uid: int, p: dict, now: datetime, mask: int) -> list[str]:
         return done
     if not is_work_day(today, mask):
         return done
-    abertas = get_board(uid, today)["in_progress"]
+    # Só o que os dois avisos usam, numa consulta (esta passada roda a cada minuto por duas
+    # horas, por pessoa: o quadro inteiro, com contadores e as 200 concluídas, era à toa).
+    # A ordem é a do quadro para estes casos: atrasadas, vencem hoje, prioridade, prazo.
+    abertas = db.query_all(
+        """SELECT title, status, due_date, follow_up_on FROM worklog_tasks
+            WHERE user_id = %s AND status <> 'done'
+              AND (due_date <= %s OR (status = 'blocked' AND follow_up_on <= %s))
+            ORDER BY COALESCE(due_date < %s, false) DESC, COALESCE(due_date = %s, false) DESC,
+                     priority, COALESCE(due_date, DATE '9999-12-31'), created_at""",
+        (uid, today, today, today, today))
     hide = p["hide_content"]
     if p["deadline"]:
         atrasadas = [t["title"] for t in abertas if t["due_date"] and t["due_date"] < today]

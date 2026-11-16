@@ -9,7 +9,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from .. import db, teams
-from ..visibility import visible_sql
+from ..visibility import active_sql, visible_sql
 from ..deps import active_user
 from ..labels import PRIO_PT, STATUS_PT
 from ..services import TASK_COUNTS, app_today, app_tz, is_due, rotinas, work_mask
@@ -80,7 +80,8 @@ def time_csv(uid: int | None, filename: str, viewer: int | None = None,
     por cliente; o projeto vai por nome, pois cada pessoa tem os seus).
     viewer = só de quem esse visualizador pode ver (visibility.visible_sql;
     `extra`: o recorte do seletor de equipe). start/end: só esse período."""
-    vis = f"{visible_sql('u', int(viewer))} AND {extra}" if viewer is not None else "TRUE"
+    # active_sql: como a lista e o painel da Equipe (as horas de uma conta bloqueada entravam só aqui, e a soma não fechava).
+    vis = f"{visible_sql('u', int(viewer))} AND {active_sql('u')} AND {extra}" if viewer is not None else "TRUE"
     rows = db.query_all(
         f"""SELECT e.day, e.minutes, w.id AS task_id, w.title, p.name AS project, e.note, e.actor, e.token_name,
                   w.ticket, w.after_hours, u.email

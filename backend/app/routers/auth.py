@@ -51,7 +51,7 @@ def _public(row: dict, csrf: str) -> dict:
         **org.for_user(uid),  # org (Para empresas), tour_required, visibility_notice, email_pending
         "assistant": people.assistant_prefs(uid),
         "role": row["role"],
-        "roles": roles.of(uid),
+        "roles": row["roles"] if row.get("roles") is not None else roles.of(uid),  # a sessão já traz (deps); o login, não
         "retro_days": task_retro_days(),  # limite de datas retroativas em tarefas
         "support_contact": (db.query_one("SELECT support_contact FROM app_settings WHERE id = 1") or {}).get("support_contact"),
         "must_change_password": row["must_change_password"],

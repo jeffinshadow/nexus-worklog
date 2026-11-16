@@ -26,8 +26,9 @@ def grant(user_id: int, roles) -> None:
 
 
 def replace(user_id: int, roles) -> None:
-    db.execute("DELETE FROM user_roles WHERE user_id = %s AND NOT (role = ANY(%s))", (user_id, list(roles)))
-    grant(user_id, roles)
+    with db.transaction():  # tirar os que saem e pôr os novos: juntos (no meio, a conta ficava sem papel)
+        db.execute("DELETE FROM user_roles WHERE user_id = %s AND NOT (role = ANY(%s))", (user_id, list(roles)))
+        grant(user_id, roles)
 
 
 def _mirror(user_id: int) -> None:

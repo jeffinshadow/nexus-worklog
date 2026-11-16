@@ -1,9 +1,9 @@
 import re
 from datetime import date, datetime, time, timedelta
-from typing import Literal, Optional
+from typing import Annotated, Literal, Optional
 from zoneinfo import ZoneInfo
 
-from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+from pydantic import AfterValidator, BaseModel, EmailStr, Field, field_validator, model_validator
 
 from .config import config
 
@@ -13,6 +13,20 @@ _PW = Field(min_length=config.MIN_PASSWORD_LEN, max_length=config.MAX_PASSWORD_L
 
 
 RoleName = Literal["user", "admin", "assigner", "viewer"]
+
+# Prazo, dia de cobrar e vencimento: de 2000 a 2100. Uma data como 9999-12-31 ("nunca
+# vence") ou o ano 1 (digitado pela metade) estourava as contas de dias e derrubava o
+# calendário, os vencimentos e o aviso da manhã, inclusive os de quem divide a equipe.
+DAY_MIN, DAY_MAX = date(2000, 1, 1), date(2100, 12, 31)
+
+
+def _sane_day(v: date) -> date:
+    if not DAY_MIN <= v <= DAY_MAX:
+        raise ValueError("data fora do intervalo aceito (de 2000 a 2100)")
+    return v
+
+
+Day = Annotated[date, AfterValidator(_sane_day)]
 
 
 def _filled(msg: str):
@@ -147,7 +161,7 @@ class AssignIn(BaseModel):
     user_id: int
     title: str = Field(min_length=1, max_length=200)
     description: Optional[str] = Field(default=None, max_length=300)
-    due_date: Optional[date] = None
+    due_date: Optional[Day] = None
     priority: int = Field(default=2, ge=1, le=3)
     ticket: Optional[str] = Field(default=None, max_length=41)
     after_hours: bool = False
@@ -181,7 +195,7 @@ class AssignEditIn(BaseModel):
     (due_date ou description: null tira)."""
     title: Optional[str] = Field(default=None, min_length=1, max_length=200)
     description: Optional[str] = Field(default=None, max_length=300)  # null ou vazio tira
-    due_date: Optional[date] = None
+    due_date: Optional[Day] = None
     priority: Optional[int] = Field(default=None, ge=1, le=3)
 
     @model_validator(mode="after")
@@ -519,7 +533,7 @@ class WorklogIn(BaseModel):
     title_ok = field_validator("title")(_filled("informe o título da tarefa"))
     description: Optional[str] = Field(default=None, max_length=300)
     status: Status = "todo"
-    due_date: Optional[date] = None
+    due_date: Optional[Day] = None
     project_id: Optional[int] = None  # ausente = o projeto padrão da pessoa
     extra_project_ids: list[int] = Field(default_factory=list, max_length=10)  # além do principal
     objective_id: Optional[int] = None  # objetivo do projeto principal (sem projeto: vem do objetivo)
@@ -530,7 +544,7 @@ class WorklogIn(BaseModel):
     completed_at: Optional[str] = When      # com status done (padrão: agora)
     external_ref: Optional[str] = Field(default=None, min_length=1, max_length=120)  # idempotência
     blocked_reason: Optional[str] = Field(default=None, max_length=120)  # o que se aguarda (status blocked)
-    follow_up_on: Optional[date] = None  # aguardando (blocked): dia combinado para cobrar
+    follow_up_on: Optional[Day] = None  # aguardando (blocked): dia combinado para cobrar
     resolution: Optional[str] = Field(default=None, max_length=1000)  # com status done: como foi resolvido
     remind_at: Optional[datetime] = None  # lembrar em (data e hora; "15h", "amanhã 8h")
     remind_when = field_validator("remind_at", mode="before")(remind_when)
@@ -554,7 +568,7 @@ class WorklogUpdate(BaseModel):
     title_ok = field_validator("title")(_filled("informe o título da tarefa"))
     description: Optional[str] = Field(default=None, max_length=300)
     status: Optional[Status] = None
-    due_date: Optional[date] = None
+    due_date: Optional[Day] = None
     project_id: Optional[int] = None  # enviado como null = tirar do projeto
     extra_project_ids: Optional[list[int]] = Field(default=None, max_length=10)  # troca a lista inteira
     objective_id: Optional[int] = None  # null = tirar do objetivo
@@ -564,7 +578,7 @@ class WorklogUpdate(BaseModel):
     completed_at: Optional[str] = When  # corrigir a data de uma tarefa concluída
     resolution: Optional[str] = Field(default=None, max_length=1000)  # como foi resolvido (null apaga)
     blocked_reason: Optional[str] = Field(default=None, max_length=120)  # o que se aguarda (status blocked)
-    follow_up_on: Optional[date] = None  # aguardando (blocked): dia combinado para cobrar
+    follow_up_on: Optional[Day] = None  # aguardando (blocked): dia combinado para cobrar
     remind_at: Optional[datetime] = None  # lembrar em (null tira; só se o campo vier)
     remind_when = field_validator("remind_at", mode="before")(remind_when)
 
@@ -595,7 +609,7 @@ def _renewal_label(m):
 class RenewalIn(BaseModel):
     """Algo que vence: certificado, licença, domínio, garantia, contrato."""
     label: str = Field(min_length=1, max_length=120)
-    expires_on: date
+    expires_on: Day
     warn_days: int = Field(default=30, ge=1, le=365)  # avisar com quantos dias de antecedência
     project_id: Optional[int] = None
     note: Optional[str] = Field(default=None, max_length=200)
@@ -609,7 +623,7 @@ class RenewalIn(BaseModel):
 
 class RenewalUpdate(BaseModel):
     label: Optional[str] = Field(default=None, min_length=1, max_length=120)
-    expires_on: Optional[date] = None
+    expires_on: Optional[Day] = None
     warn_days: Optional[int] = Field(default=None, ge=1, le=365)
     project_id: Optional[int] = None
     note: Optional[str] = Field(default=None, max_length=200)
@@ -697,7 +711,7 @@ class ProjectIn(BaseModel):
 class ObjectiveIn(BaseModel):
     title: str = Field(min_length=1, max_length=120)
     description: Optional[str] = Field(default=None, max_length=500)
-    due_date: Optional[date] = None
+    due_date: Optional[Day] = None
     position: Optional[int] = Field(default=None, ge=1)  # 1 = primeiro; ausente = no fim da fila
     external_ref: Optional[str] = Ref
 
@@ -710,7 +724,7 @@ class ObjectiveIn(BaseModel):
 class ObjectiveUpdate(BaseModel):
     title: Optional[str] = Field(default=None, min_length=1, max_length=120)
     description: Optional[str] = Field(default=None, max_length=500)  # null apaga
-    due_date: Optional[date] = None                                   # null apaga
+    due_date: Optional[Day] = None                                   # null apaga
 
 
 class OrderIn(BaseModel):

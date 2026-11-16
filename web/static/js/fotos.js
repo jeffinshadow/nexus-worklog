@@ -69,7 +69,7 @@ const thumbUrl = (id) => `/api/photos/${id}?thumb=true`;
 const photoUrl = (id) => `/api/photos/${id}`;
 
 // Grade de miniaturas + "Adicionar foto". onChange: recarregar quem mostra.
-export function photoGrid(photos, { path, onChange, label = "Fotos" }) {
+export function photoGrid(photos, { path, onChange }) {
   const input = h("input", { type: "file", accept: "image/*", multiple: "multiple", class: "hidden", "aria-label": "Escolher fotos" });
   // Enquanto envia, avisa quem está em volta (o diálogo da evidência segura o "Salvar").
   const busyEvent = (on) => grid.dispatchEvent(new CustomEvent("photo-busy", { detail: on, bubbles: true }));
@@ -92,8 +92,6 @@ export function photoGrid(photos, { path, onChange, label = "Fotos" }) {
   grid.addEventListener("dragover", (ev) => { if ([...ev.dataTransfer.items].some((x) => x.kind === "file")) { ev.preventDefault(); grid.classList.add("drop"); } });
   grid.addEventListener("dragleave", () => grid.classList.remove("drop"));
   grid.addEventListener("drop", (ev) => { ev.preventDefault(); grid.classList.remove("drop"); add(ev.dataTransfer.files); });
-  grid.dataset.label = label;
-  grid.addFiles = add;
   return grid;
 }
 
@@ -142,7 +140,6 @@ export function photosSection(t, onChange) {
   sec.append(grid);
   if (matchMedia("(hover: hover)").matches && !t.photos.length)
     sec.append(h("p", { class: "dialog-note", text: "Dá para colar um print (Ctrl+V) ou arrastar a imagem para cá." }));
-  sec.addFiles = grid.addFiles;
   return sec;
 }
 
