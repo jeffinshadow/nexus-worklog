@@ -94,6 +94,17 @@ Rodada de robustez ("gauntlet loop"): pontos frágeis achados na leitura do cód
   tela; a Equipe de quem não está em nenhuma equipe não dá erro falso; as notificações bloqueadas explicam como liberar;
   a hora do cronômetro esquecido segue o fuso da app.
 
+### Relatórios
+- Tempo apontado numa tarefa que depois foi transferida a outra pessoa: aparecia em dobro em "sem projeto" no painel
+  e, no PDF e em Meu mês de quem apontou, também sob um projeto de quem recebeu. Agora conta uma vez, sem projeto.
+- Texto do período (PDF e e-mail da semana): "Foi feita 1 de 1 rotina prevista", "Fica 1 tarefa em aberto"; a
+  porcentagem só chega a 100% com tudo feito e só fica em 0% sem nada (199 de 200 saía "100%").
+- Diário do PDF: o apontamento de uma tarefa aberta não some mais quando outra tarefa de mesmo título foi concluída
+  no dia.
+- IA: o título de tarefa atribuída também vai entre « » em `list_objectives`, `get_week_review` e nas respostas do
+  cronômetro.
+- Índice para a lista de projetos (`sql/045`): lia os objetivos de todas as contas.
+
 ### Novo
 - `GET /api/worklog?project=<id>`: a lista por período só com as tarefas do projeto (principal ou extra). A ferramenta
   `list_tasks` da IA usa o mesmo filtro: num período com mais de 500 tarefas, as do projeto podiam ficar de fora.

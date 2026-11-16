@@ -166,6 +166,22 @@ def _quoted(t: dict, text: str) -> str:
     return "«" + text.replace("«", '"').replace("»", '"') + "»"
 
 
+def _assigned(uid: int, ids) -> dict:
+    """Entre as tarefas `ids` da pessoa, as que outra pessoa atribuiu: {id: quem}. Para as saídas
+    que só têm o id e o título (objetivos, revisão da semana, cronômetro): o título dessas é texto
+    de terceiro e vai entre « », como nas demais."""
+    ids = sorted({int(i) for i in ids if i is not None})
+    if not ids:
+        return {}
+    return {r["id"]: r["n"] for r in db.query_all(
+        """SELECT w.id, COALESCE(a.display_name, a.email) AS n FROM worklog_tasks w JOIN users a ON a.id = w.assigned_by
+            WHERE w.user_id = %s AND w.id = ANY(%s)""", (uid, ids))}
+
+
+def _q(quem: dict, task_id, text: str) -> str:
+    return _quoted({"assigned_by_name": quem.get(task_id)}, text)
+
+
 def _by(t: dict) -> str:
     return f" (atribuída por {t['assigned_by_name']})" if t.get("assigned_by_name") else ""
 
@@ -648,14 +664,16 @@ def t_list_objectives(ctx, args):
     nomes = {"todo": "não iniciado", "in_progress": "em andamento", "done": "concluído"}
     linhas = [f"Projeto {o['project']['name']}: {o['totals']['done']}/{o['totals']['total']} tarefas concluídas. "
               "Objetivos na ordem de execução:"]
+    sem = o["unassigned"]["tasks"]
+    # Tarefa atribuída cai sozinha no projeto padrão de quem recebe: o título dela é de terceiro.
+    quem = _assigned(ctx["user_id"], [t["id"] for ob in o["objectives"] for t in ob["tasks"][:15]] + [t["id"] for t in sem[:15]])
     for i, ob in enumerate(o["objectives"], 1):
         prazo = f", prazo {ob['due_date'].isoformat()}" if ob["due_date"] else ""
         linhas.append(f"{i}. #{ob['id']} {ob['title']} — {nomes[ob['status']]}, {ob['done']}/{ob['total']}{prazo}")
-        linhas += [f"   - #{t['id']} {t['title']}" for t in ob["tasks"][:15]]
-    sem = o["unassigned"]["tasks"]
+        linhas += [f"   - #{t['id']} {_q(quem, t['id'], t['title'])}" for t in ob["tasks"][:15]]
     if sem:
         linhas.append("Sem objetivo:")
-        linhas += [f"   - #{t['id']} {t['title']}" for t in sem[:15]]
+        linhas += [f"   - #{t['id']} {_q(quem, t['id'], t['title'])}" for t in sem[:15]]
     if not o["objectives"]:
         linhas.append("(nenhum objetivo ainda)")
     return "\n".join(linhas)
@@ -889,9 +907,10 @@ def t_start_timer(ctx, args):
         extra = f" (o anterior parou e apontou {_dur(prev['minutes'])} em #{prev['task_id']})" if prev else ""
     tm = res["timer"]
     desde = tm["started_at"].astimezone(services.app_tz()).strftime("%d/%m %H:%M")
+    titulo = _q(_assigned(ctx["user_id"], [tm["task_id"]]), tm["task_id"], tm["title"])
     if prev is None and at and abs((tm["started_at"] - at).total_seconds()) > 60:
-        return f"O cronômetro já estava rodando em #{tm['task_id']} {tm['title']} desde {desde}; o início não mudou."
-    return f"Cronômetro iniciado em #{tm['task_id']} {tm['title']} (desde {desde}){extra}."
+        return f"O cronômetro já estava rodando em #{tm['task_id']} {titulo} desde {desde}; o início não mudou."
+    return f"Cronômetro iniciado em #{tm['task_id']} {titulo} (desde {desde}){extra}."
 
 
 def _stop_at(value) -> datetime | None:
@@ -1076,7 +1095,8 @@ def t_get_week_review(ctx, args):
     today = r["today"]
     linhas = [f"Revisão da semana {r['week_start'].isoformat()} a {r['week_end'].isoformat()}"
               + (" (já feita pela pessoa)" if r["done_at"] else ""), "", f"O que fechou ({len(r['done'])}):"]
-    linhas += [f"- #{t['id']} {t['title']}" + (f" — {' '.join(t['resolution'].split())[:160]}" if t["resolution"]
+    quem = _assigned(ctx["user_id"], [t["id"] for t in r["done"][:30]])
+    linhas += [f"- #{t['id']} {_q(quem, t['id'], t['title'])}" + (f" — {' '.join(t['resolution'].split())[:160]}" if t["resolution"]
                                                else " (sem \"como resolveu\")") for t in r["done"][:30]] or ["- nada"]
     linhas += ["", f"O que ficou ({len(r['open']) + len(r['waiting'])}):"]
     linhas += [_task_line(t, today) for t in r["open"] + r["waiting"]][:30] or ["- nada"]
