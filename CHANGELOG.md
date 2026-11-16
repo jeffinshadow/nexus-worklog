@@ -110,6 +110,13 @@ Rodada de robustez ("gauntlet loop"): pontos frágeis achados na leitura do cód
 - Os webhooks são entregues em laço próprio: um destino lento não atrasa mais as notificações de rotina e lembrete.
 - A abertura do app faz menos consultas; a faxina das fotos usa o índice do histórico.
 
+### Limpeza
+- O tema claro tem um bloco só no `tokens.css` (eram duas cópias inteiras, e todo token novo ia nas duas); o `tema.js`
+  marca sempre o tema que vale. Conferido no navegador: as 118 variáveis, em doze estados, iguais antes e depois.
+- Código morto e duplicado: imports redundantes e dinâmicos do `app.js`, restos sem uso em `fotos.js`, `board.js` e no
+  MCP, imports sem uso nos testes, e a regra da "hora do aparelho" numa função só (era uma no cronômetro e outra nas
+  anotações).
+
 ### Documentação
 - `docs/API.md`: `get_week` na lista de ferramentas da IA; a cota de fotos é a variável `PHOTO_QUOTA_MB` e o limite
   retroativo é fixo em 60 dias (o texto ainda falava nas opções do Admin).

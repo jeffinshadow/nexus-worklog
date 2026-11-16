@@ -159,84 +159,9 @@
   color-scheme: dark;
 }
 
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-  /* Tema claro (híbrida: o mesmo azul, escurecido até AA). Hierarquia por camadas
-     tonais: cartões no contêiner, o que flutua em branco, quase sem bordas. */
-  --surface: #FBFAFF;
-  --surface-deep: #E8E8ED;
-  --surface-side: #F5F4FA;
-  --surface-container: #F0F0F5;
-  --surface-container-high: #E9E9EE;
-  --surface-container-highest: #E0E1E6;
-  --surface-card: #FFFFFF;
-  --surface-pop: #FFFFFF;
-  --surface-raise: #FFFFFF;
-  --surface-assist: #EDF1FB;
-  --on-surface: #191C20;
-  --on-surface-variant: #43474E;
-  --dim: #5F636B;
-  --outline-variant: #DFE2EB;
-  --line-2: #A8ABB4;
-  --card-border: transparent;
-  --card-border-hover: var(--outline-variant);
-  --pop-border: transparent;
-  --assist-border: transparent;
-  --primary: #1A6AB5;
-  --primary-hi: #00569A;
-  --on-primary: #FFFFFF;
-  --primary-container: #CFE1FF;
-  --on-primary-container: #001C3A;
-  --secondary-container: #D6E3FB;
-  --on-secondary-container: #0E1D33;
-  --tertiary-container: #EBDDFF;
-  --on-tertiary-container: #5B3A99;
-  --inverse-surface: #2E3035;
-  --inverse-on-surface: #F0F0F5;
-  --snackbar-bg: #2E3035;          /* aviso no claro: superfície invertida (snackbar do M3) */
-  --snackbar-fg: #F0F0F5;
-  --snackbar-action: #8AB8F0;
-  --scrim: rgba(0, 0, 0, .32);
-  --glow-shadow: none;             /* no claro o brilho vira mancha cinza */
-  --chart-muted: #7B94B6;
-  --success: #00774F;
-  --success-container: #C4EED3;
-  --on-success-container: #00522F;
-  --warning: #776600;
-  --warning-ink: #4D4200;
-  --warning-container: #F6E388;
-  --on-warning-container: #4D4200;
-  --error: #B51F21;
-  --on-error: #FFFFFF;
-  --error-container: #FFDAD6;
-  --on-error-container: #8C1D18;
-  --info-container: #C6ECF5;
-  --on-info-container: #004E5C;
-  --heat-0: #D9DBE2;
-  --heat-1: #A5C0DD;
-  --heat-2: #7AA6D1;
-  --heat-3: #508CC5;
-  --heat-4: #1A6AB5;
-  --heat-3-ink: #191C20;
-  --heat-line: #8F9099;
-  --surface-tile: #FFFFFF;
-  /* projetos no claro: 3:1 em gráfico e 4,5:1 como texto sobre branco */
-  --proj-1: #1A6AB5;
-  --proj-2: #00774F;
-  --proj-3: #776600;
-  --proj-4: #7B51BF;
-  --proj-5: #B51F21;
-  --proj-6: #007286;
-  --proj-7: #8A5300;
-  --proj-8: #5F636B;
-  --on-proj: #FFFFFF;
-  --ink-code: #2E3035;
-  --avatar-fg: #FFFFFF;
-  --tint: #000000;
-  --shadow: color-mix(in srgb, #1A1C20 14%, transparent);
-  color-scheme: light;
-  }
-}
+/* O tema claro tem um bloco só: o tema.js põe sempre data-theme no <html> com o tema que vale
+   (a escolha da conta ou, no "automático", o do aparelho, acompanhando a troca). Antes havia uma
+   segunda cópia inteira dentro de @media (prefers-color-scheme), e todo token novo precisava ir nas duas. */
 :root[data-theme="light"] {
   /* Tema claro (híbrida: o mesmo azul, escurecido até AA). Hierarquia por camadas
      tonais: cartões no contêiner, o que flutua em branco, quase sem bordas. */

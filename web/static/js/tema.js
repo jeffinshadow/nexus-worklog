@@ -7,9 +7,9 @@
   var dark = matchMedia("(prefers-color-scheme: dark)");
   function apply(pref) {
     var root = document.documentElement;
-    if (pref === "light" || pref === "dark") root.setAttribute("data-theme", pref);
-    else root.removeAttribute("data-theme");
     var isDark = pref === "dark" || (pref !== "light" && dark.matches);
+    // Sempre o tema que vale (no "auto", o do aparelho): o CSS tem um bloco só por tema.
+    root.setAttribute("data-theme", isDark ? "dark" : "light");
     var meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute("content", isDark ? "#131314" : "#FBFAFF");  // a barra do sistema no celular
   }

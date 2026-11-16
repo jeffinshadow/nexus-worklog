@@ -4,7 +4,6 @@ import json
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-import pytest
 
 from app import agenda, db, deps, webhooks
 from app.config import config

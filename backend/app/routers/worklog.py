@@ -29,16 +29,16 @@ def check_day_total(uid: int, day, minutes: int, status: int = 400) -> None:
         raise HTTPException(status_code=status, detail="com esse tempo, o dia passaria de 24 h apontadas; confira se o dia ou as horas estão certos")
 
 
-def device_time(at: Optional[datetime], what: str = "a anotação") -> Optional[datetime]:
-    """Hora do aparelho de algo feito sem sinal e enviado depois (anotação,
-    foto): as mesmas regras do cronômetro — até 24 h atrás; no futuro (relógio
-    adiantado) vale como agora."""
+def device_time(at: Optional[datetime], what: str = "a anotação", detail: str | None = None) -> Optional[datetime]:
+    """Hora do aparelho de algo feito sem sinal e enviado depois (anotação, foto,
+    cronômetro): até 24 h atrás; no futuro (relógio adiantado) vale como agora.
+    `detail`: outra frase para a recusa (o cronômetro tem a dele)."""
     if at is None:
         return None
     now = datetime.now(timezone.utc)
     at = at if at.tzinfo else at.replace(tzinfo=timezone.utc)
     if at < now - timedelta(hours=24):
-        raise HTTPException(status_code=400, detail=f"{what} feita sem conexão passou de 24 h; envie sem a hora (at)")
+        raise HTTPException(status_code=400, detail=detail or f"{what} feita sem conexão passou de 24 h; envie sem a hora (at)")
     return min(at, now)
 
 

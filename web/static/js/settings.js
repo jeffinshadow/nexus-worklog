@@ -1067,7 +1067,12 @@ function account(me) {
     try {
       await api.post("/auth/change-password", { current_password: cur.value, new_password: nova.value });
       cur.value = nova.value = nova2.value = "";
-      toast("Senha trocada. Outras sessões, chaves de API e o link do calendário foram encerrados; integrações (webhooks), desligadas.");
+      // Senha nova cancela também o pedido de troca de e-mail que estivesse aberto (o link deixa de valer).
+      const pedido = me.email_pending;
+      me.email_pending = null;
+      toast("Senha trocada. Outras sessões, chaves de API e o link do calendário foram encerrados; integrações (webhooks), desligadas."
+        + (pedido ? ` O pedido de troca de e-mail para ${pedido} foi cancelado: peça de novo, se ainda quiser.` : ""));
+      if (pedido) window.dispatchEvent(new HashChangeEvent("hashchange"));  // a Conta redesenha sem o "aguardando a confirmação"
     } catch (e) {
       err.textContent = e.message || "Não foi possível trocar.";
     }

@@ -518,7 +518,10 @@ function editRoles(u, me, onChanged) {
     const cb = h("input", { type: "checkbox", value: k });
     cb.checked = u.roles.includes(k);
     if (k === "admin" && u.id === me.id) { cb.disabled = true; cb.title = "Você não pode tirar o seu próprio admin"; }
-    else if (k === "admin" && u.is_master) { cb.disabled = true; cb.title = "É o admin master: só ele passa o papel adiante (Admin › Equipes)"; }
+    else if (u.is_master && u.id !== me.id) {  // os papéis do master, só ele muda (o servidor recusa)
+      cb.disabled = true;
+      cb.title = k === "admin" ? "É o admin master: só ele passa o papel adiante (Admin › Equipes)" : "É o admin master: só ele muda os próprios papéis";
+    }
     cb.addEventListener("change", () => { if (saving) { cb.checked = !cb.checked; return; } save(cb); });
     return [cb, h("label", { class: "check-line role-line" }, cb, h("span", {}, h("strong", { text: n }), h("small", { text: roleDesc(k, d, me) })))];
   });

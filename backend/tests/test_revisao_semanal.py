@@ -1,10 +1,8 @@
 """Revisão semanal guiada (último dia útil, revisão feita/dispensada, texto da
 semana, MCP). A "tarefa parada" não é mais um aviso próprio: o Aguardando sugere o dia de cobrar."""
-from datetime import date, datetime, time, timedelta, timezone
-from zoneinfo import ZoneInfo
+from datetime import date, timedelta
 
 from app import db, notify, push, review
-from app.config import config
 from conftest import Bearer, criar_chave, dia_hoje, texto, uid_de
 
 

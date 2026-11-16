@@ -13,21 +13,15 @@ from .. import audit, db
 from ..deps import active_user, active_user_csrf
 from ..schemas import TimeIn, TimerIn, TimerStopIn
 from ..services import app_tz, running_timer
-from .worklog import log_time
+from .worklog import device_time, log_time
 
 router = APIRouter(prefix="/api/timer", tags=["timer"])
 
 
 def client_time(at: Optional[datetime]) -> Optional[datetime]:
-    """Hora de uma ação feita sem sinal no aparelho e enviada depois: até 24 h
-    atrás (relógio adiantado vale como agora)."""
-    if at is None:
-        return None
-    now = datetime.now(timezone.utc)
-    at = at if at.tzinfo else at.replace(tzinfo=timezone.utc)
-    if at < now - timedelta(hours=24):
-        raise HTTPException(status_code=400, detail="o cronômetro feito sem conexão passou de 24 h; aponte o tempo à mão")
-    return min(at, now)
+    """Hora de uma ação do cronômetro feita sem sinal e enviada depois: a regra é a
+    de worklog.device_time (uma só), com a frase do cronômetro."""
+    return device_time(at, detail="o cronômetro feito sem conexão passou de 24 h; aponte o tempo à mão")
 
 
 # Acima disso o cronômetro foi esquecido: parar não inventa horas, pede o tempo certo.

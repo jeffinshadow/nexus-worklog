@@ -5,7 +5,6 @@ nova (deixou de ser opção em 01/11)."""
 import base64
 import os
 import re
-from datetime import datetime, timedelta, timezone
 
 import pytest
 

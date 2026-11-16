@@ -3,7 +3,7 @@ disparos agendados da rotina e da manhã, preferências e a criptografia de pont
 a ponta (o teste faz o papel do navegador e descriptografa o que sairia)."""
 import base64
 import json
-from datetime import datetime, time, timedelta
+from datetime import datetime, time
 from zoneinfo import ZoneInfo
 
 import http_ece

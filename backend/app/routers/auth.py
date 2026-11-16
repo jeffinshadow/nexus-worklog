@@ -217,7 +217,10 @@ def accept_invite(data: LinkPasswordIn, request: Request, response: Response):
     """Convidado cria a própria senha (e o nome) e já entra."""
     if not link_limiter.allow(f"ip:{client_ip(request)}"):
         raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
-    # O hash vem antes de gastar o link: com o servidor ocupado (503), a pessoa não perde o convite.
+    # Confere o link sem gastar, calcula o hash e só então gasta: com o servidor ocupado (503) a
+    # pessoa não perde o convite, e um link inválido não custa um hash ao servidor.
+    if not links.peek(data.token, "invite"):
+        raise HTTPException(status_code=400, detail="convite inválido, vencido ou já usado: peça um novo ao administrador")
     hashed = hash_password(data.password)
     uid = links.consume(data.token, "invite")
     # Só conta que ainda espera o convite: depois de um "Redefinir senha" do admin, o convite
@@ -238,7 +241,10 @@ def reset_by_link(data: LinkPasswordIn, request: Request, response: Response):
     de API e calendário (como a troca de senha) e já entra."""
     if not link_limiter.allow(f"ip:{client_ip(request)}"):
         raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
-    hashed = hash_password(data.password)  # antes de gastar o link (servidor ocupado não queima o link)
+    # Como no convite: confere sem gastar, calcula o hash, gasta.
+    if not links.peek(data.token, "reset"):
+        raise HTTPException(status_code=400, detail="link inválido, vencido ou já usado: peça outro na tela de login")
+    hashed = hash_password(data.password)
     uid = links.consume(data.token, "reset")
     if not uid:
         raise HTTPException(status_code=400, detail="link inválido, vencido ou já usado: peça outro na tela de login")

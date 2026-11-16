@@ -339,7 +339,7 @@ def t_list_tasks(ctx, args):
     offset = max(0, int(args.get("offset", 0) or 0))
     pid = _resolve_project(uid, args.get("project"))
     if args.get("from") or args.get("to") or args.get("by"):
-        if args.get("status", "all") not in ("open", "done", "all"):
+        if (args.get("status") or "all") not in ("open", "done", "all"):  # null = ausente, como no resto
             raise ToolError("status deve ser open, done ou all")
         if (args.get("by") or "created") not in ("created", "completed"):
             raise ToolError("by deve ser created (criadas no período) ou completed (concluídas no período)")
@@ -347,7 +347,7 @@ def t_list_tasks(ctx, args):
         # O projeto filtra no banco (a rota pagina já filtrada): antes, lia até 500 do período
         # e filtrava aqui, e num período com mais de 500 tarefas as do projeto ficavam de fora.
         rows = _call(worklog_routes.list_tasks, start=_day(args.get("from")), end=_day(args.get("to")),
-                     by=args.get("by") or "created", status=args.get("status", "all"),
+                     by=args.get("by") or "created", status=args.get("status") or "all",
                      limit=lim, offset=offset, project=pid, user=ctx)
         rows = _with_counts(uid, rows)
         today = services.app_today()
