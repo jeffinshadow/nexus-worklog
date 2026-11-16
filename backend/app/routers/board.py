@@ -73,10 +73,15 @@ def put_first(data: FirstIn, user=Depends(active_user_csrf)):
     """"Primeiro amanhã": até 3 tarefas para começar o próximo dia útil. Nesse
     dia elas abrem as abertas do Hoje (e de Tarefas) com um selo; passado o dia,
     ou concluídas, saem sozinhas. Vale em todos os aparelhos. `day` (opcional)
-    entre amanhã e daqui a 7 dias."""
+    entre amanhã e daqui a 7 dias. `day` = hoje com a lista vazia tira o selo de hoje."""
     uid = user["user_id"]
     today = app_today()
     day = data.day or first_day(uid)
+    if day == today and not data.ids:
+        # Tirar o selo de hoje (e uma escolha antiga que ainda estivesse valendo): lista vazia para hoje.
+        db.execute("UPDATE worklog_tasks SET first_on = NULL WHERE user_id = %s AND first_on <= %s AND first_on > %s",
+                   (uid, today, today - timedelta(days=7)))
+        return {"day": day, "ids": []}
     if not (today < day <= today + timedelta(days=7)):
         raise HTTPException(status_code=400, detail="o dia do “Primeiro amanhã” vai de amanhã a daqui a 7 dias")
     return {"day": day, "ids": set_first(uid, day, data.ids)}

@@ -13,6 +13,15 @@ não a da hora do deploy. As versões 0.x e 1.x foram numeradas depois, sobre o 
 
 Rodada de robustez ("gauntlet loop"): pontos frágeis achados na leitura do código, sem mudar como o app é usado.
 
+### Mudou de regra (decisão do dono, 16/11)
+- **Rotina "N dias depois da última vez"**: uma pausa que terminou empurra o vencimento para o dia da volta (quem
+  volta de férias tem o ciclo inteiro para fazer; antes levava falta no primeiro dia), e a rotina que acabou de trocar
+  de agenda não vence antes do dia da troca (antes podia nascer com falta nesse mesmo dia, "atrasada desde ontem").
+  Os números de períodos passados de rotinas desse tipo que tiveram pausa ou troca podem mudar.
+- **Primeiro amanhã**: a escolha de um dia que já passou só continua valendo se a pessoa não usou o Nexus desde então
+  (feriado, folga). Quem abriu o app no dia e não fez a tarefa não fica mais com o selo "primeiro hoje" por até 7
+  dias. `PUT /api/board/first` com `day` = hoje e a lista vazia tira o selo de hoje.
+
 ### Tudo ou nada
 - **Transações** (`db.transaction()`): criar, editar, concluir, excluir e atribuir tarefa, excluir projeto ou objetivo,
   trocar a agenda de uma rotina, mudar os dias úteis e **desfazer** gravam a mudança e a linha do histórico juntas. Antes,

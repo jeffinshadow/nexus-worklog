@@ -222,3 +222,57 @@ def test_texto_do_relatorio_com_um_e_sem_cem_por_cento_falso():
     assert "Foi feita 1 de 1 rotina prevista (100%)" in um and "Fica 1 tarefa em aberto" in um
     nenhuma = _lede({"summary": {**base, "recurring_done": 0, "recurring_total": 1, "open": 0}, "project": None})
     assert "A rotina prevista não foi marcada" in nenhuma
+
+
+# ------------------------------------- decisões do dono (16/11/2026) --
+
+def _rot_after(n, inicio, feitas=(), pausas=(), after_from=None):
+    from datetime import date
+    return {"id": 1, "freq": "after", "interval_days": n, "start_d": inicio, "end_d": date(9999, 12, 31),
+            "done_dates": list(feitas), "pauses": list(pausas), "after_from": after_from}
+
+
+def test_after_depois_da_pausa_vence_no_dia_da_volta_e_so_falta_um_ciclo_depois():
+    from datetime import date, timedelta
+    from app.services import is_due, is_pending
+    # N=7, última vez em 01/10: venceria em 08/10. Férias de 08/10 a 20/10.
+    r = _rot_after(7, date(2026, 9, 1), feitas=[date(2026, 10, 1)], pausas=[(date(2026, 10, 8), date(2026, 10, 20))])
+    volta = date(2026, 10, 21)
+    assert is_pending(r, volta, 62) and not is_due(r, volta, 62)  # está para fazer, mas não é falta no dia da volta
+    faltas = [volta + timedelta(days=i) for i in range(0, 20) if is_due(r, volta + timedelta(days=i), 62)]
+    assert faltas[0] == date(2026, 10, 27)  # o fim do ciclo que começou na volta
+    # Dentro da pausa nada é devido; antes dela, tudo como era.
+    assert not is_due(r, date(2026, 10, 10), 62) and not is_pending(r, date(2026, 10, 7), 62)
+
+
+def test_after_trocada_hoje_nao_leva_falta_no_dia_da_troca():
+    from datetime import date
+    from app.services import is_due, is_pending, next_due
+    # A antiga foi feita em 18/09; trocada em 16/11 para "30 dias depois": 18/09 + 30 já passou.
+    r = _rot_after(30, date(2026, 11, 16), after_from=date(2026, 9, 18))
+    troca = date(2026, 11, 16)
+    assert is_pending(r, troca, 62) and not is_due(r, troca, 62)
+    assert next_due(r, troca) == troca  # vence no dia da troca: aparece para fazer
+    assert is_due(r, date(2026, 12, 15), 62)  # a falta só no fim do ciclo (troca + 30 - 1)
+    # Com a última vez recente, nada muda: continua contando dela.
+    r2 = _rot_after(30, troca, after_from=date(2026, 11, 10))
+    assert next_due(r2, troca) == date(2026, 12, 10)
+
+
+def test_primeiro_amanha_nao_feito_sai_se_a_pessoa_usou_o_app_no_dia(usuario):
+    from datetime import timedelta
+    from conftest import dia_hoje
+    hoje = dia_hoje(usuario)
+    a = usuario.post("/worklog", {"title": "Escolhida"}).json()["id"]
+    db.execute("UPDATE worklog_tasks SET first_on = %s WHERE id = %s", (hoje - timedelta(days=1), a))
+    # Sem uso do Nexus ontem (feriado, folga): a escolha continua valendo hoje.
+    db.execute("UPDATE audit_log SET created_at = now() WHERE user_id = %s", (uid_de(usuario),))
+    assert usuario.get("/board").json()["in_progress"][0]["first_on"] == hoje.isoformat()
+    # A pessoa usou o Nexus ontem e não fez: hoje o selo já saiu.
+    db.execute("UPDATE audit_log SET created_at = now() - interval '1 day' WHERE user_id = %s", (uid_de(usuario),))
+    assert usuario.get("/board").json()["in_progress"][0]["first_on"] != hoje.isoformat()
+    # E a lista vazia para hoje tira o selo de hoje.
+    db.execute("UPDATE worklog_tasks SET first_on = %s WHERE id = %s", (hoje, a))
+    assert usuario.put("/board/first", {"ids": [], "day": hoje.isoformat()}).status_code == 200
+    assert db.query_one("SELECT first_on FROM worklog_tasks WHERE id = %s", (a,))["first_on"] is None
+    assert usuario.put("/board/first", {"ids": [a], "day": hoje.isoformat()}).status_code == 400  # escolher é sempre para depois

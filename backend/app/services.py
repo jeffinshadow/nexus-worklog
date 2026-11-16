@@ -7,7 +7,7 @@ mesma logica serve tanto o usuario comum quanto a visao de admin.
 
 import bisect
 import calendar
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from . import db
@@ -66,12 +66,26 @@ def pause_end(t: dict, d: date) -> date | None:
 def _after_cycle(t: dict, d: date) -> tuple[date, bool]:
     """freq 'after': (data em que o ciclo aberto em `d` venceu, marcada em `d`?).
     O ciclo conta da última marcação ANTES de `d` (sem marcação: da última vez
-    da rotina substituída, `after_from`, ou da criação)."""
+    da rotina substituída, `after_from`, ou da criação).
+
+    O vencimento nunca cai antes de a rotina poder ser feita:
+      - sem marcação nela ainda, não vence antes do dia em que começou (trocar a
+        agenda de uma rotina atrasada não gera falta no próprio dia da troca);
+      - uma pausa que terminou antes de `d` empurra o vencimento para o dia da
+        volta (quem volta de férias tem o ciclo inteiro para fazer, em vez de
+        levar falta no primeiro dia)."""
     dates = t.get("done_dates") or []
     i = bisect.bisect_left(dates, d)
+    marked = bool(i) and dates[i - 1] >= t["start_d"]
     # after_from: a última vez da rotina que esta substituiu (troca de agenda).
-    last = dates[i - 1] if i and dates[i - 1] >= t["start_d"] else (t.get("after_from") or t["start_d"])
-    return last + timedelta(days=t.get("interval_days") or 1), i < len(dates) and dates[i] == d
+    last = dates[i - 1] if marked else (t.get("after_from") or t["start_d"])
+    due = last + timedelta(days=t.get("interval_days") or 1)
+    if not marked:
+        due = max(due, t["start_d"])
+    for _, e in t.get("pauses") or ():
+        if e < d:
+            due = max(due, e + timedelta(days=1))
+    return due, i < len(dates) and dates[i] == d
 
 
 def is_due(t: dict, d: date, mask: int) -> bool:
@@ -372,6 +386,16 @@ def get_board(user_id: int, day: date | None = None, project: int | None = None,
     first_hl = db.query_one(
         "SELECT max(first_on) AS d FROM worklog_tasks WHERE user_id = %s AND first_on <= %s AND first_on > %s",
         (user_id, today, today - timedelta(days=7)))["d"]
+    # Escolha de um dia que já passou: só vale se a pessoa não usou o Nexus desde então (feriado,
+    # folga). Quem abriu o app no dia e não fez a tarefa não fica com o selo "primeiro hoje" pela
+    # semana inteira: passado o dia, ela sai sozinha.
+    if first_hl and first_hl < today:
+        tz = app_tz()
+        if db.query_one(
+                """SELECT 1 FROM audit_log WHERE user_id = %s AND actor <> 'system'
+                      AND created_at >= %s AND created_at < %s LIMIT 1""",
+                (user_id, datetime.combine(first_hl, time(), tz), datetime.combine(today, time(), tz))):
+            first_hl = None
     in_progress = db.query_all(
         cols(TOUCHED) + " AND w.status <> 'done'" + filtro_proj
         + """ ORDER BY COALESCE(w.first_on = %s, false) DESC, COALESCE(w.due_date < %s, false) DESC,
