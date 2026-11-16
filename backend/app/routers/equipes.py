@@ -253,7 +253,7 @@ def _send_quiet(to: str, mail) -> None:
     try:
         mailer.send(to, mail.subject, mail.text(), mail.html())
     except Exception as e:  # noqa: BLE001 — a transferência já foi feita; o e-mail é aviso
-        log.warning("aviso por e-mail para %s falhou: %s", to, e)
+        log.warning("aviso por e-mail (transferência do master) falhou: %s", e)  # sem o e-mail em claro
 
 
 def _receiver(admin: dict, to_id: int) -> dict:
@@ -314,10 +314,16 @@ def transfer_confirm(data: MasterConfirmIn, admin=Depends(require_admin_csrf)):
     if not link:
         raise HTTPException(status_code=400, detail="código vencido ou já usado: peça outro")
     code = data.code.strip()
+    # A tentativa é contada ANTES de comparar, numa gravação só: vários pedidos ao mesmo tempo
+    # não testam mais códigos do que o limite.
+    tried = db.query_one(
+        """UPDATE auth_links SET attempts = attempts + 1
+            WHERE id = %s AND used_at IS NULL AND attempts < %s RETURNING attempts""", (link["id"], CODE_ATTEMPTS))
+    if not tried:
+        raise HTTPException(status_code=400, detail="código vencido ou já usado: peça outro")
     if link["token_hash"] != token_hash(f"master:{uid}:{code}"):
         row = db.query_one(
-            """UPDATE auth_links SET attempts = attempts + 1,
-                                     used_at = CASE WHEN attempts + 1 >= %s THEN now() END
+            """UPDATE auth_links SET used_at = CASE WHEN attempts >= %s THEN now() END
                 WHERE id = %s AND used_at IS NULL RETURNING attempts""", (CODE_ATTEMPTS, link["id"]))
         left = CODE_ATTEMPTS - (row["attempts"] if row else CODE_ATTEMPTS)
         audit.record(_ctx(admin), "master.transfer_fail", "user", link["target_user_id"],

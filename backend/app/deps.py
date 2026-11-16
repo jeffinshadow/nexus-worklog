@@ -42,7 +42,9 @@ def set_session_cookie(response: Response, token: str) -> None:
 
 
 def clear_session_cookie(response: Response) -> None:
-    response.delete_cookie(config.SESSION_COOKIE, path="/")
+    # Com os mesmos atributos de quando foi posto: o navegador recusa mexer num cookie
+    # "__Host-" por um Set-Cookie sem Secure, e ele ficava no aparelho depois de sair.
+    response.delete_cookie(config.SESSION_COOKIE, path="/", secure=config.COOKIE_SECURE, httponly=True, samesite="strict")
 
 
 def _load_session(request: Request) -> dict:

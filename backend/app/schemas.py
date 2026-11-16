@@ -697,6 +697,7 @@ ProjectIcon = Literal[PROJECT_ICONS]
 
 class ProjectIn(BaseModel):
     name: str = Field(min_length=1, max_length=60)
+    name_ok = field_validator("name")(_filled("informe o nome do projeto"))
     color: Optional[str] = Color
     icon: Optional[ProjectIcon] = None  # ausente ou null = pasta
     description: Optional[str] = Field(default=None, max_length=500)
@@ -710,6 +711,7 @@ class ProjectIn(BaseModel):
 
 class ObjectiveIn(BaseModel):
     title: str = Field(min_length=1, max_length=120)
+    title_ok = field_validator("title")(_filled("informe o título do objetivo"))
     description: Optional[str] = Field(default=None, max_length=500)
     due_date: Optional[Day] = None
     position: Optional[int] = Field(default=None, ge=1)  # 1 = primeiro; ausente = no fim da fila
@@ -723,6 +725,7 @@ class ObjectiveIn(BaseModel):
 
 class ObjectiveUpdate(BaseModel):
     title: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    title_ok = field_validator("title")(_filled("informe o título do objetivo"))
     description: Optional[str] = Field(default=None, max_length=500)  # null apaga
     due_date: Optional[Day] = None                                   # null apaga
 
@@ -738,6 +741,7 @@ class TaskOrderIn(BaseModel):
 
 class ProjectUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=60)
+    name_ok = field_validator("name")(_filled("informe o nome do projeto"))
     color: Optional[str] = Color
     icon: Optional[ProjectIcon] = None  # null volta para a pasta
     description: Optional[str] = Field(default=None, max_length=500)  # null apaga

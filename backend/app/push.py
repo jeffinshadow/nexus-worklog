@@ -107,10 +107,20 @@ def _vapid_header(endpoint: str) -> str:
 
 # ----------------------------------------------------------------- envio --
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Redirecionamento conta como falha: seguir levaria o cabeçalho de autorização a outro destino."""
+
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+_opener = urllib.request.build_opener(_NoRedirect)
+
+
 def _http_post(endpoint: str, headers: dict, body: bytes) -> int:
     req = urllib.request.Request(endpoint, data=body, headers=headers, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=10) as res:
+        with _opener.open(req, timeout=10) as res:
             return res.status
     except urllib.error.HTTPError as e:
         return e.code

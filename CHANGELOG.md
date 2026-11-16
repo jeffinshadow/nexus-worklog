@@ -49,6 +49,34 @@ Rodada de robustez ("gauntlet loop"): pontos frágeis achados na leitura do cód
   vencimento de um colega como admin vale só pelo app, não por chave de API.
 - Conta bloqueada ou com convite pendente fica fora do CSV de horas da equipe e das fotos, como já ficava do painel.
 
+### Privacidade e permissões (contas e links)
+- **Senha nova invalida os links antigos**: o pedido de troca de e-mail, o link de nova senha e o convite deixam de
+  valer quando a senha é trocada ou redefinida. Antes, quem tinha a senha antiga podia pedir a troca de e-mail, esperar
+  a dona trocar a senha e ainda confirmar o link, ficando com a conta.
+- Convite antigo não cria mais a senha depois de um "Redefinir senha" nem depois de o admin corrigir o e-mail da conta.
+- **Passkey nova avisa por e-mail** (ela entra sem senha e continua valendo depois de uma troca de senha).
+- Outro admin não altera nenhum papel do admin master; o código de transferência do master conta a tentativa antes de
+  comparar (pedidos em paralelo não passam das 5).
+- Tarefas transferidas pelo admin ficam também no histórico de quem as tinha (quantas e para quem).
+- Ao sair, o cookie de sessão é apagado de verdade (o `__Host-` exigia os mesmos atributos); o link de convite ou de
+  senha não é gasto quando o servidor está ocupado; o push não segue redirecionamento; e-mails não vão mais em claro
+  para o log.
+
+### IA (MCP)
+- `stop_timer` e `start_timer` com um cronômetro esquecido (mais de 12 h) davam erro 500 depois de já terem parado o
+  cronômetro.
+- Título de objetivo ou nome de projeto só com espaços, datas absurdas e `arguments` de prompt fora do formato viram
+  erro claro, não 500.
+- `external_ref` já usado em OUTRA tarefa (em `log_time` e `add_note`) é erro, dizendo em qual tarefa está: a resposta
+  dizia "já apontado" na tarefa pedida, que ficava sem o tempo.
+- O prefixo do id vale só no campo dele: `task_id: "R7"` não conclui mais a tarefa #7 (a IA queria a rotina R7).
+- `list_tasks` com `status: all` continua nas concluídas além das 200 mais recentes; com período, `status` e `by`
+  inválidos são recusados; projeto com nome só de números é achado pelo nome.
+- `set_recurring` que pausa e não consegue marcar diz as duas coisas; `update_objective` confere a posição antes de
+  gravar o título.
+- Vencimento da equipe cadastrado por outra pessoa, o título de tarefa atribuída no cronômetro e nas "escolhidas para
+  hoje" e o motivo de devolução no histórico vão entre « » (texto de terceiro).
+
 ### Correções (áreas revisadas pelos críticos)
 - Prazo, dia de cobrar e vencimento aceitam datas de 2000 a 2100. Uma data como 9999-12-31 ("nunca vence") ou o ano 1
   derrubava o calendário (ICS), a lista de vencimentos, a passagem de turno e o e-mail da manhã, inclusive os de quem

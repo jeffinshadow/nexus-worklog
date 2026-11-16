@@ -18,7 +18,7 @@ from .. import audit, db, links, mailer, org, people, push, roles, teams
 from ..deps import require_admin, require_admin_csrf
 from ..schemas import (AdminProfileIn, AppSettingsIn, BlockUserIn, DeleteUserIn, InviteIn, OrgIn, ResetPasswordIn,
                        RolesIn)
-from ..security import generate_temp_password, hash_password, revoke_access
+from ..security import generate_temp_password, hash_password, revoke_access, token_hash
 from .. import services
 from ..config import config
 from ..services import default_project
@@ -31,7 +31,7 @@ def _send_quiet(to: str, mail) -> None:
     try:
         mailer.send(to, mail.subject, mail.text(), mail.html())
     except Exception as e:  # noqa: BLE001 — a ação já foi feita; o e-mail é aviso
-        log.warning("aviso por e-mail para %s falhou: %s", to, e)
+        log.warning("aviso por e-mail para a conta %s falhou: %s", token_hash(to)[:12], e)  # sem o e-mail em claro
 
 
 def _spawn(to: str, mail) -> None:
@@ -140,7 +140,7 @@ def _send_invite(uid: int, email: str, admin: dict) -> dict:
         mailer.send(email, m.subject, m.text(), m.html())
         return {"email": email, "invite_url": link, "emailed": True}
     except mailer.MailError as e:
-        log.warning("convite para %s não foi por e-mail: %s", email, e)
+        log.warning("convite para a conta %s não foi por e-mail: %s", token_hash(email)[:12], e)
         return {"email": email, "invite_url": link, "emailed": False}
 
 
@@ -280,6 +280,10 @@ def transfer_open_tasks(src: dict, dest: dict, admin: dict) -> dict:
     audit.record(ctx, "user.transfer_tasks", "user", src["id"],
                  after={"from": src["email"], "to": dest["email"], "count": len(rows), "by": admin["email"],
                         "tasks": [r["id"] for r in rows]})
+    # No histórico de quem teve as tarefas transferidas também: ela vê quantas saíram e para quem
+    # (o admin não lê o registro de ninguém; passar tarefas para si mesmo era um jeito de ler sem deixar rastro).
+    audit.record(ctx, "user.transfer_tasks", "user", src["id"], user_id=src["id"],
+                 after={"from": src["email"], "to": dest["email"], "count": len(rows), "by": admin["email"]})
     titles = [r["title"] for r in rows]
     if mailer.configured():
         _spawn(dest["email"], _transfer_mail(titles, from_name, by_name))
@@ -321,7 +325,8 @@ def set_roles(user_id: int, data: RolesIn, admin=Depends(require_admin_csrf)):
     novos = sorted(set(data.roles))
     if user_id == admin["user_id"] and "admin" not in novos:
         raise HTTPException(status_code=400, detail="você não pode tirar o seu próprio papel de admin")
-    if "admin" not in novos and teams.is_master(user_id):
+    if teams.is_master(user_id) and (user_id != admin["user_id"] or "admin" not in novos):
+        # Outro admin não mexe em papel nenhum do master (ele mesmo liga e desliga os dele).
         raise HTTPException(status_code=400, detail=MASTER_LOCKED)
     if "admin" in before and "admin" not in novos and roles.admins_count() <= 1:
         raise HTTPException(status_code=400, detail="o sistema precisa de pelo menos um admin")
@@ -423,6 +428,7 @@ def edit_profile(user_id: int, data: AdminProfileIn, admin=Depends(require_admin
             raise HTTPException(status_code=409, detail="esse e-mail já é de outra conta") from e
         links.cancel(user_id, "email")  # um pedido de troca da própria pessoa deixa de valer
         links.cancel(user_id, "reset")  # link de nova senha mandado ao endereço antigo também
+        links.cancel(user_id, "invite")  # e o convite: quem o recebeu no endereço errado não cria a senha
         after["email"] = new
         if not target["invite_pending"]:  # quem nunca entrou recebe o convite (reenviar), não um aviso
             from .auth import notify_email_change  # import tardio: auth importa outras rotas

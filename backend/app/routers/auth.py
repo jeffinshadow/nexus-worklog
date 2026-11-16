@@ -207,9 +207,9 @@ def _link_info(kind: str, token: str, request: Request) -> dict:
     return {"email": row["email"], "display_name": row["display_name"], "name_locked": org.identity_managed(row["id"])}
 
 
-def _set_password(uid: int, password: str) -> None:
+def _set_password(uid: int, hashed: str) -> None:
     db.execute("""UPDATE users SET password_hash = %s, must_change_password = false, invite_pending = false
-                   WHERE id = %s""", (hash_password(password), uid))
+                   WHERE id = %s""", (hashed, uid))
 
 
 @router.post("/invite/accept")
@@ -217,10 +217,14 @@ def accept_invite(data: LinkPasswordIn, request: Request, response: Response):
     """Convidado cria a própria senha (e o nome) e já entra."""
     if not link_limiter.allow(f"ip:{client_ip(request)}"):
         raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
+    # O hash vem antes de gastar o link: com o servidor ocupado (503), a pessoa não perde o convite.
+    hashed = hash_password(data.password)
     uid = links.consume(data.token, "invite")
-    if not uid:
+    # Só conta que ainda espera o convite: depois de um "Redefinir senha" do admin, o convite
+    # antigo (talvez mandado a um endereço errado) não cria mais a senha.
+    if not uid or not db.query_one("SELECT 1 FROM users WHERE id = %s AND invite_pending", (uid,)):
         raise HTTPException(status_code=400, detail="convite inválido, vencido ou já usado: peça um novo ao administrador")
-    _set_password(uid, data.password)
+    _set_password(uid, hashed)
     nome = " ".join((data.display_name or "").split()) or None
     if nome and not org.identity_managed(uid):  # nome definido pela administração: fica o do convite
         db.execute("UPDATE users SET display_name = %s WHERE id = %s", (nome, uid))
@@ -234,10 +238,11 @@ def reset_by_link(data: LinkPasswordIn, request: Request, response: Response):
     de API e calendário (como a troca de senha) e já entra."""
     if not link_limiter.allow(f"ip:{client_ip(request)}"):
         raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
+    hashed = hash_password(data.password)  # antes de gastar o link (servidor ocupado não queima o link)
     uid = links.consume(data.token, "reset")
     if not uid:
         raise HTTPException(status_code=400, detail="link inválido, vencido ou já usado: peça outro na tela de login")
-    _set_password(uid, data.password)
+    _set_password(uid, hashed)
     db.execute("DELETE FROM sessions WHERE user_id = %s", (uid,))
     revoke_access(uid)
     audit.record({"user_id": uid, "actor": "web"}, "password.reset_link", "password", uid)

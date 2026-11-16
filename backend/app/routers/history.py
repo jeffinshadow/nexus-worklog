@@ -148,6 +148,11 @@ ACTION_LABELS = {
 }
 
 
+def _inside(text) -> str:
+    """Texto de outra pessoa que vai entre « »: os marcadores de dentro viram aspas (não "fecham" o de fora)."""
+    return str(text or "").replace("«", '"').replace("»", '"')
+
+
 def _label(row) -> str:
     snap = row["after"] or row["before"] or {}
     name = snap.get("title") or snap.get("label") or snap.get("name") or ""
@@ -173,9 +178,9 @@ def _label(row) -> str:
         quanto = f"{dur(de)} → {dur(para)}" if de != para else dur(para)
         return f"{ACTION_LABELS['time.update']} “{snap.get('title', '')}” ({quanto})"
     if row["action"] == "worklog.delete" and snap.get("return_reason"):
-        return f"devolveu a tarefa “{name}” a {snap.get('returned_to') or 'quem atribuiu'}: «{snap['return_reason']}»"
+        return f"devolveu a tarefa “{name}” a {snap.get('returned_to') or 'quem atribuiu'}: «{_inside(snap['return_reason'])}»"
     if row["action"] == "assign.returned":
-        return f"{snap.get('to', '')} devolveu a tarefa “{name}”: «{snap.get('reason', '')}»"
+        return f"{snap.get('to', '')} devolveu a tarefa “{name}”: «{_inside(snap.get('reason', ''))}»"
     if row["action"] == "assign.close":
         return f"encerrou a tarefa “{name}”, devolvida por {snap.get('to', '')}"
     if row["action"] == "worklog.delete" and snap.get("canceled_by"):

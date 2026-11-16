@@ -215,6 +215,8 @@ def _resolve_project(uid: int, value):
         return None
     if isinstance(value, int) or (isinstance(value, str) and value.isdigit()):
         row = db.query_one("SELECT id FROM projects WHERE id = %s AND user_id = %s", (int(value), uid))
+        if not row and isinstance(value, str):  # um projeto chamado "2025" não é o id 2025
+            row = project_routes.same_name(uid, value)
     else:
         row = project_routes.same_name(uid, str(value))
     if not row:
@@ -291,7 +293,8 @@ def t_get_today(ctx, args):
         mins = int((datetime.now(timezone.utc) - tm["started_at"]).total_seconds() // 60)
         esquecido = (" (provavelmente esquecido: pergunte a que horas parou e use stop_timer com at)"
                      if mins > FORGOTTEN_TIMER_MIN else "")
-        lines += [f"Cronômetro rodando em #{tm['task_id']} {tm['title']} há {_dur(max(mins, 1))}{esquecido}.", ""]
+        dona = next((t for t in b["in_progress"] if t["id"] == tm["task_id"]), {})  # atribuída: o título é de terceiro
+        lines += [f"Cronômetro rodando em #{tm['task_id']} {_quoted(dona, tm['title'])} há {_dur(max(mins, 1))}{esquecido}.", ""]
     rec = [r for r in b["recurring"] if r["due"]]
     lines.append(f"Rotinas de hoje ({sum(r['done_today'] for r in rec)}/{len(rec)} feitas):")
     lines += _recurring_rows(rec) or ["  (nenhuma)"]
@@ -304,7 +307,7 @@ def t_get_today(ctx, args):
     # "Primeiro amanhã": o que a pessoa escolheu ontem para começar hoje (já no topo das abertas).
     first = [t for t in open_ if t.get("first_on") == today]
     if first:
-        lines.append("Escolhidas para começar hoje (Primeiro amanhã): " + ", ".join(f"#{t['id']} {t['title']}" for t in first))
+        lines.append("Escolhidas para começar hoje (Primeiro amanhã): " + ", ".join(f"#{t['id']} {_quoted(t, t['title'])}" for t in first))
         lines.append("")
     lines.append(f"Tarefas abertas ({len(open_)}):")
     lines += [f"  {_task_line(t, today)}" for t in open_] or ["  (nenhuma)"]
@@ -336,6 +339,10 @@ def t_list_tasks(ctx, args):
     offset = max(0, int(args.get("offset", 0) or 0))
     pid = _resolve_project(uid, args.get("project"))
     if args.get("from") or args.get("to") or args.get("by"):
+        if args.get("status", "all") not in ("open", "done", "all"):
+            raise ToolError("status deve ser open, done ou all")
+        if (args.get("by") or "created") not in ("created", "completed"):
+            raise ToolError("by deve ser created (criadas no período) ou completed (concluídas no período)")
         lim = max(1, min(limit, 500))
         # O projeto filtra no banco (a rota pagina já filtrada): antes, lia até 500 do período
         # e filtrava aqui, e num período com mais de 500 tarefas as do projeto ficavam de fora.
@@ -355,10 +362,15 @@ def t_list_tasks(ctx, args):
         b = services.get_board(uid, project=pid, done_offset=offset, done_limit=lim)
         items, total = b["done"], b["done_total"]
     else:
-        b = services.get_board(uid, project=pid)
-        todas = b["in_progress"] + (b["done"] if status == "all" else [])
-        total = len(b["in_progress"]) + (b["done_total"] if status == "all" else 0)
-        items = todas[offset:offset + lim]
+        b = services.get_board(uid, project=pid, done_limit=1)
+        abertas = b["in_progress"]
+        total = len(abertas) + (b["done_total"] if status == "all" else 0)
+        items = abertas[offset:offset + lim]
+        if status == "all" and len(items) < lim:
+            # As concluídas vêm do banco, da posição certa (o quadro só traz as 200 mais recentes:
+            # passando disso, a página vinha vazia e o resto nunca aparecia).
+            items = items + services.get_board(uid, project=pid, done_offset=max(0, offset - len(abertas)),
+                                               done_limit=lim - len(items))["done"]
     out = "\n".join(_task_line(t, b["today"]) for t in items)
     if items and offset + len(items) < total:
         out += f"\n(mostrando {offset + 1}–{offset + len(items)} de {total}: chame de novo com offset={offset + len(items)})"
@@ -383,9 +395,9 @@ def _started_from(completed_at, minutes) -> str:
         return txt
     try:
         when = datetime.fromisoformat(txt.replace("Z", "+00:00"))
-    except ValueError:
+        return (when - timedelta(minutes=int(minutes))).isoformat()
+    except (ValueError, OverflowError):  # OverflowError: ano 1 menos alguns minutos
         return txt  # a rota diz o formato certo
-    return (when - timedelta(minutes=int(minutes))).isoformat()
 
 
 def t_create_task(ctx, args):
@@ -482,6 +494,9 @@ def t_add_note(ctx, args):
     data = _call(NoteIn, body=args.get("text", ""), external_ref=args.get("external_ref"))
     row = _call(worklog_routes.add_note, int(args["task_id"]), data, Response(), user=ctx)
     if row.get("existing"):
+        if row.get("task_id") not in (None, int(args["task_id"])):
+            raise ToolError(f"esse external_ref já foi usado numa anotação da tarefa #{row['task_id']}; nada foi anotado na "
+                            f"#{args['task_id']}. Use outro external_ref")
         return f"Já anotado na tarefa #{args['task_id']} (external_ref repetido, nada duplicado)."
     return f"Anotado na tarefa #{args['task_id']}."
 
@@ -502,6 +517,9 @@ def t_log_time(ctx, args):
     data = _call(TimeIn, minutes=args.get("minutes"), day=args.get("day"), note=args.get("note"),
                  external_ref=args.get("external_ref"))
     row = _call(worklog_routes.log_time, int(args["task_id"]), data, Response(), user=ctx)
+    if row.get("existing") and row.get("task_id") not in (None, int(args["task_id"])):
+        raise ToolError(f"esse external_ref já foi usado num apontamento da tarefa #{row['task_id']}; nada foi apontado na "
+                        f"#{args['task_id']}. Use outro external_ref")
     if row.get("existing"):
         return (f"Já apontado: {_dur(row['minutes'])} em {row['day'].isoformat()} na tarefa #{args['task_id']} "
                 "(external_ref repetido, nada somado).")
@@ -594,11 +612,11 @@ def t_update_objective(ctx, args):
     fields = _fields(args, ("title", "description", "due_date"))
     if not fields and "position" not in args:
         raise ToolError("nada a mudar: envie title, description, due_date ou position")
+    if "position" in args and (not isinstance(args["position"], int) or args["position"] < 1):
+        raise ToolError("position é um inteiro a partir de 1 (1 = primeiro); nada foi mudado")
     if fields:
         _call(objective_routes.update_objective, oid, _call(ObjectiveUpdate, **fields), user=ctx)
     if "position" in args:
-        if not isinstance(args["position"], int) or args["position"] < 1:
-            raise ToolError("position é um inteiro a partir de 1 (1 = primeiro)")
         _move(ctx, objective_routes.own_objective(uid, oid), args["position"])
     return "Atualizado: " + _objective_line(uid, objective_routes.own_objective(uid, oid))
 
@@ -842,7 +860,13 @@ def t_get_week(ctx, args):
 
 def _review_text(st: dict) -> str:
     """Cronômetro esquecido (rodou demais): parou sem apontar nada."""
-    desde = st["started_at"].astimezone(services.app_tz()).strftime("%Y-%m-%d %H:%M") if st.get("started_at") else "muito tempo"
+    ini = st.get("started_at")
+    if isinstance(ini, str):  # a rota devolve em texto (ISO); usar como data dava erro 500 com o cronômetro já parado
+        try:
+            ini = datetime.fromisoformat(ini)
+        except ValueError:
+            ini = None
+    desde = ini.astimezone(services.app_tz()).strftime("%Y-%m-%d %H:%M") if ini else "muito tempo"
     return (f"estava rodando em #{st['task_id']} desde {desde}; nada foi apontado. "
             "Pergunte quanto tempo foi de fato e informe com log_time")
 
@@ -885,9 +909,9 @@ def _stop_at(value) -> datetime | None:
         else:
             at = datetime.fromisoformat(txt)
             at = at if at.tzinfo else at.replace(tzinfo=tz)
-    except ValueError:
+        return at.astimezone(timezone.utc)
+    except (ValueError, OverflowError):  # OverflowError: 9999-12-31 passado para UTC
         raise ToolError(f"hora inválida: {value} (use HH:MM ou AAAA-MM-DDTHH:MM)") from None
-    return at.astimezone(timezone.utc)
 
 
 def t_stop_timer(ctx, args):
@@ -942,7 +966,10 @@ def t_set_recurring(ctx, args):
                 msg += (" A rotina NÃO foi marcada: a pausa não leva motivo (note). Para marcar com evidência, "
                         "mande done:true junto.")
             return msg
-        return msg + " " + _set_done(ctx, rid, data)
+        try:
+            return msg + " " + _set_done(ctx, rid, data)
+        except ToolError as e:  # a pausa já foi gravada: só o erro faria a IA achar que nada mudou
+            return msg + f" ATENÇÃO: a rotina NÃO foi marcada: {e}"
     return _set_done(ctx, rid, data)
 
 
@@ -1026,7 +1053,9 @@ def t_list_renewals(ctx, args):
         equipe = ""
         if r["team_name"]:
             equipe = f" [equipe {r['team_name']}" + ("" if r["mine"] else f", de {r['owner_name']}; só leitura aqui") + "]"
-        out.append(f"V{r['id']} {r['label']} — {r['expires_on'].isoformat()} ({quando})" + (" [AVISO]" if r["warning"] else "") + equipe)
+        # O de outra pessoa (compartilhado com a equipe) é texto de terceiro: entre « ».
+        nome = r["label"] if r["mine"] else _quoted({"assigned_by_name": r["owner_name"] or "equipe"}, r["label"])
+        out.append(f"V{r['id']} {nome} — {r['expires_on'].isoformat()} ({quando})" + (" [AVISO]" if r["warning"] else "") + equipe)
     return "\n".join(out) or "(nenhum vencimento cadastrado)"
 
 
@@ -1581,6 +1610,9 @@ ID_HINT = {"task_id": "o número da tarefa (#n em get_today, list_tasks ou searc
            "history_id": "o número da ação (#n em get_history)"}
 
 
+ID_PREFIX = {"task_id": "#", "item_id": "#", "history_id": "#", "recurring_id": "#Rr"}
+
+
 def _check_args(name: str, schema: dict, args) -> dict:
     """Confere os argumentos contra o inputSchema antes de chamar a ferramenta:
     campo desconhecido é recusado (senão a IA acha que registrou o que foi
@@ -1604,8 +1636,11 @@ def _check_args(name: str, schema: dict, args) -> dict:
             continue
         if isinstance(v, float) and v.is_integer():
             v = int(v)
-        if isinstance(v, str) and v.strip().lstrip("#RrMmVvUu").isdigit():
-            v = int(v.strip().lstrip("#RrMmVvUu"))
+        # O prefixo de como o id aparece nas listas, e só o do campo: "R7" em task_id concluía
+        # a tarefa #7 quando a IA queria a rotina R7.
+        pref = ID_PREFIX.get(k, "")
+        if isinstance(v, str) and v.strip().lstrip(pref).isdigit():
+            v = int(v.strip().lstrip(pref))
         if isinstance(v, bool) or not isinstance(v, int):
             raise ToolError(f"{k} deve ser um número inteiro" + (f": {ID_HINT[k]}" if k in ID_HINT else ""))
         out[k] = v
@@ -1646,6 +1681,8 @@ def _handle(ctx, msg):
     elif method == "prompts/get":
         if params.get("name") not in _prompts_for(ctx):
             return _rpc_error(rid, -32602, f"prompt desconhecido: {params.get('name')}")
+        if not isinstance(params.get("arguments") or {}, dict):
+            return _rpc_error(rid, -32602, "arguments deve ser um objeto JSON")
         try:
             result = _prompt_get(params["name"], params.get("arguments") or {})
         except ToolError as e:
