@@ -15,11 +15,29 @@ const DADOS = 'nexus-dados';   // as últimas leituras das telas principais
 // Leituras que valem sem sinal (as de abrir o dia). Relatórios, busca e admin, não.
 const API_OK = /^\/api\/(auth\/me|board|projects|branding|timer|recurring\/reminders|summary(\/[a-z]+)?|renewals|worklog\/\d+)$/;
 
+// Arquivo com versão na URL (app.js?v=166): ao guardar a nova, a cópia da versão
+// anterior sai (senão cada atualização deixava mais um jogo de arquivos no aparelho).
+async function dropOldVersions(cache, req) {
+  const url = new URL(req.url);
+  if (!url.searchParams.has('v')) return;
+  // Só quando quem pediu foi o próprio app ("/"): o login e a página 404 usam os mesmos arquivos,
+  // e apagar por causa deles deixaria o "/" guardado (ainda da versão anterior) sem CSS, se abrisse sem sinal.
+  let from = '';
+  try { from = new URL(req.referrer).pathname; } catch { /* sem referrer: não apaga */ }
+  if (from !== '/') return;
+  for (const k of await cache.keys()) {
+    const u = new URL(k.url);
+    if (u.pathname === url.pathname && u.search !== url.search) await cache.delete(k);
+  }
+}
+
 async function networkFirst(req, cacheName, timeout, mark) {
   const cache = await caches.open(cacheName);
   try {
     const res = await fetch(req, { signal: AbortSignal.timeout(timeout) });
-    if (res.ok && res.type === 'basic') cache.put(req, res.clone());
+    if (res.ok && res.type === 'basic') {
+      cache.put(req, res.clone()).then(() => dropOldVersions(cache, req)).catch(() => {});  // cota cheia: segue sem guardar
+    }
     return res;
   } catch (e) {
     const hit = (await cache.match(req)) || (req.mode === 'navigate' ? await cache.match('/') : null);

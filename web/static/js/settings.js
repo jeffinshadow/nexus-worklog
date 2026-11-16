@@ -366,13 +366,15 @@ async function notices(push) {
   const save = saver(async () => {
     const body = { show_titles: titles.checked, weekly_pdf: pdf.checked, weekly_cc: cc.value.trim() || null };
     body.email_on = mailOn.checked;
-    if (body.weekly_cc && !cc.checkValidity()) { fieldError(ccErr, cc, "O e-mail da cópia não parece válido."); body.weekly_cc = p.weekly_cc || null; }
+    const ccRuim = !!body.weekly_cc && !cc.checkValidity();
+    if (ccRuim) { fieldError(ccErr, cc, "O e-mail da cópia não parece válido."); body.weekly_cc = p.weekly_cc || null; }
     else fieldError(ccErr, cc, "");
     try {
       await api.put("/notifications", body);
       await api.put("/push/prefs", push.collect());
       p.weekly_cc = body.weekly_cc;
-      toast("Avisos salvos.");
+      // Com o e-mail da cópia recusado, o resto foi salvo, mas "salvos" ao lado do erro confunde: fica só o erro.
+      if (!ccRuim) toast("Avisos salvos.");
     }
     catch (e) { if (e.status === 422) fieldError(ccErr, cc, "O e-mail da cópia não parece válido."); else errorToast(e, "Não foi possível salvar os avisos."); }
   }, 400);
@@ -719,7 +721,7 @@ async function webhooksPanel(rerender) {
       h("p", { class: "help", text: "Webhook: o Nexus avisa outro sistema na hora em que algo muda (tarefa criada, concluída, rotina marcada…), enviando os dados para o endereço que você informar. Serve para fechar o chamado, avisar no chat ou alimentar uma planilha. Até 5. Quem configura o outro sistema encontra os detalhes na documentação da API." }),
       form),
     h("section", { class: "panel" },
-      h("div", { class: "panel-head" }, h("h2", { text: "Meus webhooks" }), h("span", { class: "count", text: String(list.filter((w) => w.active).length) + " ativos" })),
+      h("div", { class: "panel-head" }, h("h2", { text: "Meus webhooks" }), h("span", { class: "count", text: ((n) => `${n} ${n === 1 ? "ativo" : "ativos"}`)(list.filter((w) => w.active).length) })),
       ...rows, recipesLine()));
 }
 
@@ -1065,7 +1067,12 @@ function account(me) {
     try {
       await api.post("/auth/change-password", { current_password: cur.value, new_password: nova.value });
       cur.value = nova.value = nova2.value = "";
-      toast("Senha trocada. Outras sessões, chaves de API e o link do calendário foram encerrados; integrações (webhooks), desligadas.");
+      // Senha nova cancela também o pedido de troca de e-mail que estivesse aberto (o link deixa de valer).
+      const pedido = me.email_pending;
+      me.email_pending = null;
+      toast("Senha trocada. Outras sessões, chaves de API e o link do calendário foram encerrados; integrações (webhooks), desligadas."
+        + (pedido ? ` O pedido de troca de e-mail para ${pedido} foi cancelado: peça de novo, se ainda quiser.` : ""));
+      if (pedido) window.dispatchEvent(new HashChangeEvent("hashchange"));  // a Conta redesenha sem o "aguardando a confirmação"
     } catch (e) {
       err.textContent = e.message || "Não foi possível trocar.";
     }

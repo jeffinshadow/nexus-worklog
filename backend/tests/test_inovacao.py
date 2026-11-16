@@ -192,8 +192,6 @@ def test_rotinas_csv_mostra_a_falta(usuario):
 
 
 def test_cobrar_em_validacao_calendario_e_manha(usuario):
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
     from app import notify
     hoje = dia_hoje(usuario)
     ontem = (hoje - timedelta(days=1)).isoformat()

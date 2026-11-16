@@ -51,7 +51,7 @@ def _public(row: dict, csrf: str) -> dict:
         **org.for_user(uid),  # org (Para empresas), tour_required, visibility_notice, email_pending
         "assistant": people.assistant_prefs(uid),
         "role": row["role"],
-        "roles": roles.of(uid),
+        "roles": row["roles"] if row.get("roles") is not None else roles.of(uid),  # a sessão já traz (deps); o login, não
         "retro_days": task_retro_days(),  # limite de datas retroativas em tarefas
         "support_contact": (db.query_one("SELECT support_contact FROM app_settings WHERE id = 1") or {}).get("support_contact"),
         "must_change_password": row["must_change_password"],
@@ -207,9 +207,9 @@ def _link_info(kind: str, token: str, request: Request) -> dict:
     return {"email": row["email"], "display_name": row["display_name"], "name_locked": org.identity_managed(row["id"])}
 
 
-def _set_password(uid: int, password: str) -> None:
+def _set_password(uid: int, hashed: str) -> None:
     db.execute("""UPDATE users SET password_hash = %s, must_change_password = false, invite_pending = false
-                   WHERE id = %s""", (hash_password(password), uid))
+                   WHERE id = %s""", (hashed, uid))
 
 
 @router.post("/invite/accept")
@@ -217,10 +217,17 @@ def accept_invite(data: LinkPasswordIn, request: Request, response: Response):
     """Convidado cria a própria senha (e o nome) e já entra."""
     if not link_limiter.allow(f"ip:{client_ip(request)}"):
         raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
-    uid = links.consume(data.token, "invite")
-    if not uid:
+    # Confere o link sem gastar, calcula o hash e só então gasta: com o servidor ocupado (503) a
+    # pessoa não perde o convite, e um link inválido não custa um hash ao servidor.
+    if not links.peek(data.token, "invite"):
         raise HTTPException(status_code=400, detail="convite inválido, vencido ou já usado: peça um novo ao administrador")
-    _set_password(uid, data.password)
+    hashed = hash_password(data.password)
+    uid = links.consume(data.token, "invite")
+    # Só conta que ainda espera o convite: depois de um "Redefinir senha" do admin, o convite
+    # antigo (talvez mandado a um endereço errado) não cria mais a senha.
+    if not uid or not db.query_one("SELECT 1 FROM users WHERE id = %s AND invite_pending", (uid,)):
+        raise HTTPException(status_code=400, detail="convite inválido, vencido ou já usado: peça um novo ao administrador")
+    _set_password(uid, hashed)
     nome = " ".join((data.display_name or "").split()) or None
     if nome and not org.identity_managed(uid):  # nome definido pela administração: fica o do convite
         db.execute("UPDATE users SET display_name = %s WHERE id = %s", (nome, uid))
@@ -234,10 +241,14 @@ def reset_by_link(data: LinkPasswordIn, request: Request, response: Response):
     de API e calendário (como a troca de senha) e já entra."""
     if not link_limiter.allow(f"ip:{client_ip(request)}"):
         raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
+    # Como no convite: confere sem gastar, calcula o hash, gasta.
+    if not links.peek(data.token, "reset"):
+        raise HTTPException(status_code=400, detail="link inválido, vencido ou já usado: peça outro na tela de login")
+    hashed = hash_password(data.password)
     uid = links.consume(data.token, "reset")
     if not uid:
         raise HTTPException(status_code=400, detail="link inválido, vencido ou já usado: peça outro na tela de login")
-    _set_password(uid, data.password)
+    _set_password(uid, hashed)
     db.execute("DELETE FROM sessions WHERE user_id = %s", (uid,))
     revoke_access(uid)
     audit.record({"user_id": uid, "actor": "web"}, "password.reset_link", "password", uid)
@@ -364,17 +375,20 @@ def save_settings(data: SettingsIn, session=Depends(active_user_csrf)):
     if before == data.work_days:
         return {"ok": True, "work_days": before}
     today = app_today()
-    for r in db.query_all(
-            """SELECT id FROM recurring_tasks WHERE user_id = %s AND COALESCE(freq, 'daily') = 'daily'
-                  AND (active OR deactivated_at IS NOT NULL)""", (uid,)):
-        snap = audit.recurring_snapshot(r["id"], uid)
-        freeze = {"freq": "weekly", "weekdays": before}
-        if snap["active"] and snap["created_at"].astimezone(app_tz()).date() < today:
-            replace_routine(session, snap, {"label": snap["label"], "freq": "daily"}, freeze)
-        elif not snap["active"]:
-            db.execute("UPDATE recurring_tasks SET freq = 'weekly', weekdays = %s WHERE id = %s AND user_id = %s",
-                       (before, r["id"], uid))
-    db.execute("UPDATE users SET work_days = %s WHERE id = %s", (data.work_days, uid))
-    audit.record(session, "settings.update", "user", uid,
-                 before={"work_days": before}, after={"work_days": data.work_days})
+    # Tudo ou nada: com metade das rotinas congeladas e os dias úteis antigos
+    # ainda valendo, os números do passado mudariam sem ninguém ter pedido.
+    with db.transaction():
+        for r in db.query_all(
+                """SELECT id FROM recurring_tasks WHERE user_id = %s AND COALESCE(freq, 'daily') = 'daily'
+                      AND (active OR deactivated_at IS NOT NULL)""", (uid,)):
+            snap = audit.recurring_snapshot(r["id"], uid)
+            freeze = {"freq": "weekly", "weekdays": before}
+            if snap["active"] and snap["created_at"].astimezone(app_tz()).date() < today:
+                replace_routine(session, snap, {"label": snap["label"], "freq": "daily"}, freeze)
+            elif not snap["active"]:
+                db.execute("UPDATE recurring_tasks SET freq = 'weekly', weekdays = %s WHERE id = %s AND user_id = %s",
+                           (before, r["id"], uid))
+        db.execute("UPDATE users SET work_days = %s WHERE id = %s", (data.work_days, uid))
+        audit.record(session, "settings.update", "user", uid,
+                     before={"work_days": before}, after={"work_days": data.work_days})
     return {"ok": True, "work_days": data.work_days}

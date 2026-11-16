@@ -258,8 +258,7 @@ export function blockTask(t, onDone) {
       h("button", { type: "submit", class: "btn btn-primary", text: "Marcar como aguardando" })));
   const dlg = modal(form);
   reason.addEventListener("input", () => markInvalid([reason], err, false));
-  form.addEventListener("submit", async (ev) => {
-    ev.preventDefault();
+  form.addEventListener("submit", busy(async () => {  // busy: o segundo toque não manda de novo
     const body = { status: "blocked", blocked_reason: reason.value.trim().replace(/^aguardando\s+/i, "") };
     if (follow.value) body.follow_up_on = followUpDay(follow.value);
     try {
@@ -268,7 +267,7 @@ export function blockTask(t, onDone) {
       toast(`Aguardando: ${body.blocked_reason}.`);
       Promise.resolve(onDone && onDone()).then(back);
     } catch (e) { err.textContent = e.message; markInvalid([reason], err); }
-  });
+  }));
   setTimeout(() => reason.focus(), 0);
 }
 
@@ -358,7 +357,7 @@ export function openWorklog(onDone, opts = {}) {
   // Já vem com o projeto padrão (Configurações > Conta), ou o da tela de onde veio; "Sem projeto" tira.
   // project_id null (quadro filtrado em "Sem projeto"): sem projeto, mesmo com um padrão.
   const startProject = opts.project_id !== undefined ? opts.project_id : (session.me && session.me.default_project_id) || null;
-  const projReady = fillProjectSelect(projSel, startProject,
+  fillProjectSelect(projSel, startProject,
     () => { extras.sync(); syncObjectives(); })
     .then(() => { extras.sync(); return syncObjectives(opts.objective_id || null); }).catch(() => {});
   const ticket = document.getElementById("wl-ticket");
@@ -492,9 +491,16 @@ export function openWorklog(onDone, opts = {}) {
         // Sem sinal: o resto (tempo, anotação, fotos) vai junto quando a tarefa for criada.
         if (minutes) await api.after(created.qid, "POST", "/worklog/{id}/time", { minutes });
         if (opts.note) await api.after(created.qid, "POST", "/worklog/{id}/notes", { body: opts.note });
-        for (const f of opts.files || []) await api.after(created.qid, "POST", "/worklog/{id}/photos", await prepare(f));
+        // A tarefa já está na fila: uma foto que não abre (formato, tamanho) não pode deixar o
+        // diálogo aberto, porque salvar de novo guardaria outra tarefa.
+        let semFoto = 0;
+        for (const f of opts.files || []) {
+          try { await api.after(created.qid, "POST", "/worklog/{id}/photos", await prepare(f)); } catch { semFoto++; }
+        }
         dlg.close();
-        toast("Sem conexão: tarefa guardada no aparelho. Vai sozinha quando a conexão voltar.");
+        toast("Sem conexão: tarefa guardada no aparelho. Vai sozinha quando a conexão voltar."
+          + (semFoto ? ` ${semFoto === 1 ? "Uma foto não pôde ser guardada" : `${semFoto} fotos não puderam ser guardadas`}: ponha pelo detalhe da tarefa depois.` : ""),
+          semFoto ? { error: true } : {});
         onDone && onDone();
         return;
       }
@@ -810,6 +816,14 @@ export async function mount(root, opts = {}) {
     if (isDone) donePage = page; else openPage = page;
     if (!readOnly) setHashPage(isDone ? "pc" : "p", page, "tarefas");
     for (const it of list) {
+      // Criada sem sinal: ainda não tem id no servidor. Aparece só com o título e o aviso, como no
+      // Hoje; com as ações, o cronômetro iniciado nela ia para a fila com um id que o servidor recusa
+      // (e o tempo se perdia).
+      if (it.pending) {
+        col.body.append(h("article", { class: "card" }, h("h3", { text: it.title }),
+          h("div", { class: "card-meta" }, h("span", { class: "chip today", text: "esperando conexão" }))));
+        continue;
+      }
       const canCheck = !readOnly && !isDone;  // concluir à esquerda, como no Hoje
       const card = h("article", { class: "card" + (isOverdue(it, today) ? " overdue" : "") + (it.priority === 1 && !isDone ? " high" : "") + (isDone ? " is-done" : "") + (canCheck ? " has-check" : ""), "data-id": it.id },
         h("h3", {}, readOnly ? it.title : h("button", { type: "button", class: "card-open", text: it.title, onClick: () => openTask(it.id, refresh) })));

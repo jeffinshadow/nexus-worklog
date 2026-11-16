@@ -7,7 +7,7 @@ mesma logica serve tanto o usuario comum quanto a visao de admin.
 
 import bisect
 import calendar
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from . import db
@@ -66,12 +66,26 @@ def pause_end(t: dict, d: date) -> date | None:
 def _after_cycle(t: dict, d: date) -> tuple[date, bool]:
     """freq 'after': (data em que o ciclo aberto em `d` venceu, marcada em `d`?).
     O ciclo conta da última marcação ANTES de `d` (sem marcação: da última vez
-    da rotina substituída, `after_from`, ou da criação)."""
+    da rotina substituída, `after_from`, ou da criação).
+
+    O vencimento nunca cai antes de a rotina poder ser feita:
+      - sem marcação nela ainda, não vence antes do dia em que começou (trocar a
+        agenda de uma rotina atrasada não gera falta no próprio dia da troca);
+      - uma pausa que terminou antes de `d` empurra o vencimento para o dia da
+        volta (quem volta de férias tem o ciclo inteiro para fazer, em vez de
+        levar falta no primeiro dia)."""
     dates = t.get("done_dates") or []
     i = bisect.bisect_left(dates, d)
+    marked = bool(i) and dates[i - 1] >= t["start_d"]
     # after_from: a última vez da rotina que esta substituiu (troca de agenda).
-    last = dates[i - 1] if i and dates[i - 1] >= t["start_d"] else (t.get("after_from") or t["start_d"])
-    return last + timedelta(days=t.get("interval_days") or 1), i < len(dates) and dates[i] == d
+    last = dates[i - 1] if marked else (t.get("after_from") or t["start_d"])
+    due = last + timedelta(days=t.get("interval_days") or 1)
+    if not marked:
+        due = max(due, t["start_d"])
+    for _, e in t.get("pauses") or ():
+        if e < d:
+            due = max(due, e + timedelta(days=1))
+    return due, i < len(dates) and dates[i] == d
 
 
 def is_due(t: dict, d: date, mask: int) -> bool:
@@ -144,6 +158,12 @@ EXTRA_PROJECTS = """(SELECT COALESCE(json_agg(json_build_object('id', xp.id, 'na
                                       ORDER BY lower(xp.name)), '[]'::json)
        FROM worklog_task_projects x JOIN projects xp ON xp.id = x.project_id
       WHERE x.task_id = w.id) AS extra_projects"""
+
+# Os mesmos extras para um APONTAMENTO `e` da tarefa `w`: só quando a tarefa ainda é de quem
+# apontou. Numa tarefa transferida (Admin › Contas), o tempo fica com quem saiu, mas os
+# projetos extras passam a ser os de quem recebeu: não entram no relatório de quem apontou.
+ENTRY_EXTRA_PROJECTS = ("CASE WHEN w.user_id = e.user_id THEN " + EXTRA_PROJECTS.rsplit(" AS extra_projects", 1)[0]
+                        + " ELSE '[]'::json END AS extra_projects")
 
 # Contadores de uma tarefa `w` (checklist, anotações, tempo) e os projetos
 # extras: um lugar só para o quadro, o relatório e a exportação.
@@ -242,12 +262,13 @@ def set_extra_projects(user_id: int, task_id: int, ids) -> None:
     principal = db.query_one("SELECT project_id FROM worklog_tasks WHERE id = %s AND user_id = %s",
                              (task_id, user_id))["project_id"]
     ids = [] if principal is None else sorted({int(i) for i in ids or []} - {principal})
-    db.execute("DELETE FROM worklog_task_projects WHERE task_id = %s", (task_id,))
-    if ids:
-        db.execute(
-            """INSERT INTO worklog_task_projects (task_id, project_id)
-               SELECT %s, p.id FROM projects p WHERE p.user_id = %s AND p.id = ANY(%s)""",
-            (task_id, user_id, ids))
+    with db.transaction():  # tira e põe juntos: uma falha entre os dois deixava a tarefa sem os extras
+        db.execute("DELETE FROM worklog_task_projects WHERE task_id = %s", (task_id,))
+        if ids:
+            db.execute(
+                """INSERT INTO worklog_task_projects (task_id, project_id)
+                   SELECT %s, p.id FROM projects p WHERE p.user_id = %s AND p.id = ANY(%s)""",
+                (task_id, user_id, ids))
 
 
 def extra_project_ids(task_id: int) -> list[int]:
@@ -365,6 +386,16 @@ def get_board(user_id: int, day: date | None = None, project: int | None = None,
     first_hl = db.query_one(
         "SELECT max(first_on) AS d FROM worklog_tasks WHERE user_id = %s AND first_on <= %s AND first_on > %s",
         (user_id, today, today - timedelta(days=7)))["d"]
+    # Escolha de um dia que já passou: só vale se a pessoa não usou o Nexus desde então (feriado,
+    # folga). Quem abriu o app no dia e não fez a tarefa não fica com o selo "primeiro hoje" pela
+    # semana inteira: passado o dia, ela sai sozinha.
+    if first_hl and first_hl < today:
+        tz = app_tz()
+        if db.query_one(
+                """SELECT 1 FROM audit_log WHERE user_id = %s AND actor <> 'system'
+                      AND created_at >= %s AND created_at < %s LIMIT 1""",
+                (user_id, datetime.combine(first_hl, time(), tz), datetime.combine(today, time(), tz))):
+            first_hl = None
     in_progress = db.query_all(
         cols(TOUCHED) + " AND w.status <> 'done'" + filtro_proj
         + """ ORDER BY COALESCE(w.first_on = %s, false) DESC, COALESCE(w.due_date < %s, false) DESC,
@@ -661,8 +692,11 @@ def get_dashboard_analytics(user_id: int, tasks, completions, mask: int, today: 
         SELECT p.name, p.color, sum(e.minutes)::int AS minutes
           FROM time_entries e JOIN worklog_tasks w ON w.id = e.task_id
           -- a tarefa em dois projetos conta o tempo inteiro em cada um
+          -- os extras só valem enquanto a tarefa é de quem apontou (transferida: sem eles, senão o
+          -- tempo aparecia duas vezes em "sem projeto")
           LEFT JOIN LATERAL (SELECT w.project_id AS pid UNION
-                             SELECT x.project_id FROM worklog_task_projects x WHERE x.task_id = w.id) tp ON true
+                             SELECT x.project_id FROM worklog_task_projects x
+                              WHERE x.task_id = w.id AND w.user_id = e.user_id) tp ON true
           -- projeto de outra conta (tarefa que foi transferida) não entra: conta como "sem projeto"
           LEFT JOIN projects p ON p.id = tp.pid AND p.user_id = e.user_id
          WHERE e.user_id = %s AND e.day BETWEEN %s AND %s
@@ -791,9 +825,9 @@ def _report_inputs(user_id: int, start: date, end: date, project: dict | None = 
     )
     entries = db.query_all(
         """
-        SELECT e.day, e.minutes, e.note, w.title, w.after_hours, p.name AS project, p.color AS project_color,
+        SELECT e.day, e.minutes, e.note, w.id AS task_id, w.title, w.after_hours, p.name AS project, p.color AS project_color,
                """ + PROJECT_ICON + """,
-               """ + EXTRA_PROJECTS + """
+               """ + ENTRY_EXTRA_PROJECTS + """
           FROM time_entries e
           JOIN worklog_tasks w ON w.id = e.task_id
           LEFT JOIN projects p ON p.id = w.project_id AND p.user_id = e.user_id
@@ -837,8 +871,8 @@ def team_report_inputs(uids: list[int], start: date, end: date) -> dict[int, dic
                 ORDER BY w.completed_at""", (tz, uids, tz, start, end)):
         out[w.pop("user_id")]["pontuais"].append(w)
     for e in db.query_all(
-            """SELECT e.user_id, e.day, e.minutes, e.note, w.title, w.after_hours, p.name AS project,
-                      p.color AS project_color, """ + PROJECT_ICON + ", " + EXTRA_PROJECTS + """
+            """SELECT e.user_id, e.day, e.minutes, e.note, w.id AS task_id, w.title, w.after_hours, p.name AS project,
+                      p.color AS project_color, """ + PROJECT_ICON + ", " + ENTRY_EXTRA_PROJECTS + """
                  FROM time_entries e JOIN worklog_tasks w ON w.id = e.task_id
                  LEFT JOIN projects p ON p.id = w.project_id AND p.user_id = e.user_id
                 WHERE e.user_id = ANY(%s) AND e.day BETWEEN %s AND %s

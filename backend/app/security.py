@@ -159,6 +159,11 @@ def revoke_access(user_id: int) -> None:
     notificacoes nos aparelhos.
     Usado na troca de senha e no reset pelo admin ("senha nova = acessos novos")."""
     db.execute("UPDATE api_tokens SET revoked_at = now() WHERE user_id = %s AND revoked_at IS NULL", (user_id,))
+    # Links de e-mail ainda abertos (confirmar e-mail novo, nova senha, convite): quem tinha a senha
+    # antiga podia ter pedido a troca de e-mail e, depois da senha trocada, confirmar o link e ficar
+    # com a conta. Quem chama emite o link novo, se for o caso, DEPOIS daqui.
+    db.execute("""UPDATE auth_links SET used_at = now()
+                   WHERE user_id = %s AND kind IN ('email', 'reset', 'invite') AND used_at IS NULL""", (user_id,))
     db.execute("DELETE FROM calendar_feeds WHERE user_id = %s", (user_id,))
     db.execute("DELETE FROM push_subscriptions WHERE user_id = %s", (user_id,))  # aparelho talvez perdido
     # Webhook é um canal de saída dos dados: desliga (aparece na lista; religar é um clique).

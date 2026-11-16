@@ -15,6 +15,8 @@ def parse_month(month: Optional[str]) -> date | None:
     """AAAA-MM -> dia 1 do mês. Mês futuro não tem retrospectiva."""
     if month is None:
         return None
+    if int(month[:4]) < 2000:  # o ano 0 ou 1 estourava as contas de datas (erro 500)
+        raise HTTPException(status_code=400, detail="mês inválido")
     m = date(int(month[:4]), int(month[5:]), 1)
     if m > app_today().replace(day=1):
         raise HTTPException(status_code=400, detail="mês no futuro")

@@ -3,7 +3,7 @@
   "info": {
     "title": "Nexus Worklog",
     "description": "API REST do Nexus Worklog. Referência, erros e exemplos: docs/API.md.",
-    "version": "2.0.4"
+    "version": "2.1.0"
   },
   "paths": {
     "/api/health": {
@@ -1064,7 +1064,7 @@
           "worklog"
         ],
         "summary": "List Tasks",
-        "description": "Tarefas por período (dias inclusivos, fuso da app), pela criação ou\npela conclusão: para conferir o que já foi lançado sem baixar tudo.\nCom external_ref: só a tarefa com essa chave (lista vazia se não houver).",
+        "description": "Tarefas por período (dias inclusivos, fuso da app), pela criação ou\npela conclusão: para conferir o que já foi lançado sem baixar tudo.\nCom external_ref: só a tarefa com essa chave (lista vazia se não houver).\nCom project: só as do projeto (o filtro e a paginação são feitos no banco).",
         "operationId": "list_tasks_api_worklog_get",
         "parameters": [
           {
@@ -1173,6 +1173,25 @@
               "title": "Offset"
             },
             "description": "Pula as N primeiras (páginas); o total vem em X-Total-Count"
+          },
+          {
+            "name": "project",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Só as tarefas deste projeto (principal ou um dos extras)",
+              "title": "Project"
+            },
+            "description": "Só as tarefas deste projeto (principal ou um dos extras)"
           }
         ],
         "responses": {
@@ -1845,7 +1864,7 @@
           "board"
         ],
         "summary": "Put First",
-        "description": "\"Primeiro amanhã\": até 3 tarefas para começar o próximo dia útil. Nesse\ndia elas abrem as abertas do Hoje (e de Tarefas) com um selo; passado o dia,\nou concluídas, saem sozinhas. Vale em todos os aparelhos. `day` (opcional)\nentre amanhã e daqui a 7 dias.",
+        "description": "\"Primeiro amanhã\": até 3 tarefas para começar o próximo dia útil. Nesse\ndia elas abrem as abertas do Hoje (e de Tarefas) com um selo; passado o dia,\nou concluídas, saem sozinhas. Vale em todos os aparelhos. `day` (opcional)\nentre amanhã e daqui a 7 dias. `day` = hoje com a lista vazia tira o selo de hoje.",
         "operationId": "put_first_api_board_first_put",
         "requestBody": {
           "content": {

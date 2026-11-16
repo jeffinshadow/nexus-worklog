@@ -216,10 +216,11 @@ def test_mudar_o_n_mantem_a_ultima_vez(usuario):
     novo = usuario.patch(f"/recurring/{rid}", {"freq": "after", "interval_days": 10}).json()["id"]
     assert novo != rid
     assert _linha_rotina(usuario, novo)["next_due"] == (hoje + timedelta(days=7)).isoformat()  # última + 10
-    # Atrasada continua atrasada ao mudar o N (não some por N dias).
+    # Vencida continua para fazer ao mudar o N (não some por N dias). O vencimento é o dia da troca, não
+    # "ontem": a rotina nova começou hoje e não nasce com falta (2.1.0).
     novo2 = usuario.patch(f"/recurring/{novo}", {"freq": "after", "interval_days": 2}).json()["id"]
     linha = _linha_rotina(usuario, novo2)
-    assert linha["next_due"] == (hoje - timedelta(days=1)).isoformat() and linha["due"] is True
+    assert linha["next_due"] == hoje.isoformat() and linha["due"] is True
     # De semanal para "depois da última vez": conta da última marcação da semanal.
     sem = _rotina(usuario, label="Ronda")
     recuar_criacao(sem, 10)

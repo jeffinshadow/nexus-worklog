@@ -261,7 +261,8 @@ export async function openTask(taskId, onChange, opts = {}) {
       : [appbar, head, mainActs, editing ? details(t, today) : null, checklist(t), photosSection(t, touch), timePanel(t, today), notesPanel(t)]).filter(Boolean));
     if (title) requestAnimationFrame(() => { grow(title); grow(body.querySelector(".inline-desc")); }); // a altura só existe com o campo na tela (e o painel aberto)
     // Redesenhou com o foco num campo (ex.: trocou o status): volta para ele.
-    if (refocus) { const el = body.querySelector(`[aria-label="${refocus}"]`); if (el) el.focus(); refocus = null; }
+    // CSS.escape: o nome pode ser o texto de um item do checklist (com aspas, quebrava o seletor e todo redesenho seguinte).
+    if (refocus) { const name = refocus; refocus = null; const el = body.querySelector(`[aria-label="${CSS.escape(name)}"]`); if (el) el.focus(); }
   }
 
   // ---- edição no lugar
@@ -270,13 +271,22 @@ export async function openTask(taskId, onChange, opts = {}) {
   let rowEdit = null; // "time:<id>" ou "note:<id>": a linha que está sendo corrigida
   let pending = Promise.resolve(); // o último salvamento (o "Pronto" espera ele)
   const saved = h("span", { class: "saved-mark", "aria-live": "polite" });
-  function save(patch, redraw = false) {
-    pending = doSave(patch, redraw);
+  // keepText: campo de texto (título, descrição, como resolveu). Sem conexão ele fica como a pessoa
+  // escreveu, e sair dele de novo salva. Os de escolha (situação, prioridade, prazo, projeto) não têm
+  // essa segunda chance: sem redesenhar, ficariam mostrando um valor que o servidor não tem.
+  function save(patch, redraw = false, keepText = false) {
+    pending = doSave(patch, redraw, keepText);
     return pending;
   }
-  async function doSave(patch, redraw) {
+  async function doSave(patch, redraw, keepText) {
     try { await api.patch(`/worklog/${taskId}`, patch); }
-    catch (e) { errorToast(e, "Não foi possível salvar."); await render(); return; }
+    catch (e) {
+      errorToast(e, "Não foi possível salvar.");
+      // Texto sem conexão: fica no campo (redesenhar trazia a cópia guardada e apagava o que foi
+      // digitado). O resto, e toda recusa do servidor: redesenha com o que está lá.
+      if (!(keepText && e.status === 0)) await render();
+      return;
+    }
     Object.assign(cur, patch);
     notify();
     saved.textContent = "Salvo";
@@ -294,7 +304,7 @@ export async function openTask(taskId, onChange, opts = {}) {
       if (v === original()) return;
       const patch = toPatch(v);
       if (!patch) { el.value = original(); grow(el); return; }
-      save(patch);
+      save(patch, false, true);
     };
     el.addEventListener("keydown", (ev) => {
       if (ev.key === "Escape" && el.value.trim() !== original()) { ev.preventDefault(); ev.stopPropagation(); el.value = original(); grow(el); }
@@ -450,13 +460,15 @@ export async function openTask(taskId, onChange, opts = {}) {
     const input = h("input", { type: "text", maxlength: "200", placeholder: "Adicionar item", "aria-label": "Novo item do checklist" });
     sec.append(sendRow(input, async () => {
       input.disabled = true;
-      try { await api.post(`/worklog/${t.id}/checklist`, { label: input.value.trim() }); await touch(); focusLast(".task-sec input[type=text]"); }
+      try { await api.post(`/worklog/${t.id}/checklist`, { label: input.value.trim() }); await touch(); focusIn(".task-add input"); }
       catch (e) { input.disabled = false; errorToast(e); }
     }, "Adicionar item", "task-add"));
     return sec;
   }
 
-  function focusLast(sel) {
+  // Depois de adicionar um item, o foco volta ao campo "Adicionar item" (redesenhado), para o
+  // próximo; o seletor antigo pegava o primeiro campo de texto do detalhe (o do chamado, na edição).
+  function focusIn(sel) {
     const el = dlg.querySelector(sel);
     if (el) el.focus();
   }
@@ -615,11 +627,18 @@ export async function openTask(taskId, onChange, opts = {}) {
       h("div", { class: "task-sec-head" }, icon("note"), h("h3", { text: "Anotações" }),
         t.notes.length ? h("span", { class: "count", text: String(t.notes.length) }) : null));
     const text = h("textarea", { rows: "2", maxlength: "2000", placeholder: "Progresso, decisão, pendência… (Ctrl+Enter salva)", "aria-label": "Nova anotação" });
+    let sending = false;  // dois toques no Anotar (ou Ctrl+Enter repetido) gravavam a anotação duas vezes
     const send = async () => {
       const v = text.value.trim();
-      if (!v) return;
-      try { await api.post(`/worklog/${t.id}/notes`, { body: v }); entryPages.notes = 1; touch(); }
-      catch (e) { errorToast(e); }
+      if (!v || sending) return;
+      sending = true;
+      try {
+        await api.post(`/worklog/${t.id}/notes`, { body: v });
+        entryPages.notes = 1;
+        text.value = "";  // já gravada: se a releitura falhar (sem sinal), o texto não fica no campo para ir de novo
+        await touch();
+      } catch (e) { errorToast(e); }
+      finally { sending = false; }
     };
     text.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); send(); } });
     sec.append(h("div", { class: "note-form" }, text,

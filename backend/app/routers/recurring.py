@@ -58,8 +58,12 @@ def active_order(uid: int) -> list[int]:
 
 
 def renumber(uid: int, ids: list[int]) -> None:
-    for i, rid in enumerate(ids, start=1):
-        db.execute("UPDATE recurring_tasks SET position = %s WHERE id = %s AND user_id = %s", (i, rid, uid))
+    """A ordem inteira num comando só (era um UPDATE por rotina, cada um na sua transação)."""
+    if ids:
+        db.execute(
+            """UPDATE recurring_tasks r SET position = o.pos
+                 FROM unnest(%s::bigint[]) WITH ORDINALITY AS o(id, pos)
+                WHERE r.id = o.id AND r.user_id = %s""", (list(ids), uid))
 
 
 @router.post("/order")
@@ -125,29 +129,33 @@ def replace_routine(user: dict, before: dict, new: dict, freeze: dict | None = N
     ("recurring.replace", na nova), desfeita por inteiro."""
     uid, old_id = user["user_id"], before["id"]
     sets = ["active = false", "deactivated_at = now()"] + [f"{k} = %s" for k in (freeze or {})]
-    db.execute(f"UPDATE recurring_tasks SET {', '.join(sets)} WHERE id = %s AND user_id = %s",
-               tuple((freeze or {}).values()) + (old_id, uid))
     freq = new.get("freq") or before.get("freq")
-    row = db.query_one(
-        """INSERT INTO recurring_tasks (user_id, label, position, freq, weekdays, month_day, interval_days, require_note,
-                                        remind_at, steps, after_from)
-           VALUES (%(uid)s, %(label)s, %(position)s, %(freq)s, %(weekdays)s, %(month_day)s, %(interval_days)s, %(require_note)s,
-                   %(remind_at)s, %(steps)s, %(after_from)s)
-           RETURNING id""",
-        {"uid": uid, "position": before["position"], "weekdays": None, "month_day": None, "interval_days": None,
-         "require_note": bool(before.get("require_note")), "remind_at": before.get("remind_at"), "steps": before.get("steps"),
-         "after_from": _last_time(uid, before) if freq == "after" else None, **new})
-    db.execute("UPDATE recurring_completions SET task_id = %s WHERE task_id = %s AND user_id = %s AND completed_date = %s",
-               (row["id"], old_id, uid, app_today()))
-    db.execute("UPDATE photos SET recurring_id = %s WHERE recurring_id = %s AND user_id = %s AND day = %s",
-               (row["id"], old_id, uid, app_today()))  # as fotos de hoje vão junto com a marcação
-    # A pausa em curso continua na nova (de hoje até o mesmo fim).
-    db.execute("""INSERT INTO recurring_pauses (recurring_id, start_d, end_d)
-                  SELECT %s, %s, end_d FROM recurring_pauses
-                   WHERE recurring_id = %s AND start_d <= %s AND end_d >= %s""",
-               (row["id"], app_today(), old_id, app_today(), app_today()))
-    audit.record(user, "recurring.replace", "recurring", row["id"], before=before,
-                 after={"replaced": old_id, **audit.recurring_snapshot(row["id"], uid)})
+    today = app_today()
+    # Tudo ou nada: parar no meio deixava a antiga encerrada sem a nova, ou a
+    # nova sem a marcação de hoje e sem a linha do histórico (sem desfazer).
+    with db.transaction():
+        db.execute(f"UPDATE recurring_tasks SET {', '.join(sets)} WHERE id = %s AND user_id = %s",
+                   tuple((freeze or {}).values()) + (old_id, uid))
+        row = db.query_one(
+            """INSERT INTO recurring_tasks (user_id, label, position, freq, weekdays, month_day, interval_days, require_note,
+                                            remind_at, steps, after_from)
+               VALUES (%(uid)s, %(label)s, %(position)s, %(freq)s, %(weekdays)s, %(month_day)s, %(interval_days)s, %(require_note)s,
+                       %(remind_at)s, %(steps)s, %(after_from)s)
+               RETURNING id""",
+            {"uid": uid, "position": before["position"], "weekdays": None, "month_day": None, "interval_days": None,
+             "require_note": bool(before.get("require_note")), "remind_at": before.get("remind_at"), "steps": before.get("steps"),
+             "after_from": _last_time(uid, before) if freq == "after" else None, **new})
+        db.execute("UPDATE recurring_completions SET task_id = %s WHERE task_id = %s AND user_id = %s AND completed_date = %s",
+                   (row["id"], old_id, uid, today))
+        db.execute("UPDATE photos SET recurring_id = %s WHERE recurring_id = %s AND user_id = %s AND day = %s",
+                   (row["id"], old_id, uid, today))  # as fotos de hoje vão junto com a marcação
+        # A pausa em curso continua na nova (de hoje até o mesmo fim).
+        db.execute("""INSERT INTO recurring_pauses (recurring_id, start_d, end_d)
+                      SELECT %s, %s, end_d FROM recurring_pauses
+                       WHERE recurring_id = %s AND start_d <= %s AND end_d >= %s""",
+                   (row["id"], today, old_id, today, today))
+        audit.record(user, "recurring.replace", "recurring", row["id"], before=before,
+                     after={"replaced": old_id, **audit.recurring_snapshot(row["id"], uid)})
     return row["id"]
 
 
@@ -204,15 +212,14 @@ def deactivate(task_id: int, user=Depends(active_user_csrf)):
     # Soft-delete = desativar: preserva o historico em recurring_completions e
     # marca deactivated_at (so na transicao ativa->inativa).
     before = audit.recurring_snapshot(task_id, user["user_id"])
+    if not before:
+        raise HTTPException(status_code=404, detail="rotina não encontrada (pode ter sido excluída)")
     updated = db.execute(
-        """UPDATE recurring_tasks
-              SET active = false,
-                  deactivated_at = CASE WHEN active THEN now() ELSE deactivated_at END
-            WHERE id = %s AND user_id = %s""",
+        "UPDATE recurring_tasks SET active = false, deactivated_at = now() WHERE id = %s AND user_id = %s AND active",
         (task_id, user["user_id"]),
     )
-    if not updated:
-        raise HTTPException(status_code=404, detail="rotina não encontrada (pode ter sido excluída)")
+    if not updated:  # já estava excluída (clique repetido, outra aba): nada muda e nada vai ao histórico
+        return {"ok": True}
     audit.record(user, "recurring.deactivate", "recurring", task_id, before=before,
                  after=audit.recurring_snapshot(task_id, user["user_id"]))
     return {"ok": True}

@@ -95,6 +95,7 @@ if [[ -n "$(docker compose ps --status running -q db 2>/dev/null)" ]]; then
   tables=$(docker compose exec -T db pg_restore --list < "$BACKUP" 2>/dev/null | grep -c "TABLE DATA" || true)
   if [[ ! -s "$BACKUP" || "$tables" -lt 1 ]]; then
     err "Backup vazio ou ilegível ($BACKUP). Deploy abortado; nada foi alterado."
+    rm -f "$BACKUP"  # não fica na pasta passando por backup bom nem ocupa vaga na retenção
     exit 1
   fi
   log "Backup ok: $(du -h "$BACKUP" | cut -f1), $tables tabelas com dados."
@@ -107,12 +108,27 @@ else
   log "Banco ainda não está rodando (primeira instalação?): sem backup a fazer."
 fi
 
+# Como voltar atrás: impresso sempre que o deploy falha depois de o código mudar
+# (com set -e, um "up" que falhasse saía do script sem dizer nada disto).
+rollback_hint() {
+  err "Rollback do código:  git checkout $PREV_COMMIT && docker compose up -d --build"
+  if [[ -n "$BACKUP" ]]; then
+    err "Rollback do banco (só se uma migration estragou dados):"
+    err "  docker compose exec -T db sh -c 'pg_restore -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" --clean --if-exists' < $BACKUP"
+  fi
+}
+
 # --- 5. Deploy ---
 log "Atualizando código..."
-git pull --ff-only
+git pull --ff-only || { err "git pull falhou (há mudança local ou o histórico divergiu?). O código e os containers não mudaram: a versão de antes continua no ar."; exit 1; }
 
 log "Subindo containers..."
-docker compose up -d --build
+if ! docker compose up -d --build; then
+  err "O docker compose falhou ao construir ou subir os containers."
+  docker compose ps || true
+  rollback_hint
+  exit 1
+fi
 
 # --- 6. Teste de fumaça: nginx -> backend respondendo pela rede interna ---
 log "Conferindo se a aplicação respondeu..."
@@ -129,11 +145,7 @@ docker compose ps
 
 if [[ "$ok" != true ]]; then
   err "A aplicação não respondeu depois do deploy."
-  err "Rollback do código:  git checkout $PREV_COMMIT && docker compose up -d --build"
-  if [[ -n "$BACKUP" ]]; then
-    err "Rollback do banco (só se uma migration estragou dados):"
-    err "  docker compose exec -T db sh -c 'pg_restore -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" --clean --if-exists' < $BACKUP"
-  fi
+  rollback_hint
   exit 1
 fi
 

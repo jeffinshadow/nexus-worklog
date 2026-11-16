@@ -9,7 +9,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from .. import db, teams
-from ..visibility import visible_sql
+from ..visibility import active_sql, visible_sql
 from ..deps import active_user
 from ..labels import PRIO_PT, STATUS_PT
 from ..services import TASK_COUNTS, app_today, app_tz, is_due, rotinas, work_mask
@@ -80,7 +80,8 @@ def time_csv(uid: int | None, filename: str, viewer: int | None = None,
     por cliente; o projeto vai por nome, pois cada pessoa tem os seus).
     viewer = só de quem esse visualizador pode ver (visibility.visible_sql;
     `extra`: o recorte do seletor de equipe). start/end: só esse período."""
-    vis = f"{visible_sql('u', int(viewer))} AND {extra}" if viewer is not None else "TRUE"
+    # active_sql: como a lista e o painel da Equipe (as horas de uma conta bloqueada entravam só aqui, e a soma não fechava).
+    vis = f"{visible_sql('u', int(viewer))} AND {active_sql('u')} AND {extra}" if viewer is not None else "TRUE"
     rows = db.query_all(
         f"""SELECT e.day, e.minutes, w.id AS task_id, w.title, p.name AS project, e.note, e.actor, e.token_name,
                   w.ticket, w.after_hours, u.email
@@ -187,8 +188,19 @@ def export(kind: str, start: Optional[date] = Query(None), end: Optional[date] =
             by_id[c.pop("task_id")]["checklist"].append(c)
         for n in db.query_all("SELECT task_id, body, actor, token_name, created_at FROM task_notes WHERE user_id = %s ORDER BY created_at", (uid,)):
             by_id[n.pop("task_id")]["notes"].append(n)
-        for e in db.query_all("SELECT task_id, day, minutes, note, actor, token_name FROM time_entries WHERE user_id = %s ORDER BY day, id", (uid,)):
-            by_id[e.pop("task_id")]["time"].append(e)
+        # Tarefa transferida para outra pessoa (Admin › Contas): o tempo já apontado fica com
+        # quem apontou, mas a tarefa não é mais dele. Esse tempo vai à parte, com o título.
+        time_elsewhere = []
+        for e in db.query_all(
+                """SELECT e.task_id, w.title AS task_title, e.day, e.minutes, e.note, e.actor, e.token_name
+                     FROM time_entries e JOIN worklog_tasks w ON w.id = e.task_id
+                    WHERE e.user_id = %s ORDER BY e.day, e.id""", (uid,)):
+            task = by_id.get(e["task_id"])
+            if task is None:
+                time_elsewhere.append(e)
+                continue
+            del e["task_id"], e["task_title"]
+            task["time"].append(e)
         recurring = db.query_all(
             """SELECT id, label, active, freq, weekdays, month_day, interval_days, require_note, remind_at, created_at, deactivated_at
                  FROM recurring_tasks WHERE user_id = %s ORDER BY position, id""", (uid,))
@@ -238,6 +250,8 @@ def export(kind: str, start: Optional[date] = Query(None), end: Optional[date] =
                                              (uid,))["n"],
                        "download": "/api/export/fotos.zip"},
             "tasks": tasks,
+            # Tempo apontado em tarefas que passaram para outra pessoa (o título é o de hoje).
+            "time_on_transferred_tasks": time_elsewhere,
             "recurring": recurring,
             "renewals": db.query_all(
                 """SELECT r.label, r.expires_on, r.warn_days, r.renew_months, p.name AS project, r.note, r.created_at

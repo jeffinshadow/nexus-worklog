@@ -65,18 +65,22 @@ def list_people(team: Annotated[str | None, Query(max_length=20)] = None, user=D
     names = teams.names_sql("u.id") if master else teams.shared_names_sql(uid, "u.id")
     rows = db.query_all(
         f"""SELECT u.id, u.email, u.accepts_assignments_at, u.blocked_at IS NOT NULL AS blocked,
-                   {assignable.receive_sql('u', uid)} AS accepts, {names} AS teams
+                   {assignable.receive_sql('u', uid)} AS accepts, {names} AS teams,
+                   {teams.company_sql('u.id')} AS company
              FROM users u
             WHERE EXISTS (SELECT 1 FROM user_roles r WHERE r.user_id = u.id AND r.role = 'user')
               AND ({scope} OR u.id = %s) AND {cut}
             ORDER BY NOT {assignable.receive_sql('u', uid)}, lower(u.email)""", (uid,))
+    # Uma leitura para a lista toda (eram três consultas por pessoa: "todos recebem", equipe e perfil).
+    todos = assignable.everyone()
+    perfis = people.profiles(r["id"] for r in rows)
     out = []
     for r in rows:
-        everyone = assignable.everyone_for(r["id"])
+        everyone = r.pop("company") and todos  # o mesmo que assignable.everyone_for(r["id"])
         if not is_admin and not r["accepts"] and r["id"] != uid:
             out.append({"accepts": False, "everyone": everyone})
             continue
-        p = people.profile(r["id"])
+        p = dict(perfis[r["id"]])
         if not r["accepts"] and not is_admin:
             p["avatar"] = None
         out.append({**r, **p, "everyone": everyone})
@@ -145,21 +149,24 @@ def assign(data: AssignIn, user=Depends(require_assigner_csrf)):
         raise HTTPException(status_code=403, detail="essa pessoa não aceitou receber tarefas atribuídas")
     if data.from_return is not None and not any(r["id"] == data.from_return for r in open_returns(user["user_id"])):
         raise HTTPException(status_code=409, detail=RESOLVED_MSG)
-    row = db.query_one(
-        """INSERT INTO worklog_tasks (user_id, title, description, due_date, priority, ticket, after_hours,
-                                      assigned_by, assigned_at, project_id)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, now(), %s) RETURNING id""",
-        (target["id"], data.title, data.description, data.due_date, data.priority, data.ticket,
-         data.after_hours, user["user_id"], default_project(target["id"])),  # o projeto padrão de quem recebe
-    )
-    tid = row["id"]
     by_name = people.profile(user["user_id"])["name"]
     to_name = people.profile(target["id"])["name"]
-    snap = audit.worklog_snapshot(tid, target["id"])
-    audit.record(user, "worklog.assign", "worklog", tid, after={**snap, "by": by_name}, user_id=target["id"])
-    audit.record(user, "assign.send", "assignment", tid,
-                 after={"title": data.title, "to": to_name, "to_email": target["email"], "to_id": target["id"],
-                        **({"from_return": data.from_return} if data.from_return is not None else {})})
+    # A tarefa e as duas linhas do histórico (a de quem recebe e a de quem atribuiu, que
+    # é de onde sai "Tarefas que atribuí") vão juntas; os avisos saem depois de gravar.
+    with db.transaction():
+        row = db.query_one(
+            """INSERT INTO worklog_tasks (user_id, title, description, due_date, priority, ticket, after_hours,
+                                          assigned_by, assigned_at, project_id)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, now(), %s) RETURNING id""",
+            (target["id"], data.title, data.description, data.due_date, data.priority, data.ticket,
+             data.after_hours, user["user_id"], default_project(target["id"])),  # o projeto padrão de quem recebe
+        )
+        tid = row["id"]
+        snap = audit.worklog_snapshot(tid, target["id"])
+        audit.record(user, "worklog.assign", "worklog", tid, after={**snap, "by": by_name}, user_id=target["id"])
+        audit.record(user, "assign.send", "assignment", tid,
+                     after={"title": data.title, "to": to_name, "to_email": target["email"], "to_id": target["id"],
+                            **({"from_return": data.from_return} if data.from_return is not None else {})})
     emailed = mailer.configured()
     if emailed:
         _spawn(target["email"], _assignment_mail({**snap, "due_date": data.due_date}, by_name, target["id"]))
@@ -211,11 +218,12 @@ def sent(user=Depends(require_assigner)):
         (user["user_id"],),
     )
     today = app_today()
+    nomes = people.profiles(r["to_id"] for r in rows)
     for r in rows:
         # Cancelar só enquanto quem recebeu não mexeu em nada (Alterar ainda vale
         # para os campos que ela não mudou).
         r["cancelable"] = bool(r["editable"] and not _touched(r["id"], r["to_id"]))
-        r["to_name"] = people.profile(r.pop("to_id"))["name"]
+        r["to_name"] = nomes[r.pop("to_id")]["name"]
         r["late"] = bool(r["due_date"] and r["status"] != "done" and r["due_date"] < today)
         r["ended"] = None
     rows += _removed(user["user_id"])

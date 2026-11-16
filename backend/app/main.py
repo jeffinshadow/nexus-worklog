@@ -85,6 +85,7 @@ RETRY_AFTER = {429: "60", 503: "5"}
 @app.exception_handler(Busy)
 @app.exception_handler(PoolTimeout)
 @app.exception_handler(pg_errors.QueryCanceled)  # statement_timeout (db.py)
+@app.exception_handler(pg_errors.DeadlockDetected)  # duas transações (db.transaction) em círculo: nada foi gravado
 async def _busy(request: Request, exc: Exception):
     return JSONResponse({"detail": "servidor ocupado, tente de novo em instantes"}, status_code=503,
                         headers={"Retry-After": RETRY_AFTER[503]})

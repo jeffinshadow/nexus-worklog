@@ -36,17 +36,18 @@ def create_webhook(data: WebhookIn, user=Depends(web_active_csrf)):
         raise HTTPException(status_code=400, detail=str(e)) from None
     salt = webhooks.new_salt()
     # Começa do agora: o que já aconteceu antes não é reenviado (o feed tem o passado).
-    row = db.query_one(
-        f"""INSERT INTO webhooks (user_id, url, events, secret_salt, last_event_id)
-            VALUES (%s, %s, %s, %s, (SELECT COALESCE(max(id), 0) FROM audit_log))
-         RETURNING {COLS}""",
-        (uid, data.url, data.events, salt),
-    )
-    # No histórico só o domínio: o caminho pode carregar um segredo do destino.
-    audit.record(user, "webhook.create", "webhook", row["id"],
-                 after={"name": urlsplit(data.url).hostname, "events": data.events})
-    db.execute("UPDATE webhooks SET last_event_id = (SELECT max(id) FROM audit_log) WHERE id = %s",
-               (row["id"],))  # nem o próprio cadastro é enviado
+    with db.transaction():  # o webhook só passa a existir com o cursor já depois do próprio cadastro
+        row = db.query_one(
+            f"""INSERT INTO webhooks (user_id, url, events, secret_salt, last_event_id)
+                VALUES (%s, %s, %s, %s, (SELECT COALESCE(max(id), 0) FROM audit_log))
+             RETURNING {COLS}""",
+            (uid, data.url, data.events, salt),
+        )
+        # No histórico só o domínio: o caminho pode carregar um segredo do destino.
+        audit.record(user, "webhook.create", "webhook", row["id"],
+                     after={"name": urlsplit(data.url).hostname, "events": data.events})
+        db.execute("UPDATE webhooks SET last_event_id = (SELECT max(id) FROM audit_log) WHERE id = %s",
+                   (row["id"],))  # nem o próprio cadastro é enviado
     return {**row, "secret": webhooks.secret_for(salt)}  # única vez em que o segredo sai
 
 

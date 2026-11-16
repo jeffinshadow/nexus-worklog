@@ -6,7 +6,7 @@ do relatório deles. O foco é ajudar cada pessoa a organizar a própria rotina.
 Multiusuário, auto-hospedado, sem frameworks JS nem passo de build.
 Prioridades: **simples > seguro > funcional > elegante**.
 
-**Versão 2.0.0** (SemVer; o número fica em `backend/app/version.py`). O que mudou em cada versão:
+**Versão 2.1.0** (SemVer; o número fica em `backend/app/version.py`). O que mudou em cada versão:
 [`CHANGELOG.md`](CHANGELOG.md). Para quem hospeda e administra:
 [`docs/ADMIN.md`](docs/ADMIN.md) (instalação, variáveis, e-mail e push, backup e restauração, atualização, opções do Admin).
 

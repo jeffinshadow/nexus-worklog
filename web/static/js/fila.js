@@ -41,6 +41,9 @@ async function tx(store, mode, fn) {
     const r = fn(t.objectStore(store));
     t.oncomplete = () => ok(r && "result" in r ? r.result : undefined);
     t.onerror = () => fail(t.error);
+    // Aparelho sem espaço (fotos na fila): a gravação é abortada sem passar pelo "error", e a
+    // promessa nunca terminava (o formulário ficava travado, sem aviso).
+    t.onabort = () => fail(t.error || new Error("gravação no aparelho abortada"));
   });
 }
 
@@ -295,7 +298,10 @@ async function prepareOffline() {
     // Pede ao navegador para não apagar estes dados quando faltar espaço (quando ele deixa).
     try { await navigator.storage?.persist?.(); } catch { /* opcional */ }
     const board = await sendFn("GET", "/board");
-    await Promise.all(["/recurring/reminders", "/projects", "/timer", "/summary"].map((p) => sendFn("GET", p).catch(() => null)));
+    // As telas Tarefas e Projetos pedem estes endereços exatos (o que fica guardado é por endereço
+    // inteiro): sem eles, as duas só abriam sem sinal se tivessem sido visitadas antes.
+    await Promise.all(["/recurring/reminders", "/projects", "/projects?include_archived=true", "/board?done_limit=20&done_offset=0",
+      "/timer", "/summary"].map((p) => sendFn("GET", p).catch(() => null)));
     let n = 0;
     for (const t of (board.in_progress || []).slice(0, READY_MAX)) {
       if (!navigator.onLine) break;

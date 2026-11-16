@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import timedelta
 
 from app.services import get_report_range
 from conftest import dia_hoje, recuar_criacao, uid_de

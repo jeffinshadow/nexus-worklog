@@ -140,8 +140,17 @@ ACTION_LABELS = {
     "branding.update": "alterou os textos da identidade visual",
     "branding.logo": "enviou um novo logo",
     "branding.logo_reset": "restaurou o logo padrão",
+    "passkey.add": "cadastrou a passkey",
+    "passkey.remove": "removeu a passkey",
+    "invite_request.invited": "convidou, a partir do pedido,",
+    "invite_request.declined": "recusou o pedido de convite de",
     "undo": "desfez uma ação",
 }
+
+
+def _inside(text) -> str:
+    """Texto de outra pessoa que vai entre « »: os marcadores de dentro viram aspas (não "fecham" o de fora)."""
+    return str(text or "").replace("«", '"').replace("»", '"')
 
 
 def _label(row) -> str:
@@ -169,9 +178,9 @@ def _label(row) -> str:
         quanto = f"{dur(de)} → {dur(para)}" if de != para else dur(para)
         return f"{ACTION_LABELS['time.update']} “{snap.get('title', '')}” ({quanto})"
     if row["action"] == "worklog.delete" and snap.get("return_reason"):
-        return f"devolveu a tarefa “{name}” a {snap.get('returned_to') or 'quem atribuiu'}: «{snap['return_reason']}»"
+        return f"devolveu a tarefa “{name}” a {snap.get('returned_to') or 'quem atribuiu'}: «{_inside(snap['return_reason'])}»"
     if row["action"] == "assign.returned":
-        return f"{snap.get('to', '')} devolveu a tarefa “{name}”: «{snap.get('reason', '')}»"
+        return f"{snap.get('to', '')} devolveu a tarefa “{name}”: «{_inside(snap.get('reason', ''))}»"
     if row["action"] == "assign.close":
         return f"encerrou a tarefa “{name}”, devolvida por {snap.get('to', '')}"
     if row["action"] == "worklog.delete" and snap.get("canceled_by"):
@@ -278,16 +287,24 @@ def _label(row) -> str:
     return f"{text} “{name}”" if name else text
 
 
-def _latest_ids(user_id: int) -> set[int]:
-    """Última ação (não desfeita, não-undo) de cada item."""
+def _latest_ids(user_id: int, items) -> set[int]:
+    """Última ação (não desfeita, não-undo) de cada item de `items` [(entity, entity_id)].
+
+    Só dos itens pedidos, pelo índice (user_id, entity, entity_id, id): a versão
+    anterior ordenava o histórico inteiro da pessoa (180 dias) a cada página do
+    Histórico, a cada "Desfazer" e a cada aviso com Desfazer."""
+    pairs = sorted({(e, int(i)) for e, i in items if e and i is not None})
+    if not pairs:
+        return set()
     rows = db.query_all(
         """
-        SELECT DISTINCT ON (entity, entity_id) id
-          FROM audit_log
-         WHERE user_id = %s AND action <> 'undo' AND undone_at IS NULL
-         ORDER BY entity, entity_id, id DESC
+        SELECT DISTINCT ON (a.entity, a.entity_id) a.id
+          FROM unnest(%s::text[], %s::bigint[]) AS p(entity, entity_id)
+          JOIN audit_log a ON a.user_id = %s AND a.entity = p.entity AND a.entity_id = p.entity_id
+         WHERE a.action <> 'undo' AND a.undone_at IS NULL
+         ORDER BY a.entity, a.entity_id, a.id DESC
         """,
-        (user_id,),
+        ([p[0] for p in pairs], [p[1] for p in pairs], user_id),
     )
     return {r["id"] for r in rows}
 
@@ -381,7 +398,8 @@ def list_history(
         (*params, limit, offset),
     )
     rows = _with_names(user["user_id"], rows)
-    latest = _latest_ids(user["user_id"])
+    latest = _latest_ids(user["user_id"], [(r["entity"], r["entity_id"]) for r in rows
+                                           if r["action"] in UNDOABLE and r["undone_at"] is None])
     out = []
     for r in rows:
         out.append({
@@ -559,9 +577,26 @@ def _set_pause_today(rid: int, end_d) -> None:
 
 @router.post("/{history_id}/undo")
 def undo(history_id: int, user=Depends(active_user_csrf)):
+    # Desfaz por inteiro ou não desfaz: os comandos e a linha do histórico vão numa
+    # transação só (uma falha no meio deixava a tarefa de volta sem as anotações, ou
+    # o projeto sem os objetivos, e a ação ainda marcada como desfazível). Os avisos
+    # (e-mail, push) saem depois de gravar. Comentário, não docstring: docstring de
+    # rota vira descrição no docs/openapi.json.
+    later: list = []
+    with db.transaction():
+        out = _undo(history_id, user, later)
+    for send in later:
+        send()
+    return out
+
+
+def _undo(history_id: int, user: dict, later: list) -> dict:
     uid = user["user_id"]
+    # FOR UPDATE: dois "Desfazer" da mesma ação ao mesmo tempo. O segundo espera aqui o
+    # primeiro gravar, lê a linha já marcada e responde 409, sem repetir comando nenhum
+    # (sem a trava, os dois reinseriam a tarefa e o segundo caía num erro 500).
     row = db.query_one(
-        "SELECT * FROM audit_log WHERE id = %s AND user_id = %s", (history_id, uid)
+        "SELECT * FROM audit_log WHERE id = %s AND user_id = %s FOR UPDATE", (history_id, uid)
     )
     if not row:
         raise HTTPException(status_code=404, detail="essa ação não está mais no histórico")
@@ -569,7 +604,7 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
         raise HTTPException(status_code=400, detail="esta ação não pode ser desfeita")
     if row["undone_at"] is not None:
         raise HTTPException(status_code=409, detail="esta ação já foi desfeita")
-    if history_id not in _latest_ids(uid):
+    if history_id not in _latest_ids(uid, [(row["entity"], row["entity_id"])]):
         raise HTTPException(status_code=409, detail="houve alterações depois desta; desfaça as mais recentes primeiro")
 
     a, before, after, eid = row["action"], row["before"], row["after"], row["entity_id"]
@@ -631,7 +666,7 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
             _put_time(uid, eid, e)
         if before.get("return_reason") and before.get("assigned_by"):
             from .assign import notify_return_undone
-            notify_return_undone(before["assigned_by"], eid, before["title"], uid)
+            later.append(lambda: notify_return_undone(before["assigned_by"], eid, before["title"], uid))
     elif a == "recurring.create":
         if not db.query_one("SELECT 1 FROM recurring_tasks WHERE id = %s AND user_id = %s AND active", (eid, uid)):
             raise HTTPException(status_code=409, detail="a rotina já foi encerrada")
@@ -825,6 +860,7 @@ def undo(history_id: int, user=Depends(active_user_csrf)):
         for o in before.get("objectives") or []:  # os objetivos voltam, com as tarefas deles
             _put_objective(uid, o)
 
-    db.execute("UPDATE audit_log SET undone_at = now() WHERE id = %s", (history_id,))
+    if not db.execute("UPDATE audit_log SET undone_at = now() WHERE id = %s AND undone_at IS NULL", (history_id,)):
+        raise HTTPException(status_code=409, detail="esta ação já foi desfeita")
     audit.record(user, "undo", row["entity"], eid, before=after, after={"undid": history_id, "action": a})
     return {"ok": True, "undid": history_id, "action": a}

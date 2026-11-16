@@ -226,6 +226,13 @@ def _plural(n: int, um: str, varios: str) -> str:
     return f"{n} {um if n == 1 else varios}"
 
 
+def _pct(done: int, total: int) -> int:
+    """Porcentagem para o texto: 100% só com tudo feito e 0% só sem nada (199 de 200 não é "100%")."""
+    if not total:
+        return 0
+    return 100 if done >= total else max(1 if done else 0, min(99, round(100 * done / total)))
+
+
 def _lede(data: dict) -> str:
     """O período em texto corrido: o que foi feito, o tempo, as rotinas e o que fica."""
     s = data["summary"]
@@ -248,14 +255,16 @@ def _lede(data: dict) -> str:
     if feito:
         frases.append(("Foram " if s["pontual_done"] != 1 or s["minutes"] else "Foi ") + " e ".join(feito) + ".")
     if s["recurring_total"] and not by_project:
-        pct = round(100 * s["recurring_done"] / s["recurring_total"])
+        pct = _pct(s["recurring_done"], s["recurring_total"])
+        feitas, previstas = s["recurring_done"], s["recurring_total"]
+        rot = "rotina prevista" if previstas == 1 else "rotinas previstas"
         # "rotinas", como no app (não "verificações"); sem nenhuma, uma frase em vez de um 0% frio.
-        r = (f"Foram feitas {s['recurring_done']} de {s['recurring_total']} rotinas previstas ({pct}%)" if s["recurring_done"]
-             else f"Nenhuma das {s['recurring_total']} rotinas previstas foi marcada")
+        r = (f"{'Foi feita' if feitas == 1 else 'Foram feitas'} {feitas} de {previstas} {rot} ({pct}%)" if feitas
+             else ("A rotina prevista não foi marcada" if previstas == 1 else f"Nenhuma das {previstas} rotinas previstas foi marcada"))
         r += f", mais {_plural(s['recurring_extra'], 'extra', 'extras')}." if s["recurring_extra"] else "."
         frases.append(r)
     if s["open"]:
-        a = f"Ficam {_plural(s['open'], 'tarefa', 'tarefas')} em aberto"
+        a = f"{'Fica' if s['open'] == 1 else 'Ficam'} {_plural(s['open'], 'tarefa', 'tarefas')} em aberto"
         a += f", {_plural(s['overdue'], 'atrasada', 'atrasadas')}." if s["overdue"] else ", nenhuma atrasada."
         frases.append(a)
     return " ".join(frases) or "Nenhuma atividade registrada no período."
@@ -319,7 +328,7 @@ def _figures(pdf: _Report, data: dict) -> None:
     by_project = bool(data.get("project"))
     cols = []
     if not by_project:
-        pct = round(100 * s["recurring_done"] / s["recurring_total"]) if s["recurring_total"] else None
+        pct = _pct(s["recurring_done"], s["recurring_total"]) if s["recurring_total"] else None
         cols.append(("rotinas", f"{pct}%" if pct is not None else "—",
                      f"{s['recurring_done']} de {s['recurring_total']} previstas" if s["recurring_total"] else "nenhuma prevista", pct))
     cols.append(("concluídas", str(s["pontual_done"]), "tarefas", None))
@@ -502,7 +511,7 @@ def _matrix(pdf: _Report, data: dict) -> bool:
                 pdf.dot(cx + 0.18, cy + 0.18, d - 0.36, None, outline=FAINT, lw=0.3)
             elif mk == "O":
                 pdf.dot(cx + d / 2 - 0.35, cy + d / 2 - 0.35, 0.7, FAINT)
-        pct = round(100 * r["done"] / r["due"]) if r["due"] else None
+        pct = _pct(r["done"], r["due"]) if r["due"] else None
         pdf.font("labelb", 7.4, INK)  # sem cor por limite: o PDF não dá nota
         pdf.text_at(pdf.w - M - right_w, y, right_w, row_h,
                     (f"{pct}%" if pct is not None else "extra") + "", "R")
@@ -524,7 +533,7 @@ def _recurring_list(pdf: _Report, data: dict) -> None:
         if y + 9 > pdf.bottom:
             pdf.add_page()
             y = pdf.get_y()
-        pct = round(100 * r["done"] / r["due"]) if r["due"] else None
+        pct = _pct(r["done"], r["due"]) if r["due"] else None
         pdf.font("sans", 8.4, INK)
         pdf.text_at(M, y, 70, 4.2, pdf.fit(r["label"], 68))
         pdf.font("label", 6.2, DIM)
@@ -835,8 +844,9 @@ def _diary(pdf: _Report, data: dict) -> None:
 
         # Tempo do dia: a linha da tarefa concluída no dia já tem o tempo; só
         # repete se tiver anotação (então mostra a anotação).
-        feitas = {w["title"] for w in day["pontual"]}
-        tempo = [e for e in day["time"] if e["title"] not in feitas or e["note"]]
+        # Pelo id (não pelo título: outra tarefa com o mesmo nome, vinda de um modelo, perdia a linha).
+        feitas = {w["id"] for w in day["pontual"]}
+        tempo = [e for e in day["time"] if e.get("task_id") not in feitas or e["note"]]
         if tempo:
             for e in tempo:
                 pdf.room(5)

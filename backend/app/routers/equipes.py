@@ -54,7 +54,8 @@ def _team(team_id: int) -> dict:
 def _members(team_id: int) -> list[dict]:
     rows = db.query_all("""SELECT u.id, u.email FROM team_members m JOIN users u ON u.id = m.user_id
                             WHERE m.team_id = %s""", (team_id,))
-    out = [{"id": r["id"], "email": r["email"], "name": people.profile(r["id"])["name"]} for r in rows]
+    perfis = people.profiles(r["id"] for r in rows)
+    out = [{"id": r["id"], "email": r["email"], "name": perfis[r["id"]]["name"]} for r in rows]
     return sorted(out, key=lambda r: (r["name"].lower(), r["email"]))
 
 
@@ -86,11 +87,12 @@ def set_user_teams(user_id: int, team_ids: list[int]) -> tuple[list[int], list[i
     """Troca as equipes ativas da pessoa pela lista (as arquivadas ficam como estão).
     Devolve (antes, depois) só das ativas."""
     before = [t["id"] for t in teams.of_user(user_id)]
-    db.execute("""DELETE FROM team_members m USING teams t
-                   WHERE m.team_id = t.id AND t.archived_at IS NULL AND m.user_id = %s AND NOT (m.team_id = ANY(%s))""",
-               (user_id, team_ids))
-    for tid in team_ids:
-        db.execute("INSERT INTO team_members (team_id, user_id) VALUES (%s, %s) ON CONFLICT DO NOTHING", (tid, user_id))
+    with db.transaction():  # sair das antigas e entrar nas novas: juntos (no meio, a pessoa ficava sem equipe)
+        db.execute("""DELETE FROM team_members m USING teams t
+                       WHERE m.team_id = t.id AND t.archived_at IS NULL AND m.user_id = %s AND NOT (m.team_id = ANY(%s))""",
+                   (user_id, team_ids))
+        for tid in team_ids:
+            db.execute("INSERT INTO team_members (team_id, user_id) VALUES (%s, %s) ON CONFLICT DO NOTHING", (tid, user_id))
     return before, [t["id"] for t in teams.of_user(user_id)]
 
 
@@ -140,9 +142,10 @@ def edit_team(team_id: int, data: TeamEditIn, admin=Depends(require_admin_csrf))
     if data.member_ids is not None:
         ids = _check_users(data.member_ids)
         before = [m["id"] for m in _members(team_id)]
-        db.execute("DELETE FROM team_members WHERE team_id = %s AND NOT (user_id = ANY(%s))", (team_id, ids))
-        for uid in ids:
-            db.execute("INSERT INTO team_members (team_id, user_id) VALUES (%s, %s) ON CONFLICT DO NOTHING", (team_id, uid))
+        with db.transaction():  # a lista inteira ou nada
+            db.execute("DELETE FROM team_members WHERE team_id = %s AND NOT (user_id = ANY(%s))", (team_id, ids))
+            for uid in ids:
+                db.execute("INSERT INTO team_members (team_id, user_id) VALUES (%s, %s) ON CONFLICT DO NOTHING", (team_id, uid))
         if set(before) != set(ids):
             audit.record(ctx, "team.members", "team", team_id,
                          before={"members": before},
@@ -250,7 +253,7 @@ def _send_quiet(to: str, mail) -> None:
     try:
         mailer.send(to, mail.subject, mail.text(), mail.html())
     except Exception as e:  # noqa: BLE001 — a transferência já foi feita; o e-mail é aviso
-        log.warning("aviso por e-mail para %s falhou: %s", to, e)
+        log.warning("aviso por e-mail (transferência do master) falhou: %s", e)  # sem o e-mail em claro
 
 
 def _receiver(admin: dict, to_id: int) -> dict:
@@ -311,10 +314,16 @@ def transfer_confirm(data: MasterConfirmIn, admin=Depends(require_admin_csrf)):
     if not link:
         raise HTTPException(status_code=400, detail="código vencido ou já usado: peça outro")
     code = data.code.strip()
+    # A tentativa é contada ANTES de comparar, numa gravação só: vários pedidos ao mesmo tempo
+    # não testam mais códigos do que o limite.
+    tried = db.query_one(
+        """UPDATE auth_links SET attempts = attempts + 1
+            WHERE id = %s AND used_at IS NULL AND attempts < %s RETURNING attempts""", (link["id"], CODE_ATTEMPTS))
+    if not tried:
+        raise HTTPException(status_code=400, detail="código vencido ou já usado: peça outro")
     if link["token_hash"] != token_hash(f"master:{uid}:{code}"):
         row = db.query_one(
-            """UPDATE auth_links SET attempts = attempts + 1,
-                                     used_at = CASE WHEN attempts + 1 >= %s THEN now() END
+            """UPDATE auth_links SET used_at = CASE WHEN attempts >= %s THEN now() END
                 WHERE id = %s AND used_at IS NULL RETURNING attempts""", (CODE_ATTEMPTS, link["id"]))
         left = CODE_ATTEMPTS - (row["attempts"] if row else CODE_ATTEMPTS)
         audit.record(_ctx(admin), "master.transfer_fail", "user", link["target_user_id"],

@@ -106,7 +106,7 @@ async function mountList(root, ctx) {
           h("small", { class: "proj-last", text: "última atividade " + quando(p.last_activity, today) }))),
       temObj ? progress(p.objectives_done, p.objectives, false) : progress(p.done_tasks, p.total_tasks, false),
       h("p", { class: "proj-card-meta", text: temObj
-        ? `${p.objectives_done} de ${p.objectives} objetivo${p.objectives > 1 ? "s" : ""} concluído${p.objectives_done === 1 ? "" : "s"}`
+        ? `${p.objectives_done} de ${p.objectives} objetivo${p.objectives > 1 ? "s" : ""} concluído${p.objectives > 1 ? "s" : ""}`
         : p.total_tasks ? `${p.done_tasks} de ${p.total_tasks} tarefas concluídas` : "nenhuma tarefa ainda" }),
       numeros(p));
   };
@@ -170,11 +170,9 @@ async function mountProject(root, ctx, pid) {
   const p = o.project;
   // O título da página é o projeto aberto (como o detalhe de qualquer item), com o
   // ícone grande na cor dele; a lista volta pelo link acima dele. O próximo título troca o texto todo.
-  const titulo = document.getElementById("page-title");
-  titulo.replaceChildren(projTile(p, "proj-tile-lg"), h("span", { text: p.name }));
+  ctx.setTitle(p.name, projTile(p, "proj-tile-lg"), h("span", { text: p.name }));
   ctx.setEyebrow(p.archived ? "projeto arquivado" : "projeto");
   ctx.setBack(h("a", { class: "btn btn-text btn-sm", href: "#/projetos" }, icon("left"), "Todos os projetos"));
-  document.title = `${p.name} · Nexus Worklog`;
   // As ações do projeto ficam no cabeçalho, junto do título (celular e
   // computador): "Editar" com rótulo e, logo ao lado, o ⋮ com o resto
   // (arquivar/reativar, excluir). Depois de salvar, a tela redesenha e o foco
@@ -256,11 +254,19 @@ function objectiveBlock(ob, index, o, pid, today, refresh) {
     "aria-label": ob ? `Nova tarefa em ${ob.title}` : "Nova tarefa sem objetivo" });
   const addTask = async () => {
     add.disabled = true;
+    let created;
     try {
-      await api.post("/worklog", oid ? { title: add.value.trim(), objective_id: oid } : { title: add.value.trim(), project_id: pid });
+      created = await api.post("/worklog", oid ? { title: add.value.trim(), objective_id: oid } : { title: add.value.trim(), project_id: pid });
+    } catch (e) { add.disabled = false; errorToast(e, "Não foi possível criar a tarefa."); return; }
+    // Criada (ou guardada na fila): o campo esvazia já. Se a releitura do projeto falhar depois, o
+    // título não fica no campo para ser mandado de novo (cada envio criava outra tarefa).
+    add.value = "";
+    add.disabled = false;
+    if (created && created.queued) { toast("Tarefa guardada: vai quando a conexão voltar."); add.focus(); return; }
+    try {
       await refresh(); // e o cursor volta ao campo do mesmo bloco (lote de tarefas seguidas)
       document.querySelector(`.obj-block[data-objective-block="${oid ?? ""}"] .obj-add`)?.focus();
-    } catch (e) { add.disabled = false; errorToast(e, "Não foi possível criar a tarefa."); }
+    } catch (e) { errorToast(e, "Tarefa criada, mas a tela não atualizou. Recarregue."); }
   };
 
   // Concluídas: recolhidas, de 10 em 10. As primeiras vêm na visão geral; as

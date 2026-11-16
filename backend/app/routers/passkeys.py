@@ -10,6 +10,7 @@ limite de tentativas do login por senha, e termina na mesma sessão.
 """
 import json
 import logging
+import threading
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
@@ -22,7 +23,7 @@ from webauthn.helpers import base64url_to_bytes
 from webauthn.helpers.structs import (AuthenticatorSelectionCriteria, PublicKeyCredentialDescriptor,
                                       ResidentKeyRequirement, UserVerificationRequirement)
 
-from .. import audit, db, people
+from .. import audit, db, mailer, people
 from ..config import config
 from ..deps import client_ip, web_active, web_active_csrf
 from ..routers.branding import branding
@@ -119,7 +120,26 @@ def register(data: RegisterIn, user=Depends(web_active_csrf)):
     if not row:
         raise HTTPException(status_code=409, detail="esta passkey já está cadastrada")
     audit.record(user, "passkey.add", "passkey", row["id"], after={"name": data.name})
+    # A passkey entra sem senha e continua valendo depois de uma troca de senha: quem a
+    # cadastrou numa sessão alheia voltaria por ela. O aviso deixa a dona da conta agir.
+    if mailer.configured():
+        threading.Thread(target=_notify_added, args=(user["email"], (data.name or "").strip()), daemon=True).start()
     return {"id": row["id"]}
+
+
+def _notify_added(email: str, name: str) -> None:
+    from ..notify import Mail  # import tardio: notify importa rotas
+    m = Mail("Nova passkey na sua conta do Nexus", "Uma passkey foi cadastrada na sua conta",
+             "Com ela dá para entrar sem senha (digital, rosto ou chave física). Se foi você, não precisa fazer nada.")
+    m.blocks = [("Passkey", [name or "sem nome"]),
+                ("Não foi você?", ["Remova a passkey em Configurações > Conta e troque a senha."])]
+    m.reason = "Você recebe este e-mail porque a forma de entrar na sua conta mudou."
+    m.settings_tab = None
+    m.link = "/#/config?aba=conta"
+    try:
+        mailer.send(email, m.subject, m.text(), m.html())
+    except Exception as e:  # noqa: BLE001 — a passkey já foi cadastrada; o e-mail é aviso
+        log.warning("aviso de passkey nova falhou: %s", e)
 
 
 @router.delete("/{passkey_id}")
@@ -171,6 +191,11 @@ def login(data: LoginPasskeyIn, request: Request, response: Response):
     user = db.query_one("SELECT * FROM users WHERE id = %s", (cred["user_id"],))
     if not user:
         falhou("conta excluída")
+    if user["blocked_at"]:
+        # O bloqueio já apaga as passkeys; isto vale para uma que tenha sobrado
+        # (a mesma resposta do login por senha).
+        log.warning("login por passkey recusado: conta bloqueada, ip=%s", ip)
+        raise HTTPException(status_code=403, detail="Seu acesso foi bloqueado por quem administra o Nexus. Para voltar a entrar, peça que libere o acesso.")
     db.execute("UPDATE webauthn_credentials SET sign_count = %s, last_used_at = now() WHERE id = %s",
                (v.new_sign_count, cred["id"]))
     return _start_session(user, response)

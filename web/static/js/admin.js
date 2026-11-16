@@ -111,17 +111,27 @@ export async function mount(root, ctx) {
   // #/admin?aba=empresas abre direto na aba (link da Conta e do detalhe da tarefa).
   const pedida = (location.hash.match(/[?&]aba=(\w+)/) || [])[1];
   const first = abas.find(([k]) => k === pedida) || abas[0];
+  // Cada aba abre numa caixa só dela: trocar de aba antes de a anterior carregar não mistura
+  // as duas (a que chega atrasada desenha numa caixa que já saiu da tela).
+  const open = (fn) => {
+    const el = h("div");
+    body.replaceChildren(el);
+    return { el, done: (async () => fn(el))() };
+  };
   for (const [key, label, fn] of abas) {
     seg.append(h("button", {
       type: "button", class: "chip-btn", role: "tab", "aria-selected": key === first[0] ? "true" : "false", text: label,
       onClick: () => {
         for (const b of seg.children) b.setAttribute("aria-selected", b.textContent === label ? "true" : "false");
-        fn(body);
+        const { el, done } = open(fn);
+        // Falhou ao carregar: a frase na própria aba (antes, a aba ficava em branco, sem aviso).
+        done.catch((e) => el.replaceChildren(h("p", { class: "error-text", role: "alert",
+          text: (e && "status" in e && e.message) || "Não foi possível carregar. Tente de novo." })));
       },
     }));
   }
   root.append(seg, body);
-  await first[2](body);
+  await open(first[2]).done;
 }
 
 const roleNames = (roles) => ROLES.filter(([k]) => roles.includes(k)).map(([, n]) => n).join(" · ") || "sem papel";
@@ -508,7 +518,10 @@ function editRoles(u, me, onChanged) {
     const cb = h("input", { type: "checkbox", value: k });
     cb.checked = u.roles.includes(k);
     if (k === "admin" && u.id === me.id) { cb.disabled = true; cb.title = "Você não pode tirar o seu próprio admin"; }
-    else if (k === "admin" && u.is_master) { cb.disabled = true; cb.title = "É o admin master: só ele passa o papel adiante (Admin › Equipes)"; }
+    else if (u.is_master && u.id !== me.id) {  // os papéis do master, só ele muda (o servidor recusa)
+      cb.disabled = true;
+      cb.title = k === "admin" ? "É o admin master: só ele passa o papel adiante (Admin › Equipes)" : "É o admin master: só ele muda os próprios papéis";
+    }
     cb.addEventListener("change", () => { if (saving) { cb.checked = !cb.checked; return; } save(cb); });
     return [cb, h("label", { class: "check-line role-line" }, cb, h("span", {}, h("strong", { text: n }), h("small", { text: roleDesc(k, d, me) })))];
   });

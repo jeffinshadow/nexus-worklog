@@ -166,6 +166,22 @@ def _quoted(t: dict, text: str) -> str:
     return "«" + text.replace("«", '"').replace("»", '"') + "»"
 
 
+def _assigned(uid: int, ids) -> dict:
+    """Entre as tarefas `ids` da pessoa, as que outra pessoa atribuiu: {id: quem}. Para as saídas
+    que só têm o id e o título (objetivos, revisão da semana, cronômetro): o título dessas é texto
+    de terceiro e vai entre « », como nas demais."""
+    ids = sorted({int(i) for i in ids if i is not None})
+    if not ids:
+        return {}
+    return {r["id"]: r["n"] for r in db.query_all(
+        """SELECT w.id, COALESCE(a.display_name, a.email) AS n FROM worklog_tasks w JOIN users a ON a.id = w.assigned_by
+            WHERE w.user_id = %s AND w.id = ANY(%s)""", (uid, ids))}
+
+
+def _q(quem: dict, task_id, text: str) -> str:
+    return _quoted({"assigned_by_name": quem.get(task_id)}, text)
+
+
 def _by(t: dict) -> str:
     return f" (atribuída por {t['assigned_by_name']})" if t.get("assigned_by_name") else ""
 
@@ -215,6 +231,8 @@ def _resolve_project(uid: int, value):
         return None
     if isinstance(value, int) or (isinstance(value, str) and value.isdigit()):
         row = db.query_one("SELECT id FROM projects WHERE id = %s AND user_id = %s", (int(value), uid))
+        if not row and isinstance(value, str):  # um projeto chamado "2025" não é o id 2025
+            row = project_routes.same_name(uid, value)
     else:
         row = project_routes.same_name(uid, str(value))
     if not row:
@@ -291,7 +309,8 @@ def t_get_today(ctx, args):
         mins = int((datetime.now(timezone.utc) - tm["started_at"]).total_seconds() // 60)
         esquecido = (" (provavelmente esquecido: pergunte a que horas parou e use stop_timer com at)"
                      if mins > FORGOTTEN_TIMER_MIN else "")
-        lines += [f"Cronômetro rodando em #{tm['task_id']} {tm['title']} há {_dur(max(mins, 1))}{esquecido}.", ""]
+        dona = next((t for t in b["in_progress"] if t["id"] == tm["task_id"]), {})  # atribuída: o título é de terceiro
+        lines += [f"Cronômetro rodando em #{tm['task_id']} {_quoted(dona, tm['title'])} há {_dur(max(mins, 1))}{esquecido}.", ""]
     rec = [r for r in b["recurring"] if r["due"]]
     lines.append(f"Rotinas de hoje ({sum(r['done_today'] for r in rec)}/{len(rec)} feitas):")
     lines += _recurring_rows(rec) or ["  (nenhuma)"]
@@ -304,7 +323,7 @@ def t_get_today(ctx, args):
     # "Primeiro amanhã": o que a pessoa escolheu ontem para começar hoje (já no topo das abertas).
     first = [t for t in open_ if t.get("first_on") == today]
     if first:
-        lines.append("Escolhidas para começar hoje (Primeiro amanhã): " + ", ".join(f"#{t['id']} {t['title']}" for t in first))
+        lines.append("Escolhidas para começar hoje (Primeiro amanhã): " + ", ".join(f"#{t['id']} {_quoted(t, t['title'])}" for t in first))
         lines.append("")
     lines.append(f"Tarefas abertas ({len(open_)}):")
     lines += [f"  {_task_line(t, today)}" for t in open_] or ["  (nenhuma)"]
@@ -329,10 +348,6 @@ def _with_counts(uid: int, rows: list) -> list:
     return [t | extra.get(t["id"], {}) for t in rows]
 
 
-def _in_project(t: dict, pid: int) -> bool:
-    return t.get("project_id") == pid or any(x["id"] == pid for x in t.get("extra_projects") or [])
-
-
 def t_list_tasks(ctx, args):
     uid = ctx["user_id"]
     status = args.get("status", "open")
@@ -340,13 +355,17 @@ def t_list_tasks(ctx, args):
     offset = max(0, int(args.get("offset", 0) or 0))
     pid = _resolve_project(uid, args.get("project"))
     if args.get("from") or args.get("to") or args.get("by"):
+        if (args.get("status") or "all") not in ("open", "done", "all"):  # null = ausente, como no resto
+            raise ToolError("status deve ser open, done ou all")
+        if (args.get("by") or "created") not in ("created", "completed"):
+            raise ToolError("by deve ser created (criadas no período) ou completed (concluídas no período)")
         lim = max(1, min(limit, 500))
+        # O projeto filtra no banco (a rota pagina já filtrada): antes, lia até 500 do período
+        # e filtrava aqui, e num período com mais de 500 tarefas as do projeto ficavam de fora.
         rows = _call(worklog_routes.list_tasks, start=_day(args.get("from")), end=_day(args.get("to")),
-                     by=args.get("by") or "created", status=args.get("status", "all"),
-                     limit=500 if pid else lim, offset=0 if pid else offset, user=ctx)
+                     by=args.get("by") or "created", status=args.get("status") or "all",
+                     limit=lim, offset=offset, project=pid, user=ctx)
         rows = _with_counts(uid, rows)
-        if pid:
-            rows = [t for t in rows if _in_project(t, pid)][offset:offset + lim]
         today = services.app_today()
         out = "\n".join(f"criada {_created(t)} · {_task_line(t, today)}" for t in rows)
         if len(rows) == lim:
@@ -359,10 +378,15 @@ def t_list_tasks(ctx, args):
         b = services.get_board(uid, project=pid, done_offset=offset, done_limit=lim)
         items, total = b["done"], b["done_total"]
     else:
-        b = services.get_board(uid, project=pid)
-        todas = b["in_progress"] + (b["done"] if status == "all" else [])
-        total = len(b["in_progress"]) + (b["done_total"] if status == "all" else 0)
-        items = todas[offset:offset + lim]
+        b = services.get_board(uid, project=pid, done_limit=1)
+        abertas = b["in_progress"]
+        total = len(abertas) + (b["done_total"] if status == "all" else 0)
+        items = abertas[offset:offset + lim]
+        if status == "all" and len(items) < lim:
+            # As concluídas vêm do banco, da posição certa (o quadro só traz as 200 mais recentes:
+            # passando disso, a página vinha vazia e o resto nunca aparecia).
+            items = items + services.get_board(uid, project=pid, done_offset=max(0, offset - len(abertas)),
+                                               done_limit=lim - len(items))["done"]
     out = "\n".join(_task_line(t, b["today"]) for t in items)
     if items and offset + len(items) < total:
         out += f"\n(mostrando {offset + 1}–{offset + len(items)} de {total}: chame de novo com offset={offset + len(items)})"
@@ -387,9 +411,9 @@ def _started_from(completed_at, minutes) -> str:
         return txt
     try:
         when = datetime.fromisoformat(txt.replace("Z", "+00:00"))
-    except ValueError:
+        return (when - timedelta(minutes=int(minutes))).isoformat()
+    except (ValueError, OverflowError):  # OverflowError: ano 1 menos alguns minutos
         return txt  # a rota diz o formato certo
-    return (when - timedelta(minutes=int(minutes))).isoformat()
 
 
 def t_create_task(ctx, args):
@@ -486,6 +510,9 @@ def t_add_note(ctx, args):
     data = _call(NoteIn, body=args.get("text", ""), external_ref=args.get("external_ref"))
     row = _call(worklog_routes.add_note, int(args["task_id"]), data, Response(), user=ctx)
     if row.get("existing"):
+        if row.get("task_id") not in (None, int(args["task_id"])):
+            raise ToolError(f"esse external_ref já foi usado numa anotação da tarefa #{row['task_id']}; nada foi anotado na "
+                            f"#{args['task_id']}. Use outro external_ref")
         return f"Já anotado na tarefa #{args['task_id']} (external_ref repetido, nada duplicado)."
     return f"Anotado na tarefa #{args['task_id']}."
 
@@ -506,6 +533,9 @@ def t_log_time(ctx, args):
     data = _call(TimeIn, minutes=args.get("minutes"), day=args.get("day"), note=args.get("note"),
                  external_ref=args.get("external_ref"))
     row = _call(worklog_routes.log_time, int(args["task_id"]), data, Response(), user=ctx)
+    if row.get("existing") and row.get("task_id") not in (None, int(args["task_id"])):
+        raise ToolError(f"esse external_ref já foi usado num apontamento da tarefa #{row['task_id']}; nada foi apontado na "
+                        f"#{args['task_id']}. Use outro external_ref")
     if row.get("existing"):
         return (f"Já apontado: {_dur(row['minutes'])} em {row['day'].isoformat()} na tarefa #{args['task_id']} "
                 "(external_ref repetido, nada somado).")
@@ -598,11 +628,11 @@ def t_update_objective(ctx, args):
     fields = _fields(args, ("title", "description", "due_date"))
     if not fields and "position" not in args:
         raise ToolError("nada a mudar: envie title, description, due_date ou position")
+    if "position" in args and (not isinstance(args["position"], int) or args["position"] < 1):
+        raise ToolError("position é um inteiro a partir de 1 (1 = primeiro); nada foi mudado")
     if fields:
         _call(objective_routes.update_objective, oid, _call(ObjectiveUpdate, **fields), user=ctx)
     if "position" in args:
-        if not isinstance(args["position"], int) or args["position"] < 1:
-            raise ToolError("position é um inteiro a partir de 1 (1 = primeiro)")
         _move(ctx, objective_routes.own_objective(uid, oid), args["position"])
     return "Atualizado: " + _objective_line(uid, objective_routes.own_objective(uid, oid))
 
@@ -634,14 +664,16 @@ def t_list_objectives(ctx, args):
     nomes = {"todo": "não iniciado", "in_progress": "em andamento", "done": "concluído"}
     linhas = [f"Projeto {o['project']['name']}: {o['totals']['done']}/{o['totals']['total']} tarefas concluídas. "
               "Objetivos na ordem de execução:"]
+    sem = o["unassigned"]["tasks"]
+    # Tarefa atribuída cai sozinha no projeto padrão de quem recebe: o título dela é de terceiro.
+    quem = _assigned(ctx["user_id"], [t["id"] for ob in o["objectives"] for t in ob["tasks"][:15]] + [t["id"] for t in sem[:15]])
     for i, ob in enumerate(o["objectives"], 1):
         prazo = f", prazo {ob['due_date'].isoformat()}" if ob["due_date"] else ""
         linhas.append(f"{i}. #{ob['id']} {ob['title']} — {nomes[ob['status']]}, {ob['done']}/{ob['total']}{prazo}")
-        linhas += [f"   - #{t['id']} {t['title']}" for t in ob["tasks"][:15]]
-    sem = o["unassigned"]["tasks"]
+        linhas += [f"   - #{t['id']} {_q(quem, t['id'], t['title'])}" for t in ob["tasks"][:15]]
     if sem:
         linhas.append("Sem objetivo:")
-        linhas += [f"   - #{t['id']} {t['title']}" for t in sem[:15]]
+        linhas += [f"   - #{t['id']} {_q(quem, t['id'], t['title'])}" for t in sem[:15]]
     if not o["objectives"]:
         linhas.append("(nenhum objetivo ainda)")
     return "\n".join(linhas)
@@ -846,7 +878,13 @@ def t_get_week(ctx, args):
 
 def _review_text(st: dict) -> str:
     """Cronômetro esquecido (rodou demais): parou sem apontar nada."""
-    desde = st["started_at"].astimezone(services.app_tz()).strftime("%Y-%m-%d %H:%M") if st.get("started_at") else "muito tempo"
+    ini = st.get("started_at")
+    if isinstance(ini, str):  # a rota devolve em texto (ISO); usar como data dava erro 500 com o cronômetro já parado
+        try:
+            ini = datetime.fromisoformat(ini)
+        except ValueError:
+            ini = None
+    desde = ini.astimezone(services.app_tz()).strftime("%Y-%m-%d %H:%M") if ini else "muito tempo"
     return (f"estava rodando em #{st['task_id']} desde {desde}; nada foi apontado. "
             "Pergunte quanto tempo foi de fato e informe com log_time")
 
@@ -869,9 +907,10 @@ def t_start_timer(ctx, args):
         extra = f" (o anterior parou e apontou {_dur(prev['minutes'])} em #{prev['task_id']})" if prev else ""
     tm = res["timer"]
     desde = tm["started_at"].astimezone(services.app_tz()).strftime("%d/%m %H:%M")
+    titulo = _q(_assigned(ctx["user_id"], [tm["task_id"]]), tm["task_id"], tm["title"])
     if prev is None and at and abs((tm["started_at"] - at).total_seconds()) > 60:
-        return f"O cronômetro já estava rodando em #{tm['task_id']} {tm['title']} desde {desde}; o início não mudou."
-    return f"Cronômetro iniciado em #{tm['task_id']} {tm['title']} (desde {desde}){extra}."
+        return f"O cronômetro já estava rodando em #{tm['task_id']} {titulo} desde {desde}; o início não mudou."
+    return f"Cronômetro iniciado em #{tm['task_id']} {titulo} (desde {desde}){extra}."
 
 
 def _stop_at(value) -> datetime | None:
@@ -889,9 +928,9 @@ def _stop_at(value) -> datetime | None:
         else:
             at = datetime.fromisoformat(txt)
             at = at if at.tzinfo else at.replace(tzinfo=tz)
-    except ValueError:
+        return at.astimezone(timezone.utc)
+    except (ValueError, OverflowError):  # OverflowError: 9999-12-31 passado para UTC
         raise ToolError(f"hora inválida: {value} (use HH:MM ou AAAA-MM-DDTHH:MM)") from None
-    return at.astimezone(timezone.utc)
 
 
 def t_stop_timer(ctx, args):
@@ -946,7 +985,10 @@ def t_set_recurring(ctx, args):
                 msg += (" A rotina NÃO foi marcada: a pausa não leva motivo (note). Para marcar com evidência, "
                         "mande done:true junto.")
             return msg
-        return msg + " " + _set_done(ctx, rid, data)
+        try:
+            return msg + " " + _set_done(ctx, rid, data)
+        except ToolError as e:  # a pausa já foi gravada: só o erro faria a IA achar que nada mudou
+            return msg + f" ATENÇÃO: a rotina NÃO foi marcada: {e}"
     return _set_done(ctx, rid, data)
 
 
@@ -1030,7 +1072,9 @@ def t_list_renewals(ctx, args):
         equipe = ""
         if r["team_name"]:
             equipe = f" [equipe {r['team_name']}" + ("" if r["mine"] else f", de {r['owner_name']}; só leitura aqui") + "]"
-        out.append(f"V{r['id']} {r['label']} — {r['expires_on'].isoformat()} ({quando})" + (" [AVISO]" if r["warning"] else "") + equipe)
+        # O de outra pessoa (compartilhado com a equipe) é texto de terceiro: entre « ».
+        nome = r["label"] if r["mine"] else _quoted({"assigned_by_name": r["owner_name"] or "equipe"}, r["label"])
+        out.append(f"V{r['id']} {nome} — {r['expires_on'].isoformat()} ({quando})" + (" [AVISO]" if r["warning"] else "") + equipe)
     return "\n".join(out) or "(nenhum vencimento cadastrado)"
 
 
@@ -1051,7 +1095,8 @@ def t_get_week_review(ctx, args):
     today = r["today"]
     linhas = [f"Revisão da semana {r['week_start'].isoformat()} a {r['week_end'].isoformat()}"
               + (" (já feita pela pessoa)" if r["done_at"] else ""), "", f"O que fechou ({len(r['done'])}):"]
-    linhas += [f"- #{t['id']} {t['title']}" + (f" — {' '.join(t['resolution'].split())[:160]}" if t["resolution"]
+    quem = _assigned(ctx["user_id"], [t["id"] for t in r["done"][:30]])
+    linhas += [f"- #{t['id']} {_q(quem, t['id'], t['title'])}" + (f" — {' '.join(t['resolution'].split())[:160]}" if t["resolution"]
                                                else " (sem \"como resolveu\")") for t in r["done"][:30]] or ["- nada"]
     linhas += ["", f"O que ficou ({len(r['open']) + len(r['waiting'])}):"]
     linhas += [_task_line(t, today) for t in r["open"] + r["waiting"]][:30] or ["- nada"]
@@ -1585,6 +1630,9 @@ ID_HINT = {"task_id": "o número da tarefa (#n em get_today, list_tasks ou searc
            "history_id": "o número da ação (#n em get_history)"}
 
 
+ID_PREFIX = {"task_id": "#", "item_id": "#", "history_id": "#", "recurring_id": "#Rr"}
+
+
 def _check_args(name: str, schema: dict, args) -> dict:
     """Confere os argumentos contra o inputSchema antes de chamar a ferramenta:
     campo desconhecido é recusado (senão a IA acha que registrou o que foi
@@ -1608,8 +1656,11 @@ def _check_args(name: str, schema: dict, args) -> dict:
             continue
         if isinstance(v, float) and v.is_integer():
             v = int(v)
-        if isinstance(v, str) and v.strip().lstrip("#RrMmVvUu").isdigit():
-            v = int(v.strip().lstrip("#RrMmVvUu"))
+        # O prefixo de como o id aparece nas listas, e só o do campo: "R7" em task_id concluía
+        # a tarefa #7 quando a IA queria a rotina R7.
+        pref = ID_PREFIX.get(k, "")
+        if isinstance(v, str) and v.strip().lstrip(pref).isdigit():
+            v = int(v.strip().lstrip(pref))
         if isinstance(v, bool) or not isinstance(v, int):
             raise ToolError(f"{k} deve ser um número inteiro" + (f": {ID_HINT[k]}" if k in ID_HINT else ""))
         out[k] = v
@@ -1629,6 +1680,9 @@ def _handle(ctx, msg):
     rid, method, params = msg.get("id"), msg["method"], msg.get("params") or {}
     if rid is None:  # notificação (ex.: notifications/initialized): sem resposta
         return None
+    # params tem de ser objeto e o nome, texto: lista ou número aqui virava erro 500.
+    if not isinstance(params, dict) or not isinstance(params.get("name", ""), str):
+        return _rpc_error(rid, -32602, "params deve ser um objeto JSON (e name, um texto)")
 
     if method == "initialize":
         asked = params.get("protocolVersion")
@@ -1647,6 +1701,8 @@ def _handle(ctx, msg):
     elif method == "prompts/get":
         if params.get("name") not in _prompts_for(ctx):
             return _rpc_error(rid, -32602, f"prompt desconhecido: {params.get('name')}")
+        if not isinstance(params.get("arguments") or {}, dict):
+            return _rpc_error(rid, -32602, "arguments deve ser um objeto JSON")
         try:
             result = _prompt_get(params["name"], params.get("arguments") or {})
         except ToolError as e:

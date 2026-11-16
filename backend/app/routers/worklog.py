@@ -29,16 +29,16 @@ def check_day_total(uid: int, day, minutes: int, status: int = 400) -> None:
         raise HTTPException(status_code=status, detail="com esse tempo, o dia passaria de 24 h apontadas; confira se o dia ou as horas estão certos")
 
 
-def device_time(at: Optional[datetime], what: str = "a anotação") -> Optional[datetime]:
-    """Hora do aparelho de algo feito sem sinal e enviado depois (anotação,
-    foto): as mesmas regras do cronômetro — até 24 h atrás; no futuro (relógio
-    adiantado) vale como agora."""
+def device_time(at: Optional[datetime], what: str = "a anotação", detail: str | None = None) -> Optional[datetime]:
+    """Hora do aparelho de algo feito sem sinal e enviado depois (anotação, foto,
+    cronômetro): até 24 h atrás; no futuro (relógio adiantado) vale como agora.
+    `detail`: outra frase para a recusa (o cronômetro tem a dele)."""
     if at is None:
         return None
     now = datetime.now(timezone.utc)
     at = at if at.tzinfo else at.replace(tzinfo=timezone.utc)
     if at < now - timedelta(hours=24):
-        raise HTTPException(status_code=400, detail=f"{what} feita sem conexão passou de 24 h; envie sem a hora (at)")
+        raise HTTPException(status_code=400, detail=detail or f"{what} feita sem conexão passou de 24 h; envie sem a hora (at)")
     return min(at, now)
 
 
@@ -193,31 +193,36 @@ def create(data: WorklogIn, response: Response, user=Depends(active_user_csrf)):
     completed_at = resolve_completed(data.completed_at, created_at, now) if data.status == "done" else None
     # Feita sem sinal (created_at do aparelho): o lembrete pode ter passado na fila; fica e avisa já.
     remind = None if data.status == "done" else (data.remind_at if data.created_at else check_remind(data.remind_at))
-    try:
-        row = db.query_one(
-            """
-            INSERT INTO worklog_tasks (user_id, title, description, status, due_date, created_at, completed_at,
-                                       project_id, priority, ticket, after_hours, external_ref,
-                                       blocked_reason, blocked_at, follow_up_on, resolution, objective_id, exec_position,
-                                       remind_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING id
-            """,
-            (uid, data.title, data.description, data.status, data.due_date, created_at, completed_at,
-             project_id, data.priority, data.ticket, data.after_hours, data.external_ref,
-             _reason(data.blocked_reason) if data.status == "blocked" else None,
-             now if data.status == "blocked" else None,
-             follow_up_day(uid, data.follow_up_on) if data.status == "blocked" else None,
-             ((data.resolution or "").strip() or None) if data.status == "done" else None,
-             data.objective_id, next_position(uid, project_id, data.objective_id), remind),
-        )
-    except UniqueViolation:  # duas chamadas iguais ao mesmo tempo: a segunda devolve a primeira
+    params = (uid, data.title, data.description, data.status, data.due_date, created_at, completed_at,
+              project_id, data.priority, data.ticket, data.after_hours, data.external_ref,
+              _reason(data.blocked_reason) if data.status == "blocked" else None,
+              now if data.status == "blocked" else None,
+              follow_up_day(uid, data.follow_up_on) if data.status == "blocked" else None,
+              ((data.resolution or "").strip() or None) if data.status == "done" else None,
+              data.objective_id, next_position(uid, project_id, data.objective_id), remind)
+    # A tarefa, os projetos extras e a linha do histórico entram juntos: tarefa sem
+    # histórico não aparecia no feed nem nos webhooks, e o "Desfazer" não a achava.
+    with db.transaction():
+        try:
+            row = db.query_one(
+                """
+                INSERT INTO worklog_tasks (user_id, title, description, status, due_date, created_at, completed_at,
+                                           project_id, priority, ticket, after_hours, external_ref,
+                                           blocked_reason, blocked_at, follow_up_on, resolution, objective_id, exec_position,
+                                           remind_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+                """, params)
+        except UniqueViolation:  # duas chamadas iguais ao mesmo tempo: a segunda devolve a primeira
+            row = None  # só o INSERT é coberto: um erro nos passos seguintes não se confunde com este
+        else:
+            if data.extra_project_ids:
+                set_extra_projects(uid, row["id"], data.extra_project_ids)
+            audit.record(user, "worklog.create", "worklog", row["id"],
+                         after=audit.worklog_snapshot(row["id"], uid))
+    if row is None:
         response.status_code = 200
         return {"id": _by_ref(uid, data.external_ref)["id"], "existing": True}
-    if data.extra_project_ids:
-        set_extra_projects(uid, row["id"], data.extra_project_ids)
-    audit.record(user, "worklog.create", "worklog", row["id"],
-                 after=audit.worklog_snapshot(row["id"], uid))
     return {"id": row["id"]}
 
 
@@ -230,12 +235,14 @@ def list_tasks(
     limit: int = Query(default=200, ge=1, le=500),
     external_ref: Annotated[Optional[str], Query(min_length=1, max_length=120)] = None,  # Annotated: idem (MCP)
     offset: Annotated[int, Query(ge=0, le=OFFSET_MAX, description="Pula as N primeiras (páginas); o total vem em X-Total-Count")] = 0,
+    project: Annotated[Optional[int], Query(ge=1, description="Só as tarefas deste projeto (principal ou um dos extras)")] = None,
     response: Response = None,
     user=Depends(active_user),
 ):
     """Tarefas por período (dias inclusivos, fuso da app), pela criação ou
     pela conclusão: para conferir o que já foi lançado sem baixar tudo.
-    Com external_ref: só a tarefa com essa chave (lista vazia se não houver)."""
+    Com external_ref: só a tarefa com essa chave (lista vazia se não houver).
+    Com project: só as do projeto (o filtro e a paginação são feitos no banco)."""
     if start and end and start > end:  # como a prévia e o PDF
         raise HTTPException(status_code=400, detail="período inválido: from depois de to")
     col = "w.completed_at" if by == "completed" else "w.created_at"
@@ -245,11 +252,17 @@ def list_tasks(
         found = _by_ref(user["user_id"], external_ref.strip())
         cond.append("w.id = %(ref_id)s")
         params["ref_id"] = found["id"] if found else 0
+    if project is not None:
+        cond.append("""(w.project_id = %(proj)s OR EXISTS (SELECT 1 FROM worklog_task_projects x
+                                                            WHERE x.task_id = w.id AND x.project_id = %(proj)s))""")
+        params["proj"] = int(project)
+    # O dia vira um intervalo de instantes (do início do dia ao início do seguinte, no fuso
+    # da app): o mesmo resultado de comparar a data, mas pelo índice (user_id, data).
     if start:
-        cond.append(f"({col} AT TIME ZONE %(tz)s)::date >= %(start)s")
+        cond.append(f"{col} >= (%(start)s::date::timestamp AT TIME ZONE %(tz)s)")
         params["start"] = start
     if end:
-        cond.append(f"({col} AT TIME ZONE %(tz)s)::date <= %(end)s")
+        cond.append(f"{col} < ((%(end)s::date + 1)::timestamp AT TIME ZONE %(tz)s)")
         params["end"] = end
     if by == "completed":
         cond.append("w.completed_at IS NOT NULL")
@@ -403,18 +416,19 @@ def update(task_id: int, data: WorklogUpdate, user=Depends(active_user_csrf)):
     if data.status == "done":
         stop_timer_of(user, task_id)
 
-    if fields:
-        values += [task_id, user["user_id"]]
-        db.execute(
-            f"UPDATE worklog_tasks SET {', '.join(fields)} WHERE id = %s AND user_id = %s",
-            tuple(values),
-        )
-    # Trocou o principal: os extras se ajustam (sem repetir; sem principal, nenhum).
-    if extras or "project_id" in sent:
-        set_extra_projects(user["user_id"], task_id,
-                           data.extra_project_ids if extras else before["extra_project_ids"])
-    audit.record(user, "worklog.update", "worklog", task_id, before=before,
-                 after=audit.worklog_snapshot(task_id, user["user_id"]))
+    with db.transaction():  # a mudança, os projetos extras e o histórico (o desfazer) vão juntos
+        if fields:
+            values += [task_id, user["user_id"]]
+            db.execute(
+                f"UPDATE worklog_tasks SET {', '.join(fields)} WHERE id = %s AND user_id = %s",
+                tuple(values),
+            )
+        # Trocou o principal: os extras se ajustam (sem repetir; sem principal, nenhum).
+        if extras or "project_id" in sent:
+            set_extra_projects(user["user_id"], task_id,
+                               data.extra_project_ids if extras else before["extra_project_ids"])
+        audit.record(user, "worklog.update", "worklog", task_id, before=before,
+                     after=audit.worklog_snapshot(task_id, user["user_id"]))
     if final_status == "done" and before["status"] != "done":
         safe_notify(task_id)
     return {"ok": True}
@@ -435,15 +449,16 @@ def finish(task_id: int, data: Optional[FinishIn] = None, user=Depends(active_us
         resolve_completed(raw, before["created_at"], datetime.now(timezone.utc))
     stop_timer_of(user, task_id, when if raw else None)
     resolution = ((data.resolution if data else None) or "").strip() or None  # mantém as quebras de linha (passos)
-    db.execute(
-        """UPDATE worklog_tasks SET status = 'done', completed_at = %s,
-                  blocked_reason = NULL, blocked_at = NULL, follow_up_on = NULL,
-                  resolution = COALESCE(%s, resolution)
-            WHERE id = %s AND user_id = %s""",
-        (when, resolution, task_id, user["user_id"]),
-    )
-    audit.record(user, "worklog.finish", "worklog", task_id, before=before,
-                 after=audit.worklog_snapshot(task_id, user["user_id"]))
+    with db.transaction():  # concluir e a linha do histórico (feed, webhooks, desfazer) vão juntos
+        db.execute(
+            """UPDATE worklog_tasks SET status = 'done', completed_at = %s,
+                      blocked_reason = NULL, blocked_at = NULL, follow_up_on = NULL,
+                      resolution = COALESCE(%s, resolution)
+                WHERE id = %s AND user_id = %s""",
+            (when, resolution, task_id, user["user_id"]),
+        )
+        audit.record(user, "worklog.finish", "worklog", task_id, before=before,
+                     after=audit.worklog_snapshot(task_id, user["user_id"]))
     safe_notify(task_id)
     return {"ok": True}
 
@@ -515,16 +530,19 @@ def duplicate(task_id: int, user=Depends(active_user_csrf)):
 
 @router.delete("/{task_id}")
 def delete(task_id: int, user=Depends(active_user_csrf)):
-    before = _own_task(user["user_id"], task_id)
-    # Anotações, checklist e tempo vão junto (CASCADE): ficam no histórico para o desfazer.
-    before["children"] = {
-        "notes": db.query_all("SELECT id, body, actor, token_name, created_at, external_ref FROM task_notes WHERE task_id = %s", (task_id,)),
-        "checklist": db.query_all("SELECT id, label, done, position FROM task_checklist WHERE task_id = %s", (task_id,)),
-        "time": db.query_all("SELECT id, minutes, day, note, actor, token_name, created_at, external_ref, started_at, ended_at"
-                              " FROM time_entries WHERE task_id = %s", (task_id,)),
-    }
-    db.execute("DELETE FROM worklog_tasks WHERE id = %s AND user_id = %s", (task_id, user["user_id"]))
-    audit.record(user, "worklog.delete", "worklog", task_id, before=before)
+    # A cópia para o desfazer, a exclusão e a linha do histórico vão juntas: se o
+    # histórico não gravasse, a tarefa (com anotações e tempo) sumia sem volta.
+    with db.transaction():
+        before = _own_task(user["user_id"], task_id)
+        # Anotações, checklist e tempo vão junto (CASCADE): ficam no histórico para o desfazer.
+        before["children"] = {
+            "notes": db.query_all("SELECT id, body, actor, token_name, created_at, external_ref FROM task_notes WHERE task_id = %s", (task_id,)),
+            "checklist": db.query_all("SELECT id, label, done, position FROM task_checklist WHERE task_id = %s", (task_id,)),
+            "time": db.query_all("SELECT id, minutes, day, note, actor, token_name, created_at, external_ref, started_at, ended_at"
+                                  " FROM time_entries WHERE task_id = %s", (task_id,)),
+        }
+        db.execute("DELETE FROM worklog_tasks WHERE id = %s AND user_id = %s", (task_id, user["user_id"]))
+        audit.record(user, "worklog.delete", "worklog", task_id, before=before)
     return {"ok": True}
 
 

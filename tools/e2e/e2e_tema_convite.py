@@ -85,7 +85,8 @@ try:
     check("tema continua depois de recarregar", ev("document.documentElement.dataset.theme") == "light")
     check("tema guardado na conta", ev("fetch('/api/auth/me').then(r=>r.json()).then(m=>m.theme)") == "light")
     ev("[...document.querySelectorAll('.seg [data-v]')].find(b=>b.dataset.v==='auto').click()"); time.sleep(1)
-    check("Automático tira o forçado", ev("document.documentElement.dataset.theme") is None)
+    # No automático o data-theme passa a ser o do aparelho (tema.js marca sempre o que vale); a escolha é "auto".
+    check("Automático segue o aparelho", ev("window.nexusTheme.get() === 'auto' && document.documentElement.dataset.theme === (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')"))
 finally:
     p.terminate()
     print("OK:", len(ok)); print("FALHAS:", "\n  ".join(falhas) or "nenhuma"); print("ERROS JS:", erros or "nenhum")

@@ -59,7 +59,8 @@ def list_users(team: TeamQ = None, viewer=Depends(require_viewer)):
     cut = teams.filter_sql("u", viewer["user_id"], "viewer", team)
     rows = db.query_all(f"""SELECT u.id, u.email FROM users u
                              WHERE {visible_sql('u', viewer['user_id'])} AND {active_sql('u')} AND {cut}""")
-    return sorted(({**r, **people.profile(r["id"])} for r in rows), key=lambda x: (x["name"].lower(), x["email"]))
+    perfis = people.profiles(r["id"] for r in rows)
+    return sorted(({**r, **perfis[r["id"]]} for r in rows), key=lambda x: (x["name"].lower(), x["email"]))
 
 
 @router.get("/users/{user_id}/board")
@@ -72,6 +73,10 @@ def user_board(user_id: int, day: Optional[date] = Query(default=None), viewer=D
 def user_dashboard(user_id: int, month: Optional[str] = MONTH, viewer=Depends(require_viewer)):
     _ensure_user(user_id, viewer, "mês")
     out = get_dashboard(user_id, parse_month(month))
+    # O ranking por rotina (da mais pulada à menos, com a sequência de dias) e o backlog por
+    # idade são da própria pessoa: quem acompanha não recebe (não é placar), com ou sem mês.
+    out["task_adherence"] = {"tasks": []}
+    out["backlog"] = None
     if out.get("overview"):
         # Quem acompanha vê o mês (como no PDF), sem placar: nem o ranking por
         # rotina, nem a tendência dos meses, nem a comparação com a média da pessoa.
@@ -112,7 +117,7 @@ def team_time_csv(start: Optional[date] = Query(default=None), end: Optional[dat
     if end < start or (end - start).days > 366:
         raise HTTPException(status_code=400, detail="período inválido (até 1 ano)")
     cut = teams.filter_sql("u", viewer["user_id"], "viewer", team)
-    n = db.query_one(f"SELECT count(*)::int AS n FROM users u WHERE u.id <> %s AND {visible_sql('u', viewer['user_id'])} AND {cut}",
+    n = db.query_one(f"SELECT count(*)::int AS n FROM users u WHERE u.id <> %s AND {visible_sql('u', viewer['user_id'])} AND {active_sql('u')} AND {cut}",
                      (viewer["user_id"],))["n"]
     log_master_view(viewer, None, "horas", n)
     return time_csv(None, f"nexus-apontamentos-equipe-{start.isoformat()}-a-{end.isoformat()}.csv",

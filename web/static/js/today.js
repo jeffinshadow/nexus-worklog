@@ -299,7 +299,9 @@ export async function mount(root, ctx, opts = {}) {
   });
   ctx.setAssist(assist);
   const venc = await vencP; // só aparece com algo no aviso
-  root.append(h("div", { class: "today-grid" }, venc, recPanel, openPanel, donePanel, sum ? summaryPanel(sum, refresh) : null));
+  // Troca o conteúdo inteiro (não acrescenta): com duas montagens ao mesmo tempo (marcar uma
+  // rotina enquanto a tela ainda recarrega), a que termina por último fica, sem o Hoje em dobro.
+  root.replaceChildren(h("div", { class: "today-grid" }, venc, recPanel, openPanel, donePanel, sum ? summaryPanel(sum, refresh) : null));
 }
 
 

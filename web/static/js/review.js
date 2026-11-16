@@ -149,14 +149,15 @@ export async function openReview(onDone) {
             ? btn(t.follow_up_on ? `Cobrar ${shortDate(t.follow_up_on)}` : "Quando cobrar", () => followUpTask(t, (d) => { t.follow_up_on = d; done(`cobrar ${shortDate(d)}`); }))
             : btn("Aguardando", () => blockTask(t, () => { t.status = "blocked"; done("aguardando"); })),
           btn("Concluir", async (ev) => {
-            ev.currentTarget.disabled = true;
+            const b = ev.currentTarget;  // depois do await o evento não guarda mais o botão
+            b.disabled = true;
             try {
               await api.post(`/worklog/${t.id}/finish`);
               t.status = "done";
               r.open = r.open.filter((x) => x.id !== t.id);
               chosen.delete(t.id);
               done("concluída");
-            } catch (e) { ev.currentTarget.disabled = false; errorToast(e, "Não foi possível concluir."); }
+            } catch (e) { b.disabled = false; errorToast(e, "Não foi possível concluir."); }
           }));
       };
       paintState();

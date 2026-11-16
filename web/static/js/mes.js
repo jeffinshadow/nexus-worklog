@@ -271,7 +271,8 @@ function beforePdf(ov, mes, download, reload) {
         save.disabled = true;
         try {
           // O tempo vai no dia da conclusão (conta no mesmo mês do PDF).
-          if (n) { await api.post(`/worklog/${x.id}/time`, { minutes: n, day: x.done_date }); x.minutes = n; changed = true; }
+          // !x.minutes: se o tempo entrou e o "como resolveu" falhou, salvar de novo não aponta o tempo outra vez.
+          if (n && !x.minutes) { await api.post(`/worklog/${x.id}/time`, { minutes: n, day: x.done_date }); x.minutes = n; changed = true; }
           if (text) { await api.patch(`/worklog/${x.id}`, { resolution: text }); x.resolution = true; changed = true; }
           paint();
           paintCount();

@@ -1,3 +1,6 @@
+from contextlib import contextmanager
+from contextvars import ContextVar
+
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
@@ -14,26 +17,67 @@ pool = ConnectionPool(
     open=False,
 )
 
+# A conexão da transação aberta por transaction() nesta chamada (None = fora de
+# uma: cada comando usa a sua conexão e grava sozinho, como sempre foi).
+_tx: ContextVar = ContextVar("nexus_tx", default=None)
+
 
 def init_pool() -> None:
     pool.open()
     pool.wait()
 
 
+@contextmanager
+def transaction():
+    """Tudo ou nada para uma operação de vários comandos (desfazer, excluir um
+    projeto, trocar a agenda de uma rotina): os db.* chamados aqui dentro usam a
+    mesma conexão e só gravam no fim; uma exceção desfaz tudo, inclusive a linha
+    do histórico. Uma dentro da outra é a mesma transação (a de fora decide).
+
+    Cada comando roda num ponto de salvamento: um erro tratado pelo código (ex.:
+    UniqueViolation da chave externa) não derruba a transação inteira.
+
+    Vale para a chamada atual. Uma thread aberta aqui dentro (e-mail, push) usa
+    outra conexão e NÃO enxerga o que ainda não foi gravado: dispare-a depois do
+    bloco."""
+    if _tx.get() is not None:
+        yield
+        return
+    # O bloco de fora é a transação de verdade; os conn.transaction() de cada
+    # comando (em _cursor) viram pontos de salvamento dentro dela.
+    with pool.connection() as conn, conn.transaction():
+        token = _tx.set(conn)
+        try:
+            yield
+        finally:
+            _tx.reset(token)
+
+
+@contextmanager
+def _cursor():
+    conn = _tx.get()
+    if conn is None:
+        with pool.connection() as conn, conn.cursor() as cur:
+            yield cur
+    else:
+        with conn.transaction(), conn.cursor() as cur:
+            yield cur
+
+
 def query_one(sql: str, params=None):
-    with pool.connection() as conn, conn.cursor() as cur:
+    with _cursor() as cur:
         cur.execute(sql, params or ())
         return cur.fetchone()
 
 
 def query_all(sql: str, params=None):
-    with pool.connection() as conn, conn.cursor() as cur:
+    with _cursor() as cur:
         cur.execute(sql, params or ())
         return cur.fetchall()
 
 
 def execute(sql: str, params=None) -> int:
-    with pool.connection() as conn, conn.cursor() as cur:
+    with _cursor() as cur:
         cur.execute(sql, params or ())
         return cur.rowcount
 

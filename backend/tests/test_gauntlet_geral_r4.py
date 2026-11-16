@@ -54,7 +54,9 @@ def test_marcar_a_rotina_antiga_depois_da_troca_move_a_ultima_vez(usuario):
                (rid, uid_de(usuario), hoje - timedelta(days=6)))
     novo = usuario.patch(f"/recurring/{rid}", {"freq": "after", "interval_days": 5}).json()["id"]
     ontem = (hoje - timedelta(days=1)).isoformat()
-    assert _linha_rotina(usuario, novo)["next_due"] == ontem
+    # Última vez há 6 dias + 5 = ontem, mas a rotina nova começou hoje: vence hoje (trocar a agenda de
+    # uma rotina atrasada não a deixa "atrasada desde ontem" nem gera falta no dia da troca; 2.1.0).
+    assert _linha_rotina(usuario, novo)["next_due"] == hoje.isoformat()
     # Lembrou que trocou o filtro ontem: marca no quadro de ontem (lá aparece a antiga).
     assert usuario.post(f"/recurring/{rid}/toggle", {"done": True, "day": ontem}).status_code == 200
     linha = _linha_rotina(usuario, novo)
@@ -62,7 +64,7 @@ def test_marcar_a_rotina_antiga_depois_da_troca_move_a_ultima_vez(usuario):
     # Desfazer a marcação volta a contar da anterior.
     h = next(x for x in hist(usuario, entity="recurring", entity_id=rid) if x["action"] == "recurring.toggle")
     assert usuario.post(f"/history/{h['id']}/undo").status_code == 200
-    assert _linha_rotina(usuario, novo)["next_due"] == ontem
+    assert _linha_rotina(usuario, novo)["next_due"] == hoje.isoformat()  # idem: volta a vencer hoje
 
 
 def test_desfazer_pausa_antiga_nao_vira_falta_no_passado(usuario):

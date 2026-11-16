@@ -9,6 +9,138 @@ maior seguinte (política completa em [`docs/ADMIN.md`](docs/ADMIN.md#versioname
 não a da hora do deploy. As versões 0.x e 1.x foram numeradas depois, sobre o histórico do git
 (etiquetas `v0.1.0` … `v1.12.1`).
 
+## 2.1.0 — 2026-11-16
+
+Rodada de robustez ("gauntlet loop"): pontos frágeis achados na leitura do código, sem mudar como o app é usado.
+
+### Mudou de regra (decisão do dono, 16/11)
+- **Rotina "N dias depois da última vez"**: uma pausa que terminou empurra o vencimento para o dia da volta (quem
+  volta de férias tem o ciclo inteiro para fazer; antes levava falta no primeiro dia), e a rotina que acabou de trocar
+  de agenda não vence antes do dia da troca (antes podia nascer com falta nesse mesmo dia, "atrasada desde ontem").
+  Os números de períodos passados de rotinas desse tipo que tiveram pausa ou troca podem mudar.
+- **Primeiro amanhã**: a escolha de um dia que já passou só continua valendo se a pessoa não usou o Nexus desde então
+  (feriado, folga). Quem abriu o app no dia e não fez a tarefa não fica mais com o selo "primeiro hoje" por até 7
+  dias. `PUT /api/board/first` com `day` = hoje e a lista vazia tira o selo de hoje.
+
+### Tudo ou nada
+- **Transações** (`db.transaction()`): criar, editar, concluir, excluir e atribuir tarefa, excluir projeto ou objetivo,
+  trocar a agenda de uma rotina, mudar os dias úteis e **desfazer** gravam a mudança e a linha do histórico juntas. Antes,
+  cada comando gravava sozinho: uma falha no meio deixava a tarefa excluída sem a cópia para o desfazer, ou o desfazer
+  pela metade (tarefa de volta sem as anotações).
+- Dois "Desfazer" da mesma ação ao mesmo tempo: o segundo responde 409 e não repete nada.
+
+### Correções
+- **Exportar tudo (JSON)** dava erro para quem teve tarefas transferidas a outra pessoa e continuou com a conta. O tempo
+  apontado nessas tarefas agora vai em `time_on_transferred_tasks` (campo novo).
+- Título, anotação, item de checklist e nome de rotina **só com espaços** são recusados (422); anotação e item em branco
+  davam erro 500. Os espaços das pontas saem.
+- **MCP**: `params` que não é objeto (ou `name` que não é texto) devolve o erro `-32602` do protocolo, não mais 500.
+- **Passkey**: conta bloqueada não entra, mesmo que uma passkey tenha sobrado (403, como no login por senha).
+- Excluir de novo uma rotina já excluída não grava outra linha no histórico; convite repetido ao mesmo tempo responde
+  409 em vez de 500.
+- Histórico: cadastrar ou remover passkey e convidar ou recusar um pedido de convite aparecem com frase, não com o nome
+  interno da ação.
+- App: o detalhe da tarefa aberto sem sinal mostrava "Invalid Date"; depois de adicionar um item, o foco volta ao campo
+  "Adicionar item"; "Concluir" na revisão da semana não trava se o servidor recusar; "foto grande demais" aparece com
+  essa frase; o aviso "daqui a pouco" de uma rotina fechado com Ok volta no dia seguinte (com o app aberto de um dia
+  para o outro, ficava calado); dois toques em "Anotar" ou em "Marcar como aguardando" não gravam duas vezes; o Hoje
+  não aparece em dobro quando duas atualizações se cruzam; trocar de aba no Admin antes de a anterior carregar não
+  mistura as duas, e uma aba que falha ao carregar mostra a frase em vez de ficar em branco.
+- `deploy.sh`: se o `git pull` ou o `docker compose up` falhar, o script diz o que aconteceu e como voltar atrás (saía
+  sem as instruções); backup recusado na conferência não fica na pasta.
+
+### Privacidade e permissões
+- **Sair sem conexão** não encerrava a sessão no servidor: quem abrisse o app depois, no mesmo aparelho, entrava na
+  conta. Agora a saída fica anotada e a sessão é encerrada na primeira abertura com rede, antes de mostrar qualquer coisa.
+- Quem acompanha a equipe não recebe mais, na API, o ranking por rotina (com a sequência de dias) nem o backlog por
+  idade da pessoa: a tela já não mostrava; a resposta ainda trazia.
+- **Vencimento compartilhado** deixa de aparecer para a equipe quando quem criou sai dela. Editar ou excluir o
+  vencimento de um colega como admin vale só pelo app, não por chave de API.
+- Conta bloqueada ou com convite pendente fica fora do CSV de horas da equipe e das fotos, como já ficava do painel.
+
+### Privacidade e permissões (contas e links)
+- **Senha nova invalida os links antigos**: o pedido de troca de e-mail, o link de nova senha e o convite deixam de
+  valer quando a senha é trocada ou redefinida. Antes, quem tinha a senha antiga podia pedir a troca de e-mail, esperar
+  a dona trocar a senha e ainda confirmar o link, ficando com a conta.
+- Convite antigo não cria mais a senha depois de um "Redefinir senha" nem depois de o admin corrigir o e-mail da conta.
+- **Passkey nova avisa por e-mail** (ela entra sem senha e continua valendo depois de uma troca de senha).
+- Outro admin não altera nenhum papel do admin master; o código de transferência do master conta a tentativa antes de
+  comparar (pedidos em paralelo não passam das 5).
+- Tarefas transferidas pelo admin ficam também no histórico de quem as tinha (quantas e para quem).
+- Ao sair, o cookie de sessão é apagado de verdade (o `__Host-` exigia os mesmos atributos); o link de convite ou de
+  senha não é gasto quando o servidor está ocupado; o push não segue redirecionamento; e-mails não vão mais em claro
+  para o log.
+
+### IA (MCP)
+- `stop_timer` e `start_timer` com um cronômetro esquecido (mais de 12 h) davam erro 500 depois de já terem parado o
+  cronômetro.
+- Título de objetivo ou nome de projeto só com espaços, datas absurdas e `arguments` de prompt fora do formato viram
+  erro claro, não 500.
+- `external_ref` já usado em OUTRA tarefa (em `log_time` e `add_note`) é erro, dizendo em qual tarefa está: a resposta
+  dizia "já apontado" na tarefa pedida, que ficava sem o tempo.
+- O prefixo do id vale só no campo dele: `task_id: "R7"` não conclui mais a tarefa #7 (a IA queria a rotina R7).
+- `list_tasks` com `status: all` continua nas concluídas além das 200 mais recentes; com período, `status` e `by`
+  inválidos são recusados; projeto com nome só de números é achado pelo nome.
+- `set_recurring` que pausa e não consegue marcar diz as duas coisas; `update_objective` confere a posição antes de
+  gravar o título.
+- Vencimento da equipe cadastrado por outra pessoa, o título de tarefa atribuída no cronômetro e nas "escolhidas para
+  hoje" e o motivo de devolução no histórico vão entre « » (texto de terceiro).
+
+### Correções (áreas revisadas pelos críticos)
+- Prazo, dia de cobrar e vencimento aceitam datas de 2000 a 2100. Uma data como 9999-12-31 ("nunca vence") ou o ano 1
+  derrubava o calendário (ICS), a lista de vencimentos, a passagem de turno e o e-mail da manhã, inclusive os de quem
+  divide a equipe; as que já estiverem gravadas não derrubam mais nada.
+- **Cronômetro**: parar ou trocar de tarefa é tudo ou nada (uma falha ao apontar não some mais com o cronômetro e o
+  tempo); dois aparelhos iniciando ao mesmo tempo não dão erro.
+- Painel e Meu mês com mês de ano inválido (`month=0001-01`) respondem 400, não 500.
+- **Sem sinal**: tarefa criada sem conexão aparece em Tarefas só com o título e "esperando conexão" (com as ações, o
+  cronômetro iniciado nela era recusado depois e o tempo se perdia); o texto digitado no detalhe não some quando o
+  salvamento falha por falta de rede; "+ Tarefa" no projeto e "Virar tarefa" nos vencimentos dizem que a tarefa ficou
+  guardada, sem erro falso nem duplicação; foto que não abre não segura a tarefa compartilhada; Tarefas e Projetos
+  abrem sem sinal mesmo sem terem sido visitadas antes.
+- "Antes do PDF" não aponta o tempo duas vezes quando o "como resolveu" falha; o lembrete de inatividade não cria duas
+  tarefas com dois toques; a busca não mostra dois blocos de resultado; o título de um projeto não aparece em outra
+  tela; a Equipe de quem não está em nenhuma equipe não dá erro falso; as notificações bloqueadas explicam como liberar;
+  a hora do cronômetro esquecido segue o fuso da app.
+
+### Relatórios
+- Tempo apontado numa tarefa que depois foi transferida a outra pessoa: aparecia em dobro em "sem projeto" no painel
+  e, no PDF e em Meu mês de quem apontou, também sob um projeto de quem recebeu. Agora conta uma vez, sem projeto.
+- Texto do período (PDF e e-mail da semana): "Foi feita 1 de 1 rotina prevista", "Fica 1 tarefa em aberto"; a
+  porcentagem só chega a 100% com tudo feito e só fica em 0% sem nada (199 de 200 saía "100%").
+- Diário do PDF: o apontamento de uma tarefa aberta não some mais quando outra tarefa de mesmo título foi concluída
+  no dia.
+- IA: o título de tarefa atribuída também vai entre « » em `list_objectives`, `get_week_review` e nas respostas do
+  cronômetro.
+- Índice para a lista de projetos (`sql/045`): lia os objetivos de todas as contas.
+
+### Novo
+- `GET /api/worklog?project=<id>`: a lista por período só com as tarefas do projeto (principal ou extra). A ferramenta
+  `list_tasks` da IA usa o mesmo filtro: num período com mais de 500 tarefas, as do projeto podiam ficar de fora.
+
+### Desempenho
+- A lista de tarefas por período compara os dias pelo índice de datas.
+- Histórico: "pode desfazer" é calculado só para as linhas da página, pelo índice (ordenava o histórico inteiro da
+  pessoa a cada página, a cada Desfazer e a cada aviso com Desfazer).
+- Contas (Admin), Equipe e Atribuir leem os perfis numa consulta só (era uma por pessoa; no Atribuir, três).
+- Reordenar rotinas e objetivos é um comando só.
+- O app instalado descarta a cópia da versão anterior dos arquivos ao guardar a nova.
+- Notificações da manhã leem só os prazos e as cobranças (liam o quadro inteiro a cada minuto, por duas horas, por
+  pessoa); os avisos de agenda conferem antes de gravar (regravavam a cada minuto e gastavam ids do histórico).
+- Os webhooks são entregues em laço próprio: um destino lento não atrasa mais as notificações de rotina e lembrete.
+- A abertura do app faz menos consultas; a faxina das fotos usa o índice do histórico.
+
+### Limpeza
+- O tema claro tem um bloco só no `tokens.css` (eram duas cópias inteiras, e todo token novo ia nas duas); o `tema.js`
+  marca sempre o tema que vale. Conferido no navegador: as 118 variáveis, em doze estados, iguais antes e depois.
+- Código morto e duplicado: imports redundantes e dinâmicos do `app.js`, restos sem uso em `fotos.js`, `board.js` e no
+  MCP, imports sem uso nos testes, e a regra da "hora do aparelho" numa função só (era uma no cronômetro e outra nas
+  anotações).
+
+### Documentação
+- `docs/API.md`: `get_week` na lista de ferramentas da IA; a cota de fotos é a variável `PHOTO_QUOTA_MB` e o limite
+  retroativo é fixo em 60 dias (o texto ainda falava nas opções do Admin).
+
 ## 2.0.4 — 2026-11-02
 Android: o Enter do teclado no registro rápido do Hoje registra. Com o seletor de projeto no mesmo formulário, o
 Chrome do Android trocava o Enter por "próximo" (pulava para o projeto); o seletor saiu do formulário do campo.
