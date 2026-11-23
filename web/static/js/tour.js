@@ -339,7 +339,7 @@ function setup(me, must, from = 0) {
     }
 
     async function routines() {
-      const [board, packs] = await Promise.all([api.get("/board").catch(() => ({ recurring: [] })), loadPacks().catch(() => [])]);
+      const [board, packs] = await Promise.all([api.get("/board?done_limit=1").catch(() => ({ recurring: [] })), loadPacks().catch(() => [])]);
       const have = board.recurring.map((r) => r.label.toLowerCase());
       const picks = ROUTINE_HINTS.filter((s) => !have.includes(s.toLowerCase())).map((label) => {
         const cb = h("input", { type: "checkbox" });

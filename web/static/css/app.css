@@ -1807,3 +1807,12 @@ input:disabled { cursor: not-allowed; }
   .time-form .btn { height: 44px; }
   .time-form input { height: 44px; }
 }
+
+/* auditoria p04 */
+/* Foto que ainda está na fila do aparelho (fotos.js): miniatura com a etiqueta por cima. */
+.photo-thumb.photo-waiting { position: relative; cursor: default; }
+.photo-thumb.photo-waiting img { opacity: .6; }
+.photo-waiting-tag { position: absolute; left: 0; right: 0; bottom: 0; padding: 2px 4px; font-size: var(--type-caption); line-height: 1.2; text-align: center; background: var(--surface-container-high); color: var(--on-surface); }
+/* Ação presa por erro do servidor, na lista da fila (fila.js): o aviso e os botões quebram de linha no celular. */
+.token-row .stuck-box { flex-wrap: wrap; }
+.token-row .stuck-box > p { flex-basis: 100%; }

@@ -489,8 +489,8 @@ export async function openTask(taskId, onChange, opts = {}) {
       const minutes = parseDuration(dur.value);
       if (!minutes || minutes > 1440) { dur.setCustomValidity("Duração inválida. Ex.: 45, 1h30, 2:15."); dur.reportValidity(); return; }
       try {
-        await api.post(`/worklog/${t.id}/time`, { minutes, day: day.value || today, note: note.value.trim() || null });
-        toast(`Apontado ${duration(minutes)}.`);
+        const r = await api.post(`/worklog/${t.id}/time`, { minutes, day: day.value || today, note: note.value.trim() || null });
+        toast(r && r.queued ? "Guardado; vai quando a conexão voltar." : `Apontado ${duration(minutes)}.`);
         entryPages.time = 1; // o novo aparece em cima, na página 1
         touch();
       } catch (e) { errorToast(e); }

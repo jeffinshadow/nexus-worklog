@@ -146,7 +146,7 @@ export async function mount(root, ctx) {
 // Rotina achada na busca: abre o mesmo editor do Hoje, com a agenda atual dela.
 async function editRoutine(id, onDone) {
   try {
-    const b = await api.get("/board");
+    const b = await api.get("/board?done_limit=1");  // só as rotinas (fila.js BOARD_ROUTINES)
     const item = b.recurring.find((x) => x.id === id);
     if (!item) { toast("Essa rotina não está mais ativa.", { error: true }); onDone(); return; }
     openRecurring(item, onDone);
