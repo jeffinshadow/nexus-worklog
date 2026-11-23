@@ -130,11 +130,10 @@ def search(
     response: Response = None,
     user=Depends(active_user),
 ):
-    """Tarefas, rotinas e projetos com o termo. Cada seção pagina sozinha
+    """Tarefas, rotinas e projetos com todas as palavras da busca, em qualquer
+    ordem e campo (a frase exata vem primeiro). Cada seção pagina sozinha
     (offset/limit; rec_offset, proj_offset e side_limit) e traz o total real:
     total_tasks, total_recurring, total_projects (X-Total-Count = total_tasks)."""
-    # "O termo" são as palavras da busca: todas têm de aparecer, em qualquer ordem e campo.
-    # (A docstring vai para o openapi.json: fica como está até o integrador regerar.)
     uid = user["user_id"]
     fq = fold(q.strip()[:100]).lstrip("#")  # "#1234" acha o chamado; também pelo MCP (sem validação de Query)
     if len(fq) < 2:
