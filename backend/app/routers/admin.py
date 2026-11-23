@@ -465,9 +465,9 @@ def delete_user(user_id: int, data: DeleteUserIn, admin=Depends(require_admin_cs
     e-mail. Tarefas que essa pessoa atribuiu ficam com quem recebeu. Os
     vencimentos dela saem junto, inclusive os compartilhados com equipe (a
     resposta conta: `renewals` e `shared_renewals`).
-    `transfer_to`: antes de excluir, as tarefas abertas passam para essa pessoa,
-    e também as concluídas que guardam horas de outra pessoa. Sem `transfer_to`,
-    conta com tarefa que guarda horas de outra pessoa = 409 (nada é apagado)."""
+    `transfer_to`: antes de excluir, as tarefas abertas passam para essa pessoa."""
+    # Com transfer_to vão também as concluídas que guardam horas de outra pessoa; sem, conta com
+    # tarefa assim = 409. (Fora da docstring: ela entra no docs/openapi.json; ver a nota do r2-01.)
     if user_id == admin["user_id"]:
         raise HTTPException(status_code=400, detail="para a sua própria conta, use Configurações > Conta")
     target = _ensure_user(user_id)

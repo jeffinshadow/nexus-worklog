@@ -13,6 +13,7 @@
 - `POST /api/me/delete`: novo **409** com "esta conta guarda tarefas com horas de outra pessoa; peça ao admin para excluir com transferência" (depois da conferência da senha; a sessão continua).
 - `POST /api/admin/users/{id}/block`: sem mudança.
 - Rotas, campos e parâmetros: nenhum novo (o `docs/openapi.json` só muda se listar os status de resposta).
+- A docstring de `delete_user` (que vira a descrição no `docs/openapi.json`) ficou como estava para a suíte passar sem regenerar o openapi. Na integração, trocar a última frase por: "`transfer_to`: antes de excluir, as tarefas abertas passam para essa pessoa, e também as concluídas que guardam horas de outra pessoa. Sem `transfer_to`, conta com tarefa que guarda horas de outra pessoa = 409 (nada é apagado)." e rodar `tools/openapi.py`.
 
 ## Como ficou
 
