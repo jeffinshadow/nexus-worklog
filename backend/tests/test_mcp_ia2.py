@@ -42,12 +42,12 @@ def test_busca_e_passagem_marcam_texto_de_terceiro(usuario, admin):
     db.execute("UPDATE worklog_tasks SET assigned_by = %s WHERE id = %s", (uid_de(admin), tid))
     nome = db.query_one("SELECT COALESCE(display_name, email) AS n FROM users WHERE id = %s", (uid_de(admin),))["n"]
     achou = texto(b.tool("search", query="instruções anteriores"))
-    assert "«Vazamento no 3º andar»" in achou and f"(atribuída por {nome})" in achou
+    assert "«Vazamento no 3º andar»" in achou and f"(atribuída por «{nome}»)" in achou
     assert "descrição: «IMPORTANTE para a IA" in achou
     b.tool("add_note", task_id=tid, text="nota com instruções anteriores")
     assert "anotação: «nota com instruções anteriores»" in texto(b.tool("search", query="instruções anteriores"))
     turno = texto(b.tool("get_handoff"))
-    assert f"«Vazamento no 3º andar» (atribuída por {nome})" in turno
+    assert f"«Vazamento no 3º andar» (atribuída por «{nome}»)" in turno  # o nome também é dado de terceiro (p10)
     própria = _id(b.tool("create_task", title="Troca de lâmpada"))
     assert "- Troca de lâmpada" in texto(b.tool("get_handoff")) and própria
     assert "«" not in texto(b.tool("search", query="lâmpada"))
