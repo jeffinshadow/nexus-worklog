@@ -12,7 +12,7 @@ não a da hora do deploy. As versões 0.x e 1.x foram numeradas depois, sobre o 
 ## 2.2.0 — 2026-11-23
 
 Auditoria completa (24 frentes: segurança, concorrência, QA, acessibilidade, celular, personas, infra), corrigida em 16
-pacotes, e a integração com o GLPI. Sem quebra de API: campos e respostas novas são acréscimo; o que mudou de regra
+pacotes e numa segunda rodada de 12, e a integração com o GLPI. Sem quebra de API: campos e respostas novas são acréscimo; o que mudou de regra
 está na primeira seção. Migration nova: `sql/060_glpi.sql` (aditiva).
 
 ### Avisos para quem atualiza
@@ -21,8 +21,9 @@ está na primeira seção. Migration nova: `sql/060_glpi.sql` (aditiva).
   fora antes o que quiser guardar.
 - **Dumps novos usam zstd**: só restauram com `pg_restore` 16+ com zstd (o do container `db` serve). Os antigos (gzip)
   continuam restaurando. Quem agendou o `pg_dump` do guia antigo no cron: troque por `./deploy.sh --backup`.
-- O primeiro deploy baixa `nginx:stable-alpine` e pode baixar um `postgres:16-alpine` mais novo; o container do banco é
-  recriado (`shm_size`, `cap_drop`): alguns segundos de 503. As imagens base passam a ser baixadas a cada deploy.
+- O primeiro deploy baixa `nginx:stable-alpine` e pode baixar um `postgres:16-alpine` mais novo; os três containers
+  são recriados (`shm_size`, `cap_drop`): cerca de 20 segundos fora do ar (22 s medidos com as imagens já baixadas;
+  502 e depois conexão recusada, não 503). As imagens base passam a ser baixadas a cada deploy.
 - **Vigia**: avisa de serviço parado e **não** o religa. Pare o timer antes de restaurar um backup.
 - Proxy próprio (sem Cloudflare): ele tem de sobrescrever `CF-Connecting-IP` (ADMIN.md, seção 1).
 - `.env` sem `APP_URL`: o backend sobe, mas avisa no log. Depois do primeiro acesso, apague `ADMIN_INITIAL_PASSWORD`.
@@ -102,6 +103,25 @@ está na primeira seção. Migration nova: `sql/060_glpi.sql` (aditiva).
 - nginx: log de acesso sem a query string (o texto buscado não fica gravado); containers sem capacidades extras e com
   `no-new-privileges`. PDF com `Cache-Control: no-store`.
 - Excluir minha conta apaga também a fila e as leituras guardadas no aparelho.
+- **Excluir conta não apaga mais as horas de outra pessoa.** Quando uma tarefa passa de uma pessoa para outra (Admin ›
+  Contas › Bloquear ou Excluir, "Passar para outra pessoa"), o tempo já apontado continua no registro de quem saiu.
+  Excluir depois a conta de quem recebeu apagava a tarefa e, junto, essas horas. Agora a exclusão é recusada (409:
+  "essa conta guarda N tarefas com horas de outra pessoa (...): transfira as tarefas para outra pessoa") e nada é
+  apagado. Excluir a própria conta (Configurações › Conta) também é recusado nesse caso: "peça ao admin para excluir
+  com transferência".
+- **Excluir conta passando as tarefas leva também as concluídas que guardam horas de outra pessoa.** Elas vão para
+  quem recebe como estão (concluídas, com a data e a resolução), entram na contagem de tarefas passadas e não geram
+  aviso (e-mail e notificação continuam só para as abertas). O diálogo Excluir conta oferece "Passar para outra
+  pessoa" também quando a conta só tem concluídas assim, e desliga "Excluir junto com a conta" enquanto houver tarefa
+  com horas de outra pessoa (`GET /api/admin/users` ganha `others_hours_tasks` e `others_hours_done`). Bloquear acesso
+  com transferência segue movendo só as abertas.
+- **Webhook: `minutes` traz só o tempo de quem é dono do webhook.** Numa tarefa transferida pelo admin, o campo somava
+  também as horas de quem tinha a tarefa antes (que o app e a API não mostram ao novo dono). Agora bate com o que a
+  pessoa vê na tarefa.
+- **Logo: WebP de formato desconhecido é recusado.** Um arquivo com cabeçalho de WebP mas sem ser de um dos três
+  formatos (VP8, VP8L, VP8X) passava sem conferência de tamanho; agora o envio responde 400 com a explicação.
+- GLPI: quem perdeu o papel Usuário não sincroniza mais pelo botão **Atualizar agora** (403; antes só o conectar
+  conferia).
 
 ### Tarefas e cronômetro
 - Concluir de novo com a mesma solução ou a mesma data não grava outro evento nem avisa de novo (`existing: true`),
@@ -131,6 +151,16 @@ está na primeira seção. Migration nova: `sql/060_glpi.sql` (aditiva).
   as tinha atribuído zera `assigned_by`.
 - "Precisa de atenção" não lista as tarefas de quem está olhando e diz "e mais N itens" (`attention_total`).
 - Admin › Contas no computador: duas linhas por conta.
+- Tarefas que atribuí: quando quem recebeu deixou de aceitar tarefas atribuídas, a lista não oferece mais "Alterar"
+  (antes oferecia e a alteração era recusada). Cancelar o envio continua valendo: em `GET /api/assign/sent`,
+  `editable` e `cancelable` passam a ser independentes.
+- Tarefas que atribuí: em uma devolução "atribuída de novo a", o nome de quem recebeu a reatribuição vira "conta
+  excluída" quando a pessoa saiu da instância (antes o nome continuava aparecendo).
+- Atribuir: o limite de 20 tarefas para a mesma pessoa a cada 10 minutos agora vale também para envios simultâneos
+  (dois ao mesmo tempo passavam de 20) e uma atribuição cancelada deixa de contar.
+- **Equipe e Admin › Equipes**: nomes com acento ou em minúsculas entram no lugar certo da ordem alfabética ("Água",
+  "almoxarifado", "Zeladoria"), no seletor de pessoas, nos cartões do painel da Equipe, nos projetos de uma pessoa
+  (relatório por projeto) e nos membros de cada equipe. Antes, "Água" ia para o fim.
 
 ### Desfazer e rotinas
 - O desfazer nunca responde ok sem ter mudado alguma coisa: alvo apagado, rotina com a agenda trocada depois ou
@@ -142,6 +172,13 @@ está na primeira seção. Migration nova: `sql/060_glpi.sql` (aditiva).
 - Desfazer a exclusão de projeto religa vencimentos, modelos e o projeto padrão; desfazer a exclusão de tarefa
   devolve cada apontamento a quem o fez (`user_id` na cópia); desfazer que devolve a tarefa a "concluída" para o
   cronômetro.
+- **Rotinas › Pausar**: pausar a mesma rotina duas vezes ao mesmo tempo (duas abas, a IA que repete o pedido) não cria
+  mais dois períodos de pausa sobrepostos; a segunda só muda o fim da primeira.
+- **Histórico › Desfazer**: desfazer um "Retomar" de uma rotina que tinha duas pausas valendo reabre as duas, e não só
+  a mais recente (vale para os "Retomar" feitos a partir desta versão).
+- **Histórico › Desfazer**: ao tentar desfazer a edição de uma rotina cuja agenda foi trocada há mais de 7 dias, o
+  aviso passou a dizer que a alteração não pode mais ser desfeita, em vez de mandar desfazer uma troca que já não tem
+  desfazer.
 
 ### Sem sinal
 - O primeiro acesso no aparelho não apaga mais os arquivos recém-guardados: o app reabre sem sinal já depois do
@@ -156,6 +193,18 @@ está na primeira seção. Migration nova: `sql/060_glpi.sql` (aditiva).
 - Sessão vencida leva ao login com a frase "Sua sessão terminou (ela vale 7 dias)".
 - "Abrindo o Nexus…" não fica para sempre: aparece "Não abriu" com "Tentar de novo". Configurações não fica
   carregando sem service worker. Erro do app ao montar uma tela vai para o log do servidor.
+- Meu mês › Antes do PDF: apontar o tempo sem sinal não aparece mais como salvo. A linha mostra o valor com a marca
+  "esperando conexão", o aviso diz "Sem sinal: o tempo sai quando a conexão voltar." e o topo deixa de dizer "Tudo
+  completo" enquanto o tempo não entrou.
+- Nova tarefa com tempo (quadro): se o sinal cai depois de a tarefa ser criada, o aviso diz que o tempo ficou guardado
+  e sai quando a conexão voltar (antes dizia só "Tarefa criada").
+- Registro rápido com "— 20min": se o sinal cai depois de a tarefa ser criada, o aviso diz que o tempo sai quando a
+  conexão voltar, em vez de "Registrada e concluída com 20min".
+- Lista colada (várias tarefas de uma vez): o aviso conta as tarefas cujo tempo ficou esperando conexão, e o Desfazer
+  tira esse tempo da fila do aparelho em vez de tentar apagar um apontamento que ainda não existe.
+- Ação que não dá para guardar (editar, checklist, Aguardando) com o servidor fora do ar (502, 503, 504) diz "O
+  servidor está fora do ar: faça de novo em instantes."; "Sem sinal: faça quando a conexão voltar." fica só para
+  quando não há rede.
 
 ### Telas
 - Hoje mais leve (pede 50 concluídas em vez de 200). Avisos: no máximo 3 na pilha. Lembrete não toca com um diálogo
@@ -169,6 +218,21 @@ está na primeira seção. Migration nova: `sql/060_glpi.sql` (aditiva).
 - Vocabulário: "Nº do chamado ou OS (opcional)", "Renovei: nova data", "excluiu o item", "Editar item", "Editar
   apontamento".
 - Listas em ordem alfabética não jogam mais os nomes com acento para o fim.
+- **Atalhos de teclado**: "Ver os atalhos", em Configurações, abre a mesma janela da tecla `?` (antes era uma cópia
+  com outros rótulos). Continua abrindo com os atalhos desligados.
+- **Tarefas em janela baixa** (até 600 px de altura, no computador): a página rola sozinha, sem a segunda rolagem
+  dentro das colunas.
+- **Webhook**: a lista de eventos aparece também quando o endereço é preenchido pelo navegador (preenchimento
+  automático).
+- GLPI: trocar o endereço do GLPI (ou desligar a integração) agora também apaga os vínculos das tarefas com os
+  chamados e o App-Token guardado. As tarefas ficam, com o número do chamado, mas deixam de enviar solução; os
+  chamados abertos do GLPI novo entram como tarefas novas, mesmo com números repetidos. Não é mais preciso apagar nada
+  no banco à mão. O App-Token só é mantido se você digitar um novo junto com o endereço. O aviso de trocar o endereço
+  ou desligar diz tudo o que sai (conexões, vínculos e App-Token). Atenção: trocar só o nome ou `http` por `https` do
+  MESMO GLPI também reimporta os chamados abertos como tarefas novas (ADMIN.md).
+- GLPI: endereço com IPv6 literal (`http://[2001:db8::5]:8080`) passa a funcionar atrás de servidores que conferem o
+  cabeçalho Host.
+- Admin: o aviso de excluir conta cita os vencimentos pessoais entre o que é apagado.
 
 ### Acessibilidade e celular
 - Com zoom de 200% o foco do teclado não fica escondido atrás da barra de baixo (WCAG 2.4.11); contorno dos campos
@@ -180,6 +244,13 @@ está na primeira seção. Migration nova: `sql/060_glpi.sql` (aditiva).
 - Celular: campos com 16 px no toque (o Safari do iPhone não dá mais zoom ao focar); endereço colado no título não
   alarga a tela; Configurações sem rolagem lateral a 320 px; área segura lateral com o aparelho deitado; o cartão
   "Rotina na hora" nunca passa da altura da tela.
+- **Busca do menu lateral**: as setas agora marcam a sugestão sem tirar o cursor do campo, e Enter abre a marcada (sem
+  nenhuma marcada, Enter segue abrindo a Busca completa). Leitores de tela anunciam o campo como caixa de combinação
+  com a lista de sugestões.
+- **Detalhe da tarefa no celular**: em edição, a Prioridade ocupa a linha inteira, como o Lembrete; não sobra mais
+  meia linha vazia.
+- **Hoje no celular**: em "Tempo por projeto", o nome do projeto aparece inteiro (a barra e o tempo ficam na linha de
+  baixo); reticências só quando falta espaço de verdade.
 
 ### Relatórios
 - PDF: a coluna TEMPO das concluídas é o tempo do período ("de 3h05 no total" quando a tarefa tem mais); no diário, o
@@ -194,12 +265,26 @@ está na primeira seção. Migration nova: `sql/060_glpi.sql` (aditiva).
   com aninhamento absurdo → 400.
 - Webhooks: cada um tem 20 s por passada; o destino lento não atrasa os das outras pessoas.
 - `docs/openapi.json`: o `/mcp` documenta só o `POST`.
+- **Pedido com JSON aninhado demais não derruba mais a resposta.** Um corpo com mais de mil colchetes ou chaves
+  aninhados (inclusive na tela de login, sem estar logado) respondia erro 500 e enchia o log do servidor. Agora
+  responde 400 "JSON aninhado demais" e deixa uma linha de aviso no log.
+- IA (MCP): no `get_history`, o nome de outra pessoa (quem atribuiu, quem recebeu, quem devolveu, quem cancelou, quem
+  transferiu, o colega que renovou um vencimento da equipe) passa a vir entre « », como já vinha nas outras
+  ferramentas. No app e na API o Histórico continua igual.
+- IA (MCP): na passagem de turno (`get_handoff`), uma tarefa sua cujo título começa igual à linha de uma tarefa
+  atribuída não ganha mais aspas por engano; o resto do texto é o mesmo.
+- Quando o banco recusa um dado vindo pela IA (caractere inválido, número fora do limite), fica uma linha de aviso no
+  log do servidor (`MCP: dado recusado em <ferramenta ou função>: <tipo do erro>`), sem o valor recebido, como a API
+  já fazia.
 
 ### E-mail e agendador
 - Aviso por e-mail que falha porque o servidor de e-mail estava fora do ar é tentado de novo nas passadas seguintes
   (até 2 h). Notificações dos aparelhos saem antes do e-mail. Tempo de conexão do SMTP de 5 s.
 - A faxina (sessões vencidas, histórico de 180 dias, links e avisos antigos) roda de hora em hora, não mais no login.
 - Dois admins convidando o mesmo pedido ao mesmo tempo: um só convite.
+- Saúde do Nexus: "agendador parado" não acende mais em falso quando uma passada demora (servidor de e-mail lento,
+  muitas pessoas). O sinal de vida do agendador passa a andar no começo da passada, entre os serviços e a cada pessoa
+  do envio de e-mail; a linha da tela passa a dizer "último sinal" (`scheduler_last_pass` mantém o nome).
 
 ### Infra e deploy
 - Restaurar um backup apaga e recria o banco antes do `pg_restore`, que roda numa transação e para no primeiro erro
@@ -210,14 +295,49 @@ está na primeira seção. Migration nova: `sql/060_glpi.sql` (aditiva).
   antes de usar (não mais 500); banco com 256 MB de `/dev/shm`; `jit=off`.
 - nginx comprime atrás de túnel ou proxy e volta a achar o backend recriado em até 10 s.
 - Vigia: não declara mais "tudo saudável" com o banco ou o backend parados.
+- **Vigia sem alarme falso na atualização.** Enquanto o `./deploy.sh` roda, o vigia de saúde não reinicia nada nem
+  manda e-mail: acabou o par "/api/health sem resposta" e "tudo saudável de novo" a cada atualização mais demorada. Se
+  o deploy falhar ou terminar, o vigia volta a olhar na passada seguinte; se o deploy morrer no meio, volta em 15
+  minutos.
+- **Senha do banco com caractere especial.** O `./deploy.sh` agora aceita senha com `/ @ # ? %` ou espaço, desde que a
+  `POSTGRES_PASSWORD` leve a senha como ela é e a `DATABASE_URL` leve a mesma senha codificada (`@` vira `%40` etc.).
+  Quando as duas não batem, a mensagem diz qual forma vai em cada variável. Continua mais simples usar só letras e
+  números (`openssl rand -hex 24`).
+- **Aviso do vigia mais claro** quando os três containers estão rodando e a aplicação não responde: o e-mail não manda
+  mais "subir o que está parado" (não há nada parado). A passada também ficou 10 s mais curta nesse caso.
+- Um `.env` sem `POSTGRES_PASSWORD` não faz mais o `./deploy.sh` sair calado, sem mensagem.
+
+### Documentação
+- Guia de administração: depois de voltar o código à mão (`git checkout` + `docker compose up -d --build`), a Saúde do
+  Nexus continua mostrando o commit do último `./deploy.sh`. O guia agora avisa disso, mostra como conferir a versão
+  que está no ar e como regravar `estado/deploy.json`.
+- Guia de administração: avisos que faltavam para quem opera. O dump manual de `backups/` também é apagado pela
+  retenção; a atualização que recria o banco tira o app do ar por cerca de 20 segundos; a senha do Postgres já
+  codificada (`%XX`) igual nas duas variáveis é recusada, e como escrever uma senha com caractere especial; o nginx e
+  o Postgres podem mudar de versão a cada deploy; com todas as equipes arquivadas, quem via ou atribuía só pela equipe
+  deixa de ver e de atribuir; o vigia fica calado durante o `./deploy.sh`.
+- README: o que fica e o que sai ao excluir uma conta (as tarefas que a pessoa atribuiu ficam com quem recebeu; os
+  vencimentos dela, inclusive os compartilhados com equipe, saem), o limite de 20 tarefas atribuídas à mesma pessoa a
+  cada 10 minutos e o comportamento com o servidor fora do ar (502, 503 e 504 valem como sem sinal).
+- Referência da API: passam a constar os objetivos de projeto (listar, criar, editar, excluir, ordenar, ordenar as
+  tarefas de um bloco), o pedido de nova senha e a criação de senha pelo link (`/api/auth/forgot`, `/reset`,
+  `/invite/accept`) e `GET /api/summary/week`. Completados os erros de `POST /api/assign`, as linhas removidas de `GET
+  /api/assign/sent`, os erros das rotas do GLPI e os campos novos de `GET /api/admin/health`.
 
 ### Testes
 - Matriz de permissões por rota (rota nova sem dono falha), lacunas de segurança provadas por mutação, migrations
   reaplicadas em banco cheio, webhook preso ao IP, laço do agendador e SMTP; roteiros e2e com código de saída. A suíte
-  passou de 593 para 805 testes.
+  passou de 593 para 888 testes.
+- Cada ação que tem "Desfazer" no Histórico (36) agora é feita, desfeita e conferida contra o banco; ação nova sem
+  teste faz a suíte falhar com o aviso de onde acrescentar.
+- Os dois testes que falhavam no fim de semana e na virada do dia agora rodam em sábado, domingo e atravessando a
+  meia-noite.
+- Toda rota do `openapi` que não é só do app tem de estar citada em `docs/API.md` (rota nova sem documentação falha a
+  suíte); o `deploy.sh` e o vigia são testados de verdade, com `docker` e `git` falsos.
 
 ### Obsoleto
-- `heatmap`, `task_adherence` e `throughput` de `GET /api/dashboard`: seguem respondendo, saem na 3.0.
+- `heatmap`, `task_adherence` e `throughput` de `GET /api/dashboard` passam a constar como obsoletos: a resposta não
+  mudou nesta versão (o app já não usava os três); seguem respondendo e saem na 3.0.
 
 ## 2.1.0 — 2026-11-16
 

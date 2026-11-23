@@ -2197,7 +2197,7 @@
           "admin"
         ],
         "summary": "List Users",
-        "description": "Contas em ordem de nome (o que a linha mostra), com o último acesso\n(`last_seen_at`: entrar ou usar o app; nulo = nunca entrou), a criação e\nquantas tarefas abertas cada uma tem (`open_tasks`, para transferir) e os\nvencimentos dela compartilhados com equipes (`shared_renewals`, por equipe:\nexcluir a conta apaga, o diálogo de excluir avisa).\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
+        "description": "Contas em ordem de nome (o que a linha mostra), com o último acesso\n(`last_seen_at`: entrar ou usar o app; nulo = nunca entrou), a criação e\nquantas tarefas abertas cada uma tem (`open_tasks`, para transferir), quantas\nguardam horas de outra pessoa (`others_hours_tasks`; as concluídas entre elas:\n`others_hours_done`: excluir a conta só passando as tarefas adiante) e os\nvencimentos dela compartilhados com equipes (`shared_renewals`, por equipe:\nexcluir a conta apaga, o diálogo de excluir avisa).\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "list_users_api_admin_users_get",
         "responses": {
           "200": {
@@ -2553,7 +2553,7 @@
           "admin"
         ],
         "summary": "Delete User",
-        "description": "Exclui a conta e TODOS os dados dela (tarefas, rotinas, tempo, chaves,\nhistórico: ON DELETE CASCADE). Sem volta: o admin confirma digitando o\ne-mail. Tarefas que essa pessoa atribuiu ficam com quem recebeu. Os\nvencimentos dela saem junto, inclusive os compartilhados com equipe (a\nresposta conta: `renewals` e `shared_renewals`).\n`transfer_to`: antes de excluir, as tarefas abertas passam para essa pessoa.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
+        "description": "Exclui a conta e TODOS os dados dela (tarefas, rotinas, tempo, chaves,\nhistórico: ON DELETE CASCADE). Sem volta: o admin confirma digitando o\ne-mail. Tarefas que essa pessoa atribuiu ficam com quem recebeu. Os\nvencimentos dela saem junto, inclusive os compartilhados com equipe (a\nresposta conta: `renewals` e `shared_renewals`).\n`transfer_to`: antes de excluir, as tarefas abertas passam para essa pessoa, e\ntambém as concluídas que guardam horas de outra pessoa. Sem `transfer_to`, conta\ncom tarefa que guarda horas de outra pessoa = 409 (nada é apagado).\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "delete_user_api_admin_users__user_id__delete_post",
         "parameters": [
           {

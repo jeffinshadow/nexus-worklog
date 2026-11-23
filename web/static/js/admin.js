@@ -65,28 +65,33 @@ const ORIGEM = { colega: "indicação de colega", empresa: "pela empresa ou equi
 
 // Bloquear ou excluir quem tem tarefas abertas: passar para outra pessoa
 // (papel Usuário, acesso liberado e que já entrou: a regra do servidor) ou deixar. value(): id, null (deixar) ou
-// undefined (escolheu passar, mas sem pessoa).
-function transferPicker(u, users, keep) {
-  if (!u.open_tasks) return null;
-  const n = u.open_tasks;
+// undefined (escolheu passar, mas sem pessoa). del (excluir): as concluídas que guardam horas de outra pessoa
+// vão junto, e com tarefa assim o servidor recusa excluir sem passar (409): a outra opção fica desligada.
+function transferPicker(u, users, keep, del = false) {
+  const n = u.open_tasks, m = del ? u.others_hours_done || 0 : 0;
+  const locked = del && u.others_hours_tasks > 0;
+  if (!n && !m) return null;
   const others = users.filter((x) => x.id !== u.id && x.roles.includes("user") && !x.blocked_at && !x.invite_pending);
   const pass = h("input", { type: "radio", name: "transfer", value: "pass" });
   const stay = h("input", { type: "radio", name: "transfer", value: "keep" });
   const sel = h("select", { "aria-label": "Quem recebe as tarefas" }, h("option", { value: "", text: "Escolha a pessoa…" }),
     ...others.map((x) => h("option", { value: String(x.id), text: x.display_name ? `${x.display_name} · ${x.email}` : x.email })));
   pass.checked = others.length > 0;
-  stay.checked = !pass.checked;
+  stay.checked = !pass.checked && !locked;
+  stay.disabled = locked;
   if (!others.length) { pass.disabled = true; sel.disabled = true; }
   sel.addEventListener("change", () => { if (sel.value) { pass.checked = true; markInvalid([sel], null, false); } });
   stay.addEventListener("change", () => markInvalid([sel], null, false));
   const el = h("fieldset", { class: "transfer-tasks" },
-    h("legend", { text: n === 1 ? "1 tarefa aberta" : `${n} tarefas abertas` }),
+    h("legend", { text: [n ? plural(n, "tarefa aberta", "tarefas abertas") : "",
+      m ? `${plural(m, "concluída", "concluídas")} com horas de outra pessoa` : ""].filter(Boolean).join(" e ") }),
     h("label", { class: "check-line role-line" }, pass, h("span", {}, h("strong", { text: "Passar para outra pessoa" }),
-      h("small", { text: "Vão com as anotações, o checklist e as fotos; quem recebe é avisado e fica no histórico. O tempo já registrado continua nesta conta." }))),
+      h("small", { text: "Vão com as anotações, o checklist e as fotos; quem recebe é avisado e fica no histórico. O tempo já registrado continua nesta conta." + (m ? " As concluídas que guardam horas de outra pessoa vão junto, como estão e sem aviso." : "") }))),
     h("div", { class: "field transfer-who" }, sel),
-    h("label", { class: "check-line role-line" }, stay, h("span", {}, h("strong", { text: keep[0] }), h("small", { text: keep[1] }))),
+    h("label", { class: "check-line role-line" }, stay, h("span", {}, h("strong", { text: keep[0] }),
+      h("small", { text: locked ? "Não dá: há tarefa com horas de outra pessoa, que seriam apagadas junto." : keep[1] }))),
     others.length ? null : h("p", { class: "dialog-note", text: "Nenhuma outra conta com o papel Usuário, acesso liberado e que já entrou no Nexus pode receber." }));
-  return { el, sel, value: () => stay.checked ? null : sel.value ? Number(sel.value) : undefined };
+  return { el, sel, locked, value: () => stay.checked ? null : sel.value ? Number(sel.value) : undefined };
 }
 
 const movedText = (t) => t && t.count ? ` ${t.count === 1 ? "1 tarefa passou" : `${t.count} tarefas passaram`} para ${t.to}.` : "";
@@ -314,7 +319,7 @@ async function mountUsers(root, me) {
 
   // ---- Excluir conta (LGPD): apaga a conta e todos os dados dela; confirma com o e-mail ----
   function onDelete(u) {
-    const tp = transferPicker(u, users, ["Excluir junto com a conta", "As tarefas abertas saem com o resto dos dados."]);
+    const tp = transferPicker(u, users, ["Excluir junto com a conta", "As tarefas abertas saem com o resto dos dados."], true);
     const input = h("input", { type: "email", autocomplete: "off", required: "required" });
     const err = h("p", { class: "error-text", role: "alert" });
     input.addEventListener("input", () => markInvalid([input], err, false));
@@ -332,7 +337,7 @@ async function mountUsers(root, me) {
       ev.preventDefault();
       err.textContent = "";
       const to = tp ? tp.value() : null;
-      if (to === undefined) { err.textContent = "Escolha quem recebe as tarefas (ou exclua junto)."; markInvalid([tp.sel], err); tp.sel.focus(); return; }
+      if (to === undefined) { err.textContent = tp.sel.disabled ? "Não há quem receba as tarefas: libere ou crie uma conta com o papel Usuário antes de excluir esta." : tp.locked ? "Escolha quem recebe as tarefas." : "Escolha quem recebe as tarefas (ou exclua junto)."; markInvalid([tp.sel], err); tp.sel.focus(); return; }
       try {
         const res = await api.post(`/admin/users/${u.id}/delete`, { confirm_email: input.value.trim(), ...(to ? { transfer_to: to } : {}) });
         dlg.close();

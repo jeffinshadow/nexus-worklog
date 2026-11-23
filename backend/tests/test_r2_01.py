@@ -102,3 +102,14 @@ def test_excluir_a_propria_conta_com_horas_de_outra_pessoa_da_409(admin, novo_us
                                   "peça ao admin para excluir com transferência")
     assert _dono(tid) == uid_de(b) and _horas(a) == {"n": 1, "m": 30}
     assert b.get("/auth/me").status_code == 200  # a sessão segue
+
+
+def test_lista_de_contas_conta_as_tarefas_com_horas_de_outra_pessoa(admin, novo_usuario):
+    """Integração: o diálogo Excluir conta oferece "Passar para outra pessoa" por estes dois números
+    (antes só por open_tasks: conta só com concluída alheia recebia o 409 sem ter como escolher)."""
+    _a, b, c, tid = _cena(admin, novo_usuario)
+    conta = lambda u: next(x for x in admin.get("/admin/users").json() if x["id"] == uid_de(u))
+    assert (conta(b)["others_hours_tasks"], conta(b)["others_hours_done"], conta(b)["open_tasks"]) == (1, 0, 1)
+    assert b.post(f"/worklog/{tid}/finish", {"resolution": "Trocado"}).status_code == 200
+    assert (conta(b)["others_hours_tasks"], conta(b)["others_hours_done"], conta(b)["open_tasks"]) == (1, 1, 0)
+    assert (conta(c)["others_hours_tasks"], conta(c)["others_hours_done"]) == (0, 0)

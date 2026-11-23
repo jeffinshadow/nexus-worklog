@@ -38,6 +38,8 @@ services:
     volumes:
       - ./docs:/docs:ro
       - ./web/nginx.conf:/web/nginx.conf:ro  # test_nginx_nao_grava_a_rota_do_link lê o arquivo de verdade
+      - ./deploy.sh:/deploy.sh:ro  # test_r2_10 roda o deploy.sh e o vigia de verdade (sem os dois, pula)
+      - ./tools:/tools:ro
     depends_on:
       db-test:
         condition: service_healthy

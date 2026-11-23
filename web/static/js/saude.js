@@ -33,7 +33,7 @@ function rows(s) {
   if (!e.scheduler) out.push(["Agendador", "desligado no servidor (MAIL_SCHEDULER): avisos e notificações agendadas não saem", "warn"]);
   else if (last) {
     const parado = min(s.now, last);
-    out.push(["Agendador", `última passada ${when(last)}` + (parado > SCHEDULER_STUCK_MIN ? ` · parado há ${parado} min: confira o servidor` : ""),
+    out.push(["Agendador", `último sinal ${when(last)}` + (parado > SCHEDULER_STUCK_MIN ? ` · parado há ${parado} min: confira o servidor` : ""),
       parado > SCHEDULER_STUCK_MIN ? "warn" : "ok"]);
   } else {
     const semPassada = min(s.now, v.started_at) > SCHEDULER_STUCK_MIN;

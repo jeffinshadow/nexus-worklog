@@ -247,7 +247,7 @@ também para a troca de nome ou de `http` para `https` do mesmo GLPI: as tarefas
 ## 8. Saúde do Nexus
 
 Em Admin > Geral, só leitura: versão (número, commit e data do último deploy, última migração, início do backend),
-a última passada do **agendador** (avisa se parou ou está desligado), último **backup** (data, tamanho, tabelas),
+o último sinal de vida do **agendador** (avisa se parou ou está desligado), último **backup** (data, tamanho, tabelas),
 e-mail, push, fotos (quem passa de 80% da cota), webhooks (quantos desligados), contas, pedidos de convite, chaves de
 API e tamanho do banco. Só contagens e datas. "Copiar diagnóstico"
 gera um texto para suporte, sem dados de pessoas nem segredos. O `deploy.sh` alimenta o commit, a data do deploy e o
@@ -260,7 +260,8 @@ migração vêm do código que está rodando e estão sempre certos.
 arquivos) confere a cada 5 minutos se `/api/health` responde pelo nginx (o mesmo teste do `deploy.sh`) e o estado dos
 três containers. Reinicia o que estiver rodando e *unhealthy* e avisa por e-mail (`ALERT_EMAIL` ou `ADMIN_EMAIL`), uma
 vez por incidente e outra quando o health volta a responder. Serviço **parado**, ausente ou em laço de reinício entra
-no aviso, mas o vigia **não o religa** (pode ter sido parado de propósito): use `docker compose up -d`. **Limite:** o
+no aviso, mas o vigia **não o religa** (pode ter sido parado de propósito): use `docker compose up -d`. Enquanto o
+`./deploy.sh` roda, o vigia fica calado (não reinicia nem avisa); se o deploy morrer no meio, volta em 15 minutos. **Limite:** o
 e-mail sai de dentro do backend; com o backend fora do ar (ou sem SMTP) o aviso não sai, fica só no journal
 (`journalctl -t nexus-vigia`) e é tentado de novo a cada passada. Se precisa saber de queda total, use também um
 monitor de fora da máquina apontado para `/api/health`. Os logs dos containers têm rotação (10 MB x 5).

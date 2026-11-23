@@ -55,13 +55,20 @@ def _sort_key(name: str) -> str:
 def list_users(admin=Depends(require_admin)):
     """Contas em ordem de nome (o que a linha mostra), com o último acesso
     (`last_seen_at`: entrar ou usar o app; nulo = nunca entrou), a criação e
-    quantas tarefas abertas cada uma tem (`open_tasks`, para transferir) e os
+    quantas tarefas abertas cada uma tem (`open_tasks`, para transferir), quantas
+    guardam horas de outra pessoa (`others_hours_tasks`; as concluídas entre elas:
+    `others_hours_done`: excluir a conta só passando as tarefas adiante) e os
     vencimentos dela compartilhados com equipes (`shared_renewals`, por equipe:
     excluir a conta apaga, o diálogo de excluir avisa)."""
     rows = db.query_all(
         f"""SELECT u.id, u.email, u.role, u.created_at, u.accepts_assignments_at, u.invite_pending,
                    u.viewers_allowed, u.blocked_at, u.last_seen_at,
                    (SELECT count(*) FROM worklog_tasks w WHERE w.user_id = u.id AND w.status <> 'done')::int AS open_tasks,
+                   -- tarefas com horas de outra pessoa (roles.others_hours): o diálogo de excluir oferece passar adiante
+                   (SELECT count(*) FROM worklog_tasks w WHERE w.user_id = u.id AND EXISTS (
+                       SELECT 1 FROM time_entries e WHERE e.task_id = w.id AND e.user_id <> u.id))::int AS others_hours_tasks,
+                   (SELECT count(*) FROM worklog_tasks w WHERE w.user_id = u.id AND w.status = 'done' AND EXISTS (
+                       SELECT 1 FROM time_entries e WHERE e.task_id = w.id AND e.user_id <> u.id))::int AS others_hours_done,
                    -- vencimentos da conta compartilhados com equipe: excluir a conta apaga, o diálogo avisa
                    COALESCE((SELECT json_agg(json_build_object('team', x.name, 'count', x.n) ORDER BY lower(x.name))
                                FROM (SELECT t.name, count(*)::int AS n FROM renewals r JOIN teams t ON t.id = r.team_id
@@ -465,9 +472,9 @@ def delete_user(user_id: int, data: DeleteUserIn, admin=Depends(require_admin_cs
     e-mail. Tarefas que essa pessoa atribuiu ficam com quem recebeu. Os
     vencimentos dela saem junto, inclusive os compartilhados com equipe (a
     resposta conta: `renewals` e `shared_renewals`).
-    `transfer_to`: antes de excluir, as tarefas abertas passam para essa pessoa."""
-    # Com transfer_to vão também as concluídas que guardam horas de outra pessoa; sem, conta com
-    # tarefa assim = 409. (Fora da docstring: ela entra no docs/openapi.json; ver a nota do r2-01.)
+    `transfer_to`: antes de excluir, as tarefas abertas passam para essa pessoa, e
+    também as concluídas que guardam horas de outra pessoa. Sem `transfer_to`, conta
+    com tarefa que guarda horas de outra pessoa = 409 (nada é apagado)."""
     if user_id == admin["user_id"]:
         raise HTTPException(status_code=400, detail="para a sua própria conta, use Configurações > Conta")
     target = _ensure_user(user_id)
