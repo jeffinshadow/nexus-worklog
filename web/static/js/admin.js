@@ -763,7 +763,8 @@ async function mountOrg(root, me) {
       const v = url.value.trim(), t = app.value.trim();
       if (cfg.glpi_url && v.replace(/\/+$/, "") !== cfg.glpi_url && !(await confirmDialog({
         title: v ? "Trocar o endereço do GLPI?" : "Desligar a integração com o GLPI?",
-        text: "Todas as pessoas conectadas são desconectadas (os tokens delas são apagados). As tarefas ficam.",
+        text: "Todas as pessoas conectadas são desconectadas (os tokens delas são apagados). Os vínculos das tarefas com os chamados são apagados: as tarefas ficam, mas deixam de enviar a solução ao GLPI. "
+          + (v ? (t ? "O App-Token guardado é trocado pelo que você digitou." : "O App-Token guardado é removido: se o GLPI novo exigir, digite-o antes de trocar.") : "O App-Token guardado é removido."),
         confirm: v ? "Trocar" : "Desligar", danger: true }))) return;
       try {
         await save({ glpi_url: v || null, ...(t ? { glpi_app_token: t } : {}) },
