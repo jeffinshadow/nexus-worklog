@@ -422,3 +422,88 @@ def test_desfazer_exclusao_devolve_a_data_de_criacao(admin, novo_usuario, acao):
     DESFAZ[acao](c)
     _ok(c.u.post(f"/history/{_ultima(c.u, acao)['id']}/undo"))
     assert _estado(tudo=True) == c.antes_tudo, _diferenca(c.antes_tudo, _estado(tudo=True))
+
+
+# ------------------------------------------------------------------ relógio --
+# Os dois testes que a auditoria viu falhar no fim de semana e na virada do dia (testes-qualidade #3) foram
+# corrigidos por leitura. Aqui eles rodam DE NOVO, os mesmos (importados), com a data da app trocada.
+SABADO, DOMINGO = date(2026, 11, 28), date(2026, 11, 29)
+
+
+class _Relogio:
+    """Data falsa da app: troca `app_today` em todo módulo que a importou (o padrão de test_revisao_semanal,
+    para todos de uma vez). Só o "hoje" da app: o now() do Postgres continua o de verdade, então a rotina criada
+    pelos clientes dados em `contas` tem a criação levada para o dia falso (senão ela "existiria" desde o dia real,
+    com dias úteis já passados, e o fim de semana não seria reproduzido)."""
+
+    def __init__(self, monkeypatch, dia, *contas):
+        self.dia = dia
+        for nome, m in list(sys.modules.items()):
+            if (nome == "app" or nome.startswith("app.")) and hasattr(m, "app_today"):
+                monkeypatch.setattr(m, "app_today", lambda: self.dia)
+        for conta in contas:
+            self._rotina_nasce_no_dia_falso(monkeypatch, conta)
+
+    def _rotina_nasce_no_dia_falso(self, monkeypatch, cliente):
+        original = cliente.post
+
+        def post(path, *a, **k):
+            r = original(path, *a, **k)
+            if path == "/recurring" and r.status_code == 201:
+                db.execute("UPDATE recurring_tasks SET created_at = %s WHERE id = %s",
+                           (datetime(self.dia.year, self.dia.month, self.dia.day, 12, tzinfo=services.app_tz()), r.json()["id"]))
+            return r
+        monkeypatch.setattr(cliente, "post", post)
+
+    def vira_antes_de(self, monkeypatch, cliente, verbo, trecho, vez=1):
+        """Meia-noite: o dia vira logo antes da `vez`-ésima chamada `verbo` cujo caminho contém `trecho`."""
+        original, visto = getattr(cliente, verbo), []
+
+        def chamada(path, *a, **k):
+            if trecho in path:
+                visto.append(path)
+                if len(visto) == vez:
+                    self.dia += timedelta(days=1)
+            return original(path, *a, **k)
+        monkeypatch.setattr(cliente, verbo, chamada)
+        return visto
+
+
+def test_relogio_falso_muda_o_hoje_da_app(monkeypatch, usuario):
+    assert dia_hoje(usuario) == services.app_today() != SABADO
+    _Relogio(monkeypatch, SABADO, usuario)
+    assert dia_hoje(usuario) == SABADO and SABADO.weekday() == 5 and DOMINGO.weekday() == 6
+    # A rotina padrão (dias úteis) não é devida: é a condição que derrubava o teste antigo no fim de semana.
+    rid = _ok(usuario.post("/recurring", {"label": "Dias úteis"}))["id"]
+    assert next(r for r in usuario.get("/board").json()["recurring"] if r["id"] == rid)["due"] is False
+    assert usuario.get("/dashboard").json()["task_adherence"]["tasks"] == []  # criada no sábado: nenhum dia devido ainda
+
+
+@pytest.mark.parametrize("dia", [SABADO, DOMINGO], ids=["sabado", "domingo"])
+def test_ranking_de_quem_acompanha_no_fim_de_semana(monkeypatch, admin, usuario, dia):
+    _Relogio(monkeypatch, dia, usuario)
+    antigo_ranking.test_quem_acompanha_nao_recebe_ranking_nem_backlog(admin, usuario)
+
+
+@pytest.mark.parametrize("dia", [SABADO, DOMINGO], ids=["sabado", "domingo"])
+def test_pausa_retomar_e_desfazer_no_fim_de_semana(monkeypatch, usuario, novo_usuario, dia):
+    _Relogio(monkeypatch, dia, usuario)
+    antigo_pausa.test_retomar_desfazer_e_validacoes(usuario, novo_usuario)
+
+
+@pytest.mark.parametrize("vez", [1, 2], ids=["antes-do-1o-desfazer", "antes-do-2o-desfazer"])
+def test_pausa_retomar_e_desfazer_atravessando_a_meia_noite(monkeypatch, usuario, novo_usuario, vez):
+    """23:59 -> 00:01 no meio do teste. Antes do 1º desfazer é o caso da auditoria: a pausa pedida "ontem" não é
+    apagada, é encerrada (regra do produto), e o teste antigo contava as linhas."""
+    relogio = _Relogio(monkeypatch, SABADO, usuario)
+    desfeitos = relogio.vira_antes_de(monkeypatch, usuario, "post", "/undo", vez)
+    antigo_pausa.test_retomar_desfazer_e_validacoes(usuario, novo_usuario)
+    assert len(desfeitos) == 2 and relogio.dia == DOMINGO  # a virada aconteceu mesmo
+
+
+def test_ranking_de_quem_acompanha_atravessando_a_meia_noite(monkeypatch, admin, usuario):
+    """A rotina é marcada no sábado às 23:59 e os painéis são lidos no domingo às 00:01."""
+    relogio = _Relogio(monkeypatch, SABADO, usuario)
+    lidos = relogio.vira_antes_de(monkeypatch, admin, "get", "/viewer/users/")
+    antigo_ranking.test_quem_acompanha_nao_recebe_ranking_nem_backlog(admin, usuario)
+    assert lidos and relogio.dia == DOMINGO
