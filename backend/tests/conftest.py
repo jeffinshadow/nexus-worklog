@@ -66,6 +66,12 @@ def _pedido_sem_tempo_minimo(monkeypatch):
     monkeypatch.setattr(ir, "form_ok", lambda token: True)
 
 
+def _limitadores():
+    import sys
+    return {id(v): v for nome, m in list(sys.modules.items()) if nome == "app" or nome.startswith("app.")
+            for v in vars(m).values() if isinstance(v, security.RateLimiter)}.values()
+
+
 @pytest.fixture(autouse=True)
 def _banco_limpo():
     existentes = {r["tablename"] for r in db.query_all(
@@ -77,10 +83,8 @@ def _banco_limpo():
     if "app_settings" in existentes:
         db.execute("INSERT INTO app_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING")
     main.seed_admin()
-    for limiter in (security.login_limiter, security.login_email_limiter,
-                    security.pdf_limiter, security.reset_limiter, security.reset_email_limiter,
-                    security.invite_req_limiter, security.invite_req_email_limiter, security.link_limiter,
-                    security.webhook_test_limiter, security.token_limiter, security.client_error_limiter):
+    # Todo limitador do app (qualquer módulo), não uma lista à mão: limitador novo já nasce zerado entre os testes.
+    for limiter in _limitadores():
         limiter._hits.clear()
     yield
 
