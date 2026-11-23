@@ -35,9 +35,9 @@ sem opção nova. Testes novos em `backend/tests/test_aud_p02.py` (13).
   De ~93 px para ~57 px por conta. No celular, igual a antes.
 
 ## Mudanças de API (o integrador regera o `docs/openapi.json`)
-Nenhuma rota nem parâmetro novo; só campos de resposta (as rotas devolvem dicionários sem `response_model`, então o
-`test_openapi_em_dia` não deve acusar; se acusar, é pela docstring de `delete_team`, `list_users`, `delete_user`
-ou `export_zip`, que mudaram).
+Nenhuma rota nem parâmetro novo; só campos de resposta e descrições. O `test_openapi_em_dia` **falha** neste branch
+(única falha da suíte: 604 passaram, 1 pulado) porque as descrições de `delete_team`, `list_users`, `delete_user` e
+`export_zip` mudaram: basta rodar `tools/openapi.py`.
 - **Removidos da resposta** de `GET /api/viewer/users/{id}/board`: `remind_at`, `first_on`, `touched_at` nas tarefas;
   `timer` sempre `null`. Usada só pela tela Equipe (`board.js` em modo leitura lida com a ausência: conferido).
 - **Mudou de formato**: `people[].last_activity` em `GET /api/viewer/team` (era data e hora, agora só a data).
