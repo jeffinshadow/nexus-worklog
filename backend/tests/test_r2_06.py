@@ -122,21 +122,26 @@ def test_limite_vale_para_envios_simultaneos(cena, devagar):
     assert _conta("worklog_tasks WHERE user_id = %s", uid_de(kaique)) == 20
 
 
-def test_limite_nao_conta_atribuicao_cancelada(cena):
+def test_limite_conta_atribuicao_cancelada(cena):
     chefe, kaique, _ = cena
     ids = [_manda(chefe, kaique, title=f"Tarefa {i}") for i in range(20)]
     r = chefe.post("/assign", {"user_id": uid_de(kaique), "title": "A 21ª"})
     assert r.status_code == 429 and 1 <= int(r.headers["Retry-After"]) <= 600
     assert "muitas tarefas para a mesma pessoa" in r.json()["detail"]
-    # Cancelou uma (engano): abre uma vaga, e só uma.
+    # Cancelar não abre vaga: o e-mail da atribuição já saiu (e o do cancelar também).
     assert chefe.post(f"/assign/{ids[0]}/cancel").status_code == 200
-    _manda(chefe, kaique, title="No lugar da cancelada")
     assert chefe.post("/assign", {"user_id": uid_de(kaique), "title": "Outra"}).status_code == 429
-    # Quem recebeu desfez o cancelamento (a tarefa voltou para ela): volta a contar.
-    assert chefe.post(f"/assign/{ids[1]}/cancel").status_code == 200
-    h = next(x for x in hist(kaique, entity="worklog", entity_id=ids[1]) if x["action"] == "worklog.delete")
-    assert kaique.post(f"/history/{h['id']}/undo").status_code == 200
-    assert chefe.post("/assign", {"user_id": uid_de(kaique), "title": "Outra"}).status_code == 429
+
+
+def test_atribuir_e_cancelar_em_laco_para_na_21a(cena):
+    """Atribuir + cancelar em laço manda dois e-mails por volta: o limite tem de segurar."""
+    chefe, kaique, _ = cena
+    for i in range(20):
+        tid = _manda(chefe, kaique, title=f"Volta {i}")
+        assert chefe.post(f"/assign/{tid}/cancel").status_code == 200
+    r = chefe.post("/assign", {"user_id": uid_de(kaique), "title": "A 21ª volta"})
+    assert r.status_code == 429
+    assert _conta("worklog_tasks WHERE user_id = %s", uid_de(kaique)) == 0
 
 
 def test_limite_pelo_mcp_responde_o_mesmo_429(cena):

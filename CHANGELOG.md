@@ -157,7 +157,7 @@ está na primeira seção. Migration nova: `sql/060_glpi.sql` (aditiva).
 - Tarefas que atribuí: em uma devolução "atribuída de novo a", o nome de quem recebeu a reatribuição vira "conta
   excluída" quando a pessoa saiu da instância (antes o nome continuava aparecendo).
 - Atribuir: o limite de 20 tarefas para a mesma pessoa a cada 10 minutos agora vale também para envios simultâneos
-  (dois ao mesmo tempo passavam de 20) e uma atribuição cancelada deixa de contar.
+  (dois ao mesmo tempo passavam de 20). Uma atribuição cancelada continua contando (o cancelar também manda e-mail).
 - **Equipe e Admin › Equipes**: nomes com acento ou em minúsculas entram no lugar certo da ordem alfabética ("Água",
   "almoxarifado", "Zeladoria"), no seletor de pessoas, nos cartões do painel da Equipe, nos projetos de uma pessoa
   (relatório por projeto) e nos membros de cada equipe. Antes, "Água" ia para o fim.

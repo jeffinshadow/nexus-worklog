@@ -188,7 +188,7 @@ def assign(data: AssignIn, user=Depends(require_assigner_csrf)):
 # conta-robô de integração precisa importar filas para várias pessoas. Vale para
 # app, chave de API e MCP (todos passam por assign()). Conta no histórico de quem
 # atribui (assign.send), que já guarda o destinatário: sobrevive a reinício do
-# backend. Atribuição cancelada (a tarefa saiu da conta de quem recebeu) não conta.
+# backend e uma atribuição cancelada conta (o cancelar também manda e-mail).
 ASSIGN_MAX, ASSIGN_WINDOW = 20, 600
 
 
@@ -201,10 +201,6 @@ def _limit(by: int, to: int) -> None:
                SELECT a.created_at FROM audit_log a
                 WHERE a.user_id = %s AND a.action = 'assign.send' AND (a.after->>'to_id')::bigint = %s
                   AND a.created_at > now() - make_interval(secs => %s)
-                  AND NOT (EXISTS (SELECT 1 FROM audit_log c
-                                    WHERE c.user_id = a.user_id AND c.entity = 'assignment'
-                                      AND c.entity_id = a.entity_id AND c.action = 'assign.cancel')
-                           AND NOT EXISTS (SELECT 1 FROM worklog_tasks w WHERE w.id = a.entity_id))
                 ORDER BY a.created_at DESC LIMIT %s) x""", (by, to, ASSIGN_WINDOW, ASSIGN_MAX))
     if row["n"] >= ASSIGN_MAX:
         wait = max(1, ASSIGN_WINDOW - int((row["now"] - row["first"]).total_seconds()))
