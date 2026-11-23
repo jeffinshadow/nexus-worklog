@@ -632,3 +632,37 @@ def test_webhook_cadastrado_com_ip_publico_nao_envia_se_o_dns_passar_a_dar_ip_in
     assert conexoes == []  # nem tentou conectar
     w = db.query_one("SELECT failures, last_error, last_delivered_at FROM webhooks WHERE id = %s", (hid,))
     assert (w["failures"], w["last_delivered_at"]) == (1, None) and "rede interna" in w["last_error"]
+
+
+# ------------------------------------------ devolução com lápide de verdade --
+def test_devolver_tarefa_com_apontamentos_e_desfazer_devolve_cada_um_ao_dono(admin, novo_usuario, sem_push):
+    chefe, kaique, lia = (novo_usuario(f"{n}@example.com") for n in ("chefe", "kaique", "lia"))
+    papeis(admin, chefe, ["user", "assigner"])
+    _ok(kaique.put("/me/assignments", {"accept": True}))
+    tid = _ok(chefe.post("/assign", {"user_id": uid_de(kaique), "title": "Trocar reator do 3º andar"}))["id"]
+    ontem = (dia_hoje(kaique) - timedelta(days=1)).isoformat()
+    for corpo in ({"minutes": 30, "note": "ida"}, {"minutes": 45, "day": ontem}, {"minutes": 15}):
+        _ok(kaique.post(f"/worklog/{tid}/time", corpo))
+    _ok(kaique.post(f"/worklog/{tid}/notes", {"body": "faltou a escada"}))
+    antes = db.query_all("SELECT id, user_id, task_id, minutes, day, note, created_at FROM time_entries ORDER BY id")
+    assert [e["user_id"] for e in antes] == [uid_de(kaique)] * 3
+
+    _ok(kaique.post(f"/worklog/{tid}/return", {"reason": "não é da minha área"}))
+    assert not db.query_one("SELECT 1 FROM worklog_tasks WHERE id = %s", (tid,))
+    assert db.query_all("SELECT 1 FROM time_entries") == []  # saíram com a tarefa
+    # A lápide que a rota grava de verdade (não um campo posto pelo teste): cada apontamento com o dono.
+    lapide = db.query_one("SELECT id, before FROM audit_log WHERE user_id = %s AND action = 'worklog.delete' AND entity_id = %s",
+                          (uid_de(kaique), tid))
+    assert lapide["before"]["return_reason"] == "não é da minha área"
+    assert {e["id"]: e["user_id"] for e in lapide["before"]["children"]["time"]} == {e["id"]: e["user_id"] for e in antes}
+
+    h = next(x for x in hist(kaique, entity="worklog", entity_id=tid) if x["action"] == "worklog.delete")
+    assert h["id"] == lapide["id"] and h["can_undo"] is True
+    assert lia.post(f"/history/{h['id']}/undo").status_code == 404  # só quem devolveu desfaz
+    _ok(kaique.post(f"/history/{h['id']}/undo"))
+    # Cada apontamento de volta, na mesma tarefa, no mesmo dia, com o mesmo dono; nada foi parar em outra conta.
+    assert db.query_all("SELECT id, user_id, task_id, minutes, day, note, created_at FROM time_entries ORDER BY id") == antes
+    t = db.query_one("SELECT user_id, assigned_by, status FROM worklog_tasks WHERE id = %s", (tid,))
+    assert t == {"user_id": uid_de(kaique), "assigned_by": uid_de(chefe), "status": "todo"}
+    assert [n["body"] for n in kaique.get(f"/worklog/{tid}").json()["notes"]] == ["faltou a escada"]
+    assert kaique.post(f"/history/{h['id']}/undo").status_code == 409
