@@ -9,12 +9,19 @@ Nada aqui traz valor real de senha ou chave: onde aparece `<...>`, é o que voc�
 ## 1. Requisitos
 
 - Uma máquina Linux (Debian/Ubuntu é o caminho testado) com **Docker** e **Docker Compose** (plugin `docker compose`) e **git**.
-  `./deploy.sh --install` instala o que faltar em Debian/Ubuntu (pede `sudo`).
+  `./deploy.sh --install` instala o que faltar em Debian e em Ubuntu (pede `sudo`); em outra distribuição, mesmo
+  derivada delas, ele para e aponta a [documentação da Docker](https://docs.docker.com/engine/install/).
 - Cerca de 1 GB de RAM livre (o backend tem teto de 512 MB; em máquina pequena, use swap) e disco para o banco, as
   fotos e os backups.
 - Um nome de domínio com HTTPS na frente do app. O Nexus **não expõe portas**: o nginx escuta só em
   `127.0.0.1:${WEB_PORT}`, e a publicação é por um túnel (Cloudflare Tunnel, via `cloudflared` no host) ou por um
   proxy reverso seu. Sem HTTPS (só teste local), `COOKIE_SECURE=false`.
+- **Com proxy reverso próprio (sem Cloudflare):** o Nexus lê o IP de quem acessa no cabeçalho `CF-Connecting-IP`,
+  que a Cloudflare sempre reescreve. Sem ela, ninguém reescreve: qualquer pessoa manda um IP inventado a cada
+  tentativa e fura o limite de tentativas de login. O seu proxy tem de **sobrescrever** esse cabeçalho com o IP de
+  quem conectou nele: no nginx, `proxy_set_header CF-Connecting-IP $remote_addr;`; no Caddy,
+  `header_up CF-Connecting-IP {remote_host}`. **Não apague** o cabeçalho: sem ele todos os acessos passam a ter o
+  mesmo IP (o do proxy) e dez senhas erradas de uma pessoa bloqueiam o login de todas.
 - Opcional: um servidor SMTP (avisos, convites e senha por e-mail).
 
 ## 2. Instalação
@@ -27,7 +34,8 @@ $EDITOR .env                # preencha as variáveis da seção 3
 ./deploy.sh                 # ou: docker compose up -d --build
 ```
 
-O `deploy.sh` recusa subir enquanto o `.env` tiver um marcador de exemplo (`CHANGEME`, `seu-dominio`…). O banco
+O `deploy.sh` recusa subir enquanto o `.env` tiver um marcador de exemplo (`CHANGEME`, `seu-dominio`…) e diz o nome
+das variáveis que faltam; `MAIL_FROM` e `APP_URL` também vêm com marcador (sem e-mail, deixe `MAIL_FROM` vazio). O banco
 (PostgreSQL 16, volume nomeado, sem porta no host), o backend (FastAPI) e o nginx sobem juntos; o backend aplica
 as migrações de `backend/sql/` a cada início. Confira: `docker compose ps` e `curl http://127.0.0.1:${WEB_PORT}/api/health`.
 
@@ -43,23 +51,23 @@ O backend lê tudo de `backend/app/config.py`; o compose repassa o `.env`. Valor
 
 | Variável | O que é | Padrão |
 | --- | --- | --- |
-| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Credenciais e nome do banco criado pelo container `db` | sem padrão no compose |
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Credenciais e nome do banco criado pelo container `db`. Gere a senha com `openssl rand -hex 24` (só letras e números): ela vai dentro da `DATABASE_URL`, e `/`, `@`, `#`, `?` ou `%` quebram a conexão (o `deploy.sh` recusa). O banco guarda a senha do **primeiro** início: para trocar depois, veja a seção 13 | sem padrão no compose |
 | `DATABASE_URL` | Conexão do backend ao banco (`postgresql://usuário:senha@db:5432/banco`, com os **mesmos** valores acima) | obrigatória |
-| `SECRET_KEY` | Segredo (pepper) dos HMAC de sessão, chaves de API e calendário. 32+ caracteres, senão o backend não sobe. **Trocar invalida sessões, chaves e links.** Gere com `python -c "import secrets; print(secrets.token_urlsafe(64))"` | obrigatória |
-| `ADMIN_EMAIL`, `ADMIN_INITIAL_PASSWORD` | Primeiro admin, criado só se ainda não existir; a senha tem troca obrigatória no primeiro acesso | vazios (sem eles, nenhum admin é criado) |
+| `SECRET_KEY` | Segredo (pepper) dos HMAC de sessão, chaves de API e calendário. 32+ caracteres, senão o backend não sobe. **Trocar invalida sessões, chaves e links.** Gere com `python3 -c "import secrets; print(secrets.token_urlsafe(64))"` | obrigatória |
+| `ADMIN_EMAIL`, `ADMIN_INITIAL_PASSWORD` | Primeiro admin, criado só se ainda não existir; a senha tem troca obrigatória no primeiro acesso. **Depois do primeiro acesso, apague `ADMIN_INITIAL_PASSWORD` do `.env`** (seção 5) | vazios (sem eles, nenhum admin é criado) |
 | `SESSION_TTL_DAYS` | Prazo fixo da sessão, em dias | `7` |
 | `COOKIE_SECURE` | `true` exige HTTPS (cookie `__Host-session`); `false` só em teste local | `true` |
 | `APP_TZ` | Fuso que define "hoje", semana (começa no domingo) e mês, no backend e na tela | `America/Sao_Paulo` |
 | `PHOTO_QUOTA_MB` | Cota de fotos por pessoa, em MB (0 = sem fotos novas) | `500` |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | Servidor de e-mail. Sem `SMTP_HOST`, tudo que depende de e-mail fica desligado. Porta 465 = TLS direto, 587 = STARTTLS, outra (ex.: 1025 do Mailpit) = sem TLS | vazio / `465` |
 | `MAIL_FROM` | Remetente | `Nexus Worklog <nexus@localhost>` |
-| `APP_URL` | Endereço público do app, usado nos links dos e-mails (sem `/` no fim) | **`https://nexus.shadow.tec.br`: troque** |
+| `APP_URL` | Endereço público do app (sem `/` no fim), usado nos links dos e-mails, no link do calendário, nas passkeys e no push. Sem a variável, o backend sobe com o padrão e avisa no log de início; o `deploy.sh` também avisa | **`https://nexus.shadow.tec.br`: troque** |
 | `MAIL_SCHEDULER` | `false` desliga o agendador de avisos (usado nos testes) | `true` |
 | `STATE_DIR` | Pasta (só leitura no container) onde o `deploy.sh` grava `deploy.json` e `backup.json` | `/app/estado` |
 | `WEB_PORT` | Porta do nginx no loopback do host (usada só pelo compose) | `80` |
 | `ALERT_EMAIL` | Destino dos avisos do vigia de saúde (`tools/vigia.sh`); vazio = `ADMIN_EMAIL` | vazio |
 | `COMPOSE_PROJECT_NAME` | Fixa o nome do projeto compose (e do volume do banco) se a pasta for renomeada | nome da pasta |
-| `KEEP_BACKUPS` | Quantos dumps o `deploy.sh` guarda (variável do script, não do `.env`) | `14` |
+| `KEEP_BACKUPS` | Quantos dumps o `deploy.sh` guarda em `backups/`, de qualquer origem (variável do script, não do `.env`) | `14` |
 
 ## 4. E-mail (SMTP) e notificações push
 
@@ -77,8 +85,10 @@ Perder o banco gera outra chave, e os aparelhos precisam reativar as notificaç�
 
 ## 5. Primeiro admin e papéis
 
-Entre com `ADMIN_EMAIL` e `ADMIN_INITIAL_PASSWORD`; o app obriga a trocar a senha. Depois, **Admin > Contas** cria as
-demais pessoas. Não há cadastro público. Os papéis são acumuláveis (Admin > Contas > ⋮ > Papéis…):
+Entre com `ADMIN_EMAIL` e `ADMIN_INITIAL_PASSWORD`; o app obriga a trocar a senha. Feito isso, **apague a linha
+`ADMIN_INITIAL_PASSWORD` do `.env`** e rode `docker compose up -d`: ela só serve para criar a primeira conta, e deixada
+lá é uma senha de admin guardada em texto num arquivo. Se o único admin perder o acesso, o caminho é o da seção 13
+("Único admin sem acesso"), não esta variável. Depois, **Admin > Contas** cria as demais pessoas. Não há cadastro público. Os papéis são acumuláveis (Admin > Contas > ⋮ > Papéis…):
 
 | Papel | O que dá |
 | --- | --- |
@@ -177,49 +187,76 @@ gera um texto para suporte, sem dados de pessoas nem segredos. O `deploy.sh` ali
 `estado/`; sem ele rodar, esses campos ficam vazios.
 
 **Vigia (opcional):** `tools/vigia.sh` com o timer do systemd (`tools/nexus-vigia.service` e `.timer`, instruções nos
-arquivos) confere a cada 5 minutos a saúde dos containers, reinicia o que estiver *unhealthy* e avisa por e-mail
-(`ALERT_EMAIL` ou `ADMIN_EMAIL`), uma vez por incidente e outra quando volta. Os logs dos containers têm rotação
-(10 MB x 5).
+arquivos) confere a cada 5 minutos se `/api/health` responde pelo nginx (o mesmo teste do `deploy.sh`) e o estado dos
+três containers. Reinicia o que estiver rodando e *unhealthy* e avisa por e-mail (`ALERT_EMAIL` ou `ADMIN_EMAIL`), uma
+vez por incidente e outra quando o health volta a responder. Serviço **parado**, ausente ou em laço de reinício entra
+no aviso, mas o vigia **não o religa** (pode ter sido parado de propósito): use `docker compose up -d`. **Limite:** o
+e-mail sai de dentro do backend; com o backend fora do ar (ou sem SMTP) o aviso não sai, fica só no journal
+(`journalctl -t nexus-vigia`) e é tentado de novo a cada passada. Se precisa saber de queda total, use também um
+monitor de fora da máquina apontado para `/api/health`. Os logs dos containers têm rotação (10 MB x 5).
 
 ## 9. Backups e como restaurar
 
-**O que é feito.** A cada `./deploy.sh`, **antes de mexer em código ou containers**, se o banco já está rodando, o
-script faz `pg_dump` (formato custom) para `backups/pre-deploy-AAAAMMDD-HHMMSS-<commit>.dump` (pasta com modo 700,
-arquivo 600), confere o índice com `pg_restore --list` e **aborta o deploy** se o backup falhar ou vier vazio. Mantém
-os **14 mais recentes** (`KEEP_BACKUPS`). Grava em `estado/backup.json` a data, o tamanho e o número de tabelas
-(que a Saúde do Nexus mostra). `backups/` e `estado/` ficam fora do git.
+**O que é feito.** A cada `./deploy.sh`, **antes de mexer em código ou containers**, se o banco existe (parado, o
+script sobe só ele para o backup), o script faz `pg_dump` (formato custom, compressão zstd) para
+`backups/pre-deploy-AAAAMMDD-HHMMSS-<commit>.dump` (pasta com modo 700, arquivo 600), confere o índice com
+`pg_restore --list` e **aborta o deploy** se o backup falhar ou vier vazio. Mantém os **14 dumps mais recentes** da
+pasta (`KEEP_BACKUPS`), venham do deploy, do agendamento ou de um comando manual. Grava em `estado/backup.json` a data,
+o tamanho e o número de tabelas (que a Saúde do Nexus mostra). `backups/` e `estado/` ficam fora do git.
 
-**Limites:** o backup só existe a cada deploy, então **agende também um backup periódico** (cron com o mesmo
-`pg_dump`, abaixo) e **copie os dumps para fora da máquina** (outro disco ou servidor). Uma conta excluída sai dos
-backups quando o último dump que a continha é descartado. O dump não inclui o `.env`: guarde-o à parte, em lugar
-seguro. Sem o mesmo `SECRET_KEY`, as sessões, chaves de API e links antigos deixam de valer.
+**Backup periódico.** O backup do deploy só existe a cada deploy: **agende o mesmo backup no cron**.
+`./deploy.sh --backup` faz só o backup verificado (mesma pasta, mesma retenção, mesma linha na Saúde do Nexus): não
+atualiza o código, não reconstrói nem reinicia nada, e se o banco estiver parado ele falha em vez de ligá-lo. No
+`crontab -e` do usuário que roda o Docker, todo dia às 3h15:
 
-Backup manual (ou para o cron), na pasta do projeto:
-
-```bash
-docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > backups/manual-$(date +%Y%m%d-%H%M%S).dump
+```
+15 3 * * * /caminho/do/nexus-worklog/deploy.sh --backup >> /caminho/do/nexus-worklog/backups/agendado.log 2>&1
 ```
 
-**Restaurar** (é o mesmo comando que o `deploy.sh` mostra no rollback). Isto **substitui** os dados atuais pelos do
-dump; antes, faça um backup do estado atual (comando acima) se ele ainda tiver valor.
+(A linha não tem `%`: no crontab esse caractere quebra o comando, e por isso o `pg_dump` com `date` direto no cron
+não funciona.) Os arquivos saem como `backups/agendado-AAAAMMDD-HHMMSS-<commit>.dump`. Para guardar mais dias, ponha
+`KEEP_BACKUPS=30` no começo da linha do cron. **Disco:** reserve o tamanho de um dump (a Saúde do Nexus mostra o do
+último) vezes `KEEP_BACKUPS`; as fotos estão no banco e são quase todo o tamanho.
+
+**Limites:** **copie os dumps para fora da máquina** (outro disco ou servidor); a retenção apaga os mais antigos da
+pasta, inclusive os manuais. Uma conta excluída sai dos backups quando o último dump que a continha é descartado. O
+dump não inclui o `.env`: guarde-o à parte, em lugar seguro. Sem o mesmo `SECRET_KEY`, as sessões, chaves de API e
+links antigos deixam de valer. O dump usa zstd: só restaura com `pg_restore` 16 ou mais novo compilado com zstd. O do
+container `db` serve (é o que os comandos abaixo usam); o de outra máquina pode não servir.
+
+Backup manual avulso, na pasta do projeto (o mesmo comando do script, sem verificação nem registro na Saúde):
+
+```bash
+docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc --compress=zstd:1' > backups/manual-$(date +%Y%m%d-%H%M%S).dump
+```
+
+**Restaurar** (são os mesmos comandos que o `deploy.sh` mostra no rollback). Isto **apaga o banco atual inteiro** e o
+recria a partir do dump; antes, faça um backup do estado atual (`./deploy.sh --backup`) se ele ainda tiver valor.
 
 1. Escolha o dump: `ls -1t backups/`.
-2. Pare quem escreve no banco: `docker compose stop backend web`.
-3. Suba só o banco, se estiver parado: `docker compose up -d db` (espere ficar *healthy*: `docker compose ps`).
-4. Restaure:
+2. Se usa o vigia (seção 8), pare o timer: `sudo systemctl stop nexus-vigia.timer`.
+3. Pare quem escreve no banco: `docker compose stop backend web`.
+4. Suba só o banco, se estiver parado: `docker compose up -d db` (espere ficar *healthy*: `docker compose ps`).
+5. Apague e recrie o banco vazio, depois restaure:
    ```bash
-   docker compose exec -T db sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists' < backups/<arquivo>.dump
+   docker compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS \"$POSTGRES_DB\" WITH (FORCE)" -c "CREATE DATABASE \"$POSTGRES_DB\" OWNER \"$POSTGRES_USER\""'
+   docker compose exec -T db sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --exit-on-error --single-transaction' < backups/<arquivo>.dump
    ```
-   Avisos sobre objetos que "não existem" em `--clean` são esperados em banco novo; erro de verdade interrompe e aparece no fim.
-5. Se o dump é de uma versão **anterior** do código, volte o código também: `git checkout <commit do nome do arquivo>`
-   (o nome do dump termina com o commit de antes do deploy). Se é da versão atual, fique no `main`.
-6. Suba tudo: `docker compose up -d --build`. O backend reaplica as migrações aditivas, que são idempotentes.
-7. Confira: `curl http://127.0.0.1:${WEB_PORT}/api/health`, entre no app e veja a Saúde do Nexus. Depois volte ao
-   `main` (`git checkout main`) quando quiser atualizar de novo.
+   O `pg_restore` roda numa transação só e para no primeiro erro: ou entra o dump inteiro, ou nada (o banco fica
+   vazio e dá para repetir). Sem mensagem de erro, restaurou. Não use `pg_restore --clean` num banco que já tem
+   dados: tabelas criadas por uma versão mais nova do Nexus impedem a limpeza, o comando segue em frente mesmo
+   assim e o banco fica com dados do dump misturados aos atuais.
+6. Se o dump é de uma versão **anterior** do código, volte o código também: `git checkout <commit do nome do arquivo>`
+   (o nome do dump termina com o commit em uso quando ele foi feito). Se é da versão atual, fique no `main`.
+7. Suba tudo: `docker compose up -d --build`. O backend reaplica as migrações aditivas, que são idempotentes.
+8. Confira: `curl http://127.0.0.1:${WEB_PORT}/api/health`, entre no app e veja a Saúde do Nexus. Religue o timer do
+   vigia (`sudo systemctl start nexus-vigia.timer`) e volte ao `main` (`git checkout main`) quando quiser atualizar de novo.
 
-**Restaurar numa máquina nova:** instale o Nexus (seção 2) com o **mesmo `.env`** (principalmente `SECRET_KEY`,
-`POSTGRES_*` e `DATABASE_URL`), suba só o banco (`docker compose up -d db`), faça os passos 4 a 7 com o dump copiado
-para `backups/`. As fotos estão no banco, então vão junto.
+**Restaurar numa máquina nova:** clone o projeto e copie o **mesmo `.env`** (principalmente `SECRET_KEY`,
+`POSTGRES_*` e `DATABASE_URL`). **Não rode o `./deploy.sh` nem `docker compose up -d` antes de restaurar:** o backend
+subiria num banco vazio, criaria o admin inicial e outra chave de push. Suba só o banco (`docker compose up -d db`),
+copie o dump para `backups/` e faça os passos 5 a 8. Só instale o timer do vigia depois. As fotos estão no banco,
+então vão junto.
 
 **Nunca** use `docker compose down -v` (apaga o volume do banco).
 
@@ -233,15 +270,16 @@ less CHANGELOG.md                                   # confira quebras de contrat
 ./deploy.sh
 ```
 
-O `deploy.sh`: confere o `.env`; faz o backup verificado (seção 9); `git pull --ff-only`; `docker compose up -d --build`;
-espera o `/api/health` responder pelo nginx (até 1 minuto); grava `estado/deploy.json` (commit novo, commit anterior,
+O `deploy.sh`: confere o `.env`; faz o backup verificado (seção 9); `git pull --ff-only`; baixa as imagens base novas
+(`docker compose pull db` e `docker compose build --pull`); `docker compose up -d`; espera o `/api/health` responder pelo nginx (até 1 minuto); grava `estado/deploy.json` (commit novo, commit anterior,
 hora). Se a aplicação não responder, ele **não desfaz sozinho**: imprime o rollback do código
-(`git checkout <commit anterior> && docker compose up -d --build`) e do banco (o `pg_restore` da seção 9, só se uma
-migração estragou dados).
+(`git checkout <commit anterior> && docker compose up -d --build`) e do banco (apagar, recriar e `pg_restore`, como
+na seção 9; só se uma migração estragou dados).
 
 - **Migrações** (`backend/sql/*.sql`) são numeradas, **só aditivas e idempotentes**, aplicadas a cada início do backend:
   atualizar não apaga dado, e rodar de novo não faz mal. Por isso voltar o código sem voltar o banco costuma funcionar.
-- **nginx:** a configuração (`web/nginx.conf`) vai na imagem `web`, reconstruída pelo próprio `deploy.sh`.
+- **nginx:** a configuração (`web/nginx.conf`) vai na imagem `web`, reconstruída pelo próprio `deploy.sh`. Recriar só o
+  backend (`docker compose up -d backend`) não exige reiniciar o `web`: o nginx volta a achá-lo em até 10 segundos.
 - Variáveis novas aparecem em `.env.example` e neste guia: compare com seu `.env` (`diff <(grep -o '^[A-Z_]*' .env.example | sort) <(grep -o '^[A-Z_]*' .env | sort)`).
 - Um cliente MCP com a lista de ferramentas velha recebe, ao chamar, a dica de reconectar (`/mcp`).
 
@@ -269,26 +307,31 @@ Detalhes e LGPD (exportar, excluir, histórico de 180 dias, backups) na seção 
 [`README`](../README.md#segurança-resumo).
 
 Recomendações de operação: mantenha o `.env` com modo 600 e fora do git; não exponha a porta do nginx além do
-loopback; guarde e rotacione os backups fora da máquina; atualize com frequência (dependências e imagens são
-reconstruídas a cada `deploy.sh`); mantenha o túnel/proxy com HTTPS; crie ao menos dois admins para não ficar sem acesso.
+loopback; guarde e rotacione os backups fora da máquina; atualize com frequência (a cada `deploy.sh` as imagens base
+do Python, do nginx e do Postgres são baixadas de novo e as imagens, reconstruídas; as dependências Python só sobem
+de versão quando o `requirements.txt` muda ou a imagem base muda); mantenha o túnel/proxy com HTTPS; crie ao menos dois admins para não ficar sem acesso.
 
 ## 13. Solução de problemas
 
 | Sintoma | Causa provável e o que fazer |
 | --- | --- |
 | Backend não sobe: "Variavel de ambiente obrigatoria ausente" ou "SECRET_KEY curta demais" | Falta `DATABASE_URL` ou `SECRET_KEY`, ou ela tem menos de 32 caracteres. `docker compose logs backend` |
-| `deploy.sh`: ".env ainda contém valores placeholder" | Algum valor do `.env` ainda tem `CHANGEME`, `seu-dominio`… Preencha |
-| `deploy.sh`: "pg_dump falhou. Deploy abortado" | Nada foi alterado. Veja `docker compose ps` (banco saudável?) e o espaço em disco; rode de novo |
+| `deploy.sh`: ".env ainda contém valores placeholder" | Algum valor do `.env` ainda tem `CHANGEME`, `seu-dominio`… A mensagem lista as variáveis: preencha (ou esvazie as opcionais, como `MAIL_FROM`) |
+| Backend não sobe: `failed to resolve host` com um pedaço da senha no nome | A senha do banco tem `/`, `@`, `#`, `?` ou `%` e cortou a `DATABASE_URL`. Troque por uma só com letras e números (`openssl rand -hex 24`) nas duas variáveis; se o banco já existe, troque nele também (linha abaixo) |
+| Backend não sobe: `password authentication failed for user` | A senha do `.env` não é a que o banco guardou no primeiro início (mudar `POSTGRES_PASSWORD` depois não muda o banco). Com a senha nova já no `.env` (só letras e números): `docker compose up -d db`, depois `docker compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d postgres -c "ALTER USER \"$POSTGRES_USER\" PASSWORD \$\$$POSTGRES_PASSWORD\$\$"'` e `docker compose up -d` |
+| Único admin sem acesso (senha perdida, e-mail errado) | Gere o hash de uma senha provisória: `docker compose exec -T backend python -c "from app.security import hash_password; print(hash_password('<senha provisória>'))"`. Abra o banco (`docker compose exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'`) e rode `UPDATE users SET password_hash = '<hash>', must_change_password = true, blocked_at = NULL WHERE email = '<e-mail do admin>';` (confira o e-mail com `SELECT id, email, role FROM users WHERE role = 'admin';`). Entre com a provisória; o app obriga a trocar |
+| `deploy.sh`: "pg_dump falhou. Abortado" | Nada foi alterado. Veja `docker compose ps` (banco saudável?) e o espaço em disco; rode de novo |
 | Aplicação não responde depois do deploy | Siga o rollback que o script imprimiu (seção 10); veja `docker compose logs backend web` |
 | Nexus abriu **vazio** depois de renomear a pasta | O compose criou outro volume. Volte a pasta ao nome antigo ou fixe `COMPOSE_PROJECT_NAME` com ele (seção 2); o banco antigo está no volume de antes |
 | Não consigo entrar (login em loop) | `COOKIE_SECURE=true` sem HTTPS: o navegador descarta o cookie. Use HTTPS ou `false` só em teste |
-| Muitas tentativas / "tente mais tarde" no login | Limite por IP e por e-mail; espere alguns minutos. Atrás de proxy, confira se o IP real chega ao nginx |
+| Muitas tentativas / "tente mais tarde" no login | Limite por IP e por e-mail; espere alguns minutos. Atrás de proxy próprio, todo mundo é bloqueado junto se o proxy não manda o IP de cada pessoa em `CF-Connecting-IP` (seção 1: sobrescrever, nunca apagar) |
 | Convite, "esqueci a senha" ou avisos não chegam | Saúde do Nexus mostra o último erro de e-mail; confira `SMTP_*`, `MAIL_FROM` e `APP_URL`. Sem `SMTP_HOST`, nada é enviado |
 | "Solicitar convite" não aparece no login | Opt-in: ligue em Admin > Para empresas, e é preciso e-mail no servidor |
-| Link do e-mail aponta para o endereço errado | `APP_URL` no `.env` (o padrão do código é de outro domínio) |
+| Link do e-mail aponta para o endereço errado | `APP_URL` no `.env` (o padrão do código é de outro domínio; o log de início do backend avisa quando a variável falta) |
 | Notificações não chegam | Exigem HTTPS e a permissão do aparelho; veja a linha Push da Saúde. Chave VAPID refeita = reativar nos aparelhos |
 | Foto não sobe | Cota por pessoa estourada (variável `PHOTO_QUOTA_MB`; o uso aparece na Saúde do Nexus) ou arquivo grande demais |
 | Equipe vazia | Cada pessoa precisa permitir (Configurações > Conta), ou ligue "Visível para quem gerencia"; quem vê precisa do papel Vê a equipe |
 | Atribuir diz que a pessoa não aceita | Ela ainda não ligou "Receber tarefas atribuídas", ou use "Todos recebem de quem atribui" |
 | Container *unhealthy* | `docker compose logs <serviço>`; o vigia (seção 8) reinicia e avisa |
+| 502 logo depois de recriar o backend | Normal por até 10 segundos (o nginx reconsulta o endereço do backend). Se passar disso: `docker compose up -d --force-recreate web` |
 | Backend reinicia sozinho | Teto de 512 MB estourado (relatório muito grande): veja `docker compose logs backend` e a memória do host |

@@ -309,8 +309,9 @@ cd nexus-worklog
 
 1. `cp .env.example .env` (o `.env` **nunca** vai para o git) e preencha:
    - `SECRET_KEY` (32+ caracteres; menos que isso o backend não sobe):
-     `python -c "import secrets; print(secrets.token_urlsafe(64))"`
-   - `POSTGRES_PASSWORD` (o mesmo valor dentro de `DATABASE_URL`)
+     `python3 -c "import secrets; print(secrets.token_urlsafe(64))"`
+   - `POSTGRES_PASSWORD` (o mesmo valor dentro de `DATABASE_URL`; gere com `openssl rand -hex 24`, só letras
+     e números, porque `/`, `@` e `#` quebram a URL)
    - `ADMIN_EMAIL` / `ADMIN_INITIAL_PASSWORD`
    - sem HTTPS (teste local): `COOKIE_SECURE=false`
    - opcional, avisos por e-mail: `SMTP_HOST`, `SMTP_PORT` (465 = TLS, 587 =
@@ -384,8 +385,9 @@ incidente e outra quando volta. Logs com rotação (10 MB × 5 por serviço).
 - **Seus dados (LGPD)**: cada pessoa exporta tudo em JSON ou CSV (Meu mês > Outro período ou formato) e
   exclui a própria conta em Configurações > Conta (com a senha); o admin também
   exclui uma conta (Admin > Contas, confirmando o e-mail). Tarefas, rotinas,
-  tempo, anotações, chaves e histórico vão junto; ficam só o e-mail e as contagens
-  no histórico de quem excluiu (180 dias). O último admin não sai. O JSON leva
+  tempo, anotações, chaves e histórico vão junto; ficam o e-mail e as contagens
+  no histórico de quem excluiu e, se a pessoa recebia tarefas atribuídas, o nome e
+  o e-mail dela no histórico de quem atribuiu (tudo sai em até 180 dias). O último admin não sai. O JSON leva
   também perfil, preferências, modelos, projetos com objetivos e as chaves
   externas; as fotos vão à parte, no `fotos.zip` (Meu mês > Outro período ou formato).
   - **Histórico de 180 dias**: o que você exclui some da tela na hora, mas o
