@@ -133,11 +133,12 @@ export let lastOpen = null;
 // O que sobrou no fim do título sem ser lido: tempo sem o traço ("Atendi 20min"),
 // tempo acima de 24h ("Algo — 30h") ou um "^" que não é dia nem hora ("^31/02").
 // Devolve a frase do aviso (ou ""). As regras não mudam: só passa a dizer.
+// Frases curtas: o aviso mostra duas linhas (no celular, umas 90 letras).
 function leftover(title, hasTime) {
   let m;
   if (hasTime) { /* o tempo já entrou: "Reunião 14h — 30min" não precisa da dica */ }
-  else if ((m = title.match(new RegExp(`\\s+(?:--|[-–—])\\s*(${DUR_TEXT})$`, "i")))) return ` O máximo é 24h por apontamento: “${m[1].trim()}” ficou no título.`;
-  else if ((m = title.match(new RegExp(`\\s(${DUR_TEXT})$`, "i")))) return ` “${m[1].trim()}” ficou no título: para registrar o tempo, use “— ${m[1].trim()}”.`;
+  else if ((m = title.match(new RegExp(`\\s+(?:--|[-–—])\\s*(${DUR_TEXT})$`, "i")))) return ` “${m[1].trim()}” ficou no título: o máximo é 24h por apontamento.`;
+  else if ((m = title.match(new RegExp(`\\s(${DUR_TEXT})$`, "i")))) return ` “${m[1].trim()}” ficou no título: para apontar, use “— ${m[1].trim()}”.`;
   if ((m = title.match(/\s(\^\S{1,20})$/))) return ` “${m[1]}” ficou no título: não entendi a data.`;
   return "";
 }
@@ -162,7 +163,9 @@ export async function quickRegister(text, project_id = null) {
   if (!minutes) {
     if (payload.status !== "todo") return `Tarefa registrada${com}.${also}`;
     lastOpen = { id: created.id, title: marks.title };
-    return `Ficou em aberto: «${marks.title}»${com}.${also}`;
+    // Com algo a dizer do título, a frase vai no lugar dele (as duas não cabem no aviso).
+    const shown = marks.title.length > 48 ? marks.title.slice(0, 47) + "…" : marks.title;
+    return also ? `Ficou em aberto${com}.${also}` : `Ficou em aberto: «${shown}»${com}.`;
   }
   try {
     await api.post(`/worklog/${created.id}/time`, { minutes });
