@@ -94,9 +94,12 @@ def test_instancia_sem_equipes_funciona_como_antes(admin, cena):
     me = ana.get("/auth/me").json()
     assert me["teams"] == [] and me["teams_on"] is False
     assert chefe.get("/viewer/teams").json() == {"on": False, "master": False, "teams": [], "none": False}
-    # Equipe só arquivada também não liga o escopo.
+    # Equipe só arquivada mantém o escopo (auditoria p02: arquivar a última não abre tudo);
+    # só excluir a última devolve o uso pessoal.
     tid = _equipe(admin, "Campo", chefe, ana)
     assert admin.patch(f"/admin/teams/{tid}", {"archived": True}).status_code == 200
+    assert _lista(chefe) == set()
+    assert admin.delete(f"/admin/teams/{tid}").json()["last"] is True
     assert _lista(chefe) == {"ana@example.com", "bia@example.com"}
 
 

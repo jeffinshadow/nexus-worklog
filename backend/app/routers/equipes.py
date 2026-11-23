@@ -157,13 +157,16 @@ def edit_team(team_id: int, data: TeamEditIn, admin=Depends(require_admin_csrf))
 
 @router.delete("/teams/{team_id}")
 def delete_team(team_id: int, admin=Depends(require_admin_csrf)):
-    """Exclui a equipe (os membros só saem dela; nada das pessoas é apagado)."""
+    """Exclui a equipe (os membros só saem dela; nada das pessoas é apagado).
+    `last`: era a última cadastrada, a instância voltou ao uso pessoal (sem
+    escopo de equipe), como o `first` de criar avisa a ida."""
     t = _team(team_id)
     members = [m["id"] for m in _members(team_id)]
     db.execute("DELETE FROM teams WHERE id = %s", (team_id,))
+    last = not teams.any_active()
     audit.record(_ctx(admin), "team.delete", "team", team_id,
-                 before={"name": t["name"], "members": members, "by": admin["email"]})
-    return {"ok": True, "name": t["name"]}
+                 before={"name": t["name"], "members": members, "by": admin["email"]}, after={"last": last})
+    return {"ok": True, "name": t["name"], "last": last}
 
 
 @router.put("/users/{user_id}/teams")
