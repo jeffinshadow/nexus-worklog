@@ -1,7 +1,7 @@
 # r2-06-atribuir-acabamento: nota de integração
 
 Branch `lab/r2-06-atribuir-acabamento`, a partir de `lab/integracao` (2.2.0, 3694956).
-Arquivos tocados: `backend/app/routers/assign.py`, `backend/tests/test_r2_06.py` (novo) e esta nota.
+Arquivos tocados: `backend/app/routers/assign.py`, `backend/tests/test_r2_06.py` (novo), esta nota e, pelo revisor, `web/static/js/atribuir.js` (fora da lista do pacote: ver abaixo).
 
 ## Linhas para o CHANGELOG
 
@@ -20,15 +20,7 @@ Nenhum campo, rota ou status novo. Muda só o valor em dois casos de `GET /api/a
 
 ## O que NÃO foi feito
 
-- **Tela (pendente, exige `web/static/js/atribuir.js`, fora da lista de arquivos do pacote):** a linha de "Tarefas que atribuí" só monta os botões dentro de `if (r.editable)`. Com `editable: false` e `cancelable: true` (quem desligou o aceite) a tela deixa de oferecer "Alterar" (o que o item pede) mas também deixa de oferecer "Cancelar", embora a API continue aceitando o cancelamento. Conferido no navegador (1440 e 390 px): a linha fica sem botão nenhum, sem erro de console. Antes deste pacote a tela mostrava os dois (Alterar dava 403, Cancelar funcionava). O ajuste é pequeno, em `atribuir.js` perto da linha 246:
-
-  ```js
-  if (r.editable || r.cancelable) acts = h("div", { class: "request-actions" },
-    r.editable ? h("button", { ..., text: "Alterar", ... }) : h("small", { class: "muted", text: `${r.to_name} não recebe mais tarefas atribuídas: só dá para cancelar` }),
-    r.cancelable ? h("button", { ..., text: "Cancelar", ... }) : h("small", { class: "muted", text: `${r.to_name} já mexeu nela: cancelar, só ela` }));
-  ```
-
-  (e o `?v=` do HTML). Sem esse ajuste, quem integra precisa decidir se o item 1 entra: do jeito que está, o cancelamento desse caso só é alcançável pela API.
+- **Tela (feito pelo revisor, em `web/static/js/atribuir.js`, FORA da lista de arquivos do pacote):** a linha de "Tarefas que atribuí" só montava os botões dentro de `if (r.editable)`; com `editable: false` e `cancelable: true` (quem desligou o aceite) sumia o "Alterar" (o pedido) e também o "Cancelar", que a API continua aceitando. O revisor ajustou a linha (commit próprio, fácil de tirar): no lugar do "Alterar" vem "Fulano não recebe mais tarefas atribuídas: só dá para cancelar" e o "Cancelar" continua. Conferido no navegador (1440 e 390 px, sem erro de console nem rolagem horizontal; o diálogo de cancelar abre). **Quem integra precisa subir o `?v=` do HTML** (não foi tocado aqui) e conferir conflito se outro pacote mexer em `atribuir.js`. Se preferir não levar esse commit, o item 1 troca um botão que falha por um cancelamento só alcançável pela API.
 - `web/static/js/devolver.js` não foi tocado: ele só tem o diálogo de devolver, não lê `editable`.
 - O PATCH para conta bloqueada não mudou (200), como mandam as instruções.
 - `mcp.py` e `history.py` não foram tocados.
