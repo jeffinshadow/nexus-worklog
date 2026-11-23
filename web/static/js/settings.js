@@ -721,7 +721,9 @@ async function webhooksPanel(rerender) {
   const form = h("form", {}, field("Endereço (https)", url), events.el, err, create);
   // A lista de eventos (20 caixas) só abre depois de preencher o endereço.
   const showEvents = () => { events.el.hidden = !url.value.trim(); };
+  // O preenchimento automático nem sempre dispara "input": vale também o change e o valor ao abrir a seção.
   url.addEventListener("input", showEvents);
+  url.addEventListener("change", showEvents);
   showEvents();
   form.addEventListener("submit", busy(async (ev) => {
     ev.preventDefault();
@@ -784,13 +786,15 @@ async function webhooksPanel(rerender) {
       h("span", { class: "token-name", text: w.url }), actions, h("span", { class: "token-meta", text: meta.join(" · ") }), result);
   }) : [h("p", { class: "empty", text: "Nenhum webhook ainda." })];
 
+  const novo = fold("Novo webhook",
+    h("p", { class: "help", text: "O Nexus envia os dados para o endereço que você informar. Serve para fechar o chamado, avisar no chat ou alimentar uma planilha. Até 5. Quem configura o outro sistema encontra os detalhes na documentação da API." }),
+    form);
+  novo.addEventListener("toggle", showEvents);
   return h("div", { class: "settings-grid" },
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Avisar outro sistema (webhook)" })),
       h("p", { class: "help", text: "O Nexus avisa outro sistema na hora em que algo muda (tarefa criada, concluída, rotina marcada…)." }),
-      fold("Novo webhook",
-        h("p", { class: "help", text: "O Nexus envia os dados para o endereço que você informar. Serve para fechar o chamado, avisar no chat ou alimentar uma planilha. Até 5. Quem configura o outro sistema encontra os detalhes na documentação da API." }),
-        form)),
+      novo),
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Meus webhooks" }), h("span", { class: "count", text: ((n) => `${n} ${n === 1 ? "ativo" : "ativos"}`)(list.filter((w) => w.active).length) })),
       ...rows, recipesLine()));
