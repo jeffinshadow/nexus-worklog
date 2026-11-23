@@ -52,3 +52,14 @@ def delete_account(user_id: int) -> bool:
               AND (NOT EXISTS (SELECT 1 FROM user_roles WHERE user_id = %(u)s AND role = 'admin')
                    OR (SELECT count(*) FROM user_roles WHERE role = 'admin' AND user_id <> %(u)s) >= 1)""",
         {"u": user_id}))
+
+
+def others_hours(user_id: int) -> dict:
+    """Tarefas da conta que guardam horas de OUTRA pessoa (vieram por transferência:
+    o tempo já apontado fica com quem saiu). Excluir a conta apagaria a tarefa e, em
+    cascata (time_entries.task_id), essas horas: quem exclui confere aqui antes."""
+    return db.query_one(
+        """SELECT count(DISTINCT e.task_id)::int AS tasks, count(DISTINCT e.user_id)::int AS people
+             FROM time_entries e JOIN worklog_tasks w ON w.id = e.task_id
+            WHERE w.user_id = %(u)s AND e.user_id <> %(u)s""",
+        {"u": user_id})
