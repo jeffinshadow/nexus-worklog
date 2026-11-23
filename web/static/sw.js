@@ -23,7 +23,7 @@ const DADOS = 'nexus-dados';   // as últimas leituras das telas principais
 // Leituras que valem sem sinal (as de abrir o dia). Relatórios, busca e admin, não.
 const API_OK = /^\/api\/(auth\/me|board|projects(\/\d+\/overview)?|branding|timer|recurring\/reminders|summary(\/[a-z]+)?|renewals|worklog\/\d+)$/;
 
-// Arquivo com versão na URL (app.js?v=167): ao guardar a nova, a cópia da versão
+// Arquivo com versão na URL (app.js?v=168): ao guardar a nova, a cópia da versão
 // anterior sai (senão cada atualização deixava mais um jogo de arquivos no aparelho).
 async function dropOldVersions(cache, req) {
   const url = new URL(req.url);

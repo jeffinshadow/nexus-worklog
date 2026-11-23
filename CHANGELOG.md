@@ -41,6 +41,7 @@ está na primeira seção. Migration nova: `sql/060_glpi.sql` (aditiva).
   excluir"); antes as horas sumiam do relatório de quem saiu.
 - **Histórico por chave de API e MCP** não traz mais as linhas de ator `admin` (log de admin: quadros vistos como
   master, convites, permissões); e-mails de terceiros iam ao provedor da IA. A sessão do admin no app vê tudo.
+  As tarefas transferidas pelo admin (`worklog.transfer`) continuam vindo, como no webhook.
 - **Quem acompanha a equipe**: no quadro da pessoa, `timer` vem `null` e as tarefas saem sem `remind_at`, `first_on` e
   `touched_at`; `people[].last_activity` é só a data.
 - **MCP**: nomes de pessoas, o chamado de tarefa atribuída e o vencimento alheio saem entre « » (muda o texto:
@@ -83,7 +84,8 @@ está na primeira seção. Migration nova: `sql/060_glpi.sql` (aditiva).
   repetido, dígitos em sequência, "nexus" repetido).
 - "Esqueci a senha" responde antes de consultar a conta (o tempo de resposta não diz quem tem conta); conta bloqueada
   recebe um e-mail curto dizendo que o acesso está bloqueado por quem administra.
-- "Sair dos outros aparelhos" desliga as notificações de todos os aparelhos da conta; o Sair cancela as deste aparelho
+- "Sair dos outros aparelhos" desliga as notificações dos outros aparelhos da conta (este se inscreve de novo na
+  hora); o Sair cancela as deste aparelho
   (`POST /api/auth/logout` aceita `{"endpoint": "..."}`).
 - **Arquivar a última equipe não abre mais o escopo**: antes, todo mundo passava a alcançar todo mundo.
   `DELETE /api/admin/teams/{id}` responde `last: true` e a tela avisa antes e depois.

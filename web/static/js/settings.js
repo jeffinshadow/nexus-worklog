@@ -6,7 +6,7 @@ import { h, icon, clear, dateTime, field, matchPasswords } from "./dom.js";
 import { codeBox, confirmDialog, errorToast, modal, toast, warnBox, busy, singleKeysOn, setSingleKeys, calmMotion, hashPage, pager, pageSlice, setHashPage } from "./ui.js";
 import { defaultProjectPanel } from "./projects.js";
 import { avatar, squarePhoto } from "./profile.js";
-import { pushPanel } from "./notificacoes.js";
+import { pushPanel, syncOnBoot } from "./notificacoes.js";
 import { cancelled, register as registerPasskey, supported as passkeySupported } from "./passkey.js";
 
 const SECTIONS = [
@@ -1102,6 +1102,7 @@ async function otherDevicesPanel() {
     if (!(await confirmDialog({ title: "Sair dos outros aparelhos?", text: "Os outros celulares e computadores voltam para a tela de entrar, e quem estiver neles precisa da senha (ou da digital) de novo. Este aparelho continua. Chaves de API e o link do calendário não mudam.", confirm: "Sair dos outros" }))) return;
     try {
       const r = await api.post("/auth/logout-others");
+      syncOnBoot().catch(() => {});  // o servidor tirou as notificações de todos os aparelhos: este se inscreve de novo já
       paint(0);
       toast(r.ended ? `Pronto: ${r.ended === 1 ? "1 outro aparelho saiu" : `${r.ended} outros aparelhos saíram`} da sua conta.` : "Nenhum outro aparelho estava com a conta aberta.");
     } catch (e) { errorToast(e, "Não foi possível sair dos outros aparelhos."); }

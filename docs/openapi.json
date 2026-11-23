@@ -467,7 +467,7 @@
           "auth"
         ],
         "summary": "Logout Others",
-        "description": "Sai dos outros aparelhos sem trocar a senha (celular perdido, computador\nemprestado). Esta sessão continua; chaves de API e calendário não mudam.\nAs notificações saem de TODOS os aparelhos da conta (o celular perdido não\nmostra mais nada); este se inscreve de novo ao abrir o app.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
+        "description": "Sai dos outros aparelhos sem trocar a senha (celular perdido, computador\nemprestado). Esta sessão continua; chaves de API e calendário não mudam.\nAs notificações saem de TODOS os aparelhos da conta (o celular perdido não\nmostra mais nada); este se inscreve de novo logo em seguida (o app chama\nPOST /api/push/subscribe ao receber a resposta) e também ao abrir.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "logout_others_api_auth_logout_others_post",
         "responses": {
           "200": {

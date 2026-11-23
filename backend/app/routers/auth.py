@@ -370,7 +370,8 @@ def logout_others(session=Depends(web_user_csrf)):
     """Sai dos outros aparelhos sem trocar a senha (celular perdido, computador
     emprestado). Esta sessão continua; chaves de API e calendário não mudam.
     As notificações saem de TODOS os aparelhos da conta (o celular perdido não
-    mostra mais nada); este se inscreve de novo ao abrir o app."""
+    mostra mais nada); este se inscreve de novo logo em seguida (o app chama
+    POST /api/push/subscribe ao receber a resposta) e também ao abrir."""
     rows = db.query_all("DELETE FROM sessions WHERE user_id = %s AND id <> %s RETURNING id",
                         (session["user_id"], session["sid"]))
     db.execute("DELETE FROM push_subscriptions WHERE user_id = %s", (session["user_id"],))
