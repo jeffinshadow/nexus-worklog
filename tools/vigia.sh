@@ -39,9 +39,9 @@ avisar() {  # $1 assunto, $2 texto; devolve 0 só se o e-mail saiu
 
 # Três tentativas em 20 s: um backend que acabou de subir (health: starting) não é incidente.
 responde() {
-  for _ in 1 2 3; do
+  for n in 1 2 3; do
     docker compose exec -T web wget -q -O /dev/null http://127.0.0.1/api/health 2>/dev/null && return 0
-    sleep 10
+    [[ $n -lt 3 ]] && sleep 10   # sem espera depois da última: a passada já deu o serviço por doente
   done
   return 1
 }
@@ -86,6 +86,7 @@ for s in $reiniciar; do
 done
 if [[ ! -f "$STATE" ]]; then
   fiz="não reiniciou nada (serviço parado não é religado pelo vigia: docker compose up -d)"
+  [[ "$doentes" == aplicação* ]] && fiz="não reiniciou nada (os três containers estão rodando, mas o /api/health não responde)"
   [[ -n "$reiniciar" ]] && fiz="reiniciou: $reiniciar"
   # O incidente só fica marcado como avisado se o e-mail saiu; senão a próxima passada tenta de novo.
   if avisar "Nexus: serviço com problema ($doentes)" \
