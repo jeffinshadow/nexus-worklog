@@ -308,7 +308,7 @@ function shortcutsPanel() {
       h("label", { class: "notice-main" }, on, h("span", {}, h("strong", { text: "Atalhos de uma tecla" }),
         h("small", { text: "Vale para este aparelho. Desligados, as letras (n, q, h, t…) não fazem nada." })))),
     h("p", { class: "help" }, h("button", { type: "button", class: "btn btn-text btn-sm", text: "Ver os atalhos", onClick: show }),
-      " A tecla ? mostra a mesma lista em qualquer tela."));
+      " Com os atalhos ligados, a tecla ? mostra a mesma lista em qualquer tela."));
 }
 
 // ------------------------------------------------------------- dias úteis --
