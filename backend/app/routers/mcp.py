@@ -1126,33 +1126,7 @@ def t_find_similar(ctx, args):
 def t_get_handoff(ctx, args):
     """O mesmo texto do app (feito para colar no chat da equipe), com o que é de outra pessoa
     entre « » para a IA: quem atribuiu, o chamado da tarefa atribuída e o vencimento alheio."""
-    uid = ctx["user_id"]
-    b = services.get_board(uid)
-    # Começo exato da linha de cada tarefa atribuída (summary._titulo) -> o mesmo começo com o nome entre « ».
-    tarefas = {}
-    for t in b["in_progress"] + b["done"]:
-        if t.get("assigned_by_name"):
-            tarefas["- " + summary_routes._titulo(t)] = (
-                f"- {_outro(t['title'])} (atribuída por {_outro(t['assigned_by_name'])})", t.get("ticket"))
-    alheios = {f"- {r['label']} — ": f"- {_outro(r['label'])} — "
-               for r in renewal_routes.list_for(uid) if r["warning"] and not r["mine"]}
-    out = []
-    for linha in summary_routes.handoff_text(uid).split("\n"):
-        for ini in sorted(tarefas, key=len, reverse=True):
-            if linha.startswith(ini):
-                novo, ticket = tarefas[ini]
-                resto = linha[len(ini):]
-                if ticket and resto.startswith(f" (chamado {ticket}"):
-                    resto = f" (chamado {_outro(ticket)}" + resto[len(f" (chamado {ticket}"):]
-                linha = novo + resto
-                break
-        else:
-            for ini in sorted(alheios, key=len, reverse=True):
-                if linha.startswith(ini):
-                    linha = alheios[ini] + linha[len(ini):]
-                    break
-        out.append(linha)
-    return "\n".join(out)
+    return summary_routes.handoff_text(ctx["user_id"], quote=_outro)
 
 
 def t_get_week_review(ctx, args):

@@ -36,18 +36,22 @@ def _dias(ts) -> int:
     return max(0, (app_today() - ts.astimezone(app_tz()).date()).days) if ts else 0
 
 
-def _titulo(t: dict) -> str:
+def _titulo(t: dict, quote=None) -> str:
     """Título de tarefa atribuída por outra pessoa vai entre « » e com quem
-    mandou: é texto de terceiro (a IA não deve obedecer) e quem lê sabe a origem."""
+    mandou: é texto de terceiro (a IA não deve obedecer) e quem lê sabe a origem.
+    `quote` (o MCP passa a dele) põe também o nome de quem mandou entre « »."""
     if not t.get("assigned_by_name"):
         return t["title"]
-    return "«" + t["title"].replace("«", '"').replace("»", '"') + f"» (atribuída por {t['assigned_by_name']})"
+    quem = quote(t["assigned_by_name"]) if quote else t["assigned_by_name"]
+    return "«" + t["title"].replace("«", '"').replace("»", '"') + f"» (atribuída por {quem})"
 
 
-def handoff_text(user_id: int) -> str:
+def handoff_text(user_id: int, quote=None) -> str:
     """Passagem de turno/plantão: o que fica aberto, o que está aguardando e o quê,
     o que vence até amanhã e o que saiu hoje. Texto puro, pronto pra colar no
-    chat da equipe. Calculado do quadro, sem IA."""
+    chat da equipe. Calculado do quadro, sem IA.
+    `quote` (só o MCP passa): função aplicada ao que é de outra pessoa (quem atribuiu, o
+    chamado da tarefa atribuída, o vencimento alheio); sem ela o texto sai como sempre saiu."""
     b = get_board(user_id)
     hoje = b["today"]
     amanha = next_work_day(hoje, work_mask(user_id))  # na sexta, a segunda
@@ -57,13 +61,14 @@ def handoff_text(user_id: int) -> str:
     def item(t):
         extra = []
         if t.get("ticket"):
-            extra.append(f"chamado {t['ticket']}")
+            alheio = quote and t.get("assigned_by_name")  # o chamado da tarefa atribuída é de quem atribuiu
+            extra.append(f"chamado {quote(t['ticket']) if alheio else t['ticket']}")
         if t.get("project_name"):
             extra.append(t["project_name"])
         if t.get("due_date") and t["due_date"] <= amanha:
             extra.append("atrasada" if t["due_date"] < hoje else ("vence hoje" if t["due_date"] == hoje
                          else f"vence {t['due_date'].strftime('%d/%m')}"))
-        return f"- {_titulo(t)}" + (f" ({', '.join(extra)})" if extra else "")
+        return f"- {_titulo(t, quote)}" + (f" ({', '.join(extra)})" if extra else "")
 
     abertas = [t for t in b["in_progress"] if t["status"] != "blocked"]
     travadas = [t for t in b["in_progress"] if t["status"] == "blocked"]
@@ -86,7 +91,7 @@ def handoff_text(user_id: int) -> str:
     feitas = [t for t in b["done"] if t["completed_at"] and t["completed_at"] >= desde]
     plantao = [t for t in feitas if t.get("after_hours")]
     linhas += ["", f"Concluídas no turno, últimas {TURNO.seconds // 3600} h ({len(feitas)}):"]
-    linhas += [f"- {_titulo(t)}" + (" (plantão)" if t.get("after_hours") else "") for t in feitas[:15]] or ["- nada"]
+    linhas += [f"- {_titulo(t, quote)}" + (" (plantão)" if t.get("after_hours") else "") for t in feitas[:15]] or ["- nada"]
     if len(feitas) > 15:
         linhas.append(f"- e mais {len(feitas) - 15}")
     pend = [r for r in b["recurring"] if r.get("due") and not r["done_today"]]
@@ -98,7 +103,7 @@ def handoff_text(user_id: int) -> str:
     venc = [r for r in list_for(user_id) if r["warning"]]
     if venc:
         linhas += ["", "Vencimentos no aviso:"] + [
-            f"- {r['label']} — " + ("VENCIDO" if r["days_left"] < 0 else "vence hoje" if r["days_left"] == 0
+            f"- {quote(r['label']) if quote and not r['mine'] else r['label']} — " + ("VENCIDO" if r["days_left"] < 0 else "vence hoje" if r["days_left"] == 0
                                     else f"vence {r['expires_on']:%d/%m}") for r in venc]
     return "\n".join(linhas)
 
