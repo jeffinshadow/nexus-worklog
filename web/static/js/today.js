@@ -1,6 +1,7 @@
 // Tela inicial "Hoje": o dia em um olhar e as ações mais comuns sem trocar de
 // tela. É o único lugar das rotinas (marcar até 7 dias atrás, editar, achado).
 import { api } from "./api.js";
+import { BOARD_TODAY, BOARD_ROUTINES } from "./fila.js";
 import { h, icon, clear, weekdayDate, localDay, addDays, shortDate, sendRow } from "./dom.js";
 import { errorToast, modal, toast, busy, refocusBy, actionMenu, calmMotion, undoLatest } from "./ui.js";
 import { reminderState, refreshReminders } from "./lembretes.js";
@@ -38,7 +39,7 @@ export async function mount(root, ctx, opts = {}) {
   const refresh = () => mount(root, ctx, { day });
   const vencP = todayRenewals(() => mount(root, ctx, { day })); // em paralelo com o quadro
   const [b, sum] = await Promise.all([
-    api.get(day ? `/board?day=${day}` : "/board"),
+    api.get(day ? `${BOARD_TODAY}&day=${day}` : BOARD_TODAY),  // o mesmo endereço que fica guardado para abrir sem sinal
     opts.summary ? Promise.resolve(opts.summary) : api.get("/summary").catch(() => null),
   ]);
   const today = b.today;
@@ -374,7 +375,7 @@ async function showHandoff(b, refresh) {
 // Salva de uma vez, com Desfazer.
 async function reorderRoutines(uid, onDone) {
   let list;
-  try { list = (await api.get("/board")).recurring.slice().sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || a.id - b.id); }
+  try { list = (await api.get(BOARD_ROUTINES)).recurring.slice().sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || a.id - b.id); }
   catch (e) { errorToast(e, "Não foi possível abrir as rotinas."); return; }
   const ol = h("ol", { class: "reorder-list" });
   const live = h("p", { class: "sr-only", "aria-live": "polite" });

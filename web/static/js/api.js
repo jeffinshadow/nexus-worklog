@@ -30,6 +30,8 @@ function messageFor(status, data) {
   return "Não foi possível concluir. Tente de novo.";
 }
 
+const NO_NET = "Sem conexão com o servidor. Confira a internet e tente de novo.";
+
 // Uma ida ao servidor: CSRF nas mutacoes, 401 -> login (voltando à mesma tela),
 // erro -> Error(mensagem). Sem resposta em `timeout` ms, desiste.
 async function send(method, path, { body, type, timeout = 20000, publicCall = false, retried = false } = {}) {
@@ -41,12 +43,15 @@ async function send(method, path, { body, type, timeout = 20000, publicCall = fa
     res = await fetch("/api" + path, { method, headers, body, credentials: "same-origin", signal: AbortSignal.timeout(timeout) });
   } catch (e) {
     const slow = e && (e.name === "TimeoutError" || e.name === "AbortError");
-    throw Object.assign(new Error(slow ? "O servidor demorou para responder. Tente de novo." : "Sem conexão com o servidor. Confira a internet e tente de novo."), { status: 0 });
+    throw Object.assign(new Error(slow ? "O servidor demorou para responder. Tente de novo." : NO_NET), { status: 0, slow });
   }
+  // Servidor fora (deploy, reinício: o nginx responde 502, 503 ou 504): vale como sem conexão,
+  // para a ação entrar na fila. O 500 não entra: é erro da própria operação.
+  if (res.status >= 502 && res.status <= 504) throw Object.assign(new Error(NO_NET), { status: 0 });
 
   // 401 fora das rotas de auth = sessao expirou -> volta ao login.
   if (res.status === 401 && !publicCall && !path.startsWith("/auth/")) {
-    if (location.pathname !== "/login") toLogin();
+    if (location.pathname !== "/login") toLogin("sessao");
     throw new Error("nao autenticado");
   }
   if (!res.ok) {
@@ -68,16 +73,23 @@ async function send(method, path, { body, type, timeout = 20000, publicCall = fa
 }
 
 // Login guardando a tela atual (#/...), para voltar a ela depois.
-export function toLogin() {
-  const next = location.hash.startsWith("#/") ? "?next=" + encodeURIComponent(location.hash) : "";
-  wipeReads().catch(() => {}).finally(() => { location.href = "/login" + next; });
+// motivo "sessao": a sessão venceu no meio do uso (a tela de login explica).
+export function toLogin(motivo) {
+  const q = new URLSearchParams();
+  if (motivo) q.set("motivo", motivo);
+  if (location.hash.startsWith("#/")) q.set("next", location.hash);
+  const qs = q.toString();
+  wipeReads().catch(() => {}).finally(() => { location.href = "/login" + (qs ? "?" + qs : ""); });
 }
 
 // Foto (base64, até ~1,3 MB) no 3G do campo passa dos 20 s: espera mais.
 const waitFor = (path) => (/\/photos(\?|$)/.test(path) ? 90000 : 20000);
 
+// Envio cru, para a fila. Leitura que veio da cópia guardada (X-Nexus-Cache) conta como
+// sem conexão: quem prepara o "pronto para sem sinal" não pode carimbar a hora lendo o cache.
 async function raw(method, path, body) {
   const res = await send(method, path, body === undefined ? { timeout: waitFor(path) } : { body: JSON.stringify(body), type: "application/json", timeout: waitFor(path) });
+  if (method === "GET" && res.headers.get("X-Nexus-Cache")) throw Object.assign(new Error(NO_NET), { status: 0, cached: true });
   return res.status === 204 ? null : res.json().catch(() => null);
 }
 configure(raw);
@@ -93,6 +105,8 @@ async function request(method, path, body, opts = {}) {
     res = await send(method, path, body === undefined ? { timeout: opts.timeout || waitFor(path) } : { body: JSON.stringify(body), type: "application/json", timeout: waitFor(path) });
   } catch (e) {
     if (e.status === 0 && queueable(method, path)) return { queued: true, qid: await enqueue(method, path, body), id: null };
+    // O que não entra na fila (Aguardando, checklist, editar): diz o motivo e o que fazer.
+    if (e.status === 0 && method !== "GET" && !e.slow && !path.startsWith("/auth/")) e.message = "Sem sinal: faça quando a conexão voltar.";
     throw e;
   }
   if (method === "GET") {

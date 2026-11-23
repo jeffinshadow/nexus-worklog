@@ -1,6 +1,7 @@
 // Configurações: uma página só, com seções (Conta, Avisos, Calendário, IA e API) e atalhos no topo.
 // Cada campo salva ao mudar (sem botão Salvar). Links antigos (#/config?aba=avisos) rolam até a seção.
 import { api } from "./api.js";
+import { wipe } from "./fila.js";
 import { h, icon, clear, dateTime, field, matchPasswords } from "./dom.js";
 import { codeBox, confirmDialog, errorToast, modal, toast, warnBox, busy, singleKeysOn, setSingleKeys, calmMotion, hashPage, pager, pageSlice, setHashPage } from "./ui.js";
 import { defaultProjectPanel } from "./projects.js";
@@ -973,6 +974,7 @@ function deleteAccount(isUser) {
     if (!ok) return;
     try {
       await api.post("/me/delete", { password: pw.value });
+      await wipe().catch(() => {});  // a conta acabou: a fila e as leituras guardadas saem do aparelho
       location.href = "/login";
     } catch (e) { err.textContent = e.message || "Não foi possível excluir."; }
   }));

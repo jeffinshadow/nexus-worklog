@@ -1,7 +1,7 @@
 // Sem sinal: o que foi feito fica numa fila no aparelho (IndexedDB) e vai ao
 // servidor sozinho, na ordem, quando a conexão volta (com o app aberto).
 // Entram só ações que não brigam com outro aparelho: criar tarefa, concluir,
-// anotar, marcar rotina, iniciar e parar o cronômetro. Cada uma leva a hora em
+// anotar, apontar tempo, marcar rotina, iniciar e parar o cronômetro. Cada uma leva a hora em
 // que foi feita; criar leva um identificador (external_ref) e reenviar não
 // duplica. Uma criação pode ter passos seguintes ({id} = a tarefa criada:
 // tempo, checklist, anotação, fotos). A barra no topo mostra a fila e quando
@@ -16,7 +16,14 @@ const QUEUEABLE = [
   /^POST \/worklog$/, /^POST \/worklog\/\d+\/finish$/, /^POST \/worklog\/\d+\/notes$/,
   /^POST \/recurring\/\d+\/toggle$/, /^POST \/timer\/start$/, /^POST \/timer\/stop$/,
   /^POST \/worklog\/\d+\/photos$/, /^POST \/recurring\/\d+\/photos(\?.*)?$/,  // a foto do campo é a evidência
+  /^POST \/worklog\/\d+\/time$/,  // só soma e leva external_ref: reenviar (resposta perdida) não duplica
 ];
+
+// O quadro que o Hoje pede e que fica guardado para abrir sem sinal: o que se guarda é por
+// endereço inteiro, então today.js e a preparação usam esta mesma constante. 50 concluídas
+// (e não as 200 do padrão) bastam para as "concluídas hoje"; quem só quer as rotinas pede BOARD_ROUTINES.
+export const BOARD_TODAY = "/board?done_limit=50";
+export const BOARD_ROUTINES = "/board?done_limit=1";
 
 export const queueable = (method, path) => QUEUEABLE.some((re) => re.test(`${method} ${path}`));
 
@@ -50,10 +57,28 @@ async function tx(store, mode, fn) {
 export const all = () => tx(STORE, "readonly", (s) => s.getAll()).catch(() => []);
 export const failures = () => tx(FAILED, "readonly", (s) => s.getAll()).catch(() => []);
 
-// Guarda a ação. A hora do aparelho vai junto onde o servidor aceita.
-export async function enqueue(method, path, body) {
+// Guarda a ação, uma de cada vez: toques seguidos falham quase juntos, e cada um precisa ver
+// na fila o que o anterior acabou de guardar (para não repetir a mesma ação).
+let enqueueing = Promise.resolve();
+export function enqueue(method, path, body) {
+  const p = enqueueing.then(() => enqueueOne(method, path, body));
+  enqueueing = p.catch(() => {});
+  return p;
+}
+
+// A hora do aparelho vai junto onde o servidor aceita.
+async function enqueueOne(method, path, body) {
   const now = new Date();
   body = { ...(body || {}) };
+  // Três toques em Concluir com o sinal ruim: a ação igual à última da fila não entra de novo.
+  // Só vale para o que não leva external_ref (concluir, rotina, cronômetro); anotação, tempo,
+  // foto e criação repetidas de propósito continuam entrando.
+  const sig = body.external_ref ? null : `${method} ${path} ${JSON.stringify(body)}`;
+  if (sig) {
+    const last = (await all()).pop();
+    if (last && last.sig === sig && !last.created) return last.qid;
+  }
+  if (/\/time$/.test(path) && !body.day) body.day = localDay(now.toISOString());  // o dia em que foi feito, mesmo que chegue amanhã
   if (/^\/timer\//.test(path) || /\/(notes|photos)(\?.*)?$/.test(path)) body.at = now.toISOString();  // anotação e foto: a hora em que foram feitas
   if (/\/finish$/.test(path) && !body.completed_at) body.completed_at = localDateTime(now.getTime());
   if (/\/toggle$/.test(path) && !body.day) body.day = localDay(now.toISOString());
@@ -62,6 +87,7 @@ export async function enqueue(method, path, body) {
     if (body.status === "done" && !body.completed_at) body.completed_at = body.created_at;
   }
   const op = { method, path, body, at: now.toISOString(), then: [] };
+  if (sig) op.sig = sig;
   op.what = describe(op, await names());  // "Concluir: Troca do disjuntor", com o nome que a tela mostrava
   const qid = await tx(STORE, "readwrite", (s) => s.add(op));
   changed();
@@ -136,6 +162,7 @@ function describe(op, n = { task: {}, rec: {} }) {
   if (/\/toggle$/.test(op.path)) return of(b.done ? "Marcar rotina" : "Desmarcar rotina", n.rec[rec]);
   if (/\/timer\/start$/.test(op.path)) return of("Iniciar cronômetro", b.title);
   if (/\/timer\/stop$/.test(op.path)) return "Parar cronômetro";
+  if (/\/time$/.test(op.path)) return of(`Tempo (${b.minutes} min)`, n.task[task]);
   if (/\/photos/.test(op.path)) return rec ? of("Foto da rotina", n.rec[rec]) : of("Foto", n.task[task]);
   return `${op.method} ${op.path}`;
 }
@@ -152,6 +179,53 @@ function describeStep(step) {
 // Sem rede, sem sessão, servidor fora (deploy, reinício) ou limite: tenta depois.
 // Só a recusa por regra (4xx) vira falha.
 const later = (e) => !e.status || e.status === 401 || e.status === 429 || e.status >= 500;
+
+// O servidor respondeu com erro (500; 502 a 504 chegam aqui sem status, como rede fora).
+const serverError = (e) => e.status >= 500;
+// A foto não coube no tempo de espera, com rede: não segura o que vem atrás.
+const slowPhoto = (e, path) => !!e.slow && navigator.onLine && /\/photos(\?|$)/.test(path);
+
+// Fim da fila (número novo), se a ação ainda está lá.
+async function toEnd(op) {
+  await tx(STORE, "readwrite", (s) => {
+    const g = s.get(op.qid);
+    g.onsuccess = () => { if (!g.result) return; const { qid, ...rest } = g.result; s.delete(qid); s.add(rest); };
+  });
+}
+
+// Presa por erro do servidor: a lista da fila mostra e oferece Descartar. Nada sai sozinho:
+// com o banco parado o servidor também responde 500, e aí a fila inteira tem de esperar.
+async function markStuck(op, e) {
+  if (!serverError(e) && !op.stuck) return;
+  await tx(STORE, "readwrite", (s) => {
+    const g = s.get(op.qid);
+    g.onsuccess = () => {
+      if (!g.result) return;
+      if (serverError(e)) g.result.stuck = { status: e.status }; else delete g.result.stuck;
+      s.put(g.result);
+    };
+  });
+}
+
+// Descartar à mão a ação presa: sai da fila e vai para "Não deu para aplicar", com o texto para copiar.
+// De uma criação já feita, sai só o passo preso (o resto continua na fila).
+async function discard(qid) {
+  if (sending) return false;
+  const op = await tx(STORE, "readonly", (s) => s.get(qid));
+  if (!op || !op.stuck) return false;
+  const error = "descartada por você: o servidor respondeu com erro";
+  if (op.created && op.then.length) {
+    const step = op.then.shift();
+    await tx(FAILED, "readwrite", (s) => s.put({ ...step, qid: `${qid}-descartado-${Date.now()}`, at: op.at, error, what: `${describeStep(step)} (${describe(op)})` }));
+    delete op.stuck;
+    await tx(STORE, "readwrite", (s) => s.put(op));
+  } else {
+    await tx(FAILED, "readwrite", (s) => s.put({ ...op, error, what: describe(op) }));
+    await tx(STORE, "readwrite", (s) => s.delete(qid));
+  }
+  changed();
+  return true;
+}
 
 // ------------------------------------------------------------- envio --
 let sending = false, sendFn = null, onSynced = null, flushAgain = false;
@@ -177,7 +251,9 @@ async function flushHere() {
       if (!res) {
         try { res = await sendFn(op.method, op.path, op.body); }
         catch (e) {
-          if (later(e)) break;
+          // Foto pesada no sinal fraco estoura o tempo: vai para o fim da fila e o resto (pequeno) sai antes.
+          if (slowPhoto(e, op.path)) { await toEnd(op); continue; }
+          if (later(e)) { await markStuck(op, e); break; }
           await tx(FAILED, "readwrite", (s) => s.put({ ...op, error: e.message, what: describe(op) }));
           await tx(STORE, "readwrite", (s) => s.delete(op.qid));
           continue;
@@ -190,10 +266,13 @@ async function flushHere() {
         try { await sendFn(step.method, step.path.replace("{id}", res && res.id), step.body); }
         catch (e) {
           if (later(e)) {
+            const stuck = serverError(e) ? { status: e.status, step: true } : undefined;
             await tx(STORE, "readwrite", (s) => {
               const g = s.get(op.qid);  // o que foi acrescentado enquanto enviava não se perde
-              g.onsuccess = () => s.put({ ...op, created: res && res.id, then: [...op.then, ...((g.result && g.result.then) || []).slice(n0)] });
+              g.onsuccess = () => s.put({ ...op, stuck, created: res && res.id, then: [...op.then, ...((g.result && g.result.then) || []).slice(n0)] });
             });
+            // A foto da tarefa nova estourou o tempo: fica no lugar, com o que falta, e as outras ações seguem.
+            if (slowPhoto(e, step.path)) continue outer;
             break outer;
           }
           await tx(FAILED, "readwrite", (s) => s.put({ ...step, qid: `${op.qid}-${op.then.length}`, at: op.at,
@@ -206,7 +285,7 @@ async function flushHere() {
         const g = s.get(op.qid);
         g.onsuccess = () => {
           const extra = ((g.result && g.result.then) || []).slice(n0);
-          if (extra.length) s.put({ ...op, created: res && res.id, then: extra });
+          if (extra.length) s.put({ ...op, stuck: undefined, created: res && res.id, then: extra });  // os passos novos ainda não deram erro
           else s.delete(op.qid);
         };
         return { get result() { return ((g.result && g.result.then) || []).slice(n0).length; } };
@@ -256,6 +335,8 @@ export async function overlay(path, data) {
     for (const op of ops) {
       if (op.path === `/worklog/${t[1]}/notes`) data.notes = [{ id: "fila-" + op.qid, body: op.body.body, created_at: op.at, actor: "web", pending: true }, ...(data.notes || [])];
       if (op.path === `/worklog/${t[1]}/finish`) { data.status = "done"; data.pending_done = true; }
+      // A foto guardada aparece na tarefa, pela miniatura que está na fila.
+      if (op.path === `/worklog/${t[1]}/photos`) data.photos = [...(data.photos || []), { id: "fila-" + op.qid, pending: true, thumb: op.body.thumb }];
     }
   }
   if (path === "/timer") {
@@ -297,20 +378,39 @@ async function prepareOffline() {
     if (est && est.quota && est.quota - (est.usage || 0) < 5e6) return;
     // Pede ao navegador para não apagar estes dados quando faltar espaço (quando ele deixa).
     try { await navigator.storage?.persist?.(); } catch { /* opcional */ }
-    const board = await sendFn("GET", "/board");
+    // Veio da cópia guardada (rede caiu, servidor fora)? O envio cru recusa e nada é carimbado.
+    let board;
+    try { board = await sendFn("GET", BOARD_TODAY); }
+    catch (e) { if (!e.status) lastTry = 0; throw e; }  // sem conexão: tenta de novo quando ela voltar
     // As telas Tarefas e Projetos pedem estes endereços exatos (o que fica guardado é por endereço
     // inteiro): sem eles, as duas só abriam sem sinal se tivessem sido visitadas antes.
     await Promise.all(["/recurring/reminders", "/projects", "/projects?include_archived=true", "/board?done_limit=20&done_offset=0",
-      "/timer", "/summary"].map((p) => sendFn("GET", p).catch(() => null)));
+      BOARD_ROUTINES, "/timer", "/summary"].map((p) => sendFn("GET", p).catch(() => null)));
     let n = 0;
     for (const t of (board.in_progress || []).slice(0, READY_MAX)) {
       if (!navigator.onLine) break;
       try { await sendFn("GET", `/worklog/${t.id}`); n++; } catch (e) { if (!e.status) break; }
     }
     try { localStorage.setItem(READY_KEY, JSON.stringify({ at: new Date().toISOString(), n })); } catch { /* sem armazenamento: vale a cópia do SW */ }
+    await dropOldReads();
     changed();
   } catch { /* quieto: é só adiantar o que seria lido depois */ }
   finally { preparing = false; }
+}
+
+// As leituras guardadas só cresciam (tarefa excluída, projeto antigo): saem as de mais de 7 dias.
+// Só pela idade: a concluída aberta há pouco continua abrindo sem sinal.
+const READS_MAX_AGE = 7 * 24 * 3600 * 1000;
+async function dropOldReads() {
+  if (!("caches" in window)) return;
+  try {
+    const cache = await caches.open("nexus-dados");  // o mesmo nome de sw.js
+    for (const req of await cache.keys()) {
+      const hit = await cache.match(req);
+      const at = Date.parse((hit && hit.headers.get("Date")) || "");
+      if (at && Date.now() - at > READS_MAX_AGE) await cache.delete(req);
+    }
+  } catch { /* fica como está */ }
 }
 
 // --------------------------------------------------------------- barra --
@@ -346,13 +446,40 @@ async function changed() {
   bar.replaceChildren(...content.filter(Boolean));
 }
 
+const copyButton = (full) => h("button", { type: "button", class: "btn btn-text btn-sm", onClick: async () => {
+  const { toast } = await import("./ui.js");
+  try { await navigator.clipboard.writeText(full); toast("Texto copiado."); }
+  catch { toast("Selecione o texto e copie.", { error: true }); }
+} }, icon("copy"), "Copiar");
+
 async function showList() {
   const { modal } = await import("./ui.js");
   const [ops, bad] = await Promise.all([all(), failures()]);
   const when = (iso) => hourOf(iso);
   const dlg = modal(h("h2", { text: "Feito sem conexão" }),
     ops.length ? h("p", { class: "dialog-note", text: "Vai sozinho, nesta ordem, quando a conexão voltar (com o Nexus aberto)." }) : null,
-    ...ops.map((op) => h("div", { class: "token-row" }, h("span", { class: "token-name", text: describe(op) }), h("span", { class: "token-meta", text: when(op.at) }))),
+    ...ops.map((op, i) => {
+      const row = h("div", { class: "token-row" }, h("span", { class: "token-name", text: describe(op) }), h("span", { class: "token-meta", text: when(op.at) }));
+      // Só a primeira segura a fila. Presa por erro do servidor: dá para tirar à mão (o texto fica para copiar).
+      if (i || !op.stuck) return row;
+      // Tarefa já criada: o que está preso (e sai no Descartar) é só o passo seguinte dela.
+      const step = op.created && op.then.length ? op.then[0] : null;
+      const held = (step || op).body;
+      const full = held && (held.body || held.note || held.title);
+      row.append(h("div", { class: "failed-box stuck-box" },
+        h("p", { text: step ? `A tarefa foi criada, mas o servidor respondeu com erro ao receber: ${describeStep(step)}. Enquanto isso não for, as outras esperam.`
+          : "O servidor respondeu com erro ao receber esta. Enquanto ela não for, as outras esperam." }),
+        full ? h("p", { text: full }) : null,
+        full ? copyButton(full) : null,
+        h("button", { type: "button", class: "btn btn-text btn-sm", text: "Descartar", onClick: async () => {
+          const { toast } = await import("./ui.js");
+          if (!(await discard(op.qid))) { toast("Está sendo enviada agora. Tente de novo em instantes.", { error: true }); return; }
+          dlg.close();
+          toast("Descartada. As outras vão ser enviadas.");
+          flush();
+        } })));
+      return row;
+    }),
     bad.length ? h("h3", { text: "Não deu para aplicar" }) : null,
     ...bad.map((op) => {
       // O texto inteiro (anotação, título) com Copiar: dispensar não pode perder o que foi escrito no campo.
@@ -362,12 +489,7 @@ async function showList() {
           await tx(FAILED, "readwrite", (s) => s.delete(op.qid)); dlg.close(); changed();
         } }, icon("close")),
         h("span", { class: "token-meta", text: op.error }),
-        full ? h("div", { class: "failed-box" }, h("p", { text: full }),
-          h("button", { type: "button", class: "btn btn-text btn-sm", onClick: async () => {
-            const { toast } = await import("./ui.js");
-            try { await navigator.clipboard.writeText(full); toast("Texto copiado."); }
-            catch { toast("Selecione o texto e copie.", { error: true }); }
-          } }, icon("copy"), "Copiar")) : null);
+        full ? h("div", { class: "failed-box" }, h("p", { text: full }), copyButton(full)) : null);
     }),
     h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-text", text: "Fechar", onClick: () => dlg.close() })));
 }
