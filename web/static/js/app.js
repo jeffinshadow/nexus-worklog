@@ -548,15 +548,16 @@ async function boot() {
       announce(n ? `${n} ${n === 1 ? "sugestão" : "sugestões"}; seta para baixo percorre` : "Nada encontrado.");
     }, 250);
   });
-  // Setas marcam a sugestão; Enter abre a marcada (sem marcada, a Busca completa); Esc fecha.
-  sideQ.addEventListener("keydown", (ev) => {
-    const items = suggItems();
+  // Setas marcam a sugestão; Enter abre a marcada (sem marcada, a Busca completa); Esc fecha e volta ao campo.
+  document.getElementById("side-search").addEventListener("keydown", (ev) => {
     if (sugg.classList.contains("hidden")) return;
+    if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); hideSugg(); sideQ.focus(); return; }
+    if (ev.target !== sideQ) return;  // no "Ver todos os resultados", Enter e setas são os do botão
+    const items = suggItems();
     const i = items.findIndex((el) => el.id === sideQ.getAttribute("aria-activedescendant"));
     if (ev.key === "ArrowDown" && items.length) { ev.preventDefault(); markSugg(Math.min(i + 1, items.length - 1)); }
     else if (ev.key === "ArrowUp" && items.length) { ev.preventDefault(); markSugg(i - 1 < 0 ? -1 : i - 1); }
     else if (ev.key === "Enter" && i >= 0) { ev.preventDefault(); items[i].click(); }
-    else if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); hideSugg(); }
   });
   document.getElementById("side-search").addEventListener("focusout", (ev) => {
     if (!ev.currentTarget.contains(ev.relatedTarget)) hideSugg();
