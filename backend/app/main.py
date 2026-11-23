@@ -41,7 +41,10 @@ def seed_admin() -> None:
             "ADMIN_EMAIL invalido (%s): o login recusaria esse endereco. Admin NAO criado.", email
         )
         return
-    if db.query_one("SELECT 1 FROM users WHERE email = %s", (email,)):
+    # Só na instalação nova: havendo QUALQUER conta admin, não cria outra. Antes bastava o e-mail do
+    # .env não existir (admin trocou o próprio e-mail, conta excluída) para nascer um admin novo com a
+    # senha inicial do .env, que costuma ficar lá esquecida.
+    if roles.admins_count() or db.query_one("SELECT 1 FROM users WHERE role = 'admin' OR email = %s", (email,)):
         teams.ensure_master()
         return
     row = db.query_one(

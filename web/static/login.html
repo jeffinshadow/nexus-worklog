@@ -19,7 +19,7 @@
 </head>
 <body>
   <div class="auth-wrap">
-    <div class="auth-card">
+    <main class="auth-card">
       <div class="lockup lockup--center">
         <img class="lockup-mark" src="/img/dragon-mark.svg" alt="" width="26" height="30">
         <span class="lockup-type"><span>nexus</span><span>worklog</span></span>
@@ -27,7 +27,8 @@
       <h1 class="sr-only">Entrar no Nexus Worklog</h1>
 
 
-      <form id="form-login" autocomplete="on">
+      <form id="form-login" method="post" autocomplete="on">
+        <p class="sub hidden" id="login-reason" role="status"></p>
         <p class="sub">Registre o seu dia de trabalho: tarefas, rotinas e o que você fez.</p>
         <div class="field">
           <label for="login-email">E-mail</label>
@@ -41,12 +42,12 @@
           <input id="login-password" name="password" type="password" required autocomplete="current-password" maxlength="128">
         </div>
         <p class="error-text" id="login-error" role="alert"></p>
-        <button class="btn btn-primary full" type="submit">Entrar</button>
+        <button class="btn btn-primary full" type="submit" disabled>Entrar</button>
         <button class="btn btn-ghost full hidden" type="button" id="login-passkey">Entrar com digital ou rosto</button>
       </form>
 
       <!-- Esqueci a senha (só com e-mail configurado no servidor). -->
-      <form id="form-forgot" class="hidden">
+      <form id="form-forgot" method="post" class="hidden">
         <h2 class="auth-title">Redefinir a senha</h2>
         <p class="sub">Informe o e-mail da sua conta. Chega um link para criar uma senha nova (vale por 1 hora).</p>
         <div class="field">
@@ -55,12 +56,12 @@
         </div>
         <p class="error-text" id="forgot-error" role="alert"></p>
         <p class="ok-text hidden" id="forgot-ok" role="status"></p>
-        <button class="btn btn-primary full" type="submit">Enviar o link</button>
+        <button class="btn btn-primary full" type="submit" disabled>Enviar o link</button>
         <button class="btn btn-text full" type="button" id="back-login">Voltar para entrar</button>
       </form>
 
       <!-- Link do e-mail: convite (#convite=) ou senha nova (#senha=). -->
-      <form id="form-link" class="hidden">
+      <form id="form-link" method="post" class="hidden">
         <h2 class="auth-title" id="link-title" tabindex="-1"></h2>
         <p class="sub" id="link-sub" role="status"></p>
         <input type="email" id="link-email" autocomplete="username" class="sr-only" tabindex="-1" aria-hidden="true">
@@ -77,12 +78,12 @@
           <input id="link-pw2" type="password" required minlength="10" maxlength="128" autocomplete="new-password">
         </div>
         <p class="error-text" id="link-error" role="alert"></p>
-        <button class="btn btn-primary full" type="submit" id="link-submit"></button>
+        <button class="btn btn-primary full" type="submit" disabled id="link-submit"></button>
         <button class="btn btn-text full hidden" type="button" id="link-back">Ir para entrar</button>
       </form>
 
       <!-- Pedido de convite (só com e-mail configurado no servidor). -->
-      <form id="form-request" class="hidden">
+      <form id="form-request" method="post" class="hidden">
         <h2 class="auth-title">Solicitar convite</h2>
         <p class="sub">O pedido vai para quem administra o Nexus. Com a aprovação, o convite chega no seu e-mail.</p>
         <div class="field">
@@ -115,13 +116,13 @@
         <div class="trap" aria-hidden="true"><label for="req-website">Site</label><input id="req-website" type="text" tabindex="-1" autocomplete="off"></div>
         <p class="error-text" id="request-error" role="alert"></p>
         <p class="ok-text hidden" id="request-ok" role="status"></p>
-        <button class="btn btn-primary full" type="submit" id="request-submit">Enviar o pedido</button>
+        <button class="btn btn-primary full" type="submit" disabled id="request-submit">Enviar o pedido</button>
         <button class="btn btn-text full" type="button" id="request-back">Voltar para entrar</button>
       </form>
 
       <p class="auth-foot" id="auth-foot">acesso por convite · <button type="button" class="link-btn hidden" id="go-request">solicitar convite</button><span id="foot-ask">peça a quem administra</span></p>
       <p class="auth-foot hidden" id="privacy-foot"><a class="privacy-link" id="privacy-link" href="/login" target="_blank" rel="noopener">política de privacidade</a></p>
-    </div>
+    </main>
   </div>
 
   <script type="module" src="/js/login.js?v=166"></script>

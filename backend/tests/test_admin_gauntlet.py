@@ -65,7 +65,8 @@ def test_bloquear_acesso_e_liberar(admin, caixa, novo_usuario):
     assert Api().post("/auth/login", {"email": usuario.me["email"], "password": SENHA_PADRAO}).status_code == 401
     caixa.clear()
     assert Api().post("/auth/forgot", {"email": usuario.me["email"]}).status_code == 200
-    assert caixa == []
+    # Link não; só o aviso de que o acesso está bloqueado (auditoria p01: antes não chegava nada).
+    assert [c[1] for c in caixa] == ["Seu acesso ao Nexus está bloqueado"] and "#senha=" not in caixa[0][2]
     linha = next(u for u in admin.get("/admin/users").json() if u["id"] == uid)
     assert linha["blocked_at"]
     # Os dados ficam.
