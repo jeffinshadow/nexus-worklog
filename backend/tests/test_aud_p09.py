@@ -534,3 +534,22 @@ def test_janela_de_7_dias_da_marcacao(usuario):
     r = usuario.post(f"/history/{h['id']}/undo")
     assert r.status_code == 409 and "7 dias" in r.json()["detail"]
     assert db.query_one("SELECT 1 FROM recurring_completions WHERE task_id = %s AND completed_date = %s", (rid, dia))
+
+
+def test_feed_por_chave_traz_as_tarefas_transferidas_pelo_admin(admin, novo_usuario):
+    """worklog.transfer é ator admin, mas é tarefa que entrou para quem recebe: o
+    webhook entrega, então o feed e a lista por chave também (o resto do log de admin, não)."""
+    sai = novo_usuario("sai@example.com")
+    fica = novo_usuario("fica@example.com")
+    t = sai.post("/worklog", {"title": "Chamado aberto"}).json()
+    chave = Bearer(criar_chave(fica, nome="Sincronizador", scope="read")["token"])
+    assert admin.post(f"/admin/users/{uid_de(sai)}/block", {"transfer_to": uid_de(fica)}).status_code == 200
+    audit.record({"user_id": uid_de(fica), "actor": "admin"}, "master.view", "user", 999, after={"what": "quadro"})
+    db.execute("UPDATE audit_log SET created_at = created_at - interval '1 minute'")  # o feed espera 2 s
+
+    for caminho in ("/history?after=0&limit=200", "/history?limit=200"):
+        linhas = chave.get(caminho).json()
+        assert [e["entity_id"] for e in linhas if e["action"] == "worklog.transfer"] == [t["id"]], caminho
+        assert all(e["actor"] != "admin" or e["action"] == "worklog.transfer" for e in linhas), caminho
+    # a sessão de quem recebeu vê o mesmo evento
+    assert any(e["action"] == "worklog.transfer" for e in fica.get("/history?after=0&limit=200").json())

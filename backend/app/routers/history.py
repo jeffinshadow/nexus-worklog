@@ -392,7 +392,7 @@ def feed(uid: int, after: int, limit: int, admin_log: bool = True) -> list:
         """SELECT id, created_at, actor, token_name, action, entity, entity_id, before, after
              FROM audit_log
             WHERE user_id = %s AND id > %s AND created_at <= now() - make_interval(secs => %s)
-              AND (%s OR actor <> 'admin')
+              AND (%s OR actor <> 'admin' OR action = 'worklog.transfer')
             ORDER BY id LIMIT %s""",
         (uid, after, FEED_LAG_SECONDS, admin_log, limit),
     )
@@ -413,14 +413,17 @@ def list_history(
     limit = clamp(limit, 1, 200, 50)  # também quando chamada pelo MCP (sem validação de Query)
     offset = clamp(offset, 0, OFFSET_MAX, 0)
     # O log de admin (e-mails e nomes de outras pessoas) só sai na sessão do app: por
-    # chave de API ou MCP ele iria para fora (o MCP entrega ao provedor da IA).
+    # chave de API ou MCP ele iria para fora (o MCP entrega ao provedor da IA). Exceção:
+    # worklog.transfer (tarefas que entraram por transferência), que quem sincroniza precisa ver.
     pelo_app = user.get("actor", "web") == "web"
     if after is not None:  # feed de mudanças, para sincronizar (docs/API.md); sem offset nem total
         return feed(user["user_id"], after, limit, admin_log=pelo_app)
     # Os avisos de agenda do sistema (followup.due...) são só do feed e dos webhooks.
     cond, params = ["user_id = %s", "actor <> 'system'"], [user["user_id"]]
     if not pelo_app:
-        cond.append("actor <> 'admin'")
+        # A transferência de tarefas é ator admin, mas é mudança nas tarefas de quem recebe:
+        # o webhook entrega, então o feed e a lista por chave também.
+        cond.append("(actor <> 'admin' OR action = 'worklog.transfer')")
     if token_id is not None:
         cond.append("token_id = %s")
         params.append(token_id)
