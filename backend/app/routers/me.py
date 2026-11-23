@@ -353,6 +353,10 @@ def delete_me(data: DeleteMeIn, response: Response, user=Depends(web_active_csrf
         raise HTTPException(status_code=400, detail="você é o único admin: dê o papel de admin a outra pessoa antes")
     if teams.is_master(uid):
         raise HTTPException(status_code=400, detail=MASTER_DELETE)
+    # Tarefa que veio de outra pessoa guarda as horas dela: excluir a conta as apagaria em cascata.
+    if roles.others_hours(uid)["tasks"]:
+        raise HTTPException(status_code=409, detail=(
+            "esta conta guarda tarefas com horas de outra pessoa; peça ao admin para excluir com transferência"))
     if not roles.delete_account(uid):
         raise HTTPException(status_code=400, detail="você é o único admin: dê o papel de admin a outra pessoa antes")
     logging.getLogger("uvicorn.error").info("conta %s excluída pela própria pessoa", uid)
