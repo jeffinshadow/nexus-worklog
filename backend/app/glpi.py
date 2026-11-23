@@ -46,7 +46,7 @@ EVERY_MIN = 5  # intervalo da sincronização de cada pessoa
 MAX_FAILURES = 5
 MAX_TICKETS = 100  # chamados abertos por pessoa em cada passada
 MAX_BODY = 1024 * 1024  # resposta do GLPI, em bytes
-UNDO_SECONDS = 60  # a solução espera um pouco: dá tempo de desfazer uma conclusão por engano
+UNDO_SECONDS = 120  # a solução espera: dá tempo de desfazer a conclusão e de escrever o "Como resolveu?"
 SOLVED = 5  # status do chamado no GLPI: 5 solucionado, 6 fechado
 CTX = {"actor": "system", "token_name": "GLPI"}  # autoria do que a sincronização grava
 
@@ -198,7 +198,9 @@ def _login_error(status: int, data) -> GlpiError:
     if code == "ERROR_WRONG_APP_TOKEN_PARAMETER":
         return GlpiError("o GLPI recusou o App-Token: ele está errado, ou o IP do Nexus está fora da faixa "
                          "do cliente de API do GLPI")
-    if code == "ERROR":
+    if code == "ERROR_LOGIN_WITH_TOKEN_DISABLED":
+        return GlpiError("o login por token está desligado no GLPI (Configurar › Geral › API › login com token externo)")
+    if code == "ERROR":  # ["ERROR", "API disabled"]
         return GlpiError("o GLPI recusou a conexão: confira se a API está ligada lá (Configurar › Geral › API)")
     if not code:
         return GlpiError(f"esse endereço não respondeu como um GLPI (HTTP {status}): confira o endereço", down=True)
@@ -365,7 +367,7 @@ def _pull(user_id: int, call) -> None:
         db.execute(
             """INSERT INTO task_notes (task_id, user_id, body, actor, token_name, external_ref)
                SELECT g.task_id, g.user_id, %s, %s, %s, 'glpi:' || g.ticket_id || ':saiu'
-                 FROM glpi_tickets g JOIN worklog_tasks w ON w.id = g.task_id
+                 FROM glpi_tickets g JOIN worklog_tasks w ON w.id = g.task_id AND w.user_id = g.user_id
                 WHERE g.user_id = %s AND w.status <> 'done' AND NOT (g.ticket_id = ANY(%s))
                ON CONFLICT DO NOTHING""",
             (GONE, CTX["actor"], CTX["token_name"], user_id, [int(t["2"]) for t in tickets]))
@@ -376,7 +378,7 @@ def _push(user_id: int, call, manual: bool) -> None:
     rows = db.query_all(
         """SELECT g.ticket_id, w.resolution,
                   (SELECT COALESCE(sum(e.minutes), 0) FROM time_entries e WHERE e.task_id = w.id)::int AS minutes
-             FROM glpi_tickets g JOIN worklog_tasks w ON w.id = g.task_id
+             FROM glpi_tickets g JOIN worklog_tasks w ON w.id = g.task_id AND w.user_id = g.user_id
             WHERE g.user_id = %s AND g.sent_at IS NULL AND g.tries < %s AND w.status = 'done'
               AND (%s OR w.completed_at <= now() - make_interval(secs => %s))
             ORDER BY g.ticket_id""", (user_id, MAX_FAILURES, manual, UNDO_SECONDS))
@@ -462,7 +464,8 @@ def state(user_id: int) -> dict:
     n = db.query_one("""SELECT count(*) FILTER (WHERE w.status <> 'done')::int AS open,
                                count(*) FILTER (WHERE w.status = 'done' AND g.sent_at IS NULL
                                                   AND g.last_error IS NULL)::int AS pending
-                          FROM glpi_tickets g JOIN worklog_tasks w ON w.id = g.task_id WHERE g.user_id = %s""", (user_id,))
+                          FROM glpi_tickets g JOIN worklog_tasks w ON w.id = g.task_id AND w.user_id = g.user_id
+                         WHERE g.user_id = %s""", (user_id,))
     failed = db.query_all("""SELECT ticket_id, task_id, last_error AS error FROM glpi_tickets
                               WHERE user_id = %s AND sent_at IS NULL AND last_error IS NOT NULL
                               ORDER BY ticket_id""", (user_id,))

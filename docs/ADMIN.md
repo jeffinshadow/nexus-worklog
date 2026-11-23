@@ -202,7 +202,7 @@ o token e **Conectar**. Dali em diante:
 - A cada 5 minutos (e em **Atualizar agora**), os chamados abertos em que ela é o técnico viram tarefas: título,
   descrição (só texto), prioridade, prazo (tempo para solução) e o número (`#123`, que vira link). Só cria: o que a
   pessoa muda na tarefa fica. Chamado só com o grupo não entra. Tarefa excluída não volta.
-- Tarefa concluída: um minuto depois (tempo de desfazer), o texto de "Como foi resolvido" (ou "Concluído.") e o
+- Tarefa concluída: dois minutos depois (tempo de desfazer e de escrever o "Como resolveu?"), o texto de "Como foi resolvido" (ou "Concluído.") e o
   tempo apontado viram a solução do chamado, assinada por ela. As anotações da tarefa **não** vão.
 - Solução recusada (o chamado reabre no GLPI): a tarefa reabre, com uma anotação. Chamado que saiu do nome dela com a
   tarefa aberta (outro encerrou, ou foi reatribuído): a tarefa ganha uma anotação e a pessoa decide o que fazer.

@@ -31,6 +31,7 @@ class FakeGlpi:
         self.sessions = {}
         self.calls = []
         self.fail = None  # exceção (GLPI fora do ar) ou status (ex.: 503)
+        self.off = None  # "api" = API desligada no GLPI; "token" = login por token desligado
         self.lose_answer = False  # a solução entra, mas a resposta se perde
 
     def add(self, tid, tech, name="Impressora não imprime", content="<p>Sem papel</p>", priority=3, ttr=None, status=2):
@@ -46,6 +47,9 @@ class FakeGlpi:
             return self.fail, None
         parts = urlsplit(path)
         if parts.path == "/initSession":
+            if self.off:
+                return 400, ["ERROR", "API disabled"] if self.off == "api" else [
+                    "ERROR_LOGIN_WITH_TOKEN_DISABLED", "usage of initSession resource with user token is disabled"]
             if self.app_token and "App-Token" not in headers:
                 return 400, ["ERROR_APP_TOKEN_PARAMETERS_MISSING", "missing parameter app_token"]
             if self.app_token and headers["App-Token"] != self.app_token:
@@ -131,7 +135,7 @@ def passada(u):
 
 
 def envelhecer(tid):
-    db.execute("UPDATE worklog_tasks SET completed_at = completed_at - interval '2 minutes' WHERE id = %s", (tid,))
+    db.execute("UPDATE worklog_tasks SET completed_at = completed_at - interval '3 minutes' WHERE id = %s", (tid,))
 
 
 def tarefas(u):
@@ -236,8 +240,13 @@ def test_conectar_confere_o_token_e_nunca_o_devolve(instancia, novo_usuario, fak
     assert not db.query_one("SELECT 1 FROM glpi_accounts")
 
 
-def test_glpi_anterior_ao_11_e_recusado(instancia, novo_usuario, fake):
+def test_api_desligada_e_glpi_anterior_ao_11_sao_recusados(instancia, novo_usuario, fake):
     u = novo_usuario("ana@example.com")
+    fake.off = "api"
+    assert "API está ligada" in instancia.post("/admin/glpi/test").json()["error"]
+    fake.off = "token"
+    assert "login por token está desligado" in u.put("/me/glpi", {"token": TOK_A}).json()["detail"]
+    fake.off = None
     fake.version = "10.0.18"
     r = u.put("/me/glpi", {"token": TOK_A})
     assert r.status_code == 400 and "10.0.18" in r.json()["detail"] and "11 ou superior" in r.json()["detail"]
@@ -309,7 +318,7 @@ def test_concluir_a_tarefa_soluciona_o_chamado_com_o_registro(ana, fake):
     ana.post(f"/worklog/{t['id']}/notes", {"body": "anotação minha, não vai para o requerente"})
     assert ana.post(f"/worklog/{t['id']}/finish",
                     {"resolution": "VPN liberada <b>ok</b>.\nTestado em \\\\srv & fiscal"}).status_code == 200
-    # O agendador espera um minuto (desfazer); passado o minuto, envia.
+    # O agendador espera dois minutos (desfazer, escrever o "Como resolveu?"); depois, envia.
     passada(ana)
     assert fake.solutions == [] and ana.get("/me/glpi").json()["pending"] == 1
     envelhecer(t["id"])
@@ -402,6 +411,18 @@ def test_o_glpi_recusa_a_solucao_e_a_tela_mostra(ana, fake):
         passada(ana)
     assert db.query_one("SELECT tries FROM glpi_tickets")["tries"] == glpi.MAX_FAILURES
     assert ana.get(f"/worklog/{t['id']}").json()["status"] == "done"
+
+
+def test_tarefa_transferida_para_outra_pessoa_nao_manda_solucao(ana, novo_usuario, fake):
+    """Bloquear/excluir com transferência muda o dono da tarefa: o vínculo de quem saiu não vale mais."""
+    fake.add(1, 7)
+    ana.post("/me/glpi/sync")
+    t = tarefas(ana)[0]
+    beto = novo_usuario("beto@example.com")
+    db.execute("UPDATE worklog_tasks SET user_id = %s, external_ref = NULL WHERE id = %s", (uid_de(beto), t["id"]))
+    assert beto.post(f"/worklog/{t['id']}/finish", {"resolution": "feito pelo Beto"}).status_code == 200
+    st = ana.post("/me/glpi/sync").json()
+    assert fake.solutions == [] and (st["open"], st["pending"]) == (0, 0)
 
 
 # ------------------------------------------------------------------ falhas --
