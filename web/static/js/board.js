@@ -81,10 +81,14 @@ export function taskChips(t, today) {
   if (t.assigned_by_name) ctx.push(h("span", { class: "chip assigned", title: "Atribuída por " + t.assigned_by_name, text: "de " + t.assigned_by_name }));
   if (t.after_hours) ctx.push(h("span", { class: "chip after-hours", title: "Plantão / fora do horário", text: "plantão" }));
   if (ctx.length) chips.push(h("span", { class: "task-ctx" }, ...ctx));
-  if (t.check_total) chips.push(h("span", { class: "tag" + (t.check_done === t.check_total ? " ok" : ""), title: "Checklist" }, icon("list"), `${t.check_done}/${t.check_total}`));
-  if (t.minutes) chips.push(h("span", { class: "tag", title: "Tempo apontado" }, icon("clock"), duration(t.minutes)));
-  if (t.notes_count) chips.push(h("span", { class: "tag", title: "Anotações" }, icon("note"), String(t.notes_count)));
-  if (t.photos_count) chips.push(h("span", { class: "tag", title: "Fotos" }, icon("image"), String(t.photos_count)));
+  // Contadores: o leitor de tela ouve "checklist 0 de 2", "1 anotação"; o número solto fica só na tela.
+  const counter = (cls, title, ico, said, shown) => h("span", { class: cls, title }, icon(ico),
+    h("span", { class: "sr-only", text: said }), h("span", { "aria-hidden": "true", text: shown }));
+  if (t.check_total) chips.push(counter("tag" + (t.check_done === t.check_total ? " ok" : ""), "Checklist", "list",
+    `checklist ${t.check_done} de ${t.check_total}`, `${t.check_done}/${t.check_total}`));
+  if (t.minutes) chips.push(counter("tag", "Tempo apontado", "clock", `tempo apontado ${duration(t.minutes)}`, duration(t.minutes)));
+  if (t.notes_count) chips.push(counter("tag", "Anotações", "note", t.notes_count === 1 ? "1 anotação" : `${t.notes_count} anotações`, String(t.notes_count)));
+  if (t.photos_count) chips.push(counter("tag", "Fotos", "image", t.photos_count === 1 ? "1 foto" : `${t.photos_count} fotos`, String(t.photos_count)));
   return chips;
 }
 
@@ -99,7 +103,7 @@ export function ticketUrl(ticket) {
 function ticketChip(ticket) {
   const url = ticketUrl(ticket);
   return url
-    ? h("a", { class: "chip ticket", href: url, target: "_blank", rel: "noopener noreferrer", title: "Abrir o chamado", text: "#" + ticket })
+    ? h("a", { class: "chip ticket", href: url, target: "_blank", rel: "noopener noreferrer", title: "Abrir o chamado", "aria-label": `Chamado ${ticket} (abre em nova aba)`, text: "#" + ticket })
     : h("span", { class: "chip ticket", title: "Chamado ou OS", text: "#" + ticket });
 }
 
