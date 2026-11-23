@@ -5,6 +5,7 @@ from datetime import date, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from .. import db, people
+from ..labels import fold
 from ..config import config
 from ..deps import active_user
 from ..security import pdf_limiter
@@ -68,15 +69,23 @@ def resolve_range(user_id: int, start: date | None, end: date | None, project_id
     return start, end, project, whole
 
 
+def file_slug(text: str, fallback: str) -> str:
+    """Pedaço de nome de arquivo: sem acento (Épsilon Móveis -> epsilon-moveis), só letras, números, . _ -"""
+    return re.sub(r"[^a-z0-9._-]+", "-", fold(text)).strip("-") or fallback
+
+
 def build_pdf_response(user_email: str, user_id: int, start: date | None, end: date | None,
-                       project_id: int | None = None) -> Response:
+                       project_id: int | None = None, requester_id: int | None = None) -> Response:
     """Valida o periodo, monta os dados e devolve o PDF como download.
 
     Com projeto, as datas são opcionais: sem início, vale desde a primeira
     atividade do projeto (relatório do projeto inteiro, sem limite de dias);
     sem fim, até hoje. Compartilhado com o router admin.
+
+    requester_id: quem pede (o limite por minuto é de quem pede, não da pessoa
+    do relatório: o gestor baixando 6 PDFs de alguém não bloqueia o da própria pessoa).
     """
-    if not pdf_limiter.allow(f"pdf:{user_id}"):
+    if not pdf_limiter.allow(f"pdf:{requester_id if requester_id is not None else user_id}"):
         raise HTTPException(status_code=429, detail="muitos relatórios em sequência; aguarde um minuto")
     start, end, project, whole = resolve_range(user_id, start, end, project_id)
     data = get_report_range(user_id, start, end, project)
@@ -89,15 +98,15 @@ def build_pdf_response(user_email: str, user_id: int, start: date | None, end: d
     finally:
         _pdf_slot.release()
 
-    slug = re.sub(r"[^a-zA-Z0-9._-]+", "-", user_email).strip("-").lower() or "usuario"
+    slug = file_slug(user_email, "usuario")
     if project:
-        slug += "-" + (re.sub(r"[^a-zA-Z0-9._-]+", "-", project["name"]).strip("-").lower() or "projeto")
+        slug += "-" + file_slug(project["name"], "projeto")
     span = "projeto-completo" if whole else f"{start.isoformat()}-a-{end.isoformat()}"
     filename = f"relatorio-worklog-{slug}-{span}.pdf"
     return Response(
         content=pdf,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store"},
     )
 
 
@@ -108,7 +117,7 @@ def export(
     project: int | None = Query(None),
     user=Depends(active_user),
 ):
-    return build_pdf_response(user["email"], user["user_id"], start, end, project)
+    return build_pdf_response(user["email"], user["user_id"], start, end, project, requester_id=user["user_id"])
 
 
 @router.get("/preview")

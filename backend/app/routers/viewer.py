@@ -101,7 +101,7 @@ def user_report_export(
     viewer=Depends(require_viewer),
 ):
     target = _ensure_user(user_id, viewer, None)
-    resp = build_pdf_response(target["email"], user_id, start, end, project)
+    resp = build_pdf_response(target["email"], user_id, start, end, project, requester_id=viewer["user_id"])
     log_master_view(viewer, user_id, "pdf")  # só depois de o PDF sair (falha não conta como visto)
     return resp
 
