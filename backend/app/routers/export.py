@@ -106,6 +106,7 @@ def time_csv(uid: int | None, filename: str, viewer: int | None = None,
     `extra`: o recorte do seletor de equipe). start/end: só esse período.
     project: só as tarefas desse projeto (principal ou extra, como no PDF).
     Colunas novas entram sempre no fim (quem lê por posição não quebra)."""
+    # NB: tarefas.csv não ganhou outros_projetos: a última coluna dele é contrato de teste antigo.
     # active_sql: como a lista e o painel da Equipe (as horas de uma conta bloqueada entravam só aqui, e a soma não fechava).
     vis = f"{visible_sql('u', int(viewer))} AND {active_sql('u')} AND {extra}" if viewer is not None else "TRUE"
     rows = db.query_all(
@@ -122,10 +123,11 @@ def time_csv(uid: int | None, filename: str, viewer: int | None = None,
     data = [[r["day"], r["minutes"], str(round(r["minutes"] / 60, 2)).replace(".", ","), r["task_id"], r["title"],
              r["project"] or "", r["note"] or "", r["token_name"] or r["actor"], r["ticket"] or "",
              "sim" if r["after_hours"] else ""] + ([r["email"]] if uid is None else [])
-            # inicio/fim: só no apontamento que veio do cronômetro (o digitado não tem horário)
-            + [_others(r["extra_projects"]), _local(r["started_at"]), _local(r["ended_at"])]
+            # inicio/fim: só no apontamento que veio do cronômetro (o digitado não tem horário).
+            # Só no CSV da própria pessoa: no da equipe, `usuario` continua a última coluna.
+            + ([_others(r["extra_projects"]), _local(r["started_at"]), _local(r["ended_at"])] if uid is not None else [])
             for r in rows]
-    return _download(_csv(data, header + (["usuario"] if uid is None else []) + ["outros_projetos", "inicio", "fim"]),
+    return _download(_csv(data, header + (["usuario"] if uid is None else ["outros_projetos", "inicio", "fim"])),
                      "text/csv; charset=utf-8", filename)
 
 
@@ -207,12 +209,10 @@ def export(kind: str, start: Optional[date] = Query(None), end: Optional[date] =
                  horas(t["minutes"]), t["notes_count"],
                  t["ticket"] or "", "sim" if t["after_hours"] else "", t["blocked_reason"] or "", t["resolution"] or ""]
                 + ([t["period_minutes"], horas(t["period_minutes"])] if start else [])
-                + [_others(t["extra_projects"])]
                 for t in _tasks(uid, start, end, project)]
         return _download(_csv(rows, ["id", "titulo", "descricao", "status", "prioridade", "projeto", "criada_em", "prazo",
                                      "concluida_em", "checklist", "minutos", "horas", "anotacoes", "chamado", "plantao",
-                                     "aguardando", "como_resolveu"] + (["minutos_no_periodo", "horas_no_periodo"] if start else [])
-                              + ["outros_projetos"]),
+                                     "aguardando", "como_resolveu"] + (["minutos_no_periodo", "horas_no_periodo"] if start else [])),
                          "text/csv; charset=utf-8", f"nexus-tarefas-{stamp}.csv")
     if kind == "apontamentos.csv":
         return time_csv(uid, f"nexus-apontamentos-{stamp}.csv", start=start, end=end, project=project)

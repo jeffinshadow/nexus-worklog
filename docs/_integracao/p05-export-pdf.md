@@ -12,7 +12,7 @@ Branch `lab/p05-export-pdf`. Testes novos em `backend/tests/test_aud_p05.py`.
 - Exportação CSV respeita o projeto escolhido: `apontamentos.csv` e `tarefas.csv` aceitam `project`
   (projeto principal ou extra, o mesmo critério do PDF); a tela manda o projeto, não manda datas em
   "Projeto completo" e o nome do arquivo leva o projeto.
-- CSV com colunas novas no fim: `outros_projetos` (os dois), `inicio` e `fim` do cronômetro (apontamentos).
+- `apontamentos.csv` com colunas novas no fim: `outros_projetos`, `inicio` e `fim` do cronômetro.
 - "Tudo (JSON)" mais completo: passos e pausas das rotinas, lembrete e quem atribuiu a tarefa, início e fim
   do cronômetro, revisões da semana, equipes e papéis.
 - PDF de projeto: tabela "Tempo por tarefa" (toda tarefa com tempo no período, concluída ou não; o total é
@@ -40,10 +40,7 @@ Colunas (as novas entram sempre no fim; as antigas não mudaram de nome nem de o
 > `inicio`/`fim`: `AAAA-MM-DD HH:MM` no fuso da instância, só no apontamento que veio do cronômetro
 > (vazio no digitado).
 >
-> `tarefas.csv`: …, `como_resolveu`, [`minutos_no_periodo`, `horas_no_periodo` quando há período],
-> `outros_projetos`.
->
-> CSV da equipe (`/api/viewer/export/apontamentos.csv`): …, `usuario`, `outros_projetos`, `inicio`, `fim`.
+> `tarefas.csv` e o CSV da equipe (`/api/viewer/export/apontamentos.csv`): colunas como antes.
 
 `tudo.json`, chaves novas (só acréscimo):
 
@@ -61,7 +58,8 @@ Colunas (as novas entram sempre no fim; as antigas não mudaram de nome nem de o
   pedem); o PDF não foi mexido (mudar o código de status seria quebra). Fica a divergência registrada.
 - `outros_projetos` traz só os EXTRAS; com `project=` de um projeto extra, a coluna `projeto` continua com
   o principal e o projeto filtrado aparece em `outros_projetos`.
-- O CSV da equipe também ganhou as três colunas (é a mesma função `time_csv`), depois de `usuario`.
+- O CSV da equipe NÃO ganhou as colunas novas: quatro arquivos de teste antigos leem `usuario` como a
+  última coluna (`l[-1]`), e é sinal de que quem consome pode fazer o mesmo.
 - `services.py`: `_report_inputs` lê quatro colunas a mais (`w.project_id` nas concluídas; `e.started_at`,
   `e.ended_at`, `w.status`, `w.project_id` nos apontamentos) e `get_report_range` devolve a mais
   `time_by_task` e, em cada concluída, `period_minutes` e `also_in`; nos apontamentos do cronômetro, `clock`.
@@ -75,6 +73,13 @@ Colunas (as novas entram sempre no fim; as antigas não mudaram de nome nem de o
 
 ## Pendências
 
+- **`outros_projetos` no `tarefas.csv` NÃO entrou** (o pacote pedia nos dois CSV). Motivo:
+  `tests/test_faltas_usuario.py::test_exportar_tempo_e_tarefas_pelo_periodo` afirma que o cabeçalho termina em
+  `como_resolveu` (sem período) e em `minutos_no_periodo, horas_no_periodo` (com período), e este pacote só
+  pode criar testes em `test_aud_p05.py`. Cheguei a implementar e a suíte falhou só por isso; tirei. Para
+  ligar: em `export.py`, acrescentar `[_others(t["extra_projects"])]` à linha e `["outros_projetos"]` ao
+  cabeçalho do `tarefas.csv` (a consulta já traz `extra_projects`) e ajustar as linhas 134, 135 e 139 daquele
+  teste.
 - Histórico no `tudo.json` e avatar no `fotos.zip`: fora deste pacote (dono / p02).
 - Nomes das chaves de API e webhooks no `tudo.json` (citados no relatório de privacidade): não estavam na
   lista do pacote; não fiz.

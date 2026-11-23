@@ -131,14 +131,15 @@ def test_csv_colunas_novas_no_fim(usuario, admin):
     base = ["id", "titulo", "descricao", "status", "prioridade", "projeto", "criada_em", "prazo", "concluida_em",
             "checklist", "minutos", "horas", "anotacoes", "chamado", "plantao", "aguardando", "como_resolveu"]
     ta = _linhas(usuario.get("/export/tarefas.csv"))
-    assert ta[0] == base + ["outros_projetos"] and ta[1][-1] == "Beta" and ta[1][5] == "Alfa"
+    # tarefas.csv: cabeçalho como antes (outros_projetos ficou pendente: ver docs/_integracao).
+    assert ta[0] == base and ta[1][5] == "Alfa"
     tp = _linhas(usuario.get(f"/export/tarefas.csv?start={hoje}&end={hoje}"))
-    assert tp[0] == base + ["minutos_no_periodo", "horas_no_periodo", "outros_projetos"] and tp[1][-1] == "Beta"
+    assert tp[0] == base + ["minutos_no_periodo", "horas_no_periodo"]
 
-    # O CSV da equipe (mesma função): `usuario` continua onde estava e as novas vêm depois.
+    # O CSV da equipe (mesma função) não mudou: `usuario` continua a última coluna.
     usuario.put("/me/viewers", {"accept": True})
     eq = _linhas(admin.get("/viewer/export/apontamentos.csv"))
-    assert eq[0][10:] == ["usuario", "outros_projetos", "inicio", "fim"]
+    assert eq[0][10:] == ["usuario"] and all(len(l) == 11 for l in eq)
 
 
 def test_tudo_json_traz_o_que_faltava(usuario, admin):
