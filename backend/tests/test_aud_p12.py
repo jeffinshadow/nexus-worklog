@@ -120,6 +120,15 @@ def test_mailer_distingue_o_que_nao_saiu(monkeypatch, smtp_falso):
     with pytest.raises(mailer.MailNotSent):
         mailer.send("a@example.com", "Oi", "texto")
 
+    class SenhaErrada(_Smtp):                              # senha recusada não passa sozinha: sem nova tentativa
+        def login(self, *a):
+            raise smtplib.SMTPAuthenticationError(535, b"senha incorreta")
+    monkeypatch.setattr(mailer.smtplib, "SMTP", SenhaErrada)
+    monkeypatch.setattr(config, "SMTP_USER", "nexus")
+    with pytest.raises(mailer.MailError) as e:
+        mailer.send("a@example.com", "Oi", "texto")
+    assert not isinstance(e.value, mailer.MailNotSent)
+
 
 def test_assunto_com_quebra_de_linha_vira_uma_linha(smtp_falso):
     mailer.send("a@example.com", "Tarefa atribuída:\nlinha dois\r\n  e três", "texto")

@@ -17,8 +17,9 @@ class MailError(Exception):
 
 
 class MailNotSent(MailError):
-    """Falhou ANTES de o servidor aceitar a mensagem (conexão, TLS, login): nada
-    saiu, então dá para tentar de novo sem risco de mandar duas vezes."""
+    """Falhou ANTES de o servidor aceitar a mensagem (conexão, TLS): nada saiu,
+    então dá para tentar de novo sem risco de mandar duas vezes. Senha recusada
+    não entra aqui: não passa sozinha."""
 
 
 # Conexão e saudação do SMTP: 5 s (servidor pendurado não prende o agendador);
@@ -77,7 +78,10 @@ def send(to: str, subject: str, text: str, html: str | None = None,
             smtp.send_message(msg)
     except (smtplib.SMTPException, OSError) as e:
         # Mensagem curta para o usuário/log; nunca inclui a senha.
-        err = (MailError if entregando else MailNotSent)(f"falha no envio: {type(e).__name__}: {str(e)[:160]}")
+        # Senha recusada não é queda passageira: tentar de novo a cada minuto só repetiria o
+        # login errado (e há provedor que bloqueia a conta por isso). Fica como erro do dia.
+        nao_saiu = not entregando and not isinstance(e, smtplib.SMTPAuthenticationError)
+        err = (MailNotSent if nao_saiu else MailError)(f"falha no envio: {type(e).__name__}: {str(e)[:160]}")
         last.update(error_at=datetime.now(timezone.utc), error=str(err))
         raise err from e
     last["ok_at"] = datetime.now(timezone.utc)
