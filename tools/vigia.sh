@@ -15,10 +15,17 @@
 # (ou sem SMTP) o aviso não sai; fica no journal (journalctl -t nexus-vigia) e é
 # tentado de novo a cada passada.
 #
+# Durante um ./deploy.sh o vigia não faz nada: o deploy deixa o marcador
+# estado/deploy-em-andamento e o apaga ao sair. Marcador com 15 min ou mais é
+# deploy que morreu sem apagar: o vigia volta a olhar e a avisar.
+#
 # Antes de restaurar um backup, pare o timer (systemctl stop nexus-vigia.timer).
 set -uo pipefail
 cd "${NEXUS_DIR:-$(dirname "$0")/..}" || exit 1
 STATE=".vigia-alerta"   # existe enquanto há incidente aberto (já avisado)
+
+em_deploy() { [[ -n "$(find estado/deploy-em-andamento -mmin -15 2>/dev/null)" ]]; }
+em_deploy && exit 0
 
 env_get() { grep -E "^$1=" .env 2>/dev/null | tail -1 | cut -d= -f2-; }
 para="$(env_get ALERT_EMAIL)"; para="${para:-$(env_get ADMIN_EMAIL)}"
@@ -32,9 +39,9 @@ avisar() {  # $1 assunto, $2 texto; devolve 0 só se o e-mail saiu
 
 # Três tentativas em 20 s: um backend que acabou de subir (health: starting) não é incidente.
 responde() {
-  for _ in 1 2 3; do
+  for n in 1 2 3; do
     docker compose exec -T web wget -q -O /dev/null http://127.0.0.1/api/health 2>/dev/null && return 0
-    sleep 10
+    [[ $n -lt 3 ]] && sleep 10   # sem espera depois da última: a passada já deu o serviço por doente
   done
   return 1
 }
@@ -59,6 +66,8 @@ if [[ -z "$doentes" ]] && ! responde; then
   doentes="aplicação(/api/health sem resposta) "
 fi
 doentes="${doentes% }"
+# Deploy que começou no meio desta passada: a parada é dele, não é incidente.
+[[ -n "$doentes" ]] && em_deploy && exit 0
 
 if [[ -z "$doentes" ]]; then
   # Só aqui, com o health respondendo, o incidente fecha.
@@ -77,6 +86,7 @@ for s in $reiniciar; do
 done
 if [[ ! -f "$STATE" ]]; then
   fiz="não reiniciou nada (serviço parado não é religado pelo vigia: docker compose up -d)"
+  [[ "$doentes" == aplicação* ]] && fiz="não reiniciou nada (os três containers estão rodando, mas o /api/health não responde)"
   [[ -n "$reiniciar" ]] && fiz="reiniciou: $reiniciar"
   # O incidente só fica marcado como avisado se o e-mail saiu; senão a próxima passada tenta de novo.
   if avisar "Nexus: serviço com problema ($doentes)" \
