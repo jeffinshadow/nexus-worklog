@@ -473,8 +473,15 @@ def t_update_task(ctx, args):
     if task_id is None:
         raise ToolError("informe task_id")
     data = _call(WorklogUpdate, **_task_args(ctx["user_id"], args))
-    _call(worklog_routes.update, int(task_id), data, user=ctx)
-    return "Atualizada: " + _task_line(_find_task(ctx["user_id"], int(task_id)), services.app_today())
+    res = _call(worklog_routes.update, int(task_id), data, user=ctx)
+    return "Atualizada: " + _task_line(_find_task(ctx["user_id"], int(task_id)), services.app_today()) + _forgotten(res)
+
+
+def _forgotten(res) -> str:
+    """Concluir com o cronômetro esquecido na tarefa (mais de 12 h): o servidor
+    parou sem apontar. A IA precisa dizer, senão o tempo some sem aviso."""
+    st = (res or {}).get("stopped") if isinstance(res, dict) else None
+    return f" ATENÇÃO: o cronômetro desta tarefa parou sem apontar ({_review_text(st)}); use log_time." if st and st.get("needs_review") else ""
 
 
 def t_complete_task(ctx, args):
@@ -484,7 +491,7 @@ def t_complete_task(ctx, args):
     if res.get("existing"):
         quando = res["completed_at"].astimezone(services.app_tz()).strftime("%d/%m") if res.get("completed_at") else "antes"
         return f"Já estava concluída em {quando} (nada mudou): " + _task_line(_find_task(ctx["user_id"], task_id), services.app_today())
-    return "Concluída: " + _task_line(_find_task(ctx["user_id"], task_id), services.app_today())
+    return "Concluída: " + _task_line(_find_task(ctx["user_id"], task_id), services.app_today()) + _forgotten(res)
 
 
 def t_get_task(ctx, args):

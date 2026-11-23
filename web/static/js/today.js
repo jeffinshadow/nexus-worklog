@@ -10,7 +10,7 @@ import { openRecurring, pauseRecurring, openWorklog, finishTask, askResolution, 
 import { openTask } from "./task.js";
 import { fillProjectSelect } from "./projects.js";
 import { summaryPanel } from "./summary.js";
-import { quickRegister, lastDone, lastUnknown, projectOffer, pasteHandler } from "./quick.js";
+import { quickRegister, lastDone, lastOpen, lastUnknown, projectOffer, pasteHandler } from "./quick.js";
 import { todayCard } from "./assistant.js";
 import { timerButton } from "./timer.js";
 import { todayRenewals } from "./renewals.js";
@@ -217,10 +217,11 @@ export async function mount(root, ctx, opts = {}) {
     try {
       // "Ver": a linha nova fica abaixo da dobra no celular (concluídas ou abertas).
       const msg = await quickRegister(quick.value, project_id);
-      const done = lastDone, unknown = lastUnknown; // registrada já concluída ("— 30min"): pergunta como resolveu, como o Concluir
+      const done = lastDone, open = lastOpen, unknown = lastUnknown; // registrada já concluída ("— 30min"): pergunta como resolveu, como o Concluir
       toast(msg, { actions: [
-        ["Ver", () => document.querySelector(/conclu/i.test(msg) ? ".t-done" : ".t-open")?.scrollIntoView({ behavior: calmMotion() ? "auto" : "smooth", block: "start" })],
+        open && unknown ? null : ["Ver", () => document.querySelector(/conclu/i.test(msg) ? ".t-done" : ".t-open")?.scrollIntoView({ behavior: calmMotion() ? "auto" : "smooth", block: "start" })],
         done ? ["Como resolveu?", () => askResolution(done, refresh)] : null,
+        open ? ["Concluir", () => finishTask(open, refresh)] : null,  // ficou em aberto (sem tempo no texto): conclui daqui
         unknown ? projectOffer(unknown, refresh) : null,  // "@Manutenção" que não é projeto: cria e põe a tarefa nele
       ].filter(Boolean) });
     } catch (e) {
