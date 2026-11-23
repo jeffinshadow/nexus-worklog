@@ -13,7 +13,11 @@ pool = ConnectionPool(
     min_size=1,
     max_size=10,
     timeout=10,
-    kwargs={"row_factory": dict_row, "options": "-c statement_timeout=15000"},
+    # jit=off: em conta grande o JIT custava mais de 1 s por consulta e não poupava nada.
+    kwargs={"row_factory": dict_row, "options": "-c statement_timeout=15000 -c jit=off"},
+    # Confere a conexão antes de entregá-la: depois de o Postgres reiniciar, as
+    # que morreram são trocadas aqui em vez de virarem erro 500 nas próximas chamadas.
+    check=ConnectionPool.check_connection,
     open=False,
 )
 
@@ -84,6 +88,11 @@ def execute(sql: str, params=None) -> int:
 
 def execute_script(sql_text: str) -> None:
     """Roda um arquivo .sql inteiro. Sem parâmetros, o psycopg 3 aceita vários
-    comandos numa chamada só (e numa transação: ou o arquivo todo, ou nada)."""
+    comandos numa chamada só (e numa transação: ou o arquivo todo, ou nada).
+
+    Migração não tem o teto de 15 s das rotas (uma que passasse disso nunca
+    aplicaria e o backend não subiria). SET LOCAL vale só nesta transação: a
+    conexão volta ao pool com os 15 s de sempre."""
     with pool.connection() as conn:
+        conn.execute("SET LOCAL statement_timeout = 0")
         conn.execute(sql_text)
