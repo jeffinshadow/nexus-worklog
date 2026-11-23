@@ -63,11 +63,13 @@ antes. As fixtures e o GLPI falso são importados de test_glpi.py (não editado)
 
 ## Não verificado
 
+- A suíte inteira (813 passaram, openapi inclusive) rodou antes do último commit, que só mexeu em admin.js e nesta nota.
+
 - Nenhum GLPI real (8300/8311) foi usado: a troca de endereço e o Host IPv6 foram provados só com o GLPI falso e com
   uma conexão HTTP falsa. Não houve chamada real a um GLPI em IPv6.
 - No navegador (1440 e 390 px, sem erro de console, sem rolagem lateral) conferi os três diálogos (trocar sem token,
   trocar com token, desligar) e o botão "Tirar o App-Token" sumindo/voltando, com endereços 10.0.0.x que não respondem
-  e sem ninguém conectado. A conferência foi feita antes do ajuste "desligando, o App-Token digitado não é guardado"
-  (uma linha; só `node --check` depois dele).
-- O diálogo de excluir conta (texto) não foi aberto no navegador: só `node --check`.
+  e sem ninguém conectado. Desligar com um App-Token digitado
+  também foi conferido (o token não fica no banco).
+- O diálogo de excluir conta (texto) não foi aberto no navegador: só `node --check` e o texto no JS servido.
 - Tela de Histórico do admin com o `after.links`: não olhada.
