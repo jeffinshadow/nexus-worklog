@@ -242,15 +242,15 @@ def notify_assigner(task_id: int) -> None:
 @router.get("/sent")
 def sent(user=Depends(require_assigner)):
     """Tarefas que esta pessoa atribuiu, com o status atual (as mais recentes).
-    `editable`: ainda dá para corrigir (o que quem recebeu não mudou; falso se
-    ela deixou de receber tarefas atribuídas); `cancelable`: ainda dá para
-    cancelar (vale mesmo sem `editable`). As que saíram da conta de
+    `editable`: ainda dá para corrigir (o que quem recebeu não mudou);
+    `cancelable`: ainda dá para cancelar. As que saíram da conta de
     quem recebeu continuam aqui (status "removed", com `ended`)."""
     # Fora das equipes de quem atribuiu (`same_team` falso) a linha vem sem `description`
     # nem `blocked_reason`; conta de destino excluída: "conta excluída", sem e-mail nem
     # motivo da devolução (em _removed). Fica em comentário: a docstring vai para o openapi.
     # `open`: "a fazer", sem nada registrado e no alcance (o que o cancelar exige). Alterar
-    # pede também a regra do PATCH: a pessoa ainda recebe, ou a conta está bloqueada.
+    # pede também a regra do PATCH: a pessoa ainda recebe, ou a conta está bloqueada
+    # (`editable` falso com `cancelable` verdadeiro: quem desligou o aceite).
     scope = assignable.scope_sql('u', int(user['user_id']))
     rows = db.query_all(
         f"""SELECT w.id, w.title, w.description, w.status, w.due_date, w.assigned_at, w.completed_at, w.priority, w.blocked_reason,
