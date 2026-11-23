@@ -375,7 +375,8 @@ o commit da Saúde do Nexus: confira a versão como na seção 9 ("Qual versão 
   app aberto trata o 502 como falta de sinal (mostra a cópia guardada e põe na fila o que for feito).
 - **As imagens base mudam de versão sozinhas:** `nginx:stable-alpine` e `postgres:16-alpine` são etiquetas móveis, e
   o `deploy.sh` as baixa de novo a cada deploy (`build --pull` e `compose pull db`). Um deploy sem nenhuma mudança
-  no Nexus pode trazer um nginx ou um Postgres 16.x mais novo e, com ele, a parada acima. O Postgres fica na linha 16 (troca só de correção); o nginx segue a linha estável do momento.
+  no Nexus pode trazer um nginx ou um Postgres 16.x mais novo e, com ele, a parada acima. O Postgres fica na linha 16
+  (troca só de correção); o nginx segue a linha estável do momento.
   Se o `pull` do banco falhar (sem rede), o script avisa e segue com a imagem que já está na máquina. Para saber o
   que está rodando: `docker compose exec -T db postgres --version` e `docker compose exec -T web nginx -v`.
 - **Migrações** (`backend/sql/*.sql`) são numeradas, **só aditivas e idempotentes**, aplicadas a cada início do backend:
