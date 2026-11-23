@@ -16,6 +16,7 @@ import { todayRenewals } from "./renewals.js";
 import { packButton } from "./pacotes.js";
 import { markWithSteps } from "./passos.js";
 import { pickFirst, firstLabel } from "./primeiro.js";
+import { openReview } from "./review.js";
 
 const LAST_PROJECT = "nexus.quick.project";
 const OPEN_FILTER = "nexus.today.filter";
@@ -114,13 +115,17 @@ export async function mount(root, ctx, opts = {}) {
       }
       try {
         await api.post(`/recurring/${r.id}/toggle`, { done: cb.checked, day: b.day }); // o dia da tela, não o do relógio
-        refreshReminders();
-        await refresh();
-        refocusBy(root, r.label); // a lista foi redesenhada: o foco volta para a mesma rotina
       } catch (e) {
         cb.checked = !cb.checked;
         errorToast(e, "Não foi possível salvar.");
+        return;
       }
+      // Gravou: se só a releitura falhar, a caixa fica como o servidor guardou.
+      refreshReminders();
+      try {
+        await refresh();
+        refocusBy(root, r.label); // a lista foi redesenhada: o foco volta para a mesma rotina
+      } catch (e) { errorToast(e, "Salvo, mas a tela não atualizou."); }
     });
     // Esmaecida: a própria linha diz por quê (e o leitor de tela também, pela descrição da caixa).
     const hint = [r.paused_until ? `pausada até ${shortDate(r.paused_until)}` : "", scheduleLabel(r, b.day),
@@ -176,7 +181,7 @@ export async function mount(root, ctx, opts = {}) {
     .then(() => proj.addEventListener("change", () => sessionStorage.setItem(LAST_PROJECT, proj.value)))
     .catch(() => {});
   const quick = h("input", { type: "text", maxlength: "200", "aria-label": "Registrar tarefa rápida",
-    placeholder: "O que você fez? — 15min" });
+    placeholder: "O que fez ou vai fazer (com “— 15min” já conclui)" });
   // Colou uma lista (várias linhas): prévia com uma tarefa por linha.
   quick.addEventListener("paste", pasteHandler({ project: () => (proj.value && proj.value !== "__new" ? Number(proj.value) : null),
     onDone: () => mount(root, ctx, { day, summary: sum }) }));
@@ -240,7 +245,7 @@ export async function mount(root, ctx, opts = {}) {
     ...FILTERS.map(([key, label, test]) => {
       const n = open.filter((t) => test(t, today)).length;
       return h("button", { type: "button", class: "chip-btn", "data-filter": key, "aria-pressed": String(key === filter),
-        "aria-selected": String(key === filter), text: key === "all" ? label : `${label} · ${n}`,
+        text: key === "all" ? label : `${label} · ${n}`,
         onClick: () => { filter = key; sessionStorage.setItem(OPEN_FILTER, key); paintOpen(); } });
     }));
   if (open.length) openPanel.append(seg);
@@ -250,7 +255,6 @@ export async function mount(root, ctx, opts = {}) {
     for (const b of seg.children) {
       const on = b.dataset.filter === filter;
       b.setAttribute("aria-pressed", String(on));
-      b.setAttribute("aria-selected", String(on)); // mesmo visual do .seg
     }
     clear(list);
     const shown = open.filter((t) => test(t, today));
@@ -354,10 +358,12 @@ async function showHandoff(b, refresh) {
     h("p", { class: "dialog-note", text: "O que fica aberto, o que está aguardando e por quê, o que foi concluído nas últimas 12 h. Cole no chat da equipe." }),
     area,
     // Fechando o dia: até 3 tarefas para começar o próximo dia útil (abrem o Hoje e saem sozinhas depois).
-    b && b.first_day && b.in_progress.some((t) => t.status !== "blocked" && !t.pending)
-      ? h("div", { class: "handoff-first" },
-        h("button", { type: "button", class: "btn btn-ghost btn-sm", onClick: () => { dlg.close(); pickFirst(refresh, b); } }, icon("play"), firstLabel(b)))
-      : null,
+    // E a revisão da semana, que no computador não tinha outra entrada à vista.
+    h("div", { class: "handoff-first" },
+      b && b.first_day && b.in_progress.some((t) => t.status !== "blocked" && !t.pending)
+        ? h("button", { type: "button", class: "btn btn-ghost btn-sm", onClick: () => { dlg.close(); pickFirst(refresh, b); } }, icon("play"), firstLabel(b))
+        : null,
+      h("button", { type: "button", class: "btn btn-ghost btn-sm", onClick: () => { dlg.close(); openReview(refresh); } }, icon("check"), "Revisão da semana")),
     h("div", { class: "dialog-actions" },
       h("button", { type: "button", class: "btn btn-text", text: "Fechar", onClick: () => dlg.close() }),
       h("button", { type: "button", class: "btn btn-primary", onClick: async () => {
