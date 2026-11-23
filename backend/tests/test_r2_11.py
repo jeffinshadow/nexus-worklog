@@ -666,3 +666,35 @@ def test_devolver_tarefa_com_apontamentos_e_desfazer_devolve_cada_um_ao_dono(adm
     assert t == {"user_id": uid_de(kaique), "assigned_by": uid_de(chefe), "status": "todo"}
     assert [n["body"] for n in kaique.get(f"/worklog/{tid}").json()["notes"]] == ["faltou a escada"]
     assert kaique.post(f"/history/{h['id']}/undo").status_code == 409
+
+
+# ------------------------------------- webhook de admin e o log administrativo --
+def _entregas_do_webhook_do_admin(admin, usuario, monkeypatch):
+    """O admin cadastra um webhook ("tudo"); depois cria uma tarefa dele e, como master, abre o painel de outra
+    pessoa (rota de verdade), o que grava `master.view` com ator "admin" no log administrativo dele."""
+    monkeypatch.setattr(webhooks, "resolve", lambda host, port: {"93.184.216.34"})
+    monkeypatch.setattr(webhooks, "LAG_SECONDS", 0)
+    _ok(admin.post("/webhooks", {"url": "https://hooks.example.com/nexus"}))
+    _tarefa(admin, "Tarefa do admin")
+    _ok(usuario.put("/me/viewers", {"accept": True}))
+    _ok(admin.get(f"/viewer/users/{uid_de(usuario)}/dashboard"))
+    assert db.query_one("SELECT 1 FROM audit_log WHERE user_id = %s AND actor = 'admin' AND action = 'master.view'",
+                        (uid_de(admin),)), "a visita não ficou no log de admin: o teste não prova nada"
+    recebidos = []
+    webhooks.run_once(send=lambda url, headers, body: recebidos.append(json.loads(body)) or 204)
+    return recebidos
+
+
+def test_webhook_do_admin_entrega_as_tarefas_dele(admin, usuario, monkeypatch):
+    recebidos = _entregas_do_webhook_do_admin(admin, usuario, monkeypatch)
+    assert [e["data"]["title"] for e in recebidos if e["action"] == "worklog.create"] == ["Tarefa do admin"]
+
+
+@pytest.mark.xfail(strict=True, reason="ACHADO da r2-11, para o dono decidir (não corrigido): o webhook de uma conta admin "
+                   "entrega as linhas de ator 'admin' do log administrativo (master.view: de quem ele abriu o registro), que a chave de API e o MCP "
+                   "do mesmo admin não leem (test_aud_p09::test_chave_e_mcp_nao_leem_o_log_de_admin)")
+def test_webhook_do_admin_nao_entrega_o_log_administrativo(admin, usuario, monkeypatch):
+    recebidos = _entregas_do_webhook_do_admin(admin, usuario, monkeypatch)
+    assert recebidos, "nada foi entregue: o teste não prova nada"
+    do_log = [(e["action"], e["entity"], e["entity_id"], e["data"]) for e in recebidos if e["actor"] == "admin"]
+    assert do_log == [], f"entregou linhas do log de admin: {do_log}"
