@@ -314,7 +314,11 @@ def current_pause(task_id: int, today):
 
 
 def _active_routine(task_id: int, uid: int) -> dict:
-    row = db.query_one("SELECT id, label FROM recurring_tasks WHERE id = %s AND user_id = %s AND active", (task_id, uid))
+    """A rotina ativa, travada (FOR UPDATE; chame dentro de db.transaction()): pausar e
+    retomar ao mesmo tempo (duas abas, a IA que repete) entram em fila. Sem a trava,
+    duas pausas liam "não está pausada" juntas e criavam dois períodos sobrepostos."""
+    row = db.query_one("SELECT id, label FROM recurring_tasks WHERE id = %s AND user_id = %s AND active FOR UPDATE",
+                       (task_id, uid))
     if not row:
         raise HTTPException(status_code=404, detail="rotina não encontrada (pode ter sido excluída)")
     return row
@@ -324,20 +328,21 @@ def _active_routine(task_id: int, uid: int) -> dict:
 def pause(task_id: int, data: PauseIn, user=Depends(active_user_csrf)):
     """Pausa a rotina de hoje até `until` (inclusive). Já pausada: muda o fim."""
     uid, today = user["user_id"], app_today()
-    r = _active_routine(task_id, uid)
-    if data.until < today:
-        raise HTTPException(status_code=400, detail="a pausa começa hoje: escolha hoje ou um dia depois")
-    if (data.until - today).days > PAUSE_MAX_DAYS:
-        raise HTTPException(status_code=400, detail="a pausa pode ir até um ano a partir de hoje; escolha uma data mais próxima")
-    cur = current_pause(task_id, today)
-    if cur:
-        db.execute("UPDATE recurring_pauses SET end_d = %s WHERE id = %s", (data.until, cur["id"]))
-        new = {**cur, "end_d": data.until}
-    else:
-        new = db.query_one("""INSERT INTO recurring_pauses (recurring_id, start_d, end_d) VALUES (%s, %s, %s)
-                              RETURNING id, start_d, end_d""", (task_id, today, data.until))
-    audit.record(user, "recurring.pause", "recurring", task_id,
-                 before={"label": r["label"], "pause": cur}, after={"label": r["label"], "pause": new})
+    with db.transaction():
+        r = _active_routine(task_id, uid)
+        if data.until < today:
+            raise HTTPException(status_code=400, detail="a pausa começa hoje: escolha hoje ou um dia depois")
+        if (data.until - today).days > PAUSE_MAX_DAYS:
+            raise HTTPException(status_code=400, detail="a pausa pode ir até um ano a partir de hoje; escolha uma data mais próxima")
+        cur = current_pause(task_id, today)
+        if cur:
+            db.execute("UPDATE recurring_pauses SET end_d = %s WHERE id = %s", (data.until, cur["id"]))
+            new = {**cur, "end_d": data.until}
+        else:
+            new = db.query_one("""INSERT INTO recurring_pauses (recurring_id, start_d, end_d) VALUES (%s, %s, %s)
+                                  RETURNING id, start_d, end_d""", (task_id, today, data.until))
+        audit.record(user, "recurring.pause", "recurring", task_id,
+                     before={"label": r["label"], "pause": cur}, after={"label": r["label"], "pause": new})
     return {"ok": True, "paused_until": data.until}
 
 
@@ -345,15 +350,21 @@ def pause(task_id: int, data: PauseIn, user=Depends(active_user_csrf)):
 def resume(task_id: int, user=Depends(active_user_csrf)):
     """Retomar agora: a pausa termina ontem e hoje a rotina já é devida."""
     uid, today = user["user_id"], app_today()
-    r = _active_routine(task_id, uid)
-    cur = current_pause(task_id, today)
-    if not cur:
-        raise HTTPException(status_code=400, detail="a rotina não está pausada")
-    # TODAS as que cobrem hoje: duas pausas ao mesmo tempo criavam dois períodos, e
-    # encerrar só o mais recente respondia ok com a rotina ainda pausada.
-    db.execute("UPDATE recurring_pauses SET end_d = %s WHERE recurring_id = %s AND start_d <= %s AND end_d >= %s",
-               (today - timedelta(days=1), task_id, today, today))
-    audit.record(user, "recurring.resume", "recurring", task_id,
-                 before={"label": r["label"], "pause": cur},
-                 after={"label": r["label"], "pause": {**cur, "end_d": today - timedelta(days=1)}})
+    with db.transaction():
+        r = _active_routine(task_id, uid)
+        # TODAS as que cobrem hoje: duas pausas ao mesmo tempo criavam dois períodos, e
+        # encerrar só o mais recente respondia ok com a rotina ainda pausada. A mais
+        # recente primeiro (`pause`, como sempre foi); `pauses` leva todas ao histórico,
+        # para o desfazer reabrir cada uma.
+        todas = db.query_all(
+            """SELECT id, start_d, end_d FROM recurring_pauses
+                WHERE recurring_id = %s AND start_d <= %s AND end_d >= %s ORDER BY id DESC""", (task_id, today, today))
+        if not todas:
+            raise HTTPException(status_code=400, detail="a rotina não está pausada")
+        cur = todas[0]
+        db.execute("UPDATE recurring_pauses SET end_d = %s WHERE id = ANY(%s)",
+                   (today - timedelta(days=1), [p["id"] for p in todas]))
+        audit.record(user, "recurring.resume", "recurring", task_id,
+                     before={"label": r["label"], "pause": cur, "pauses": todas},
+                     after={"label": r["label"], "pause": {**cur, "end_d": today - timedelta(days=1)}})
     return {"ok": True, "paused_until": None}

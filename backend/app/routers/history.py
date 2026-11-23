@@ -330,6 +330,7 @@ def _with_names(user_id: int, rows: list) -> list:
 
 
 TROCADA = "a agenda desta rotina foi trocada depois; desfaça a troca primeiro"
+TROCADA_ANTIGA = "a agenda desta rotina foi trocada há mais de 7 dias; esta alteração não pode mais ser desfeita"
 
 
 def _troca_bloqueia(action: str, before: dict | None, encerrada_em) -> bool:
@@ -351,6 +352,19 @@ def _encerrada_em(uid: int, rid: int):
     if not r:
         raise HTTPException(status_code=409, detail="a rotina não existe mais")
     return None if r["active"] else r["dia"]
+
+
+def _frase_trocada(uid: int, rid: int) -> str:
+    """O 409 da edição ou marcação anterior à troca de agenda: "desfaça a troca
+    primeiro" só enquanto a troca ainda tem desfazer (a mesma janela de 7 dias)."""
+    troca = db.query_one(
+        """SELECT created_at FROM audit_log
+            WHERE user_id = %s AND action = 'recurring.replace' AND undone_at IS NULL
+              AND (after->>'replaced')::bigint = %s
+            ORDER BY id DESC LIMIT 1""", (uid, rid))
+    if troca and (app_today() - troca["created_at"].astimezone(app_tz()).date()).days > RETRO_DAYS:
+        return TROCADA_ANTIGA
+    return TROCADA
 
 
 def _rotinas_trocadas(uid: int, rows: list) -> set[int]:
@@ -755,7 +769,7 @@ def _undo(history_id: int, user: dict, later: list) -> dict:
         # Rotina encerrada com a edição como última ação = a agenda foi trocada depois
         # (a troca fica registrada na rotina nova). Restaurar reativaria a antiga em dobro.
         if _encerrada_em(uid, eid) is not None:
-            raise HTTPException(status_code=409, detail=TROCADA)
+            raise HTTPException(status_code=409, detail=_frase_trocada(uid, eid))
         _restore_recurring(uid, before)
     elif a == "recurring.deactivate":
         if (app_today() - row["created_at"].astimezone(app_tz()).date()).days > RETRO_DAYS:  # dias parados viraram faltas
@@ -782,8 +796,10 @@ def _undo(history_id: int, user: dict, later: list) -> dict:
             raise HTTPException(status_code=409, detail="essa mudança já saiu da janela de 7 dias; pause ou retome de novo")
         _encerrada_em(uid, eid)  # rotina que não existe mais: 409
         if before.get("pause"):
-            db.execute("UPDATE recurring_pauses SET end_d = %s WHERE id = %s AND recurring_id = %s",
-                       (before["pause"]["end_d"], before["pause"]["id"], eid))
+            # `pauses`: todas as que o Retomar fechou (linha antiga do histórico: só a mais recente).
+            for p in before.get("pauses") or [before["pause"]]:
+                db.execute("UPDATE recurring_pauses SET end_d = %s WHERE id = %s AND recurring_id = %s",
+                           (p["end_d"], p["id"], eid))
         else:
             # Pausa nova: desfeita no próprio dia, some; depois disso, age como "retomar"
             # (termina ontem), para os dias já passados (talvez num mês fechado) não virarem falta.
@@ -804,7 +820,7 @@ def _undo(history_id: int, user: dict, later: list) -> dict:
             raise HTTPException(status_code=409, detail="essa marcação já saiu da janela de edição (7 dias)")
         # A marcação do dia da troca de agenda passou para a rotina nova: aqui não há o que desfazer.
         if _troca_bloqueia(a, before, _encerrada_em(uid, eid)):
-            raise HTTPException(status_code=409, detail=TROCADA)
+            raise HTTPException(status_code=409, detail=_frase_trocada(uid, eid))
         if before["done"]:
             db.execute(
                 """INSERT INTO recurring_completions (task_id, user_id, completed_date, note)

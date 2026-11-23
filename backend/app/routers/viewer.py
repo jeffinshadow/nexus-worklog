@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from .. import db, people, teams
 from ..config import config
 from ..deps import require_viewer
+from ..labels import fold
 from ..visibility import active_sql, consent_sql, log_master_view, scope_sql, visible_sql
 from .dashboard import MONTH, parse_month
 from ..services import (TREND_MONTHS, _add_months, _month_end, app_today, app_tz, get_board, get_dashboard,
@@ -60,7 +61,7 @@ def list_users(team: TeamQ = None, viewer=Depends(require_viewer)):
     rows = db.query_all(f"""SELECT u.id, u.email FROM users u
                              WHERE {visible_sql('u', viewer['user_id'])} AND {active_sql('u')} AND {cut}""")
     perfis = people.profiles(r["id"] for r in rows)
-    return sorted(({**r, **perfis[r["id"]]} for r in rows), key=lambda x: (x["name"].lower(), x["email"]))
+    return sorted(({**r, **perfis[r["id"]]} for r in rows), key=lambda x: (fold(x["name"]), x["email"]))
 
 
 _BOARD_PRIVATE = ("remind_at", "first_on", "touched_at")
@@ -100,7 +101,7 @@ def user_dashboard(user_id: int, month: Optional[str] = MONTH, viewer=Depends(re
 def user_projects(user_id: int, viewer=Depends(require_viewer)):
     """Projetos da pessoa (para tirar o relatório de um cliente dela)."""
     _ensure_user(user_id, viewer, "projetos")
-    return db.query_all("SELECT id, name, archived FROM projects WHERE user_id = %s ORDER BY archived, lower(name)", (user_id,))
+    return db.query_all("SELECT id, name, archived FROM projects WHERE user_id = %s ORDER BY archived, nx_fold(name), id", (user_id,))
 
 
 @router.get("/users/{user_id}/reports/export")
@@ -168,7 +169,7 @@ def _team_people(viewer_id: int, cut: str = "TRUE") -> tuple[list[dict], int]:
             "open": r["open"], "waiting": r["waiting"],
             # Só o dia (no fuso do app), sem a hora: é para saber se a pessoa está ativa, não quando.
             "last_activity": r["last_activity"].astimezone(tz).date() if r["last_activity"] else None} for r in rows]
-    out.sort(key=lambda p: (p["name"].lower(), p["email"]))
+    out.sort(key=lambda p: (fold(p["name"]), p["email"]))
     hidden = db.query_one(
         f"""SELECT count(*)::int AS n FROM users u
              WHERE u.id <> %s AND {active_sql('u')} AND {cut}

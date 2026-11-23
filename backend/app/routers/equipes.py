@@ -22,6 +22,7 @@ from psycopg.errors import UniqueViolation
 
 from .. import audit, db, mailer, people, roles, teams
 from ..deps import require_admin, require_admin_csrf
+from ..labels import fold
 from ..schemas import MasterConfirmIn, MasterRolesIn, MasterTransferIn, TeamEditIn, TeamIn, UserTeamsIn
 from ..security import login_limiter, token_hash, verify_password
 
@@ -56,7 +57,7 @@ def _members(team_id: int) -> list[dict]:
                             WHERE m.team_id = %s""", (team_id,))
     perfis = people.profiles(r["id"] for r in rows)
     out = [{"id": r["id"], "email": r["email"], "name": perfis[r["id"]]["name"]} for r in rows]
-    return sorted(out, key=lambda r: (r["name"].lower(), r["email"]))
+    return sorted(out, key=lambda r: (fold(r["name"]), r["email"]))
 
 
 def _check_users(ids: list[int]) -> list[int]:
