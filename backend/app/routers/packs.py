@@ -21,7 +21,7 @@ from . import recurring as recurring_routes
 
 router = APIRouter(prefix="/api/routine-packs", tags=["recurring"])
 
-SEG, TER, QUA, QUI, SEX = 2, 4, 8, 16, 32  # máscara da semana: domingo = bit 0
+SEG, QUI, SEX = 2, 16, 32  # máscara da semana: domingo = bit 0
 
 
 def _r(key, label, freq="daily", at=None, weekdays=None, month_day=None, interval_days=None, note=False, steps=None):

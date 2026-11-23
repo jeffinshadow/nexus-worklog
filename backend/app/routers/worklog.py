@@ -13,7 +13,7 @@ from ..schemas import ChecklistIn, ChecklistUpdate, FinishIn, NoteIn, NoteUpdate
 from .assign import notify_assigner
 from .objectives import check_objective, next_position, objective_project
 from ..services import is_work_day, work_mask
-from ..services import ASSIGNER_NAME, EXTRA_PROJECTS, PROJECT_ICON, app_today, app_tz, default_project, set_extra_projects, task_retro_days
+from ..services import ASSIGNER_NAME, EXTRA_PROJECTS, PROJECT_ICON, app_today, app_tz, default_project, set_extra_projects, TASK_RETRO_DAYS
 
 router = APIRouter(prefix="/api/worklog", tags=["worklog"])
 items = APIRouter(prefix="/api", tags=["worklog"])  # rotas por id de anotação/item/tempo
@@ -74,7 +74,7 @@ def _parse_when(raw: str, label: str) -> tuple[datetime, bool]:
 
 
 def _too_old(label: str) -> str:
-    msg = f"{label}: até {task_retro_days()} dias atrás"
+    msg = f"{label}: até {TASK_RETRO_DAYS} dias atrás"
     if label == "data de criação":  # o tempo aceita dia mais antigo que a tarefa: diz o caminho
         msg += "; para trabalho mais antigo, crie a tarefa com a data de hoje e aponte o tempo no dia certo"
     return msg
@@ -84,7 +84,7 @@ def _check_window(when: datetime, label: str, now: datetime) -> None:
     if when > now + timedelta(minutes=10):  # folga para o relógio do aparelho (feito sem sinal)
         raise HTTPException(status_code=400, detail=f"{label} no futuro")
     try:
-        old = (app_today() - when.astimezone(app_tz()).date()).days > task_retro_days()
+        old = (app_today() - when.astimezone(app_tz()).date()).days > TASK_RETRO_DAYS
     except OverflowError:  # primeiros dias do ano 1 no fuso da app
         old = True
     if old:

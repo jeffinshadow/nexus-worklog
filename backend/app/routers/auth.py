@@ -19,7 +19,7 @@ from ..deps import (
     set_session_cookie,
 )
 from ..schemas import ChangePasswordIn, EmailConfirmIn, ForgotIn, LinkPasswordIn, LinkPeekIn, LoginIn, SettingsIn
-from ..services import app_today, app_tz, task_retro_days
+from ..services import app_today, app_tz, TASK_RETRO_DAYS
 from .recurring import replace_routine
 from ..security import (
     WEAK_PASSWORD,
@@ -55,7 +55,7 @@ def _public(row: dict, csrf: str) -> dict:
         "assistant": people.assistant_prefs(uid),
         "role": row["role"],
         "roles": row["roles"] if row.get("roles") is not None else roles.of(uid),  # a sessão já traz (deps); o login, não
-        "retro_days": task_retro_days(),  # limite de datas retroativas em tarefas
+        "retro_days": TASK_RETRO_DAYS,  # limite de datas retroativas em tarefas
         "support_contact": (db.query_one("SELECT support_contact FROM app_settings WHERE id = 1") or {}).get("support_contact"),
         "must_change_password": row["must_change_password"],
         "work_days": row["work_days"],
@@ -107,18 +107,9 @@ def login(data: LoginIn, request: Request, response: Response):
             (hash_password(data.password), user["id"]),
         )
 
-    # Faxina barata: sessoes vencidas e historico antigo (o desfazer so vale
-    # para o recente; excluir de verdade nao pode durar para sempre no log).
-    db.execute("DELETE FROM sessions WHERE expires_at <= now()")
-    db.execute("DELETE FROM audit_log WHERE created_at < now() - interval '180 days'")
-    # Links de convite/senha já usados ou vencidos não servem para nada depois de um mês.
-    db.execute("""DELETE FROM auth_links WHERE created_at < now() - interval '30 days'
-                   AND (used_at IS NOT NULL OR expires_at <= now())""")
-    # Pedidos de convite são dados de quem nem tem conta: decididos saem em 30
-    # dias (a lista já os escondia), os nunca respondidos em 180.
-    db.execute("""DELETE FROM invite_requests
-                   WHERE (status <> 'pending' AND decided_at < now() - interval '30 days')
-                      OR (status = 'pending' AND created_at < now() - interval '180 days')""")
+    if not config.MAIL_SCHEDULER:  # sem o agendador (que faz a faxina de hora em hora), ela roda aqui
+        from ..notify import faxina
+        faxina()
 
     return _start_session(user, response)
 

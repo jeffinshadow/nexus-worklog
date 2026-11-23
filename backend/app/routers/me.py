@@ -198,7 +198,7 @@ def visibility(user=Depends(web_active)):
                 FROM users u
                WHERE u.id <> %s AND u.blocked_at IS NULL AND NOT u.invite_pending) x
             WHERE cardinality(x.roles) > 0
-            ORDER BY lower(COALESCE(x.display_name, x.email))""",
+            ORDER BY nx_fold(COALESCE(x.display_name, x.email))""",
         (me_,),
     )
     return [{"name": r["display_name"] or people.name_from_email(r["email"]), "roles": r["roles"],

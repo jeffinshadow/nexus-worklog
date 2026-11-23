@@ -40,12 +40,6 @@ RETRO_DAYS = 7
 TASK_RETRO_DAYS = 60
 
 
-def task_retro_days() -> int:
-    """Até quantos dias para trás uma tarefa pode ser criada ou concluída: fixo em 60
-    (saiu do Admin; a coluna app_settings.retro_days fica no banco, obsoleta e ignorada)."""
-    return TASK_RETRO_DAYS
-
-
 def work_mask(user_id: int) -> int:
     row = db.query_one("SELECT work_days FROM users WHERE id = %s", (user_id,))
     return row["work_days"] if row else DEFAULT_WORK_DAYS
@@ -155,7 +149,7 @@ def _due_between(t: dict, start: date, end: date, mask: int) -> int:
 # "+ Filial" e o tempo por projeto, que conta a tarefa inteira em cada um.
 EXTRA_PROJECTS = """(SELECT COALESCE(json_agg(json_build_object('id', xp.id, 'name', xp.name, 'color', xp.color,
                                                         'icon', COALESCE(xp.icon, 'pasta'))
-                                      ORDER BY lower(xp.name)), '[]'::json)
+                                      ORDER BY nx_fold(xp.name)), '[]'::json)
        FROM worklog_task_projects x JOIN projects xp ON xp.id = x.project_id
       WHERE x.task_id = w.id) AS extra_projects"""
 
@@ -235,7 +229,7 @@ _STATS_SQL = """
            GREATEST(p.created_at, tp.at, ob.at) AS last_activity
       FROM projects p LEFT JOIN tp ON tp.pid = p.id LEFT JOIN ob ON ob.pid = p.id
      WHERE p.user_id = %(u)s {filtro}
-     ORDER BY p.archived, lower(p.name)
+     ORDER BY p.archived, nx_fold(p.name)
 """
 
 

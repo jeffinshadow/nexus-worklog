@@ -1,6 +1,7 @@
 """Saúde do Nexus (Admin > Geral): um retrato só de leitura do servidor.
 
-Versão (o commit que o deploy.sh gravou), última migração, último backup (o
+Versão (o número e o commit que o deploy.sh gravou), última migração, a última
+passada do agendador (avisos, notificações, faxina), último backup (o
 deploy.sh grava estado/backup.json depois do pg_dump; o backend lê a pasta só
 leitura e nunca vê o dump), e-mail e notificações (configurados? último erro),
 espaço das fotos, webhooks desligados por falha, pedidos de convite.
@@ -17,9 +18,10 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends
 
-from .. import db, mailer
+from .. import db, mailer, notify
 from ..config import config
 from ..deps import require_admin
+from ..version import VERSION
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -90,9 +92,11 @@ def admin_health(admin=Depends(require_admin)):
 
     return {
         "now": datetime.now(timezone.utc),
-        "version": {"commit": (deploy or {}).get("commit"), "deployed_at": (deploy or {}).get("at"),
+        "version": {"number": VERSION, "commit": (deploy or {}).get("commit"), "deployed_at": (deploy or {}).get("at"),
                     "migration": migrations[-1] if migrations else None, "started_at": STARTED_AT},
         "backup": backup,
+        # Fim da última passada do agendador (null = nenhuma desde que subiu, ou agendador desligado).
+        "scheduler_last_pass": notify.last_pass,
         "email": {"configured": mailer.configured(), "scheduler": config.MAIL_SCHEDULER, "last_ok_at": ok_at,
                   "last_error_at": err[0] if err else None, "last_error": _clean(err[1]) if err else None},
         "push": {"keys_ok": vapid, "devices": push["devices"], "failing": push["failing"],

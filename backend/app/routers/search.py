@@ -165,7 +165,7 @@ def search(
     projects = db.query_all(
         """SELECT id, name, color, COALESCE(icon, 'pasta') AS icon, archived, count(*) OVER () AS total FROM projects
             WHERE user_id = %(uid)s AND nx_fold(name) LIKE %(like)s
-            ORDER BY archived, lower(name), id LIMIT %(lim)s OFFSET %(off)s""", side | {"off": proj_offset})
+            ORDER BY archived, nx_fold(name), id LIMIT %(lim)s OFFSET %(off)s""", side | {"off": proj_offset})
     total_rec = recurring[0]["total"] if recurring else db.query_one(
         "SELECT count(*)::int AS n FROM recurring_tasks WHERE user_id = %(uid)s AND nx_fold(label) LIKE %(like)s", side)["n"]
     total_proj = projects[0]["total"] if projects else db.query_one(

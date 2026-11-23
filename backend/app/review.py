@@ -80,7 +80,7 @@ def week_review(uid: int) -> dict:
             WHERE w.user_id = %s AND w.status = 'done' AND w.completed_at >= %s AND w.completed_at < %s
             ORDER BY w.completed_at DESC LIMIT %s""",
         (uid, datetime.combine(ws, time(), tz), datetime.combine(we + timedelta(days=1), time(), tz), DONE_MAX))
-    abertas = get_board(uid, today)["in_progress"]
+    abertas = get_board(uid, today, done_limit=1)["in_progress"]
     open_ = [_task(t, today) for t in abertas if t["status"] != "blocked"]
     waiting = [_task(t, today) for t in abertas if t["status"] == "blocked"]
     st = state(uid, ws)
