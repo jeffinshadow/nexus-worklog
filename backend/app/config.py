@@ -1,3 +1,4 @@
+import logging
 import os
 
 
@@ -29,6 +30,13 @@ class Config:
     # 465 = TLS direto; 587 = STARTTLS; outra porta (ex.: 1025 do Mailpit) = sem TLS.
     MAIL_FROM = os.environ.get("MAIL_FROM", "Nexus Worklog <nexus@localhost>")
     APP_URL = os.environ.get("APP_URL", "https://nexus.shadow.tec.br").rstrip("/")
+    if "APP_URL" not in os.environ:
+        # O padrão é o endereço de outra instalação: os links dos e-mails, o
+        # calendário, as passkeys e o push sairiam apontando para lá.
+        logging.getLogger("uvicorn.error").warning(
+            "APP_URL NAO DEFINIDA no .env: usando %s, que NAO e o endereco desta instalacao. "
+            "Links de e-mail, calendario, passkeys e push vao sair errados. Defina APP_URL=https://<seu endereco>.",
+            APP_URL)
     # O agendador roda só se houver SMTP e não estiver desligado (testes).
     MAIL_SCHEDULER = os.environ.get("MAIL_SCHEDULER", "true").lower() == "true"
 
