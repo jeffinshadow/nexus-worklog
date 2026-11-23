@@ -1807,3 +1807,17 @@ input:disabled { cursor: not-allowed; }
   .time-form .btn { height: 44px; }
   .time-form input { height: 44px; }
 }
+
+/* auditoria p02 */
+/* Admin › Contas no computador: duas linhas por conta. Papéis e equipes na mesma linha;
+   "criada · último acesso" à direita. No celular segue uma informação por linha. */
+@media (min-width: 861px) {
+  .admin-users .list-row .t { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; align-items: center; }
+  .admin-users .list-row .t > span, .admin-users .list-row .t > .account-meta { grid-column: 1; }
+  .admin-users .list-row .t > .account-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0 14px; min-width: 0; }
+  .admin-users .list-row .t > .account-meta small.account-teams { margin-top: 0; }
+  .admin-users .list-row .t > small.account-seen { grid-column: 2; grid-row: 1 / span 2; margin-top: 0; text-align: right; white-space: nowrap; }
+}
+/* Equipe › Precisa de atenção: "e mais N" abaixo da lista. */
+.eq-att-more { margin: 8px 0 0; }
+/* fim auditoria p02 */

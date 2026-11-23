@@ -7,7 +7,7 @@ tarefas (routers/viewer.py).
 import logging
 import threading
 import unicodedata
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -55,11 +55,17 @@ def _sort_key(name: str) -> str:
 def list_users(admin=Depends(require_admin)):
     """Contas em ordem de nome (o que a linha mostra), com o último acesso
     (`last_seen_at`: entrar ou usar o app; nulo = nunca entrou), a criação e
-    quantas tarefas abertas cada uma tem (`open_tasks`, para transferir)."""
+    quantas tarefas abertas cada uma tem (`open_tasks`, para transferir) e os
+    vencimentos dela compartilhados com equipes (`shared_renewals`, por equipe:
+    excluir a conta apaga, o diálogo de excluir avisa)."""
     rows = db.query_all(
         f"""SELECT u.id, u.email, u.role, u.created_at, u.accepts_assignments_at, u.invite_pending,
                    u.viewers_allowed, u.blocked_at, u.last_seen_at,
                    (SELECT count(*) FROM worklog_tasks w WHERE w.user_id = u.id AND w.status <> 'done')::int AS open_tasks,
+                   -- vencimentos da conta compartilhados com equipe: excluir a conta apaga, o diálogo avisa
+                   COALESCE((SELECT json_agg(json_build_object('team', x.name, 'count', x.n) ORDER BY lower(x.name))
+                               FROM (SELECT t.name, count(*)::int AS n FROM renewals r JOIN teams t ON t.id = r.team_id
+                                      WHERE r.user_id = u.id GROUP BY t.name) x), '[]'::json) AS shared_renewals,
                    -- convite pendente cujo link já venceu: o admin reenvia
                    (u.invite_pending AND NOT EXISTS (
                        SELECT 1 FROM auth_links l WHERE l.user_id = u.id AND l.kind = 'invite'
@@ -262,7 +268,10 @@ def transfer_open_tasks(src: dict, dest: dict, admin: dict) -> dict:
                 c AS (UPDATE task_checklist SET user_id = %(dst)s WHERE task_id IN (SELECT id FROM t)),
                 f AS (UPDATE photos SET user_id = %(dst)s, external_ref = NULL WHERE task_id IN (SELECT id FROM t)),
                 w AS (UPDATE worklog_tasks SET user_id = %(dst)s, project_id = %(p)s, objective_id = NULL,
-                                               exec_position = NULL, external_ref = NULL
+                                               exec_position = NULL, external_ref = NULL,
+                                               -- quem atribuiu recebeu de volta: vira tarefa dele, não "atribuída por mim"
+                                               assigned_at = CASE WHEN assigned_by = %(dst)s THEN NULL ELSE assigned_at END,
+                                               assigned_by = CASE WHEN assigned_by = %(dst)s THEN NULL ELSE assigned_by END
                        WHERE id IN (SELECT id FROM t) RETURNING id, title)
            SELECT id, title FROM w ORDER BY id""",
         {"src": src["id"], "dst": dest["id"], "p": default_project(dest["id"])})
@@ -444,7 +453,9 @@ def edit_profile(user_id: int, data: AdminProfileIn, admin=Depends(require_admin
 def delete_user(user_id: int, data: DeleteUserIn, admin=Depends(require_admin_csrf)):
     """Exclui a conta e TODOS os dados dela (tarefas, rotinas, tempo, chaves,
     histórico: ON DELETE CASCADE). Sem volta: o admin confirma digitando o
-    e-mail. Tarefas que essa pessoa atribuiu ficam com quem recebeu.
+    e-mail. Tarefas que essa pessoa atribuiu ficam com quem recebeu. Os
+    vencimentos dela saem junto, inclusive os compartilhados com equipe (a
+    resposta conta: `renewals` e `shared_renewals`).
     `transfer_to`: antes de excluir, as tarefas abertas passam para essa pessoa."""
     if user_id == admin["user_id"]:
         raise HTTPException(status_code=400, detail="para a sua própria conta, use Configurações > Conta")
@@ -470,7 +481,9 @@ def account_counts(user_id: int) -> dict:
     return db.query_one(
         """SELECT (SELECT count(*) FROM worklog_tasks WHERE user_id = %(u)s)::int AS tasks,
                   (SELECT count(*) FROM recurring_tasks WHERE user_id = %(u)s)::int AS routines,
-                  (SELECT count(*) FROM time_entries WHERE user_id = %(u)s)::int AS time_entries""",
+                  (SELECT count(*) FROM time_entries WHERE user_id = %(u)s)::int AS time_entries,
+                  (SELECT count(*) FROM renewals WHERE user_id = %(u)s)::int AS renewals,
+                  (SELECT count(*) FROM renewals WHERE user_id = %(u)s AND team_id IS NOT NULL)::int AS shared_renewals""",
         {"u": user_id})
 
 
@@ -579,7 +592,12 @@ def reset_password(user_id: int, data: ResetPasswordIn | None = None, admin=Depe
                  after={"by": admin["email"], "method": method, **({"unblocked": True} if was_blocked else {})},
                  user_id=user_id)
     if method == "temp":
-        return {"email": target["email"], "temp_password": temp, "method": "temp"}
+        # A pessoa fica sabendo que a senha foi trocada, por quem e quando (sem a senha:
+        # ela vem de quem administra, por outro canal). O método link já avisa.
+        notified = mailer.configured()
+        if notified:
+            _spawn(target["email"], _temp_reset_mail(target["email"], people.profile(admin["user_id"])["name"], was_blocked))
+        return {"email": target["email"], "temp_password": temp, "method": "temp", "notified": notified}
     link = links.url("reset", links.issue(user_id, "reset", ttl=ADMIN_RESET_TTL))
     try:
         m = _admin_reset_mail(target["email"], people.profile(admin["user_id"])["name"], link, was_blocked)
@@ -592,6 +610,21 @@ def reset_password(user_id: int, data: ResetPasswordIn | None = None, admin=Depe
 
 
 ADMIN_RESET_TTL = timedelta(hours=24)  # o "Esqueci a senha" vale 1 hora; o mandado pelo admin, um dia
+
+
+def _temp_reset_mail(email: str, by_name: str, unblocked: bool):
+    from ..notify import Mail
+    quando = datetime.now(services.app_tz()).strftime("%d/%m/%Y às %H:%M")
+    m = Mail("A sua senha do Nexus foi redefinida",
+             "O seu acesso foi liberado" if unblocked else "A sua senha do Nexus foi redefinida",
+             f"{by_name}, que administra o Nexus, {'liberou o seu acesso e ' if unblocked else ''}redefiniu a sua senha "
+             f"em {quando}. A senha temporária não vai por e-mail: quem administra passa a você. "
+             "No primeiro acesso, o Nexus pede uma senha nova.")
+    m.blocks = [("A sua conta", [email]),
+                ("A senha antiga não vale mais", ["Os aparelhos conectados saíram da conta."]),
+                ("Não esperava por isso?", ["Fale com quem administra o Nexus."])]
+    m.reason, m.settings_tab = "Você recebe este e-mail porque um administrador do Nexus redefiniu a sua senha.", None
+    return m
 
 
 def _admin_reset_mail(email: str, by_name: str, link: str, unblocked: bool):

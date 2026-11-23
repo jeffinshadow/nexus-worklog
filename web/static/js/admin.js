@@ -36,6 +36,7 @@ function rowMenu(btn, title, items) {
 const userText = (u) => `${u.display_name || ""} ${u.email}`.toLowerCase();
 
 const dateShort = (iso) => new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const dmy = (ts) => { const [y, m, d] = localDay(ts).split("-"); return `${d}/${m}/${y}`; };
 // "hoje, 14:20", "ontem, 09:05" ou a data (no fuso da app).
 function seenText(ts) {
@@ -222,8 +223,10 @@ async function mountUsers(root, me) {
       onClick: (ev) => rowMenu(ev.currentTarget, u.display_name || u.email, phone() && main ? [[mainText, "key", mainFn], ...items] : items) }, icon("more-v"));
     return h("div", { class: "list-row" }, avatar(u, "sm"),
       h("div", { class: "t" }, u.display_name ? h("span", { class: "dot-list" }, h("span", { text: u.display_name }), h("span", { text: u.email })) : h("span", { text: u.email }),
-        h("small", {}, roleNames(u.roles), ...chips),
-        teamsOn && (u.teams || []).length ? h("small", { class: "account-teams", text: `Equipes: ${u.teams.map((t) => t.name).join(", ")}` }) : null,
+        // No computador, papéis e equipes dividem uma linha e "criada · último acesso" vai à direita (app.css, auditoria p02).
+        h("div", { class: "account-meta" },
+          h("small", {}, roleNames(u.roles), ...chips),
+          teamsOn && (u.teams || []).length ? h("small", { class: "account-teams", text: `Equipes: ${u.teams.map((t) => t.name).join(", ")}` }) : null),
         h("small", { class: "account-seen", text: accessLine(u) })),
       main, more);
   }
@@ -318,6 +321,8 @@ async function mountUsers(root, me) {
     const form = h("form", {},
       h("p", { class: "help", text: `Exclui a conta ${u.email} e tudo o que está nela: tarefas, rotinas, tempo, anotações, chaves de API e histórico. Não dá para desfazer. Tarefas que essa pessoa atribuiu a outras continuam com quem recebeu. O e-mail e as contagens ficam registrados no seu histórico (180 dias).` }),
       h("p", { class: "help", text: "Só quer cortar o acesso agora (férias, celular perdido)? Use “Bloquear acesso” no menu da conta: a pessoa sai de todos os aparelhos e os dados ficam." }),
+      // Vencimentos da conta compartilhados com equipe saem junto: a equipe deixa de ver.
+      ...(u.shared_renewals || []).map((s) => warnBox(`${plural(s.count, "vencimento compartilhado", "vencimentos compartilhados")} com a equipe ${s.team} ${s.count === 1 ? "será apagado" : "serão apagados"}. A equipe deixa de ver; se ainda precisa, peça para alguém da equipe cadastrar de novo antes de excluir.`)),
       tp ? tp.el : null,
       field("Digite o e-mail da conta para confirmar", input), err,
       h("div", { class: "dialog-actions" },
@@ -331,7 +336,7 @@ async function mountUsers(root, me) {
       try {
         const res = await api.post(`/admin/users/${u.id}/delete`, { confirm_email: input.value.trim(), ...(to ? { transfer_to: to } : {}) });
         dlg.close();
-        toast(`Conta ${res.email} excluída (${res.tasks} tarefas, ${res.routines} rotinas).${movedText(res.transferred)}`);
+        toast(`Conta ${res.email} excluída (${res.tasks} tarefas, ${res.routines} rotinas${res.shared_renewals ? `, ${plural(res.shared_renewals, "vencimento da equipe", "vencimentos da equipe")}` : ""}).${movedText(res.transferred)}`);
         mountUsers(root, me);
       } catch (e) { err.textContent = e.message || "Não foi possível excluir."; markInvalid([input], err); input.focus(); }
     }));
@@ -357,7 +362,7 @@ async function mountUsers(root, me) {
     if (!method) return;
     try {
       const res = await api.post(`/admin/users/${uid}/reset-password`, { method });
-      if (res.reset_url) showResetLink(res); else showPassword(res.email, res.temp_password);
+      if (res.reset_url) showResetLink(res); else showPassword(res.email, res.temp_password, res.notified);
       if (blocked) mountUsers(root, me);
     } catch (e) {
       errorToast(e, "Não foi possível redefinir a senha.");
@@ -498,12 +503,13 @@ async function mountUsers(root, me) {
       h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Pronto", onClick: () => dlg.close() })));
   }
 
-  function showPassword(email, pw) {
+  function showPassword(email, pw, notified) {
     const dlg = modal(
       h("h2", { text: "Senha temporária" }),
       h("p", {}, "Usuário: ", h("strong", { text: email })),
       codeBox(pw),
       h("p", { class: "dialog-note", text: "Repasse agora — não será exibida novamente. A pessoa deverá trocá-la no próximo login." }),
+      notified ? h("p", { class: "dialog-note", text: "A pessoa recebe um e-mail avisando que a senha foi redefinida por você (sem a senha)." }) : null,
       h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Pronto", onClick: () => dlg.close() })));
   }
 }
