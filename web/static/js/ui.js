@@ -304,7 +304,7 @@ export function toast(message, opts = {}) {
   if (undo) { undoAction = undo; el.append(h("span", { class: "sr-only", text: "Ctrl+Z desfaz." })); }
   // Caixa recém-criada dentro de um diálogo: o aviso entra um instante depois, para ser lido.
   // No máximo 3 avisos na pilha: o mais antigo sai (os outros ficam, com o seu Desfazer).
-  const put = () => { box.append(el); while (box.children.length > MAX_TOASTS) box.firstElementChild.dispatchEvent(new Event("toast-out")); };
+  const put = () => { box.append(el); for (const old of [...box.children].slice(0, -MAX_TOASTS)) old.dispatchEvent(new Event("toast-out")); };
   if (layer && layer.fresh) setTimeout(put, 80); else put();
   const ms = actions.length ? 12000 : 3500;
   let timer = setTimeout(remove, ms), hover = false;
