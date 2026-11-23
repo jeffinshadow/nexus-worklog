@@ -134,8 +134,12 @@ def replace_routine(user: dict, before: dict, new: dict, freeze: dict | None = N
     # Tudo ou nada: parar no meio deixava a antiga encerrada sem a nova, ou a
     # nova sem a marcação de hoje e sem a linha do histórico (sem desfazer).
     with db.transaction():
-        db.execute(f"UPDATE recurring_tasks SET {', '.join(sets)} WHERE id = %s AND user_id = %s",
-                   tuple((freeze or {}).values()) + (old_id, uid))
+        # AND active: duas trocas ao mesmo tempo (duas abas, a IA que repete depois do
+        # timeout). A segunda espera a primeira gravar, não encerra nada e para aqui,
+        # em vez de criar outra rotina igual.
+        if not db.execute(f"UPDATE recurring_tasks SET {', '.join(sets)} WHERE id = %s AND user_id = %s AND active",
+                          tuple((freeze or {}).values()) + (old_id, uid)):
+            raise HTTPException(status_code=409, detail="a rotina já foi alterada em outro lugar")
         row = db.query_one(
             """INSERT INTO recurring_tasks (user_id, label, position, freq, weekdays, month_day, interval_days, require_note,
                                             remind_at, steps, after_from)
@@ -154,7 +158,9 @@ def replace_routine(user: dict, before: dict, new: dict, freeze: dict | None = N
                       SELECT %s, %s, end_d FROM recurring_pauses
                        WHERE recurring_id = %s AND start_d <= %s AND end_d >= %s""",
                    (row["id"], today, old_id, today, today))
-        audit.record(user, "recurring.replace", "recurring", row["id"], before=before,
+        # O retrato já com a agenda congelada: desfazer a troca devolve a antiga como
+        # ficou no passado (semanal, dias antigos), e não diária nos dias úteis novos.
+        audit.record(user, "recurring.replace", "recurring", row["id"], before={**before, **(freeze or {})},
                      after={"replaced": old_id, **audit.recurring_snapshot(row["id"], uid)})
     return row["id"]
 
@@ -239,38 +245,47 @@ def toggle(task_id: int, data: ToggleIn, user=Depends(active_user_csrf)):
     today = check_board_day(data.day) or app_today()
     if not recurring_vigente(task_id, user["user_id"], today):
         raise HTTPException(status_code=400, detail="a rotina não existia nesse dia")
-    prev = db.query_one(
-        "SELECT note FROM recurring_completions WHERE task_id = %s AND user_id = %s AND completed_date = %s",
-        (task_id, user["user_id"], today),
-    )
-    was, old_note = prev is not None, (prev or {}).get("note")
+    uid = user["user_id"]
     note = " ".join((data.note or "").split()) or None
     keep = "note" not in data.model_fields_set  # sem o campo: mantém; vazio ou null: apaga
-    # Chave "só registrar": marca, mas não desmarca nem troca a evidência que já havia.
-    deny_append(user, not data.done or (was and not keep and note != old_note))
-    if data.done and not (note or (keep and old_note)) and db.query_one(
-            "SELECT 1 FROM recurring_tasks WHERE id = %s AND require_note", (task_id,)):
-        raise HTTPException(status_code=400, detail="esta rotina exige a evidência do que foi conferido")
-    if data.done:
-        db.execute(
-            """INSERT INTO recurring_completions (task_id, user_id, completed_date, note)
-               VALUES (%s, %s, %s, %s)
-               ON CONFLICT (task_id, completed_date) DO UPDATE
-                  SET note = CASE WHEN %s THEN recurring_completions.note ELSE EXCLUDED.note END""",
-            (task_id, user["user_id"], today, note, keep),
+    # Dois toques seguidos (ou dois aparelhos): a trava na rotina põe os pedidos em
+    # fila, e a linha do histórico sai do que o comando de fato mudou. Antes, os dois
+    # liam "estava marcada?" juntos e o histórico terminava contradizendo o estado.
+    with db.transaction():
+        db.query_one("SELECT 1 FROM recurring_tasks WHERE id = %s AND user_id = %s FOR UPDATE", (task_id, uid))
+        prev = db.query_one(
+            "SELECT note FROM recurring_completions WHERE task_id = %s AND user_id = %s AND completed_date = %s",
+            (task_id, uid, today),
         )
-    else:
-        db.execute(
-            "DELETE FROM recurring_completions WHERE task_id = %s AND user_id = %s AND completed_date = %s",
-            (task_id, user["user_id"], today),
-        )
-    new_note = (old_note if keep else note) if data.done else None
-    if was != data.done:
-        refresh_after_from(user["user_id"], task_id)
-    if was != data.done or (data.done and new_note != old_note):
-        audit.record(user, "recurring.toggle", "recurring", task_id,
-                     before={"day": today, "done": was, "note": old_note},
-                     after={"day": today, "done": data.done, "note": new_note})
+        was, old_note = prev is not None, (prev or {}).get("note")
+        # Chave "só registrar": marca, mas não desmarca nem troca a evidência que já havia.
+        deny_append(user, not data.done or (was and not keep and note != old_note))
+        if data.done and not (note or (keep and old_note)) and db.query_one(
+                "SELECT 1 FROM recurring_tasks WHERE id = %s AND require_note", (task_id,)):
+            raise HTTPException(status_code=400, detail="esta rotina exige a evidência do que foi conferido")
+        if data.done:
+            row = db.query_one(
+                """INSERT INTO recurring_completions (task_id, user_id, completed_date, note)
+                   VALUES (%s, %s, %s, %s)
+                   ON CONFLICT (task_id, completed_date) DO UPDATE
+                      SET note = CASE WHEN %s THEN recurring_completions.note ELSE EXCLUDED.note END
+                   RETURNING (xmax = 0) AS inserted, note""",
+                (task_id, uid, today, note, keep),
+            )
+            mudou, new_note = row["inserted"], row["note"]
+        else:
+            mudou = bool(db.execute(
+                "DELETE FROM recurring_completions WHERE task_id = %s AND user_id = %s AND completed_date = %s",
+                (task_id, uid, today),
+            ))
+            new_note = None
+        was = (not data.done) if mudou else data.done  # o que havia, pelo que o comando mudou
+        if mudou:
+            refresh_after_from(uid, task_id)
+        if mudou or (data.done and new_note != old_note):  # nada mudou = nada no histórico
+            audit.record(user, "recurring.toggle", "recurring", task_id,
+                         before={"day": today, "done": was, "note": old_note if was else None},
+                         after={"day": today, "done": data.done, "note": new_note})
     return {"ok": True, "done": data.done, "day": today, "note": new_note}
 
 
@@ -334,7 +349,10 @@ def resume(task_id: int, user=Depends(active_user_csrf)):
     cur = current_pause(task_id, today)
     if not cur:
         raise HTTPException(status_code=400, detail="a rotina não está pausada")
-    db.execute("UPDATE recurring_pauses SET end_d = %s WHERE id = %s", (today - timedelta(days=1), cur["id"]))
+    # TODAS as que cobrem hoje: duas pausas ao mesmo tempo criavam dois períodos, e
+    # encerrar só o mais recente respondia ok com a rotina ainda pausada.
+    db.execute("UPDATE recurring_pauses SET end_d = %s WHERE recurring_id = %s AND start_d <= %s AND end_d >= %s",
+               (today - timedelta(days=1), task_id, today, today))
     audit.record(user, "recurring.resume", "recurring", task_id,
                  before={"label": r["label"], "pause": cur},
                  after={"label": r["label"], "pause": {**cur, "end_d": today - timedelta(days=1)}})
