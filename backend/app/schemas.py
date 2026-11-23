@@ -41,6 +41,23 @@ def _filled(msg: str):
     return check
 
 
+def _texto(v: str) -> str:
+    v = v.strip()
+    if not v:
+        raise ValueError("não pode ficar em branco")
+    return v
+
+
+def _texto_opc(v: Optional[str]) -> Optional[str]:
+    return (v.strip() or None) if isinstance(v, str) else v
+
+
+# Texto obrigatório: sem os espaços das pontas; só espaços é recusado (virava nome em branco).
+Texto = Annotated[str, AfterValidator(_texto)]
+# Texto opcional: sem os espaços das pontas; vazio ou só espaços vira null.
+TextoOpc = Annotated[Optional[str], AfterValidator(_texto_opc)]
+
+
 class InviteIn(BaseModel):
     email: EmailStr
     # Nome da conta até o primeiro acesso (no tour a pessoa confirma ou ajusta).
@@ -106,6 +123,10 @@ class OrgIn(BaseModel):
     privacy_url: Optional[str] = Field(default=None, max_length=300, pattern=r"^(https://\S+)?$")
     # Endereço do sistema de chamados da instância ({id} = o número); "" ou null = sem endereço.
     ticket_url: Optional[str] = Field(default=None, max_length=300, pattern=r"^(https?://\S+)?$")
+    # GLPI (app/glpi.py): endereço do GLPI ("" ou null = desliga a integração) e o App-Token do
+    # cliente de API de lá ("" ou null = sem; só entra, nunca é devolvido).
+    glpi_url: Optional[str] = Field(default=None, max_length=300, pattern=r"^(https?://\S+)?$")
+    glpi_app_token: Optional[str] = Field(default=None, max_length=200)
 
 
 class AdminProfileIn(BaseModel):
@@ -294,6 +315,8 @@ def _steps(v):
         return None
     if isinstance(v, str):
         v = v.splitlines()
+    if not isinstance(v, (list, tuple)):  # steps=5 dava 500 (TypeError ao percorrer)
+        raise ValueError("passos: use uma lista de textos")
     out = []
     for x in v:
         x = " ".join(str(x).split())
@@ -422,7 +445,7 @@ class InviteRequestIn(BaseModel):
 
 
 class TokenIn(BaseModel):
-    name: str = Field(min_length=1, max_length=60)
+    name: Texto = Field(min_length=1, max_length=60)
     scope: Literal["read", "write", "append"] = "write"  # append = só registrar (deps.APPEND_ROUTES)
     # Validade em dias; None = sem validade (revogue quando não usar mais).
     expires_in_days: Optional[int] = Field(default=90, ge=1, le=365)
@@ -531,7 +554,7 @@ When = Field(default=None, min_length=10, max_length=40)
 class WorklogIn(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     title_ok = field_validator("title")(_filled("informe o título da tarefa"))
-    description: Optional[str] = Field(default=None, max_length=300)
+    description: TextoOpc = Field(default=None, max_length=300)
     status: Status = "todo"
     due_date: Optional[Day] = None
     project_id: Optional[int] = None  # ausente = o projeto padrão da pessoa
@@ -566,7 +589,7 @@ class WorklogIn(BaseModel):
 class WorklogUpdate(BaseModel):
     title: Optional[str] = Field(default=None, min_length=1, max_length=200)
     title_ok = field_validator("title")(_filled("informe o título da tarefa"))
-    description: Optional[str] = Field(default=None, max_length=300)
+    description: TextoOpc = Field(default=None, max_length=300)
     status: Optional[Status] = None
     due_date: Optional[Day] = None
     project_id: Optional[int] = None  # enviado como null = tirar do projeto
@@ -664,6 +687,10 @@ class TourIn(BaseModel):
 class TicketUrlIn(BaseModel):
     # Ex.: https://glpi.empresa.com/front/ticket.form.php?id={id}  ({id} vira o número)
     ticket_url: Optional[str] = Field(default=None, max_length=300, pattern=r"^(https?://\S+)?$")
+
+
+class GlpiTokenIn(BaseModel):
+    token: str = Field(min_length=10, max_length=200)  # token pessoal do GLPI (Minhas configurações › Token de API)
 
 
 class TimerIn(BaseModel):

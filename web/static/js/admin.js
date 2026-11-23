@@ -36,6 +36,7 @@ function rowMenu(btn, title, items) {
 const userText = (u) => `${u.display_name || ""} ${u.email}`.toLowerCase();
 
 const dateShort = (iso) => new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const dmy = (ts) => { const [y, m, d] = localDay(ts).split("-"); return `${d}/${m}/${y}`; };
 // "hoje, 14:20", "ontem, 09:05" ou a data (no fuso da app).
 function seenText(ts) {
@@ -64,28 +65,33 @@ const ORIGEM = { colega: "indicação de colega", empresa: "pela empresa ou equi
 
 // Bloquear ou excluir quem tem tarefas abertas: passar para outra pessoa
 // (papel Usuário, acesso liberado e que já entrou: a regra do servidor) ou deixar. value(): id, null (deixar) ou
-// undefined (escolheu passar, mas sem pessoa).
-function transferPicker(u, users, keep) {
-  if (!u.open_tasks) return null;
-  const n = u.open_tasks;
+// undefined (escolheu passar, mas sem pessoa). del (excluir): as concluídas que guardam horas de outra pessoa
+// vão junto, e com tarefa assim o servidor recusa excluir sem passar (409): a outra opção fica desligada.
+function transferPicker(u, users, keep, del = false) {
+  const n = u.open_tasks, m = del ? u.others_hours_done || 0 : 0;
+  const locked = del && u.others_hours_tasks > 0;
+  if (!n && !m) return null;
   const others = users.filter((x) => x.id !== u.id && x.roles.includes("user") && !x.blocked_at && !x.invite_pending);
   const pass = h("input", { type: "radio", name: "transfer", value: "pass" });
   const stay = h("input", { type: "radio", name: "transfer", value: "keep" });
   const sel = h("select", { "aria-label": "Quem recebe as tarefas" }, h("option", { value: "", text: "Escolha a pessoa…" }),
     ...others.map((x) => h("option", { value: String(x.id), text: x.display_name ? `${x.display_name} · ${x.email}` : x.email })));
   pass.checked = others.length > 0;
-  stay.checked = !pass.checked;
+  stay.checked = !pass.checked && !locked;
+  stay.disabled = locked;
   if (!others.length) { pass.disabled = true; sel.disabled = true; }
   sel.addEventListener("change", () => { if (sel.value) { pass.checked = true; markInvalid([sel], null, false); } });
   stay.addEventListener("change", () => markInvalid([sel], null, false));
   const el = h("fieldset", { class: "transfer-tasks" },
-    h("legend", { text: n === 1 ? "1 tarefa aberta" : `${n} tarefas abertas` }),
+    h("legend", { text: [n ? plural(n, "tarefa aberta", "tarefas abertas") : "",
+      m ? `${plural(m, "concluída", "concluídas")} com horas de outra pessoa` : ""].filter(Boolean).join(" e ") }),
     h("label", { class: "check-line role-line" }, pass, h("span", {}, h("strong", { text: "Passar para outra pessoa" }),
-      h("small", { text: "Vão com as anotações, o checklist e as fotos; quem recebe é avisado e fica no histórico. O tempo já registrado continua nesta conta." }))),
+      h("small", { text: "Vão com as anotações, o checklist e as fotos; quem recebe é avisado e fica no histórico. O tempo já registrado continua nesta conta." + (m ? " As concluídas que guardam horas de outra pessoa vão junto, como estão e sem aviso." : "") }))),
     h("div", { class: "field transfer-who" }, sel),
-    h("label", { class: "check-line role-line" }, stay, h("span", {}, h("strong", { text: keep[0] }), h("small", { text: keep[1] }))),
+    h("label", { class: "check-line role-line" }, stay, h("span", {}, h("strong", { text: keep[0] }),
+      h("small", { text: locked ? "Não dá: há tarefa com horas de outra pessoa, que seriam apagadas junto." : keep[1] }))),
     others.length ? null : h("p", { class: "dialog-note", text: "Nenhuma outra conta com o papel Usuário, acesso liberado e que já entrou no Nexus pode receber." }));
-  return { el, sel, value: () => stay.checked ? null : sel.value ? Number(sel.value) : undefined };
+  return { el, sel, locked, value: () => stay.checked ? null : sel.value ? Number(sel.value) : undefined };
 }
 
 const movedText = (t) => t && t.count ? ` ${t.count === 1 ? "1 tarefa passou" : `${t.count} tarefas passaram`} para ${t.to}.` : "";
@@ -222,8 +228,10 @@ async function mountUsers(root, me) {
       onClick: (ev) => rowMenu(ev.currentTarget, u.display_name || u.email, phone() && main ? [[mainText, "key", mainFn], ...items] : items) }, icon("more-v"));
     return h("div", { class: "list-row" }, avatar(u, "sm"),
       h("div", { class: "t" }, u.display_name ? h("span", { class: "dot-list" }, h("span", { text: u.display_name }), h("span", { text: u.email })) : h("span", { text: u.email }),
-        h("small", {}, roleNames(u.roles), ...chips),
-        teamsOn && (u.teams || []).length ? h("small", { class: "account-teams", text: `Equipes: ${u.teams.map((t) => t.name).join(", ")}` }) : null,
+        // No computador, papéis e equipes dividem uma linha e "criada · último acesso" vai à direita (app.css, auditoria p02).
+        h("div", { class: "account-meta" },
+          h("small", {}, roleNames(u.roles), ...chips),
+          teamsOn && (u.teams || []).length ? h("small", { class: "account-teams", text: `Equipes: ${u.teams.map((t) => t.name).join(", ")}` }) : null),
         h("small", { class: "account-seen", text: accessLine(u) })),
       main, more);
   }
@@ -311,13 +319,15 @@ async function mountUsers(root, me) {
 
   // ---- Excluir conta (LGPD): apaga a conta e todos os dados dela; confirma com o e-mail ----
   function onDelete(u) {
-    const tp = transferPicker(u, users, ["Excluir junto com a conta", "As tarefas abertas saem com o resto dos dados."]);
+    const tp = transferPicker(u, users, ["Excluir junto com a conta", "As tarefas abertas saem com o resto dos dados."], true);
     const input = h("input", { type: "email", autocomplete: "off", required: "required" });
     const err = h("p", { class: "error-text", role: "alert" });
     input.addEventListener("input", () => markInvalid([input], err, false));
     const form = h("form", {},
-      h("p", { class: "help", text: `Exclui a conta ${u.email} e tudo o que está nela: tarefas, rotinas, tempo, anotações, chaves de API e histórico. Não dá para desfazer. Tarefas que essa pessoa atribuiu a outras continuam com quem recebeu. O e-mail e as contagens ficam registrados no seu histórico (180 dias).` }),
+      h("p", { class: "help", text: `Exclui a conta ${u.email} e tudo o que está nela: tarefas, rotinas, tempo, anotações, vencimentos pessoais, chaves de API e histórico. Não dá para desfazer. Tarefas que essa pessoa atribuiu a outras continuam com quem recebeu. O e-mail e as contagens ficam registrados no seu histórico (180 dias).` }),
       h("p", { class: "help", text: "Só quer cortar o acesso agora (férias, celular perdido)? Use “Bloquear acesso” no menu da conta: a pessoa sai de todos os aparelhos e os dados ficam." }),
+      // Vencimentos da conta compartilhados com equipe saem junto: a equipe deixa de ver.
+      ...(u.shared_renewals || []).map((s) => warnBox(`${plural(s.count, "vencimento compartilhado", "vencimentos compartilhados")} com a equipe ${s.team} ${s.count === 1 ? "será apagado" : "serão apagados"}. A equipe deixa de ver; se ainda precisa, peça para alguém da equipe cadastrar de novo antes de excluir.`)),
       tp ? tp.el : null,
       field("Digite o e-mail da conta para confirmar", input), err,
       h("div", { class: "dialog-actions" },
@@ -327,11 +337,11 @@ async function mountUsers(root, me) {
       ev.preventDefault();
       err.textContent = "";
       const to = tp ? tp.value() : null;
-      if (to === undefined) { err.textContent = "Escolha quem recebe as tarefas (ou exclua junto)."; markInvalid([tp.sel], err); tp.sel.focus(); return; }
+      if (to === undefined) { err.textContent = tp.sel.disabled ? "Não há quem receba as tarefas: libere ou crie uma conta com o papel Usuário antes de excluir esta." : tp.locked ? "Escolha quem recebe as tarefas." : "Escolha quem recebe as tarefas (ou exclua junto)."; markInvalid([tp.sel], err); tp.sel.focus(); return; }
       try {
         const res = await api.post(`/admin/users/${u.id}/delete`, { confirm_email: input.value.trim(), ...(to ? { transfer_to: to } : {}) });
         dlg.close();
-        toast(`Conta ${res.email} excluída (${res.tasks} tarefas, ${res.routines} rotinas).${movedText(res.transferred)}`);
+        toast(`Conta ${res.email} excluída (${res.tasks} tarefas, ${res.routines} rotinas${res.shared_renewals ? `, ${plural(res.shared_renewals, "vencimento da equipe", "vencimentos da equipe")}` : ""}).${movedText(res.transferred)}`);
         mountUsers(root, me);
       } catch (e) { err.textContent = e.message || "Não foi possível excluir."; markInvalid([input], err); input.focus(); }
     }));
@@ -357,7 +367,7 @@ async function mountUsers(root, me) {
     if (!method) return;
     try {
       const res = await api.post(`/admin/users/${uid}/reset-password`, { method });
-      if (res.reset_url) showResetLink(res); else showPassword(res.email, res.temp_password);
+      if (res.reset_url) showResetLink(res); else showPassword(res.email, res.temp_password, res.notified);
       if (blocked) mountUsers(root, me);
     } catch (e) {
       errorToast(e, "Não foi possível redefinir a senha.");
@@ -498,12 +508,13 @@ async function mountUsers(root, me) {
       h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Pronto", onClick: () => dlg.close() })));
   }
 
-  function showPassword(email, pw) {
+  function showPassword(email, pw, notified) {
     const dlg = modal(
       h("h2", { text: "Senha temporária" }),
       h("p", {}, "Usuário: ", h("strong", { text: email })),
       codeBox(pw),
       h("p", { class: "dialog-note", text: "Repasse agora — não será exibida novamente. A pessoa deverá trocá-la no próximo login." }),
+      notified ? h("p", { class: "dialog-note", text: "A pessoa recebe um e-mail avisando que a senha foi redefinida por você (sem a senha)." }) : null,
       h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-primary", text: "Pronto", onClick: () => dlg.close() })));
   }
 }
@@ -711,6 +722,7 @@ async function mountOrg(root, me) {
           + (cfg.mail_configured ? "" : " Hoje o e-mail não está configurado no servidor, então o pedido não aparece mesmo ligado."),
         "Pronto: a tela de login oferece o pedido de convite.", "Pronto: a tela de login não oferece mais o pedido de convite.")),
     ticketField(),
+    glpiField(),
     privacyField())));
 
   // Política de privacidade da instância: link na tela de login, na Conta e no convite.
@@ -735,6 +747,61 @@ async function mountOrg(root, me) {
       field("Endereço da política de privacidade", url),
       h("p", { class: "dialog-note field-note", text: "Preenchido, o link aparece na tela de login, em Configurações > Conta e no e-mail de convite. Vazio (padrão), nenhum link aparece." }),
       err, h("div", { class: "row-actions" }, saveBtn));
+  }
+
+  // GLPI: o endereço (e o App-Token, se o GLPI exigir). Cada pessoa conecta a própria conta em Configurações.
+  function glpiField() {
+    const url = h("input", { type: "url", maxlength: "300", value: cfg.glpi_url || "", id: "org-glpi-url",
+      placeholder: "https://glpi.empresa.com.br" });
+    const app = h("input", { type: "password", maxlength: "200", autocomplete: "off", id: "org-glpi-app",
+      placeholder: cfg.glpi_app_token_set ? "Guardado (digite para trocar)" : "Opcional" });
+    const err = h("p", { class: "error-text", role: "alert" });
+    const result = h("p", { class: "dialog-note field-note", role: "status" });
+    url.addEventListener("input", () => markInvalid([url], err, false));
+    const fail = (e) => {
+      err.textContent = e.status === 422 ? "Use um endereço começando com http:// ou https://." : e.message || "Não foi possível salvar.";
+      markInvalid([url], err);
+      url.focus();
+    };
+    const saveBtn = h("button", { type: "button", class: "btn btn-primary", text: "Salvar GLPI", onClick: busy(async () => {
+      err.textContent = result.textContent = "";
+      const v = url.value.trim(), t = app.value.trim();
+      if (cfg.glpi_url && v.replace(/\/+$/, "") !== cfg.glpi_url && !(await confirmDialog({
+        title: v ? "Trocar o endereço do GLPI?" : "Desligar a integração com o GLPI?",
+        text: "Todas as pessoas conectadas são desconectadas (os tokens delas são apagados). Os vínculos das tarefas com os chamados são apagados: as tarefas ficam, mas deixam de enviar a solução ao GLPI. "
+          + (v ? (t ? "O App-Token guardado é trocado pelo que você digitou." : "O App-Token guardado é removido: se o GLPI novo exigir, digite-o antes de trocar.") : "O App-Token guardado é removido."),
+        confirm: v ? "Trocar" : "Desligar", danger: true }))) return;
+      try {
+        await save({ glpi_url: v || null, ...(t && v ? { glpi_app_token: t } : {}) },  // desligando, o App-Token digitado não é guardado
+          v ? "Pronto: cada pessoa conecta a própria conta em Configurações › Conta › GLPI." : "Pronto: integração com o GLPI desligada.");
+        url.value = cfg.glpi_url || "";
+        app.value = "";
+        tokenState();
+      } catch (e) { fail(e); }
+    }) });
+    const testBtn = h("button", { type: "button", class: "btn btn-ghost", text: "Testar", onClick: busy(async () => {
+      err.textContent = "";
+      result.textContent = "Testando…";
+      try {
+        const r = await api.post("/admin/glpi/test");
+        result.textContent = r.ok ? "Tudo certo: o GLPI respondeu e aceitou o App-Token." : "Não deu certo: " + r.error + ".";
+      } catch (e) { result.textContent = ""; errorToast(e, "Não foi possível testar."); }
+    }) });
+    const clearBtn = h("button", { type: "button", class: "btn btn-ghost", text: "Tirar o App-Token", onClick: busy(async () => {
+      try { await save({ glpi_app_token: null }, "Pronto: App-Token removido."); tokenState(); }
+      catch (e) { errorToast(e); }
+    }) });
+    // A dica do campo e o botão de tirar acompanham o que está guardado (sem recarregar a tela).
+    const tokenState = () => {
+      app.placeholder = cfg.glpi_app_token_set ? "Guardado (digite para trocar)" : "Opcional";
+      clearBtn.style.display = cfg.glpi_app_token_set ? "" : "none";
+    };
+    tokenState();
+    return h("fieldset", { class: "org-option org-ticket" }, h("legend", { text: "GLPI" }),
+      field("Endereço do GLPI", url),
+      field("App-Token do cliente de API (se o GLPI exigir)", app),
+      h("p", { class: "dialog-note field-note", text: "Com o endereço preenchido, cada pessoa conecta a própria conta do GLPI em Configurações › Conta: os chamados abertos no nome dela viram tarefas, e a tarefa concluída vira a solução do chamado. Precisa do GLPI 11 ou superior, com a API ligada (Configurar › Geral › API) e um cliente de API que aceite o IP do Nexus. Prefira https://: em http:// os tokens trafegam sem proteção. O App-Token fica guardado cifrado e não aparece de novo." }),
+      err, result, h("div", { class: "row-actions" }, saveBtn, testBtn, clearBtn));
   }
 
   // Endereço do sistema de chamados da instância. Vazio = cada pessoa usa o seu (Conta).

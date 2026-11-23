@@ -14,14 +14,7 @@ from app.routers import admin as admin_mod
 from app.routers import assign as assign_mod
 from app.routers import equipes as equipes_mod
 from conftest import ADMIN_PW, Bearer, SENHA_PADRAO, criar_chave, ligar_pedido_convite, texto, uid_de
-
-
-class _Agora:
-    def __init__(self, target, args=(), daemon=None):
-        self.target, self.args = target, args
-
-    def start(self):
-        self.target(*self.args)
+from conftest import Agora as _Agora, papeis as _papeis  # ajudantes comuns (auditoria p07)
 
 
 @pytest.fixture
@@ -34,11 +27,6 @@ def caixa(monkeypatch):
     monkeypatch.setattr(admin_mod.threading, "Thread", _Agora)
     monkeypatch.setattr(assign_mod, "_spawn", lambda to, mail: enviados.append((to, mail.subject, mail.text())))
     return enviados
-
-
-def _papeis(admin, u, roles):
-    r = admin.put(f"/admin/users/{uid_de(u)}/roles", {"roles": roles})
-    assert r.status_code == 200, r.text
 
 
 def _equipe(admin, nome, *membros):
@@ -94,9 +82,12 @@ def test_instancia_sem_equipes_funciona_como_antes(admin, cena):
     me = ana.get("/auth/me").json()
     assert me["teams"] == [] and me["teams_on"] is False
     assert chefe.get("/viewer/teams").json() == {"on": False, "master": False, "teams": [], "none": False}
-    # Equipe só arquivada também não liga o escopo.
+    # Equipe só arquivada mantém o escopo (auditoria p02: arquivar a última não abre tudo);
+    # só excluir a última devolve o uso pessoal.
     tid = _equipe(admin, "Campo", chefe, ana)
     assert admin.patch(f"/admin/teams/{tid}", {"archived": True}).status_code == 200
+    assert _lista(chefe) == set()
+    assert admin.delete(f"/admin/teams/{tid}").json()["last"] is True
     assert _lista(chefe) == {"ana@example.com", "bia@example.com"}
 
 

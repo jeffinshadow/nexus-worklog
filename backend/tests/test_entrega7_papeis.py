@@ -4,6 +4,7 @@ import pytest
 from app import db, mailer
 from app.routers import assign as assign_mod
 from conftest import Bearer, criar_chave, hist, texto, uid_de
+from conftest import papeis as _papeis  # ajudantes comuns (auditoria p07)
 
 
 @pytest.fixture
@@ -13,12 +14,6 @@ def enviados(monkeypatch):
     monkeypatch.setattr(mailer, "configured", lambda: True)
     monkeypatch.setattr(assign_mod, "_spawn", lambda to, mail: caixa.append((to, mail.subject, mail.text())))
     return caixa
-
-
-def _papeis(admin, u, roles):
-    r = admin.put(f"/admin/users/{uid_de(u)}/roles", {"roles": roles})
-    assert r.status_code == 200, r.text
-    return r
 
 
 def test_papeis_iniciais_e_me(admin, usuario):

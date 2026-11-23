@@ -6,7 +6,7 @@ do relatório deles. O foco é ajudar cada pessoa a organizar a própria rotina.
 Multiusuário, auto-hospedado, sem frameworks JS nem passo de build.
 Prioridades: **simples > seguro > funcional > elegante**.
 
-**Versão 2.1.0** (SemVer; o número fica em `backend/app/version.py`). O que mudou em cada versão:
+**Versão 2.2.0** (SemVer; o número fica em `backend/app/version.py`). O que mudou em cada versão:
 [`CHANGELOG.md`](CHANGELOG.md). Para quem hospeda e administra:
 [`docs/ADMIN.md`](docs/ADMIN.md) (instalação, variáveis, e-mail e push, backup e restauração, atualização, opções do Admin).
 
@@ -29,8 +29,9 @@ exclui a conta de vez; ao bloquear ou excluir, pode **passar as tarefas abertas*
 outra pessoa. No convite, o admin já informa o nome e escolhe os papéis; quem ganha
 ou perde um papel depois é avisado no app (e por e-mail).
 
-**Equipes** (Admin > Equipes): uma pessoa pode estar em várias. Sem nenhuma equipe, o
-Nexus funciona como organizador pessoal; com equipes, "Vê a equipe" e "Manda tarefas"
+**Equipes** (Admin > Equipes): uma pessoa pode estar em várias. Sem nenhuma equipe cadastrada, o
+Nexus funciona como organizador pessoal (equipe arquivada ainda conta como cadastrada); com equipes,
+"Vê a equipe" e "Manda tarefas"
 valem só entre quem está na mesma equipe (no app, na API, no MCP, no CSV e no PDF), e as
 opções de Para empresas, só para quem está em alguma. A Equipe ganha um seletor de equipe,
 o Atribuir agrupa por equipe, Contas mostra e filtra por equipe, o convite já vincula
@@ -138,6 +139,8 @@ mudança fica no histórico do admin. Toda conta nova faz o tour guiado no prime
   quem atribuiu ainda corrige título, descrição, prazo e prioridade (só o que a pessoa não mudou) ou cancela (engano;
   só se ela não mexeu em nada); excluída ou cancelada, a linha continua em
   Tarefas que atribuí (na Equipe) com quem tirou e quando. Conta com acesso bloqueado não recebe.
+  Há um limite: até 20 tarefas para a mesma pessoa a cada 10 minutos (cada uma manda e-mail e notificação); a
+  21ª é recusada (429, com o tempo de espera) no app, por chave de API e pela IA. Para outra pessoa, segue normal.
   Quem recebeu pode **devolver** a tarefa com o motivo (no detalhe dela): sai da lista dela
   (desfazível pelo Histórico), e quem atribuiu é avisado (e-mail, push, Hoje e "Precisa de
   atenção") e atribui de novo — à mesma pessoa ou a outra, com o diálogo já preenchido — ou encerra.
@@ -196,14 +199,17 @@ mudança fica no histórico do admin. Toda conta nova faz o tour guiado no prime
   desfazer, cota por pessoa e exportação em .zip.
 - **Sem sinal** — o app abre com as telas da última visita (avisando de que
   hora são) e guarda no aparelho o que for feito: registrar, concluir, anotar,
-  marcar rotina, fotos e o cronômetro, com a hora em que aconteceu. Com sinal, o
+  apontar tempo, marcar rotina, fotos e o cronômetro, com a hora em que aconteceu. Com sinal, o
   app já deixa tudo pronto sozinho (ao abrir e, no máximo, a cada 30 min, se
   houver espaço): guarda o detalhe das tarefas em aberto (checklist e
   anotações, até 60), e a barra de sem conexão diz de que hora; uma tarefa
   nunca aberta com sinal abre com o que havia nas listas e aceita anotação, foto
   e conclusão. Na volta da conexão, vai sozinho e na ordem, sem duplicar (nem
   as fotos); o que for recusado fica com o texto inteiro para copiar. Sair limpa
-  tudo do aparelho.
+  tudo do aparelho. Servidor fora do ar (atualização, reinício: resposta 502, 503 ou 504) vale como sem sinal:
+  o app mostra a cópia guardada e põe a ação na fila. Um erro do servidor (500) na hora de enviar segura a fila,
+  que mostra a ação presa e oferece descartá-la. O resto pede conexão: editar e excluir, mexer no checklist de uma
+  tarefa já criada, atribuir, e as telas de Relatórios, busca e Admin (não ficam guardadas).
 - **Tema claro e escuro** (Material 3) — segue o aparelho ou fica fixo pela
   conta, com contraste AA medido em todo texto; no celular, controles com área
   de toque de pelo menos 44 px.
@@ -234,7 +240,10 @@ mudança fica no histórico do admin. Toda conta nova faz o tour guiado no prime
   (`remind_at` em `create_task`/`update_task`). A IA não exclui tarefa, rotina, projeto nem
   objetivo. Liga no Claude Code, Cursor, Claude Desktop e Gemini CLI
   (docs/API.md); ChatGPT e claude.ai na web ainda não (exigem OAuth).
-- **Integração** — API REST aberta, sem conector para produto específico:
+- **GLPI** (11 ou superior) — o chamado aberto no seu nome vira tarefa, e a tarefa concluída vira a solução do
+  chamado. O admin informa o endereço; cada pessoa conecta com o próprio token. O GLPI segue dono do chamado
+  (docs/ADMIN.md, *Integração com o GLPI*).
+- **Integração** — API REST aberta para o resto:
   `external_ref` em tarefas, projetos, anotações e tempo (repetir não duplica),
   feed de mudanças (`/api/history?after=`) e webhooks de saída assinados
   (HMAC-SHA256), com os eventos numa lista para marcar, edição sem trocar o
@@ -309,8 +318,9 @@ cd nexus-worklog
 
 1. `cp .env.example .env` (o `.env` **nunca** vai para o git) e preencha:
    - `SECRET_KEY` (32+ caracteres; menos que isso o backend não sobe):
-     `python -c "import secrets; print(secrets.token_urlsafe(64))"`
-   - `POSTGRES_PASSWORD` (o mesmo valor dentro de `DATABASE_URL`)
+     `python3 -c "import secrets; print(secrets.token_urlsafe(64))"`
+   - `POSTGRES_PASSWORD` (o mesmo valor dentro de `DATABASE_URL`; gere com `openssl rand -hex 24`, só letras
+     e números, porque `/`, `@` e `#` quebram a URL)
    - `ADMIN_EMAIL` / `ADMIN_INITIAL_PASSWORD`
    - sem HTTPS (teste local): `COOKIE_SECURE=false`
    - opcional, avisos por e-mail: `SMTP_HOST`, `SMTP_PORT` (465 = TLS, 587 =
@@ -384,8 +394,14 @@ incidente e outra quando volta. Logs com rotação (10 MB × 5 por serviço).
 - **Seus dados (LGPD)**: cada pessoa exporta tudo em JSON ou CSV (Meu mês > Outro período ou formato) e
   exclui a própria conta em Configurações > Conta (com a senha); o admin também
   exclui uma conta (Admin > Contas, confirmando o e-mail). Tarefas, rotinas,
-  tempo, anotações, chaves e histórico vão junto; ficam só o e-mail e as contagens
-  no histórico de quem excluiu (180 dias). O último admin não sai. O JSON leva
+  tempo, anotações, fotos, chaves e histórico vão junto, e também os vencimentos dela, os pessoais e os que ela
+  compartilhou com uma equipe (os colegas deixam de vê-los; o diálogo de exclusão do admin avisa quantos
+  são, por equipe: quem depende de um, cadastre-o de novo antes). **Ficam** as tarefas que ela atribuiu a outras
+  pessoas: são de quem recebeu e continuam lá, sem o nome de quem atribuiu. As que ela recebeu (e não foram
+  passadas a outra pessoa) saem com a conta; em Tarefas que atribuí, quem mandou vê a linha como "conta excluída"
+  por 60 dias. Ficam ainda o e-mail e as contagens
+  no histórico de quem excluiu e, se a pessoa recebia tarefas atribuídas, o nome e
+  o e-mail dela no histórico de quem atribuiu (tudo sai em até 180 dias). O último admin não sai. O JSON leva
   também perfil, preferências, modelos, projetos com objetivos e as chaves
   externas; as fotos vão à parte, no `fotos.zip` (Meu mês > Outro período ou formato).
   - **Histórico de 180 dias**: o que você exclui some da tela na hora, mas o

@@ -5,7 +5,8 @@ import { api } from "./api.js";
 import { parseDuration } from "./task.js";
 import { listProjects, invalidateProjects } from "./projects.js";
 import { toast, errorToast } from "./ui.js";
-import { addDays, localDay, localDateTime, h } from "./dom.js";
+import { addDays, localDay, localDateTime, shortDate, h } from "./dom.js";
+import { suggestedFollowUp } from "./board.js";
 
 // "^sex" = próxima sexta (hoje, se for sexta); "^25/10" = esse dia (ano que vem, se já passou).
 const WD = { dom: 0, seg: 1, ter: 2, qua: 3, qui: 4, sex: 5, sab: 6, "sáb": 6 };
@@ -77,8 +78,9 @@ async function parseMarks(text) {
 
 // Duração no fim do registro rápido, depois de um traço: "Troca de toner — 15min",
 // "Loja X - 2h", "Backup — 1:30". Sem o traço, "Reunião 14h" e "Ligar 15:30"
-// ficam como título (hora do dia não vira tempo gasto).
-const QUICK_DUR = /\s+[-–—]\s*(\d+(?:[.,]\d+)?\s*h(?:\s*\d{1,2})?(?:\s*min)?|\d+\s*min|\d+:\d{2})$/i;
+// ficam como título (hora do dia não vira tempo gasto). "--" vale como o travessão.
+const DUR_TEXT = "\\d+(?:[.,]\\d+)?\\s*h(?:\\s*\\d{1,2})?(?:\\s*min)?|\\d+\\s*min|\\d+:\\d{2}";
+const QUICK_DUR = new RegExp(`\\s+(?:--|[-–—])\\s*(${DUR_TEXT})$`, "i");
 
 // Uma linha do registro → { payload, minutes, durText, marks, extras } (sem enviar).
 async function parseLine(text, project_id = null) {
@@ -96,12 +98,15 @@ async function parseLine(text, project_id = null) {
     status: marks.blocked !== null ? "blocked" : comTempo ? "done" : "todo",
     blocked_reason: marks.blocked || null,
   };
+  // !aguarda já nasce com o "dia para cobrar" sugerido, como no diálogo Aguardando.
+  if (payload.status === "blocked") payload.follow_up_on = suggestedFollowUp();
   // Lembrete só em tarefa que fica aberta (concluída não lembra).
   if (marks.remind && payload.status !== "done") payload.remind_at = marks.remind;
   const extras = [marks.project && [marks.project, ...marks.extraProjects].map((p) => p.name).join(" + "), marks.ticket && "#" + marks.ticket, marks.afterHours && "plantão", marks.high && "alta",
     marks.due && "prazo " + marks.due.split("-").reverse().slice(0, 2).join("/"),
     payload.remind_at && "lembrete " + remindLabel(payload.remind_at),
-    marks.blocked !== null && (marks.blocked ? "aguardando: " + marks.blocked : "aguardando")].filter(Boolean);
+    marks.blocked !== null && (marks.blocked ? "aguardando: " + marks.blocked : "aguardando"),
+    payload.follow_up_on && "cobrar " + shortDate(payload.follow_up_on)].filter(Boolean);
   return { payload, minutes: comTempo ? minutes : null, durText: m ? m[1].trim() : "", marks, extras };
 }
 
@@ -121,9 +126,31 @@ export let lastDone = null;
 // lastUnknown: o "@Nome" do fim que não é projeto seu e ficou no título
 // ({ id, title, name }); a confirmação oferece criar o projeto (projectOffer).
 export let lastUnknown = null;
+// lastOpen: a tarefa que o último registro deixou em aberto ({ id, title }),
+// para a ação "Concluir" do aviso (quem quis registrar algo já feito resolve num toque).
+export let lastOpen = null;
+
+// O que sobrou no fim do título sem ser lido: tempo sem o traço ("Atendi 20min"),
+// tempo com traço que não entrou (acima de 24h, zero, ou antes de um marcador:
+// "Algo — 20min !alta") ou um "^" que não é dia nem hora ("^31/02").
+// Devolve a frase do aviso (ou ""). As regras não mudam: só passa a dizer.
+// Frases curtas: o aviso mostra duas linhas (no celular, umas 90 letras).
+function leftover(title, hasTime) {
+  let m;
+  if (hasTime) { /* o tempo já entrou: "Reunião 14h — 30min" não precisa da dica */ }
+  else if ((m = title.match(QUICK_DUR))) {
+    const min = parseDuration(m[1].replace(/\s+/g, "").replace(",", "."));
+    return ` “${m[1].trim()}” ficou no título: ` + (min > 1440 ? "o máximo é 24h por apontamento." : min ? "o tempo vai no fim da linha." : "não entendi o tempo.");
+  }
+  else if ((m = title.match(new RegExp(`\\s(${DUR_TEXT})$`, "i")))) return ` “${m[1].trim()}” ficou no título: para apontar, use “— ${m[1].trim()}”.`;
+  if ((m = title.match(/\s(\^\S{1,20})$/))) return ` “${m[1]}” ficou no título: não entendi a data.`;
+  return "";
+}
+
 export async function quickRegister(text, project_id = null) {
   lastDone = null;
   lastUnknown = null;
+  lastOpen = null;
   const { payload, minutes, durText, marks, extras } = await parseLine(text, project_id);
   if (!marks.title) throw Object.assign(new Error("Escreva o que foi feito antes dos marcadores."), { status: 400 });
   const created = await api.post("/worklog", payload);
@@ -133,13 +160,22 @@ export async function quickRegister(text, project_id = null) {
     if (minutes) await api.after(created.qid, "POST", "/worklog/{id}/time", { minutes });
     return `Sem conexão: tarefa guardada${com}. Vai sozinha quando a conexão voltar.`;
   }
+  // "@Nome" que não é projeto: avisa também com um projeto escolhido ao lado (o caso comum).
   const unknown = unknownProject(marks.title);
-  if (unknown && !payload.project_id) lastUnknown = { id: created.id, ...unknown };
-  const also = lastUnknown ? ` «${lastUnknown.name}» não é um projeto seu: ficou no título.` : "";
-  if (!minutes) return `Tarefa registrada${com}.${also}`;
+  if (unknown) lastUnknown = { id: created.id, ...unknown };
+  const also = (lastUnknown ? ` «${lastUnknown.name}» não é um projeto seu: ficou no título.` : "") + leftover(marks.title, !!minutes);
+  if (!minutes) {
+    if (payload.status !== "todo") return `Tarefa registrada${com}.${also}`;
+    lastOpen = { id: created.id, title: marks.title };
+    // Com algo a dizer do título, a frase vai no lugar dele (as duas não cabem no aviso).
+    const shown = marks.title.length > 48 ? marks.title.slice(0, 47) + "…" : marks.title;
+    return also ? `Ficou em aberto${com}.${also}` : `Ficou em aberto: «${shown}»${com}.`;
+  }
   try {
-    await api.post(`/worklog/${created.id}/time`, { minutes });
+    const r = await api.post(`/worklog/${created.id}/time`, { minutes });
     if (marks.blocked === null) lastDone = { id: created.id, title: marks.title };
+    // A tarefa entrou e o sinal caiu antes do tempo: ele está na fila do aparelho, ainda não no servidor.
+    if (r && r.queued) return `Tarefa registrada${com}. Sem sinal: o tempo (${durText}) sai quando a conexão voltar.${also}`;
     return `${marks.blocked !== null ? "Registrada" : "Registrada e concluída"} com ${durText}${com}.${also}`;
   } catch {
     return "Tarefa registrada, mas o tempo não entrou. Abra a tarefa e use Apontar.";
@@ -244,8 +280,8 @@ async function openListPreview(lines, opts) {
   form.addEventListener("submit", busy(async (ev) => {
     ev.preventDefault();
     const chosen = parsed.filter((_, i) => boxes[i].checked);
-    const made = [];  // { id, time? } criadas no servidor ou { qid } na fila do aparelho
-    let failed = 0, queued = 0;
+    const made = [];  // { id, time?, timeQid? } criadas no servidor ou { qid } na fila do aparelho
+    let failed = 0, queued = 0, waiting = 0;  // waiting: tarefas criadas cujo tempo ficou na fila
     for (const [i, p] of chosen.entries()) {
       go.textContent = `Criando ${i + 1} de ${chosen.length}…`;
       if (!p.marks.title) { failed++; continue; }
@@ -259,7 +295,13 @@ async function openListPreview(lines, opts) {
           continue;
         }
         const item = { id: created.id };
-        if (p.minutes) { try { item.time = (await api.post(`/worklog/${created.id}/time`, { minutes: p.minutes })).id; } catch { /* a tarefa fica */ } }
+        if (p.minutes) {
+          try {
+            const r = await api.post(`/worklog/${created.id}/time`, { minutes: p.minutes });
+            // Sem sinal o tempo vai para a fila (sem id): o Desfazer tira da fila em vez de apagar no servidor.
+            if (r && r.queued) { item.timeQid = r.qid; waiting++; } else if (r) item.time = r.id;
+          } catch { /* a tarefa fica */ }
+        }
         made.push(item);
       } catch (e) {
         if (e.status === 400 || e.status === 422) { failed++; continue; }  // a linha tem algo inválido: segue
@@ -274,6 +316,7 @@ async function openListPreview(lines, opts) {
     if (!n) { toast(failed ? "Nenhuma tarefa criada: confira as linhas." : "Nada criado.", { error: !!failed }); return; }
     const msg = (queued ? `Sem conexão: ${n === 1 ? "1 tarefa guardada" : `${n} tarefas guardadas`}; vão quando a conexão voltar.`
       : n === 1 ? "1 tarefa criada." : `${n} tarefas criadas.`)
+      + (waiting ? ` Sem sinal: o tempo de ${waiting === 1 ? "1 delas" : `${waiting} delas`} sai quando a conexão voltar.` : "")
       + (failed ? ` ${failed} não ${failed > 1 ? "entraram" : "entrou"} (confira o texto).` : "");
     toast(msg, { action: "Desfazer", onAction: () => undoBatch(made, opts.onDone) });
   }));
@@ -296,6 +339,7 @@ async function undoBatch(made, onDone) {
   for (const m of [...made].reverse()) {
     try {
       if (m.qid !== undefined) { if (await cancel(m.qid)) ok++; else bad++; continue; }
+      if (m.timeQid !== undefined) await cancel(m.timeQid);  // tempo ainda na fila: sai dela (se já foi, a tarefa leva junto)
       if (m.time) await undo("time", m.time);
       await undo("worklog", m.id);
       ok++;

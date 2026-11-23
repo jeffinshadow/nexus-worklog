@@ -19,19 +19,44 @@ Pré-requisitos (na máquina que roda o navegador):
 |---|---|
 | `e2e_tour.py SAIDA desktop\|mobile` | tour guiado (configuração + passeio), filtro do Hoje, vários projetos, projeto padrão |
 | `tour_paradas.py desktop\|mobile` | o passeio mostra todas as paradas abrindo a Ajuda de outras telas |
-| `e2e_convite.py SAIDA desktop\|mobile` | convite por link, esqueci a senha (Mailpit), confirmação de senha, semanas do resumo |
+| `e2e_convite.py SAIDA desktop\|mobile` | convite por link, esqueci a senha (Mailpit), confirmação de senha, resumo do Hoje (último dia útil, sem setas de semana) |
 | `e2e_objetivos.py SAIDA desktop\|mobile` | menu Projetos, objetivos em ordem, tarefas vinculadas, arrastar (computador) e ⋮ (celular), status e progresso |
-| `e2e_instalar.py SAIDA` | convite para instalar (Chrome e iPhone), atalhos do ícone, compartilhar (com e sem sessão), número no ícone, manifest instalável |
+| `e2e_instalar.py SAIDA` | convite para instalar (Chrome e iPhone), atalhos do ícone, compartilhar (com e sem sessão), número no ícone (cria a própria tarefa atrasada), manifest instalável |
 | `e2e_notificacoes.py SAIDA` | painel de notificações, ligar o aparelho, convite depois de instalado, notificação entregue ao service worker e os botões Marcar feita / Adiar (precisa de `NEXUS_E2E_SSH`) |
 | `e2e_passkey.py SAIDA` | passkey com o autenticador virtual do Chrome: cadastrar, entrar pelo botão e pela sugestão do campo, remover (a homologação precisa de `APP_URL=http://localhost:8090`) |
 | `e2e_fotos.py SAIDA` | foto grande reduzida a 1600 px em WebP, print colado, visualizador, excluir e desfazer, evidência da rotina, compartilhar com foto. Em `SAIDA`: `foto-grande.jpg` e `print.png` (ex.: `magick -size 3000x2000 plasma:fractal foto-grande.jpg`) |
 | `e2e_sem_sinal.py SAIDA` | desliga o nginx da homologação no meio (`NEXUS_E2E_SSH`), faz as seis ações sem servidor, religa e confere que tudo chegou, sem duplicar |
 | `e2e_edicao.py SAIDA` | concluir espera o Pronto da edição (detalhe, cartão, menu; o status Concluída dentro da edição vale), testes de e-mail esperam salvar, evidência espera a foto |
-| `e2e_tema_convite.py SAIDA` | pedido de convite na tela de login (e-mails pelo Mailpit), número no Admin e Convidar; tema da conta (claro, recarregar, automático); avatar padrão |
+| `e2e_tema_convite.py SAIDA` | pedido de convite na tela de login (e-mails pelo Mailpit), número no Admin e Convidar; tema da conta (claro, recarregar, automático); avatar (foto ou ícone padrão, sem letra) |
+| `e2e_r2_05_tempo_sem_sinal.py` | tempo apontado sem sinal (Meu mês, quadro, registro rápido, lista colada) e a frase de servidor fora do ar, em 1440 e 390 px; `NX_BASE` e `NX_SESSAO` (cookie de sessão), bloqueia o service worker |
+| `e2e_r2_12_front.py` | atalhos, busca lateral (combobox), celular a 390 e 320 px e janela baixa; `NX_BASE` e `NX_SESSAO`, só lê |
 | `auditoria_toque.py` | celular (390 px): lista todo controle com área de toque menor que 44 px, em todas as telas, no detalhe da tarefa, na nova tarefa e nos menus ⋮ (conta a área estendida por `::after`) |
 | `pdfs_exemplo.py SAIDA` | baixa o PDF da semana, do mês e de um projeto (ver com `pdftoppm -png`) |
 
 `SAIDA` é a pasta das capturas. Cada roteiro imprime `OK`, `FALHAS` e os erros de
-JavaScript da página. O limite de "esqueci a senha" (3 por hora por e-mail) fica
-na memória do backend: entre execuções seguidas de `e2e_convite.py`, reinicie o
-backend (`docker compose restart backend`).
+JavaScript da página e **sai com código 1** quando há alguma FALHA, erro de JavaScript
+ou exceção (código 0 só com tudo certo): dá para encadear com `&&` ou usar num script.
+`auditoria_toque.py` e `pdfs_exemplo.py` são relatórios, não conferências: saem sempre com 0.
+
+Os limites de tentativas ficam na memória do backend: o de login (10 a cada 5 minutos)
+estoura quando vários roteiros rodam em sequência, e o de "esqueci a senha" (3 por hora
+por e-mail) entre execuções seguidas de `e2e_convite.py`. Entre um roteiro e outro,
+reinicie o backend (`docker compose restart backend`).
+
+## Outro ambiente (laboratório, cópia local)
+
+Sem túnel: aponte os roteiros para o ambiente com `NEXUS_E2E_URL` (padrão
+`http://localhost:8090`) e `NEXUS_E2E_MAILPIT` (padrão `http://127.0.0.1:8025`):
+
+```sh
+export NEXUS_E2E_URL=http://localhost:8107 NEXUS_E2E_MAILPIT=http://localhost:8207
+export NEXUS_E2E_USER='email:senha' NEXUS_E2E_ADMIN='email:senha'
+python e2e_edicao.py /tmp/saida && python e2e_instalar.py /tmp/saida
+```
+
+`e2e_sem_sinal.py` e `e2e_notificacoes.py` mexem nos containers por SSH (`NEXUS_E2E_SSH`):
+só rodam contra a homologação.
+
+Os roteiros criam os próprios dados quando precisam (tarefa, rotina, convite, a tarefa
+atrasada do número no ícone) e apagam no fim. `e2e_tema_convite.py` deixa no banco o
+pedido de convite e a conta convidada do teste.

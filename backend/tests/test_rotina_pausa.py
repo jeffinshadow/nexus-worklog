@@ -153,7 +153,10 @@ def test_retomar_desfazer_e_validacoes(usuario, novo_usuario):
     usuario.post(f"/recurring/{rid}/pause", {"until": (hoje + timedelta(days=5)).isoformat()})
     usuario.post(f"/recurring/{rid}/pause", {"until": (hoje + timedelta(days=9)).isoformat()})  # muda o fim
     assert _linha(usuario, rid)["paused_until"] == (hoje + timedelta(days=9)).isoformat()
-    assert db.query_one("SELECT count(*) AS n FROM recurring_pauses WHERE recurring_id = %s", (rid,))["n"] == 1
+    # Mudar o fim altera a pausa aberta, não cria outra. Confere pelo período, não pela contagem de linhas: se a
+    # meia-noite cair no meio do teste, o desfazer de cima encerra a 1ª pausa (fim até "hoje") em vez de apagar.
+    abertas = db.query_all("SELECT end_d FROM recurring_pauses WHERE recurring_id = %s AND end_d > %s", (rid, hoje))
+    assert [p["end_d"] for p in abertas] == [hoje + timedelta(days=9)]
     assert usuario.delete(f"/recurring/{rid}/pause").status_code == 200  # retomar agora: hoje já é devida
     assert _linha(usuario, rid)["due"] is True
     h = hist(usuario, entity="recurring", entity_id=rid)[0]

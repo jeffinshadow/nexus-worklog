@@ -149,11 +149,14 @@ function setup(me, must, from = 0) {
     const steps = [welcome, profile, theme, ...(visOn ? [visibility] : []), ...(assignOn ? [receiving] : []),
       workDays, projects, defaultProject, routines, ready];
     // Boas-vindas e "pronto" não contam; sem projetos, "Projeto padrão" é pulado e também não conta.
-    let noProjects = false;
-    listProjects().then((l) => { noProjects = !l.length; }).catch(() => {});
+    // A conta espera a lista de projetos: as boas-vindas não anunciam um número e o passo 1 mostra outro.
+    // dpCounts fica como estava no começo: quem cria o primeiro projeto no meio do tour vê o
+    // "Projeto padrão" com o mesmo número do passo dos projetos, e o "N de M" não muda de M.
+    let noProjects = false, dpCounts = true;
+    const counted = listProjects().then((l) => { dpCounts = !!l.length; }).catch(() => {});
     const dp = steps.indexOf(defaultProject);
-    const total = () => steps.length - 2 - (noProjects ? 1 : 0);
-    const shown = () => step - (noProjects && step > dp ? 1 : 0);
+    const total = () => steps.length - 2 - (!dpCounts || noProjects ? 1 : 0);
+    const shown = () => step - (!dpCounts ? (step >= dp ? 1 : 0) : (noProjects && step > dp ? 1 : 0));
     const next = () => { step++; dir = 1; paint(); };
     const back = () => { step--; dir = -1; paint(); };
     const end = (r) => { ended = true; result = r; dlg.close(); };
@@ -161,6 +164,7 @@ function setup(me, must, from = 0) {
     // Passo que não carrega (rede, servidor) não prende ninguém: segue na mesma direção.
     async function paint() {
       let content;
+      await counted;
       try { content = await steps[step](); }
       catch (e) {
         const to = Math.min(steps.length - 1, Math.max(0, step + dir));
@@ -205,7 +209,7 @@ function setup(me, must, from = 0) {
         h("div", { class: "tour-hero" }, h("img", { src: "/img/dragon-mark.svg", alt: "", width: "40", height: "46" })),
         h("h2", { id: "tour-title", text: `Boas-vindas ao Nexus${nome}` }),
         h("p", { class: "tour-intro", text: "O Nexus guarda o seu dia de trabalho: as rotinas que você confere, as tarefas que aparecem e o tempo de cada uma. No fim do dia, da semana ou do mês, o relatório sai pronto." }),
-        h("p", { class: "tour-intro", text: `Primeiro, ${NUM[total()] || total()} passos rápidos para deixar o Nexus do seu jeito. Depois, um passeio de um minuto pela tela. ` +
+        h("p", { class: "tour-intro", text: `Primeiro, ${NUM[total()] || total()} passos rápidos para deixar o Nexus do seu jeito. Depois, ${walkText("um passeio de", "um passeio rápido")} pela tela Hoje. ` +
           (must ? "Neste primeiro acesso o tour vai até o fim; dá para rever tudo depois pela Ajuda." : "Dá para rever tudo depois pela Ajuda.") }),
         h("div", { class: "dialog-actions tour-actions" },
           must ? null : h("button", { type: "button", class: "btn btn-text tour-skip", text: "Agora não", onClick: () => end("close") }),
@@ -330,7 +334,7 @@ function setup(me, must, from = 0) {
         h("option", { value: "", text: "Nenhum (a tarefa fica sem projeto)" }),
         ...list.map((p) => h("option", { value: String(p.id), text: p.name })));
       sel.value = list.some((p) => p.id === me.default_project_id) ? String(me.default_project_id) : "";
-      return frame("Projeto padrão", "Se quase tudo o que você faz é de uma frente, escolha-a aqui: a tarefa criada sem projeto entra nela (no registro rápido, nos modelos, pela IA e nas que você recebe). Na hora de criar, dá para trocar.",
+      return frame("Projeto padrão", "Se quase tudo o que você faz é de uma frente, escolha-a aqui: a tarefa criada sem projeto entra nela (no registro rápido, pela IA e nas que você recebe). Na hora de criar, dá para trocar.",
         [field("Projeto padrão", sel)],
         async () => {
           const id = sel.value ? Number(sel.value) : null;
@@ -339,7 +343,7 @@ function setup(me, must, from = 0) {
     }
 
     async function routines() {
-      const [board, packs] = await Promise.all([api.get("/board").catch(() => ({ recurring: [] })), loadPacks().catch(() => [])]);
+      const [board, packs] = await Promise.all([api.get("/board?done_limit=1").catch(() => ({ recurring: [] })), loadPacks().catch(() => [])]);
       const have = board.recurring.map((r) => r.label.toLowerCase());
       const picks = ROUTINE_HINTS.filter((s) => !have.includes(s.toLowerCase())).map((label) => {
         const cb = h("input", { type: "checkbox" });
@@ -384,8 +388,8 @@ function setup(me, must, from = 0) {
         h("p", { class: "tour-step mono", text: "Tudo pronto" }),
         h("h2", { id: "tour-title", text: "Agora, o dia a dia" }),
         h("p", { class: "tour-intro", text: must
-          ? "Um passeio rápido pela tela Hoje: onde registrar, o que filtrar e onde ficam os relatórios. São poucos passos."
-          : "Um passeio rápido pela tela Hoje: onde registrar, o que filtrar e onde ficam os relatórios. São poucos passos, e dá para sair a qualquer momento." }),
+          ? `Um passeio rápido pela tela Hoje: onde registrar, o que filtrar e onde ficam os relatórios. ${walkText("São", "São poucas paradas")}.`
+          : `Um passeio rápido pela tela Hoje: onde registrar, o que filtrar e onde ficam os relatórios. ${walkText("São", "São poucas paradas")}, e dá para sair a qualquer momento.` }),
         h("div", { class: "dialog-actions tour-actions" },
           must ? null : h("button", { type: "button", class: "btn btn-text tour-skip", text: "Fechar", onClick: () => end("close") }),
           h("button", { type: "button", class: "btn btn-text" + (must ? " tour-skip" : ""), text: "Voltar", onClick: () => { step = steps.indexOf(routines); dir = -1; paint(); } }),
@@ -405,12 +409,16 @@ const QUICK = [[".quick-row input"], "Registro rápido",
   "Escreva o que fez e aperte Enter (ou a seta ao lado). Dois atalhos ajudam: @Projeto escolhe o projeto e “— 30min” já conclui com o tempo. Ex.: “Troca do disjuntor @Matriz — 45min”. Os outros (#chamado, !alta, ^amanhã) estão na Ajuda."];
 const ROUTINES = [[".t-rec"], "Rotinas do dia",
   "Marque o que conferiu. Depois de marcar, o bloquinho anota a evidência; no ⋮, um achado vira tarefa. As setas voltam até 7 dias para marcar o que ficou para trás."];
+// Celular, lista de rotinas vazia: não fala de bloquinho nem de ⋮ que ainda não existem.
+const ROUTINES_EMPTY = "Aqui ficam as verificações que se repetem (rondas, backup, e-mail). Ainda não há nenhuma: toque no + deste painel ou comece com um pacote da sua área. Depois, é só marcar o que conferiu.";
+const ROUTINES_PHONE = [ROUTINES[0], ROUTINES[1],
+  () => (document.querySelector(".t-rec input[type=checkbox]") ? ROUTINES[2] : ROUTINES_EMPTY)];
 const HANDOFF = [["#page-actions .btn-ghost"], "Passagem de turno",
   "No fim do turno, um texto pronto com o que fica aberto, o que está aguardando e por quê, e o que foi feito. É só colar no chat da equipe."];
 // Celular: só o essencial do dia, em quatro paradas (o resto se descobre usando).
 const PHONE_STOPS = [
   QUICK,
-  ROUTINES,
+  ROUTINES_PHONE,
   [[".t-open .list-row[data-task-id]"], "Uma tarefa", // sem tarefas ainda (primeiro dia), a parada é pulada
     "Toque no nome para abrir: anotações, checklist, fotos e tempo. O ✓ conclui. No ⋮ ficam o cronômetro, “Marcar como aguardando…” e “Duplicar tarefa”."],
   HANDOFF,
@@ -440,6 +448,17 @@ function visible(el) {
   const r = el.getBoundingClientRect();
   return r.width > 0 && r.height > 0;
 }
+
+const deviceStops = () => (matchMedia("(max-width: 860px)").matches ? PHONE_STOPS : STOPS); // "celular" como no resto do app
+const findStop = (sels) => sels.map((s) => document.querySelector(s)).find(visible);
+// Quantas paradas o passeio vai ter neste aparelho, contadas no Hoje que está por baixo
+// do diálogo (as mesmas que o passeio conta ao começar). Fora do Hoje não dá para saber: 0.
+function walkCount() {
+  const view = document.getElementById("view-hoje");
+  if (!view || view.classList.contains("hidden") || view.hasAttribute("aria-busy")) return 0;
+  return deviceStops().filter(([sels]) => findStop(sels)).length;
+}
+const walkText = (lead, vague) => { const n = walkCount(); return n > 1 ? `${lead} ${n} paradas` : vague; };
 
 function walk(must = false) {
   return new Promise((resolve) => {
@@ -515,13 +534,14 @@ function walk(must = false) {
       pop.style.top = top + "px";
     }
     // O alvo é procurado na hora: a tela pode ter sido montada de novo no meio.
-    const find = (sels) => sels.map((s) => document.querySelector(s)).find(visible);
+    const find = findStop;
     // Alvo que sumiu (a tela mudou no meio): a parada é pulada na mesma direção.
     function show(n, dir = 1) {
       while (n >= 0 && n < stops.length && !find(stops[n][0])) n += dir;
       if (n < 0 || n >= stops.length) { if (n >= stops.length) done(); return; }
       i = n;
-      const [sels, t, body] = stops[i];
+      const [sels, t, txt] = stops[i];
+      const body = typeof txt === "function" ? txt() : txt;
       const el = find(sels);
       target = el || null;
       title.textContent = t;
@@ -550,8 +570,7 @@ function walk(must = false) {
     (function wait() {
       streak = ready() ? streak + 1 : 0;
       if (streak < 2 && tries++ < 80) { setTimeout(wait, 150); return; }
-      // "Celular" como no resto do app (a mesma largura do menu de baixo).
-      stops = (matchMedia("(max-width: 860px)").matches ? PHONE_STOPS : STOPS).filter(([sels]) => find(sels));
+      stops = deviceStops().filter(([sels]) => find(sels));
       if (!stops.length) { resolve(); return; }
       document.body.append(layer);
       addEventListener("resize", place);

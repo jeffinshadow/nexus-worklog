@@ -166,6 +166,12 @@ def _delete_project(project_id: int, user: dict) -> dict:
         db.execute("DELETE FROM worklog_task_projects WHERE task_id = %s AND project_id = %s", (t["id"], t["project_id"]))
     tasks = [r["id"] for r in db.query_all(
         "SELECT id FROM worklog_tasks WHERE user_id = %s AND project_id = %s", (uid, project_id))]
+    # Vencimentos, modelos e o projeto padrão ficam sem projeto (FK SET NULL): o desfazer religa.
+    renewal_ids = [r["id"] for r in db.query_all(
+        "SELECT id FROM renewals WHERE user_id = %s AND project_id = %s ORDER BY id", (uid, project_id))]
+    template_ids = [r["id"] for r in db.query_all(
+        "SELECT id FROM task_templates WHERE user_id = %s AND project_id = %s ORDER BY id", (uid, project_id))]
+    was_default = bool(db.query_one("SELECT 1 FROM users WHERE id = %s AND default_project_id = %s", (uid, project_id)))
     row = db.query_one(
         f"DELETE FROM projects WHERE id = %s AND user_id = %s RETURNING {COLS}",
         (project_id, user["user_id"]),
@@ -178,5 +184,6 @@ def _delete_project(project_id: int, user: dict) -> dict:
         (user["user_id"], tasks))]
     row["promoted"], row["extra_task_ids"] = promoted, extra_tasks
     row["objectives"] = objectives
+    row["renewal_ids"], row["template_ids"], row["was_default"] = renewal_ids, template_ids, was_default
     audit.record(user, "project.delete", "project", project_id, before=row)
     return {"ok": True}

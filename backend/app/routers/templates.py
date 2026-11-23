@@ -32,7 +32,7 @@ def _name_free(uid: int, name: str, except_id: int | None = None) -> None:
 @router.get("")
 def list_templates(user=Depends(active_user)):
     """OBSOLETO (sai na 3.0): modelos de tarefa."""
-    return db.query_all(f"SELECT {_COLS} FROM task_templates WHERE user_id = %s ORDER BY lower(name)", (user["user_id"],))
+    return db.query_all(f"SELECT {_COLS} FROM task_templates WHERE user_id = %s ORDER BY nx_fold(name)", (user["user_id"],))
 
 
 @router.post("", status_code=201)

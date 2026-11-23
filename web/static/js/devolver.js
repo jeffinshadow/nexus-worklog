@@ -15,8 +15,11 @@ export function returnTask(t, onDone) {
     const reason = h("input", { type: "text", maxlength: "120", required: "required", autocomplete: "off",
       placeholder: "ex.: não é da minha área; estou de férias até dia 10" });
     const err = h("p", { class: "error-text", role: "alert" });
+    // O tempo apontado sai junto com a tarefa (volta se a pessoa desfizer): dizer antes.
+    const min = Number(t.minutes) || 0;
+    const tempo = min ? ` ${min === 1 ? "O 1 min apontado sai" : `Os ${min} min apontados saem`} do seu registro.` : "";
     const form = h("form", {},
-      h("p", { class: "return-intro", text: `“${t.title}” volta para ${quem}, com o motivo, e sai das suas tarefas. Dá para desfazer pelo Histórico enquanto ${quem} não decidir o que fazer com ela.` }),
+      h("p", { class: "return-intro", text: `“${t.title}” volta para ${quem}, com o motivo, e sai das suas tarefas.${tempo} Dá para desfazer pelo Histórico enquanto ${quem} não decidir o que fazer com ela.` }),
       field("Por quê? (até 120 caracteres)", reason),
       err,
       h("div", { class: "dialog-actions" },

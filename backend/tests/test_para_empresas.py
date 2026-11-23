@@ -13,25 +13,6 @@ from app.routers import auth as auth_mod
 from conftest import Api, Bearer, SENHA_PADRAO, criar_chave, hist, uid_de
 
 
-class _Agora:
-    """threading.Thread que roda na hora (o envio em segundo plano vira síncrono)."""
-
-    def __init__(self, target, args=(), daemon=None):
-        self.target, self.args = target, args
-
-    def start(self):
-        self.target(*self.args)
-
-
-@pytest.fixture
-def caixa(monkeypatch):
-    enviados = []
-    monkeypatch.setattr(mailer, "configured", lambda: True)
-    monkeypatch.setattr(mailer, "send", lambda to, subject, text, html=None, **kw: enviados.append((to, subject, text)))
-    monkeypatch.setattr(auth_mod.threading, "Thread", _Agora)
-    return enviados
-
-
 def _token(texto, chave):
     return re.search(chave + r"=([\w-]+)", texto).group(1)
 
@@ -63,7 +44,8 @@ def test_tudo_desligado_por_padrao(admin, usuario):
     assert admin.get("/admin/org").json() == {"team_visibility": "self", "team_visibility_since": None,
                                               "assign_receive": "self", "assign_receive_since": None,
                                               "identity_managed": False, "invite_request_on": False,
-                                              "ticket_url": None, "privacy_url": None, "mail_configured": False}
+                                              "ticket_url": None, "privacy_url": None, "mail_configured": False,
+                                              "glpi_url": None, "glpi_app_token_set": False}
     me = usuario.get("/auth/me").json()
     assert me["org"] == {"team_visibility": "self", "assign_receive": "self", "identity_managed": False}
     assert me["visibility_notice"] is False and me["assign_notice"] is False and me["email_pending"] is None

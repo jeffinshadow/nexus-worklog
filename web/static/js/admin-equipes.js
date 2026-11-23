@@ -69,10 +69,20 @@ export async function mountTeams(root, me) {
     catch (e) { errorToast(e); }
   }
   async function onDelete(t) {
+    // A última equipe cadastrada (ativa ou arquivada): excluir devolve o uso pessoal, sem escopo de equipe.
+    const last = teams.length === 1;
+    const people = t.members.length ? `${plural(t.members.length, "pessoa sai", "pessoas saem")} dela; nada dos registros é apagado.` : "Ela não tem ninguém.";
+    const effect = last
+      ? "Esta é a última equipe: sem nenhuma, o Nexus volta ao uso pessoal e quem tem “Vê a equipe” ou “Manda tarefas” passa a alcançar todo mundo que aceitar, em toda a instância. Para só tirar o acesso, arquive em vez de excluir."
+      : "Quem só se via (ou mandava tarefas) por ela perde o acesso na hora.";
     if (!(await confirmDialog({ title: `Excluir a equipe ${t.name}?`,
-      text: `${t.members.length ? `${plural(t.members.length, "pessoa sai", "pessoas saem")} dela; nada dos registros é apagado.` : "Ela não tem ninguém."} Quem só se via (ou mandava tarefas) por ela perde o acesso na hora. Não dá para desfazer.`,
+      text: `${people} ${effect} Não dá para desfazer.`,
       confirm: "Excluir", danger: true }))) return;
-    try { await api.del(`/admin/teams/${t.id}`); toast(`Equipe ${t.name} excluída.`); await reload(); }
+    try {
+      const r = await api.del(`/admin/teams/${t.id}`);
+      toast(r && r.last ? `Equipe ${t.name} excluída. Sem equipes, o Nexus voltou ao uso pessoal.` : `Equipe ${t.name} excluída.`);
+      await reload();
+    }
     catch (e) { errorToast(e); }
   }
 

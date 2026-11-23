@@ -17,6 +17,9 @@ from ..schemas import BrandingIn
 router = APIRouter(tags=["branding"])
 
 MAX_LOGO_BYTES = 256 * 1024
+# Lado máximo, em pixels. Um PNG de 13300 x 13300 cabe em 256 KB (comprime bem) e, aberto para o
+# PDF, levava o backend a 512 MB. Nenhum logo de cabeçalho precisa de mais que isto.
+MAX_LOGO_SIDE = 2000
 # Em SVG, recusa tudo que executa ou busca algo fora: script, handlers on*,
 # javascript:, foreignObject (HTML embutido) e links (href) que não sejam
 # âncoras internas (#id) ou imagens embutidas (data:image/...).
@@ -37,6 +40,26 @@ def _sniff(data: bytes) -> str | None:
     if head.startswith(b"<?xml") or head.startswith(b"<svg") or head.startswith(b"<!--"):
         if b"<svg" in data[:4096].lower():
             return "image/svg+xml"
+    return None
+
+
+def _size(data: bytes, mime: str) -> tuple[int, int] | None:
+    """(largura, altura) lidas do cabeçalho do PNG ou do WebP, sem abrir a imagem.
+    None = não deu para ler (SVG não tem; arquivo sem o cabeçalho esperado): segue como antes."""
+    le = lambda b: int.from_bytes(b, "little")  # noqa: E731
+    if mime == "image/png":
+        if len(data) < 24 or data[12:16] != b"IHDR":
+            return None
+        return int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
+    if mime == "image/webp" and len(data) >= 30:
+        kind = data[12:16]
+        if kind == b"VP8X":  # estendido: tela de 24 bits, menos 1
+            return le(data[24:27]) + 1, le(data[27:30]) + 1
+        if kind == b"VP8L" and data[20] == 0x2F:  # sem perda: 14 bits + 14 bits, menos 1
+            bits = le(data[21:25])
+            return (bits & 0x3FFF) + 1, ((bits >> 14) & 0x3FFF) + 1
+        if kind == b"VP8 " and data[23:26] == b"\x9d\x01\x2a":  # com perda: 14 bits cada
+            return le(data[26:28]) & 0x3FFF, le(data[28:30]) & 0x3FFF
     return None
 
 
@@ -100,6 +123,13 @@ async def upload_logo(request: Request, admin=Depends(require_admin_csrf)):
     mime = _sniff(data)
     if not mime:
         raise HTTPException(status_code=415, detail="use SVG, PNG ou WebP")
+    if mime == "image/webp" and data[12:16] not in (b"VP8 ", b"VP8L", b"VP8X"):
+        # Sem um dos três formatos do WebP não dá para ler o tamanho (e nenhum navegador abriria).
+        raise HTTPException(status_code=400, detail="WebP de formato desconhecido; exporte a imagem de novo")
+    size = _size(data, mime)
+    if size and max(size) > MAX_LOGO_SIDE:
+        raise HTTPException(status_code=400, detail=f"logo com mais de {MAX_LOGO_SIDE} px de lado "
+                            f"({size[0]} x {size[1]}); reduza a imagem")
     if mime == "image/svg+xml" and _SVG_PERIGOSO.search(data):
         raise HTTPException(status_code=400, detail="SVG com script, eventos ou links externos não é aceito")
     db.execute(

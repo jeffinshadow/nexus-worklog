@@ -264,7 +264,11 @@ def _lede(data: dict) -> str:
         r += f", mais {_plural(s['recurring_extra'], 'extra', 'extras')}." if s["recurring_extra"] else "."
         frases.append(r)
     if s["open"]:
-        a = f"{'Fica' if s['open'] == 1 else 'Ficam'} {_plural(s['open'], 'tarefa', 'tarefas')} em aberto"
+        # Período já fechado: o "em aberto" é o de hoje, não o do fim do período.
+        if data.get("today") and data["end"] < data["today"]:
+            a = f"Hoje ({_d(data['today'])}) há {_plural(s['open'], 'tarefa', 'tarefas')} em aberto"
+        else:
+            a = f"{'Fica' if s['open'] == 1 else 'Ficam'} {_plural(s['open'], 'tarefa', 'tarefas')} em aberto"
         a += f", {_plural(s['overdue'], 'atrasada', 'atrasadas')}." if s["overdue"] else ", nenhuma atrasada."
         frases.append(a)
     return " ".join(frases) or "Nenhuma atividade registrada no período."
@@ -362,6 +366,7 @@ def _section(pdf: _Report, title: str, note: str = "", need: float = 18, legend=
     """Título de seção: texto, nota ou legenda à direita e uma régua; devolve
     o y onde o conteúdo começa."""
     pdf.room(need + 12)
+    pdf.start_section(_s(title))  # marcador do PDF (painel de navegação e leitor de tela)
     y = pdf.get_y()
     pdf.font("sanss", 11.5, INK)
     pdf.text_at(M, y, 120, 6, title)
@@ -572,7 +577,7 @@ def _projects(pdf: _Report, data: dict) -> None:
         y += 8
     if data.get("multi_project"):  # a soma das linhas passa do total: explica
         pdf.font("label", 6.6, DIM)
-        pdf.text_at(M, y, pdf.cw, 4, "Uma tarefa em mais de um projeto conta inteira em cada um.")
+        pdf.text_at(M, y, pdf.cw, 4, MULTI_NOTE)
         y += 5
     pdf.set_y(y + 8)
 
@@ -618,6 +623,58 @@ def _proof(r: dict) -> str:
 LONG_DAYS, MAX_ROWS = 62, 500
 
 
+MULTI_NOTE = "Uma tarefa em mais de um projeto conta inteira em cada um."
+
+
+def _time_by_task(pdf: _Report, data: dict) -> None:
+    """Relatório de PROJETO: toda tarefa com tempo no período (concluída ou não)
+    e o tempo do período; o total é o mesmo da capa."""
+    rows = data.get("time_by_task") or []
+    if not data.get("project") or not rows:
+        return
+    total = sum(r["minutes"] for r in rows)
+    rest = rows[MAX_ROWS:]
+    rows = rows[:MAX_ROWS]
+    _section(pdf, f"Tempo por tarefa ({len(rows) + len(rest)})", "tempo apontado no período")
+    cols = [("tarefa", pdf.cw - 26 - 18, "L"), ("situação", 26, "L"), ("tempo", 18, "R")]
+    _table_head(pdf, cols)
+    tw = cols[0][1] - 4
+
+    def line(y, title, sit, minutes, bold=False):
+        pdf.font("sansm" if bold else "sans", 8.6, INK)
+        pdf.text_at(M, y, tw, 4.2, pdf.fit(title, tw))
+        pdf.font("label", 7.2, INK2)
+        pdf.text_at(M + cols[0][1], y, 26, 4.2, sit)
+        pdf.font("labelb", 7.6, INK if bold else ACCENT)
+        pdf.text_at(M + cols[0][1] + 26, y, 18, 4.2, _dur(minutes), "R")
+
+    for r in rows:
+        also = ", ".join(r.get("also_in") or [])
+        h = 5.6 + (3.4 if also else 0)
+        if pdf.get_y() + h + 2 > pdf.bottom:
+            pdf.add_page()
+            _table_head(pdf, cols)
+        y = pdf.get_y()
+        line(y, r["title"], "concluída" if r.get("done") else "em aberto", r["minutes"])
+        if also:
+            pdf.font("sans", 7.2, DIM)
+            pdf.text_at(M, y + 4.2, tw, 3.4, pdf.fit(f"também em: {also}", tw))
+        pdf.set_y(y + h)
+        pdf.hline(pdf.get_y(), HAIR)
+        pdf.set_y(pdf.get_y() + 1.8)
+    pdf.room(14)
+    if rest:
+        line(pdf.get_y(), f"+ {_plural(len(rest), 'outra tarefa', 'outras tarefas')}", "", sum(r["minutes"] for r in rest))
+        pdf.set_y(pdf.get_y() + 7.4)
+    line(pdf.get_y(), "Total", "", total, bold=True)
+    pdf.set_y(pdf.get_y() + 6)
+    if any(r.get("also_in") for r in rows + rest):
+        pdf.font("label", 6.6, DIM)
+        pdf.text_at(M, pdf.get_y(), pdf.cw, 4, MULTI_NOTE)
+        pdf.set_y(pdf.get_y() + 5)
+    pdf.ln(8)
+
+
 def _deliveries(pdf: _Report, data: dict) -> None:
     rows = data["deliveries"]
     if not rows:
@@ -653,7 +710,15 @@ def _deliveries(pdf: _Report, data: dict) -> None:
         if proof:
             pdf.set_font("sans", "", 7.2)
             n3 = pdf.lines(proof, tw, 3.4)
-        h = n1 * 4.2 + n2 * 3.6 + n3 * 3.4 + 3.6
+        # No relatório de projeto: a tarefa que também está em outro(s) vem marcada.
+        also = ", ".join(r.get("also_in") or [])
+        # TEMPO = o do período; quando a tarefa tem mais que isso (outros meses), o total embaixo.
+        pm = r.get("period_minutes", r["minutes"])
+        extra_t = (f"de {_dur(r['minutes'])} no total" if pm else f"{_dur(r['minutes'])} no total") if r["minutes"] != pm else ""
+        n4 = 1 if also else 0
+        if extra_t and not (n2 or n3 or n4):
+            n4 = 1  # linha em branco para o total caber embaixo do tempo
+        h = n1 * 4.2 + n2 * 3.6 + n3 * 3.4 + n4 * 3.4 + 3.6
         if pdf.get_y() + h > pdf.bottom:
             pdf.add_page()
             _table_head(pdf, cols)
@@ -674,12 +739,18 @@ def _deliveries(pdf: _Report, data: dict) -> None:
             pdf.font("sans", 7.2, INK2)
             pdf.set_x(x)
             pdf.multi_cell(tw, 3.4, _s(proof), new_x="LEFT", new_y="NEXT")
+        if also:
+            pdf.font("sans", 7.2, DIM)
+            pdf.text_at(x, pdf.get_y(), tw, 3.4, pdf.fit(f"também em: {also}", tw))
         x += cols[1][1]
         if show_proj:
             _project_tag(pdf, r["project"], r["project_color"], x, y, wp)
             x += wp
-        pdf.font("labelb", 7.6, ACCENT if r["minutes"] else FAINT)
-        pdf.text_at(x, y, 16, 4.2, _dur(r["minutes"]) if r["minutes"] else "—", "R")
+        pdf.font("labelb", 7.6, ACCENT if pm else FAINT)
+        pdf.text_at(x, y, 16, 4.2, _dur(pm) if pm else "—", "R")
+        if extra_t:
+            pdf.font("label", 5.8, DIM)
+            pdf.text_at(x - 14, y + 4.2, 30, 3, extra_t, "R")
         x += 16
         pdf.font("label", 7.2, INK2 if r["check_total"] else FAINT)
         pdf.text_at(x, y, 14, 4.2, f"{r['check_done']}/{r['check_total']}" if r["check_total"] else "—", "R")
@@ -837,9 +908,11 @@ def _diary(pdf: _Report, data: dict) -> None:
             pdf.text_at(gx + 3.3, yy, title_w, 4.6, pdf.fit(w["title"], title_w - 1))
             if show_proj and w["project"]:
                 _project_tag(pdf, w["project"], w["project_color"], gx + gw - 56, yy + 0.2, 40)
-            if w["minutes"]:
+            # O tempo DO DIA nessa tarefa (os apontamentos dela sem anotação não se repetem embaixo).
+            no_dia = sum(e["minutes"] for e in day["time"] if e.get("task_id") == w["id"])
+            if no_dia:
                 pdf.font("labelb", 7.2, ACCENT)
-                pdf.text_at(gx + gw - 14, yy, 14, 4.6, _dur(w["minutes"]), "R")
+                pdf.text_at(gx + gw - 14, yy, 14, 4.6, _dur(no_dia), "R")
             pdf.set_y(yy + 5)
 
         # Tempo do dia: a linha da tarefa concluída no dia já tem o tempo; só
@@ -854,7 +927,11 @@ def _diary(pdf: _Report, data: dict) -> None:
                 pdf.font("labelb", 6.8, ACCENT)
                 pdf.text_at(gx + 3.3, yy, 12, 4, _dur(e["minutes"]))
                 pdf.font("sans", 7.4, DIM)
-                txt = (e["note"] if e["title"] in feitas else e["title"] + (f" — {e['note']}" if e["note"] else ""))
+                # Apontamento do cronômetro: o horário ("08:00–08:05") no lugar da palavra "cronômetro".
+                note = e["note"]
+                if e.get("clock"):
+                    note = e["clock"] + (f" · {note}" if note and note != "cronômetro" else "")
+                txt = (note if e.get("task_id") in feitas else e["title"] + (f" — {note}" if note else ""))
                 pdf.set_xy(gx + 16, yy)
                 pdf.multi_cell(gw - 16, 4, _s(txt), new_x="LMARGIN", new_y="NEXT")
         end_y = max(pdf.get_y(), y + 12)
@@ -878,6 +955,7 @@ def build_report_pdf(user_email: str, start: date, end: date, data: dict, brandi
     pdf.set_title(_s(title))
     pdf.set_author(_s(user_email))
     pdf.set_creator("Nexus Worklog")
+    pdf.set_lang("pt-BR")
     pdf.add_page()
 
     _cover(pdf, user_email, data)
@@ -892,6 +970,7 @@ def build_report_pdf(user_email: str, start: date, end: date, data: dict, brandi
         _recurring_list(pdf, data)
     _projects(pdf, data)
     data = {**data, "long": (end - start).days > LONG_DAYS}
+    _time_by_task(pdf, data)
     _deliveries(pdf, data)
     _open(pdf, data)
     if not data["long"]:
@@ -900,6 +979,8 @@ def build_report_pdf(user_email: str, start: date, end: date, data: dict, brandi
         pdf.room(16)
         pdf.font("sans", 7.6, DIM)
         pdf.set_x(M)
-        pdf.multi_cell(pdf.cw, 4, _s("O diário dia a dia sai em relatórios de até 2 meses. Para o período inteiro, "
+        # No relatório de projeto (a página que vai para o cliente) não se cita o menu do app.
+        pdf.multi_cell(pdf.cw, 4, _s("O diário dia a dia sai em relatórios de até 2 meses." if data.get("project") else
+                                      "O diário dia a dia sai em relatórios de até 2 meses. Para o período inteiro, "
                                       "use a exportação CSV em Meu mês > Outro período ou formato."), new_x="LEFT", new_y="NEXT")
     return bytes(pdf.output())

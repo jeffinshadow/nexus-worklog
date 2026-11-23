@@ -1,11 +1,15 @@
 import asyncio
+import json
 import logging
 import pathlib
 from contextlib import asynccontextmanager
 
+import psycopg
 from fastapi import Depends, FastAPI, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exception_handlers import http_exception_handler
-from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse, Response
 from psycopg import errors as pg_errors
 from psycopg_pool import PoolTimeout
 from pydantic import BaseModel, EmailStr, Field, TypeAdapter, ValidationError
@@ -14,7 +18,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from . import db, notify, roles, teams
 from .config import config
 from .version import VERSION
-from .routers import (admin, assign, equipes, auth, board, branding, calendar, dashboard, export, history, mcp, me, packs,
+from .routers import (admin, assign, equipes, auth, board, branding, calendar, dashboard, export, glpi, history, mcp, me, packs,
                       invite_requests, notifications, objectives, passkeys, photos, projects, push, recurring, renewals, reports, review, search, summary, templates, timer,
                       saude, tokens, viewer, webhooks, worklog)
 from .deps import web_active
@@ -41,7 +45,10 @@ def seed_admin() -> None:
             "ADMIN_EMAIL invalido (%s): o login recusaria esse endereco. Admin NAO criado.", email
         )
         return
-    if db.query_one("SELECT 1 FROM users WHERE email = %s", (email,)):
+    # Só na instalação nova: havendo QUALQUER conta admin, não cria outra. Antes bastava o e-mail do
+    # .env não existir (admin trocou o próprio e-mail, conta excluída) para nascer um admin novo com a
+    # senha inicial do .env, que costuma ficar lá esquecida.
+    if roles.admins_count() or db.query_one("SELECT 1 FROM users WHERE role = 'admin' OR email = %s", (email,)):
         teams.ensure_master()
         return
     row = db.query_one(
@@ -98,6 +105,65 @@ async def _http_error(request: Request, exc: StarletteHTTPException):
     return await http_exception_handler(request, exc)
 
 
+# NUL (\u0000), substituto solto (\ud800) ou número fora da faixa da coluna: o banco recusa e
+# isso é erro do pedido, não do servidor. Com 500 a fila offline do celular repetia para sempre;
+# com 4xx o item vai para "Não deu para aplicar". A mensagem é genérica porque o DataError cobre
+# os dois casos (texto e número).
+BAD_DATA = "o texto tem um caractere inválido ou um valor fora do limite"
+
+
+@app.exception_handler(psycopg.DataError)
+@app.exception_handler(UnicodeEncodeError)
+async def _bad_data(request: Request, exc: Exception):
+    # Uma linha no log (sem o valor): se for defeito nosso e não do pedido, dá para achar.
+    logging.getLogger("uvicorn.error").warning("dado recusado em %s %s: %s", request.method, request.url.path,
+                                               exc.__class__.__name__)
+    return JSONResponse({"detail": BAD_DATA}, status_code=400)
+
+
+@app.exception_handler(RequestValidationError)
+async def _invalid(request: Request, exc: RequestValidationError):
+    """O 422 de sempre; só não estoura (500) quando o valor recusado, que volta em `input`,
+    traz um substituto solto: ele sai como "?"."""
+    try:
+        body = json.dumps({"detail": jsonable_encoder(exc.errors())}, ensure_ascii=False, separators=(",", ":"))
+    except RecursionError:  # o valor recusado tem mais de ~1.000 níveis: não dá nem para devolvê-lo
+        return await _too_deep(request, exc)
+    return Response(body.encode("utf-8", "replace"), status_code=422, media_type="application/json")
+
+
+@app.exception_handler(RecursionError)
+async def _too_deep(request: Request, exc: Exception):
+    """JSON com milhares de colchetes aninhados: erro do pedido (400), não do servidor (era 500 com a
+    pilha inteira no log, mesmo sem login). Uma linha de aviso, como no dado recusado."""
+    logging.getLogger("uvicorn.error").warning("JSON aninhado demais em %s %s", request.method, request.url.path)
+    return JSONResponse({"detail": "JSON aninhado demais"}, status_code=400)
+
+
+class NoStore:
+    """Cache-Control: no-store em toda resposta de /api/ que não trouxer o seu: os dados da
+    pessoa não ficam no cache do navegador nem de um proxy no caminho. Fotos, avatar e logo
+    já mandam o próprio Cache-Control e seguem com ele."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or not scope["path"].startswith("/api/"):
+            return await self.app(scope, receive, send)
+
+        async def wrapped(message):
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers") or [])
+                if not any(k.lower() == b"cache-control" for k, _ in headers):
+                    message = {**message, "headers": headers + [(b"cache-control", b"no-store")]}
+            await send(message)
+        await self.app(scope, receive, wrapped)
+
+
+app.add_middleware(NoStore)
+
+
 @app.get("/api/health")
 def health():
     """Para o healthcheck do compose e monitoramento: app e banco respondendo."""
@@ -121,7 +187,7 @@ def client_error(data: ClientErrorIn, user=Depends(web_active)):
 
 for module in (auth, recurring, worklog, board, dashboard, reports, admin, history, tokens, mcp, branding, projects,
                summary, search, photos, export, calendar, notifications, me, timer, templates, viewer, assign, renewals,
-               objectives, push, passkeys, invite_requests, webhooks, review, packs, saude, equipes):
+               objectives, push, passkeys, invite_requests, webhooks, review, packs, saude, equipes, glpi):
     app.include_router(module.router)
 app.include_router(worklog.items)  # /api/notes, /api/checklist, /api/time
 app.include_router(assign.received)  # /api/worklog/{id}/return (quem recebeu devolve)

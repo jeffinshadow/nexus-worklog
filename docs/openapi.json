@@ -3,7 +3,7 @@
   "info": {
     "title": "Nexus Worklog",
     "description": "API REST do Nexus Worklog. Referência, erros e exemplos: docs/API.md.",
-    "version": "2.1.0"
+    "version": "2.2.0"
   },
   "paths": {
     "/api/health": {
@@ -384,13 +384,41 @@
           "auth"
         ],
         "summary": "Logout",
+        "description": "Encerra esta sessão. `endpoint` (opcional): a inscrição de notificações\ndeste aparelho, que deixa de receber avisos da conta.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "logout_api_auth_logout_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/LogoutIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Data"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           },
@@ -402,8 +430,7 @@
           }
         },
         "x-session-only": true,
-        "security": [],
-        "description": "Só pelo app (sessão do navegador): por chave de API responde 403."
+        "security": []
       }
     },
     "/api/auth/sessions": {
@@ -440,7 +467,7 @@
           "auth"
         ],
         "summary": "Logout Others",
-        "description": "Sai dos outros aparelhos sem trocar a senha (celular perdido, computador\nemprestado). Esta sessão continua; chaves de API e calendário não mudam.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
+        "description": "Sai dos outros aparelhos sem trocar a senha (celular perdido, computador\nemprestado). Esta sessão continua; chaves de API e calendário não mudam.\nAs notificações saem de TODOS os aparelhos da conta (o celular perdido não\nmostra mais nada); este se inscreve de novo logo em seguida (o app chama\nPOST /api/push/subscribe ao receber a resposta) e também ao abrir.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "logout_others_api_auth_logout_others_post",
         "responses": {
           "200": {
@@ -484,7 +511,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "read"
       }
     },
     "/api/auth/change-password": {
@@ -578,7 +606,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/recurring/reminders": {
@@ -604,7 +633,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "read"
       }
     },
     "/api/recurring": {
@@ -649,7 +679,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/recurring/order": {
@@ -695,7 +726,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/recurring/{task_id}": {
@@ -752,7 +784,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       },
       "delete": {
         "tags": [
@@ -796,7 +829,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/recurring/{task_id}/toggle": {
@@ -852,7 +886,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "append"
       }
     },
     "/api/recurring/{task_id}/snooze": {
@@ -909,7 +944,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/recurring/{task_id}/pause": {
@@ -966,7 +1002,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       },
       "delete": {
         "tags": [
@@ -1011,7 +1048,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/worklog": {
@@ -1057,7 +1095,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "append"
       },
       "get": {
         "tags": [
@@ -1224,7 +1263,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "read"
       }
     },
     "/api/worklog/{task_id}": {
@@ -1271,13 +1311,15 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "read"
       },
       "patch": {
         "tags": [
           "worklog"
         ],
         "summary": "Update",
+        "description": "Com status done, `stopped` é o cronômetro que rodava na tarefa (como em\nPOST /api/timer/stop; needs_review = esquecido, parou sem apontar).",
         "operationId": "update_api_worklog__task_id__patch",
         "parameters": [
           {
@@ -1325,7 +1367,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       },
       "delete": {
         "tags": [
@@ -1369,7 +1412,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/worklog/{task_id}/finish": {
@@ -1378,7 +1422,7 @@
           "worklog"
         ],
         "summary": "Finish",
-        "description": "Conclui agora, ou na data informada (retroativo). Já concluída e sem\ndata: mantém a conclusão que tinha.",
+        "description": "Conclui agora, ou na data informada (retroativo). Já concluída e sem nada\na mudar (sem data ou a mesma data, sem solução ou a mesma solução): mantém a\nconclusão que tinha e responde existing. `stopped`: o cronômetro que rodava\nna tarefa, como em POST /api/timer/stop (needs_review = esquecido há mais de\n12 h, parou sem apontar: a pessoa informa o tempo).",
         "operationId": "finish_api_worklog__task_id__finish_post",
         "parameters": [
           {
@@ -1433,7 +1477,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "append"
       }
     },
     "/api/worklog/{task_id}/snooze": {
@@ -1490,7 +1535,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/worklog/{task_id}/reminder-seen": {
@@ -1537,7 +1583,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/worklog/{task_id}/duplicate": {
@@ -1584,7 +1631,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "append"
       }
     },
     "/api/worklog/{task_id}/notes": {
@@ -1641,7 +1689,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "append"
       }
     },
     "/api/worklog/{task_id}/checklist": {
@@ -1697,7 +1746,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "append"
       }
     },
     "/api/worklog/{task_id}/time": {
@@ -1754,7 +1804,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "append"
       }
     },
     "/api/board": {
@@ -1855,7 +1906,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "read"
       }
     },
     "/api/board/first": {
@@ -1901,7 +1953,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/dashboard": {
@@ -1957,7 +2010,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "read"
       }
     },
     "/api/reports/export": {
@@ -2044,7 +2098,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "read"
       }
     },
     "/api/reports/preview": {
@@ -2132,7 +2187,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "read"
       }
     },
     "/api/admin/users": {
@@ -2141,7 +2197,7 @@
           "admin"
         ],
         "summary": "List Users",
-        "description": "Contas em ordem de nome (o que a linha mostra), com o último acesso\n(`last_seen_at`: entrar ou usar o app; nulo = nunca entrou), a criação e\nquantas tarefas abertas cada uma tem (`open_tasks`, para transferir).\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
+        "description": "Contas em ordem de nome (o que a linha mostra), com o último acesso\n(`last_seen_at`: entrar ou usar o app; nulo = nunca entrou), a criação e\nquantas tarefas abertas cada uma tem (`open_tasks`, para transferir), quantas\nguardam horas de outra pessoa (`others_hours_tasks`; as concluídas entre elas:\n`others_hours_done`: excluir a conta só passando as tarefas adiante) e os\nvencimentos dela compartilhados com equipes (`shared_renewals`, por equipe:\nexcluir a conta apaga, o diálogo de excluir avisa).\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "list_users_api_admin_users_get",
         "responses": {
           "200": {
@@ -2497,7 +2553,7 @@
           "admin"
         ],
         "summary": "Delete User",
-        "description": "Exclui a conta e TODOS os dados dela (tarefas, rotinas, tempo, chaves,\nhistórico: ON DELETE CASCADE). Sem volta: o admin confirma digitando o\ne-mail. Tarefas que essa pessoa atribuiu ficam com quem recebeu.\n`transfer_to`: antes de excluir, as tarefas abertas passam para essa pessoa.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
+        "description": "Exclui a conta e TODOS os dados dela (tarefas, rotinas, tempo, chaves,\nhistórico: ON DELETE CASCADE). Sem volta: o admin confirma digitando o\ne-mail. Tarefas que essa pessoa atribuiu ficam com quem recebeu. Os\nvencimentos dela saem junto, inclusive os compartilhados com equipe (a\nresposta conta: `renewals` e `shared_renewals`).\n`transfer_to`: antes de excluir, as tarefas abertas passam para essa pessoa, e\ntambém as concluídas que guardam horas de outra pessoa. Sem `transfer_to`, conta\ncom tarefa que guarda horas de outra pessoa = 409 (nada é apagado).\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "delete_user_api_admin_users__user_id__delete_post",
         "parameters": [
           {
@@ -2897,7 +2953,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "read"
       }
     },
     "/api/history/{history_id}/undo": {
@@ -2943,7 +3000,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/tokens": {
@@ -3129,29 +3187,6 @@
       }
     },
     "/mcp": {
-      "get": {
-        "tags": [
-          "mcp"
-        ],
-        "summary": "Mcp Other",
-        "operationId": "mcp_other_mcp_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "429": {
-            "$ref": "#/components/responses/TooManyRequests"
-          },
-          "503": {
-            "$ref": "#/components/responses/Busy"
-          }
-        }
-      },
       "post": {
         "tags": [
           "mcp"
@@ -3173,30 +3208,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
-      },
-      "delete": {
-        "tags": [
-          "mcp"
-        ],
-        "summary": "Mcp Other",
-        "operationId": "mcp_other_mcp_delete",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "429": {
-            "$ref": "#/components/responses/TooManyRequests"
-          },
-          "503": {
-            "$ref": "#/components/responses/Busy"
-          }
-        }
+        },
+        "x-scope": "read"
       }
     },
     "/api/branding": {
@@ -3414,7 +3427,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "read"
       },
       "post": {
         "tags": [
@@ -3458,7 +3472,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/projects/{project_id}": {
@@ -3514,7 +3529,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       },
       "delete": {
         "tags": [
@@ -3558,7 +3574,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/projects/{project_id}/archive": {
@@ -3615,7 +3632,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/summary": {
@@ -3640,7 +3658,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "read"
       }
     },
     "/api/summary/week": {
@@ -3690,7 +3709,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "read"
       }
     },
     "/api/summary/handoff": {
@@ -3715,7 +3735,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "read"
       }
     },
     "/api/search/similar": {
@@ -3764,7 +3785,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "read"
       }
     },
     "/api/search": {
@@ -3773,7 +3795,7 @@
           "search"
         ],
         "summary": "Search",
-        "description": "Tarefas, rotinas e projetos com o termo. Cada seção pagina sozinha\n(offset/limit; rec_offset, proj_offset e side_limit) e traz o total real:\ntotal_tasks, total_recurring, total_projects (X-Total-Count = total_tasks).",
+        "description": "Tarefas, rotinas e projetos com todas as palavras da busca, em qualquer\nordem e campo (a frase exata vem primeiro). Cada seção pagina sozinha\n(offset/limit; rec_offset, proj_offset e side_limit) e traz o total real:\ntotal_tasks, total_recurring, total_projects (X-Total-Count = total_tasks).",
         "operationId": "search_api_search_get",
         "parameters": [
           {
@@ -3888,7 +3910,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "read"
       }
     },
     "/api/worklog/{task_id}/photos": {
@@ -4195,7 +4218,7 @@
           "photos"
         ],
         "summary": "Export Zip",
-        "description": "Todas as fotos da conta num .zip (pastas por tarefa e por rotina). Monta\nnum arquivo temporário, uma foto por vez (a memória do backend é pequena).\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
+        "description": "Todas as fotos da conta num .zip (pastas por tarefa e por rotina, e a\nfoto de perfil em perfil/). Monta num arquivo temporário, uma foto por vez\n(a memória do backend é pequena). Nunca fica em cache (no-store).\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "export_zip_api_export_fotos_zip_get",
         "responses": {
           "200": {
@@ -4286,7 +4309,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "read"
       }
     },
     "/api/export/rotinas.csv": {
@@ -4358,7 +4382,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "read"
       }
     },
     "/api/export/{kind}": {
@@ -4367,7 +4392,7 @@
           "export"
         ],
         "summary": "Export",
-        "description": "tarefas.csv e apontamentos.csv aceitam start/end (os dois): só o período.",
+        "description": "tarefas.csv e apontamentos.csv aceitam start/end (os dois): só o período;\ne project: só o que é desse projeto (principal ou extra, como no PDF).",
         "operationId": "export_api_export__kind__get",
         "parameters": [
           {
@@ -4412,6 +4437,22 @@
               ],
               "title": "End"
             }
+          },
+          {
+            "name": "project",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
+            }
           }
         ],
         "responses": {
@@ -4439,7 +4480,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "read"
       }
     },
     "/api/calendar": {
@@ -5562,7 +5604,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "read"
       },
       "delete": {
         "tags": [
@@ -5585,7 +5628,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/timer/start": {
@@ -5630,7 +5674,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "append"
       }
     },
     "/api/timer/stop": {
@@ -5682,7 +5727,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "append"
       }
     },
     "/api/templates": {
@@ -5708,7 +5754,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "read"
       },
       "post": {
         "tags": [
@@ -5752,7 +5799,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/templates/{tid}": {
@@ -5809,7 +5857,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       },
       "delete": {
         "tags": [
@@ -5854,7 +5903,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/templates/{tid}/use": {
@@ -5901,7 +5951,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "append"
       }
     },
     "/api/viewer/teams": {
@@ -6496,7 +6547,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "read"
       }
     },
     "/api/assign/teams": {
@@ -6522,7 +6574,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "read"
       }
     },
     "/api/assign": {
@@ -6567,7 +6620,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/assign/sent": {
@@ -6593,7 +6647,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "read"
       }
     },
     "/api/assign/{task_id}": {
@@ -6650,7 +6705,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/assign/{task_id}/cancel": {
@@ -6697,7 +6753,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/assign/{task_id}/close": {
@@ -6744,7 +6801,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/assign/news/seen": {
@@ -6770,7 +6828,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/renewals/teams": {
@@ -6796,7 +6855,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "read"
       }
     },
     "/api/renewals": {
@@ -6821,7 +6881,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "read"
       },
       "post": {
         "tags": [
@@ -6864,7 +6925,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/renewals/{rid}": {
@@ -6921,7 +6983,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       },
       "delete": {
         "tags": [
@@ -6965,7 +7028,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/projects/{project_id}/overview": {
@@ -7012,7 +7076,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "read"
       }
     },
     "/api/projects/{project_id}/done": {
@@ -7100,7 +7165,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "read"
       }
     },
     "/api/projects/{project_id}/objectives": {
@@ -7147,7 +7213,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "read"
       },
       "post": {
         "tags": [
@@ -7202,7 +7269,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/objectives/{objective_id}": {
@@ -7258,7 +7326,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       },
       "delete": {
         "tags": [
@@ -7303,7 +7372,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/projects/{project_id}/objectives/order": {
@@ -7360,7 +7430,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/projects/{project_id}/tasks/order": {
@@ -7417,7 +7488,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/push": {
@@ -8140,7 +8212,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "read"
       },
       "post": {
         "tags": [
@@ -8289,7 +8362,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/webhooks/{hook_id}/enable": {
@@ -8413,7 +8487,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "read"
       }
     },
     "/api/review/week/done": {
@@ -8466,7 +8541,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/review/week/dismiss": {
@@ -8492,7 +8568,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/routine-packs": {
@@ -8518,7 +8595,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "read"
       }
     },
     "/api/routine-packs/{pack_id}/apply": {
@@ -8575,7 +8653,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/admin/health": {
@@ -8743,7 +8822,7 @@
           "admin"
         ],
         "summary": "Delete Team",
-        "description": "Exclui a equipe (os membros só saem dela; nada das pessoas é apagado).\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
+        "description": "Exclui a equipe (os membros só saem dela; nada das pessoas é apagado).\n`last`: era a última cadastrada, a instância voltou ao uso pessoal (sem\nescopo de equipe), como o `first` de criar avisa a ida.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "delete_team_api_admin_teams__team_id__delete",
         "parameters": [
           {
@@ -9017,6 +9096,162 @@
         "security": []
       }
     },
+    "/api/me/glpi": {
+      "get": {
+        "tags": [
+          "glpi"
+        ],
+        "summary": "Get Glpi",
+        "description": "Estado da conexão com o GLPI: `available` (o admin configurou), `connected`,\no nome no GLPI, a última sincronização, o erro (se houver) e as soluções que o GLPI recusou.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
+        "operationId": "get_glpi_api_me_glpi_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
+          }
+        },
+        "x-session-only": true,
+        "security": []
+      },
+      "put": {
+        "tags": [
+          "glpi"
+        ],
+        "summary": "Connect Glpi",
+        "description": "Conecta com o token pessoal do GLPI (no GLPI: Minhas configurações › Token de API): confere no\nGLPI antes de guardar (cifrado) e já faz a primeira sincronização.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
+        "operationId": "connect_glpi_api_me_glpi_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GlpiTokenIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
+          }
+        },
+        "x-session-only": true,
+        "security": []
+      },
+      "delete": {
+        "tags": [
+          "glpi"
+        ],
+        "summary": "Disconnect Glpi",
+        "description": "Desconecta: apaga o token. As tarefas ficam; nada mais é enviado ao GLPI.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
+        "operationId": "disconnect_glpi_api_me_glpi_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
+          }
+        },
+        "x-session-only": true,
+        "security": []
+      }
+    },
+    "/api/me/glpi/sync": {
+      "post": {
+        "tags": [
+          "glpi"
+        ],
+        "summary": "Sync Glpi",
+        "description": "Atualizar agora: puxa os chamados e manda as soluções pendentes (tira a pausa por falhas).\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
+        "operationId": "sync_glpi_api_me_glpi_sync_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
+          }
+        },
+        "x-session-only": true,
+        "security": []
+      }
+    },
+    "/api/admin/glpi/test": {
+      "post": {
+        "tags": [
+          "glpi"
+        ],
+        "summary": "Test Glpi",
+        "description": "Testa o endereço e o App-Token salvos: {ok, error}. Não usa o token de ninguém.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
+        "operationId": "test_glpi_api_admin_glpi_test_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
+          }
+        },
+        "x-session-only": true,
+        "security": []
+      }
+    },
     "/api/notes/{note_id}": {
       "patch": {
         "tags": [
@@ -9071,7 +9306,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       },
       "delete": {
         "tags": [
@@ -9115,7 +9351,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/checklist/{item_id}": {
@@ -9171,7 +9408,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       },
       "delete": {
         "tags": [
@@ -9215,7 +9453,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/time/{entry_id}": {
@@ -9272,7 +9511,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       },
       "delete": {
         "tags": [
@@ -9316,7 +9556,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     },
     "/api/worklog/{task_id}/return": {
@@ -9373,7 +9614,8 @@
           "503": {
             "$ref": "#/components/responses/Busy"
           }
-        }
+        },
+        "x-scope": "write"
       }
     }
   },
@@ -10023,6 +10265,21 @@
         ],
         "title": "ForgotIn"
       },
+      "GlpiTokenIn": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 10,
+            "title": "Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "title": "GlpiTokenIn"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -10301,6 +10558,24 @@
           "credential"
         ],
         "title": "LoginPasskeyIn"
+      },
+      "LogoutIn": {
+        "properties": {
+          "endpoint": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endpoint"
+          }
+        },
+        "type": "object",
+        "title": "LogoutIn"
       },
       "MasterConfirmIn": {
         "properties": {
@@ -10626,6 +10901,31 @@
               }
             ],
             "title": "Ticket Url"
+          },
+          "glpi_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300,
+                "pattern": "^(https?://\\S+)?$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Glpi Url"
+          },
+          "glpi_app_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Glpi App Token"
           }
         },
         "type": "object",

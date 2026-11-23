@@ -6,14 +6,7 @@ from app import db, mailer
 from app.routers import assign as assign_mod
 from app.routers import auth as auth_mod
 from conftest import Api, SENHA_PADRAO, criar_chave, hist, uid_de
-
-
-class _Agora:
-    def __init__(self, target, args=(), daemon=None):
-        self.target, self.args = target, args
-
-    def start(self):
-        self.target(*self.args)
+from conftest import Agora as _Agora  # ajudantes comuns (auditoria p07)
 
 
 @pytest.fixture
@@ -65,7 +58,8 @@ def test_bloquear_acesso_e_liberar(admin, caixa, novo_usuario):
     assert Api().post("/auth/login", {"email": usuario.me["email"], "password": SENHA_PADRAO}).status_code == 401
     caixa.clear()
     assert Api().post("/auth/forgot", {"email": usuario.me["email"]}).status_code == 200
-    assert caixa == []
+    # Link não; só o aviso de que o acesso está bloqueado (auditoria p01: antes não chegava nada).
+    assert [c[1] for c in caixa] == ["Seu acesso ao Nexus está bloqueado"] and "#senha=" not in caixa[0][2]
     linha = next(u for u in admin.get("/admin/users").json() if u["id"] == uid)
     assert linha["blocked_at"]
     # Os dados ficam.

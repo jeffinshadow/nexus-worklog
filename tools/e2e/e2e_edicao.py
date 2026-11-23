@@ -59,11 +59,11 @@ try:
     cmd("Page.navigate", url=B + "/#/config?aba=avisos"); time.sleep(3.5)
     ev("document.querySelectorAll('dialog[open]').forEach(d=>d.close())")
     check("avisos: sem botão Salvar", not ev("[...document.querySelectorAll('#view-config button')].some(b=>/^Salvar/.test(b.textContent.trim()))"))
-    antes = api("GET", "/notifications")["b"]["morning"]
-    ev("document.querySelector('input[aria-label=\"Seu dia\"]').click()"); time.sleep(1.5)
-    check("avisos: a escolha salvou sozinha", api("GET", "/notifications")["b"]["morning"] == (not antes))
-    ev("document.querySelector('input[aria-label=\"Seu dia\"]').click()"); time.sleep(1.5)
-    check("avisos: voltou", api("GET", "/notifications")["b"]["morning"] == antes)
+    antes = api("GET", "/notifications")["b"]["email_on"]
+    ev("document.querySelector('input[aria-label=\"Receber avisos por e-mail\"]').click()"); time.sleep(1.5)
+    check("avisos: a escolha salvou sozinha", api("GET", "/notifications")["b"]["email_on"] == (not antes))
+    ev("document.querySelector('input[aria-label=\"Receber avisos por e-mail\"]').click()"); time.sleep(1.5)
+    check("avisos: voltou", api("GET", "/notifications")["b"]["email_on"] == antes)
     # evidência: Salvar espera a foto
     rid = api("POST", "/recurring", {"label": f"Evid {marca}", "freq": "weekly", "weekdays": 127})["b"]["id"]
     api("POST", f"/recurring/{rid}/toggle", {"done": True})
@@ -77,3 +77,5 @@ try:
     api("DELETE", f"/recurring/{rid}")
 finally:
     p.terminate(); print("OK:", len(ok)); print("FALHAS:", "\n  ".join(falhas) or "nenhuma"); print("ERROS JS:", erros or "nenhum")
+if falhas or erros:
+    sys.exit(1)  # roteiro com FALHAS ou erro de JavaScript não sai com código 0

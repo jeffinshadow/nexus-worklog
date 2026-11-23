@@ -20,6 +20,8 @@ body {
 h1, h2, h3, p { margin: 0; }
 h1, h2, h3 { line-height: var(--lh-title); }
 a { color: var(--primary-hi); text-decoration: none; }
+/* Link no meio de um texto: sublinhado, para não depender só da cor (WCAG 1.4.1). */
+p a, li a, .help a, .dialog-note a { text-decoration: underline; text-underline-offset: 2px; }
 .hidden { display: none !important; }
 /* tela já visitada se atualizando (a resposta passou de 250 ms) */
 .refreshing { opacity: .6; transition: opacity var(--dur-medium) var(--ease-standard); }
@@ -84,7 +86,7 @@ label { display: block; font-size: var(--type-caption); color: var(--on-surface-
 input, select, textarea {
   font-family: inherit; font-size: var(--type-body); width: 100%;
   padding: 10px 12px; border-radius: var(--radius-m);
-  border: 1px solid var(--line-2); background: var(--surface);
+  border: 1px solid var(--field-line); background: var(--surface);
   color: var(--on-surface); transition: border-color var(--dur-short) var(--ease-standard), box-shadow var(--dur-short) var(--ease-standard);
 }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-container); }
@@ -93,6 +95,11 @@ input[type="checkbox"], input[type="radio"] { width: 18px; height: 18px; padding
 input[type="checkbox"]:focus, input[type="radio"]:focus { box-shadow: none; }
 input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 input::placeholder { color: var(--dim); }
+/* Toque: campo com menos de 16 px faz o Safari do iPhone dar zoom na página ao focar. O :root dobrado
+   vence .select-sm, .input-sm e os campos com tamanho próprio (busca do menu, descrição no lugar). */
+@media (pointer: coarse) {
+  :root:root input, :root:root select, :root:root textarea, :root:root .select-sm { font-size: calc(16px / var(--ui-zoom)); }
+}
 .field { margin-bottom: var(--gap); }
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); }
 @media (max-width: 480px) { .field-row { grid-template-columns: 1fr; } }
@@ -152,9 +159,11 @@ input::placeholder { color: var(--dim); }
 .tabbar { display: none; }
 
 @media (max-width: 860px) {
+  /* Foco do teclado nunca 100% debaixo da barra de baixo e do botão flutuante (WCAG 2.4.11, zoom de 200%). */
+  html { scroll-padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
   .app { grid-template-columns: 1fr; }
   .sidebar { display: none; }
-  .main { padding: 20px 16px calc(84px + env(safe-area-inset-bottom)); }
+  .main { padding: 20px max(16px, env(safe-area-inset-right)) calc(84px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }  /* deitado: fora do recorte */
   .page-head { margin-bottom: 18px; }
   .tabbar {
     display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
@@ -164,6 +173,11 @@ input::placeholder { color: var(--dim); }
   .tabbar a { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0; color: var(--on-surface-variant); font-size: var(--type-label); font-weight: var(--weight-label); letter-spacing: var(--track-label); }
   .tabbar a .ico { width: 24px; height: 24px; }
   .tabbar a.active { color: var(--primary-hi); }
+}
+
+/* Alto contraste do sistema: o fundo do item atual some; a marca vira um contorno. */
+@media (forced-colors: active) {
+  [aria-current="page"], .chip-btn[aria-pressed="true"], [role="tab"][aria-selected="true"] { outline: 2px solid Highlight; outline-offset: -2px; }
 }
 
 /* --------------------------------------------------------- superfícies -- */
@@ -193,6 +207,12 @@ button.column-toggle { display: none; }
   .column-head { flex: none; }
   .column-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin-right: -6px; padding-right: 6px; }
   .column-foot { flex: none; }
+  /* Tarefas (o quadro sozinho na tela): a coluna vai até o fim da janela pela posição real, seja qual for a
+     altura do que vem antes (aviso do assistente, cabeçalho); a página não ganha uma segunda rolagem. */
+  .main:has(> .view:not(.hidden) > .columns:only-child) { display: flex; flex-direction: column; height: calc(100vh / var(--ui-zoom)); }
+  .main > .view:has(> .columns:only-child) { flex: 0 1 auto; min-height: 320px; display: flex; flex-direction: column; }
+  .view > .columns:only-child { flex: 0 1 auto; min-height: 0; grid-template-rows: minmax(0, 1fr); }
+  .view > .columns:only-child > .column { max-height: 100%; }
 }
 .column-body { scrollbar-width: thin; scrollbar-color: var(--surface-container-highest) transparent; }
 @media (max-width: 860px) {
@@ -232,8 +252,8 @@ button.column-toggle { display: none; }
   transition: border-color var(--dur-short) var(--ease-standard), background-color var(--dur-short) var(--ease-standard);
 }
 .card:hover { border-color: var(--card-border-hover); }
-.card h3 { font-size: var(--type-body); font-weight: var(--weight-title); letter-spacing: -.01em; margin-bottom: 3px; padding-right: 76px; }  /* cronômetro e ⋮ */
-.card p { font-size: var(--type-body-s); color: var(--on-surface-variant); margin-bottom: 8px; }
+.card h3 { font-size: var(--type-body); font-weight: var(--weight-title); letter-spacing: -.01em; margin-bottom: 3px; padding-right: 76px; overflow-wrap: anywhere; }  /* cronômetro e ⋮; endereço colado não alarga a tela */
+.card p { font-size: var(--type-body-s); color: var(--on-surface-variant); margin-bottom: 8px; overflow-wrap: anywhere; }
 .card-meta { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .card-actions { position: absolute; top: 8px; right: 8px; display: flex; gap: 2px; }
 .card-actions button.icon { width: 30px; height: 30px; }
@@ -325,7 +345,7 @@ button.column-toggle { display: none; }
 .hist-row { display: grid; grid-template-columns: 92px 1fr auto; gap: 14px; align-items: center; padding: 12px 4px; border-bottom: 1px solid var(--outline-variant); min-height: 53px; }  /* com ou sem Desfazer, a mesma altura */
 .hist-row:last-child { border-bottom: 0; }
 .hist-when { font-family: var(--font-label); font-size: var(--type-label); color: var(--dim); line-height: 1.35; }
-.hist-what { min-width: 0; font-size: var(--type-body); }
+.hist-what { min-width: 0; font-size: var(--type-body); overflow-wrap: anywhere; }
 .hist-what .who-badge { margin-right: 6px; }
 .hist-row.undone .hist-what { color: var(--dim); text-decoration: line-through; }
 .who-badge { display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-label); font-size: var(--type-caption); padding: 1px 8px; border-radius: var(--radius-full); border: 1px solid var(--outline-variant); color: var(--on-surface-variant); vertical-align: 1px; }
@@ -338,13 +358,18 @@ button.column-toggle { display: none; }
 .seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: var(--radius-full); border: 1px solid var(--outline-variant); background: var(--surface-card); margin-bottom: 20px; flex-wrap: wrap; }
 .seg button.chip-btn { border: 0; background: transparent; color: var(--on-surface-variant); padding: 7px 14px; border-radius: var(--radius-full); font-weight: var(--weight-label); font-size: var(--type-body-s);
   transition: background-color var(--dur-short) var(--ease-standard), color var(--dur-short) var(--ease-standard); }
-.seg button.chip-btn[aria-selected="true"], .seg button.chip-btn[aria-checked="true"] { background-color: var(--primary-container); color: var(--on-primary-container); }
+.seg button.chip-btn[aria-selected="true"], .seg button.chip-btn[aria-pressed="true"], .seg button.chip-btn[aria-checked="true"] { background-color: var(--primary-container); color: var(--on-primary-container); }
 .settings-grid { display: grid; gap: var(--gap); grid-template-columns: minmax(0, 1fr); }  /* nada passa da tela no celular */
 /* Configurações numa página só: atalhos para as seções no topo; cada seção com o seu título. */
 .settings-index { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 4px; }
 .settings-index a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border-radius: var(--radius-full); border: 1px solid var(--outline-variant);
   background: var(--surface-card); color: var(--on-surface); font-family: var(--font-label); font-size: var(--type-body-s); font-weight: var(--weight-label); text-decoration: none; }
 .settings-index a:hover { background-image: linear-gradient(var(--hover), var(--hover)); }
+/* Computador: o índice acompanha a rolagem (a página é longa), com fundo próprio; os saltos e o foco param abaixo dele. */
+@media (min-width: 861px) {
+  nav.settings-index { position: sticky; top: 0; z-index: 5; margin-top: -12px; padding: 12px 0; background: var(--surface); }
+  html:has(.view:not(.hidden) nav.settings-index) { scroll-padding-top: 76px; }
+}
 .settings-group-title { font-size: var(--type-headline); font-weight: var(--weight-title); letter-spacing: -.02em; margin: 28px 0 12px; scroll-margin-top: 16px; outline: none; }
 .settings-group-title:focus-visible { outline: 2px solid var(--primary); outline-offset: 4px; border-radius: 4px; }
 .settings-danger { margin-top: 28px; }
@@ -379,6 +404,8 @@ button.column-toggle { display: none; }
 .token-meta { grid-column: 1; font-family: var(--font-label); font-size: var(--type-label); color: var(--dim); }
 .token-row .actions { grid-row: 1 / span 2; grid-column: 2; display: flex; gap: 8px; align-items: center; }
 .token-row .dismiss { grid-row: 1; grid-column: 2; }
+/* Celular (e zoom de 400%): os botões descem para a linha de baixo; o nome e o endereço ficam com a largura toda. */
+@media (max-width: 480px) { .token-row { grid-template-columns: minmax(0, 1fr); } .token-row .actions { grid-row: auto; grid-column: 1; flex-wrap: wrap; } }
 /* Falha da fila (fila.js): o texto inteiro, com Copiar, antes de dispensar. */
 .token-row .failed-box { grid-column: 1 / -1; display: flex; gap: 8px; align-items: flex-start; }
 .token-row .failed-box > p { flex: 1; margin: 0; white-space: pre-wrap; word-break: break-word; font-size: var(--type-body-s); color: var(--on-surface); }
@@ -543,6 +570,7 @@ textarea.inline-desc { resize: none; overflow: hidden; line-height: 1.45; }
 .props > .field { min-width: 0; margin-bottom: 12px; }
 .props > .field label { font-size: var(--type-caption); }
 .props > .wide { grid-column: 1 / -1; }
+@media (max-width: 480px) { .props > .field:has(> input[type="datetime-local"]) { grid-column: 1 / -1; } }  /* Lembrete com hora: a linha toda, sem cortar "08:30" */
 .props .field-check { padding-bottom: 8px; }
 .props input.late { color: var(--error); border-color: var(--error); }
 .with-link { display: flex; align-items: center; gap: 4px; }
@@ -607,7 +635,7 @@ textarea.inline-desc { resize: none; overflow: hidden; line-height: 1.45; }
 .search-big .btn { height: 46px; padding: 0 20px; }  /* Buscar com a altura do campo */
 .search-row { padding: 12px 2px; border-bottom: 1px solid var(--outline-variant); }
 .search-row:last-child { border-bottom: 0; }
-.search-row .card-open { font-weight: var(--weight-title); font-size: var(--type-body); display: inline-block; margin-bottom: 6px; }
+.search-row .card-open { font-weight: var(--weight-title); font-size: var(--type-body); display: inline-block; max-width: 100%; margin-bottom: 6px; overflow-wrap: anywhere; }
 .search-row.done .card-open { color: var(--on-surface-variant); }
 .search-row .hit { margin: 6px 0 0; font-size: var(--type-body-s); color: var(--on-surface-variant); overflow-wrap: anywhere; }
 .hit-kind { font-size: var(--type-label); color: var(--dim); margin-right: 8px; text-transform: uppercase; letter-spacing: .03em; }
@@ -629,7 +657,8 @@ mark { background: var(--primary-container); color: var(--on-primary-container);
 .sum-h { font-family: var(--font-label); font-size: var(--type-label); color: var(--primary); margin: 16px 0 6px; }
 .sum-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: var(--type-body-s); flex-wrap: wrap; }
 .sum-row .card-open { flex: 1; min-width: 0; }
-.sum-bar { display: grid; grid-template-columns: minmax(0, 140px) 1fr auto; gap: 10px; align-items: center; font-size: var(--type-body-s); padding: 3px 0; }
+@media (max-width: 560px) { .sum-row .card-open { flex: 1 1 100%; } }  /* celular: o título na linha toda; projeto e tempo descem */
+.sum-bar { display: grid; grid-template-columns: minmax(0, max(140px, min(40%, 240px))) 1fr auto; gap: 10px; align-items: center; font-size: var(--type-body-s); padding: 3px 0; }
 .sum-bar-l { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--on-surface-variant); }
 .sum-track { height: 6px; border-radius: var(--radius-full); background: var(--surface-container-high); overflow: hidden; }
 .sum-track > span { display: block; height: 100%; border-radius: var(--radius-full); }
@@ -711,6 +740,9 @@ mark { background: var(--primary-container); color: var(--on-primary-container);
 .idle-head p strong { color: var(--on-surface); }
 .idle-card .assist-actions { margin-top: 10px; }
 @media (max-width: 860px) { .idle-card { right: 16px; bottom: calc(86px + env(safe-area-inset-bottom)); } }
+/* Zoom alto: o cartão nunca passa da altura da tela (rola por dentro) e, com pouca altura, desce para a borda. */
+.idle-card { max-height: calc(100dvh / var(--ui-zoom) - 32px); overflow-y: auto; }
+@media (max-height: 500px) { :root .idle-card, :root body:has(.fab:not(.hidden)) .idle-card { bottom: 8px; } }
 /* Avisos de lembrete e de rotina (e o de tempo sem registro): botões de 44 px no toque. */
 @media (pointer: coarse), (max-width: 860px) { .idle-card .btn-sm { height: 44px; } }
 /* Convite para instalar o app (instalar.js): mesmo cartão do lembrete; some se um lembrete tocar. */
@@ -781,7 +813,6 @@ body:has(.rem-card) .idle-card:not(.rem-card) { display: none; }
 .chip.rem-at { font-variant-numeric: tabular-nums; }
 .chip.rem-at:has(.ico) { display: inline-flex; align-items: center; gap: 4px; }  /* lembrete da tarefa: sino + hora */
 .chip.rem-at.due { border-color: var(--warning); }  /* na hora: o mesmo contêiner, com contorno */
-.check-row.done .chip.rem-at { opacity: .6; }
 .profile-row .row-actions { margin-top: 0; }
 
 /* ------------------------------------------ cronômetro, chamado, atalhos -- */
@@ -854,7 +885,7 @@ button.nav-link { border: 0; background: transparent; width: 100%; font-family: 
 .task-ctx .chip { padding: 0; border: 0; border-radius: 0; background: none; font-family: var(--font-sans); font-size: inherit; font-weight: 400; letter-spacing: 0; color: var(--on-surface-variant); }
 .task-ctx .chip.project { color: var(--on-surface-variant); }
 .task-ctx .chip .ico { width: 14px; height: 14px; vertical-align: -2px; margin-right: 3px; }
-.task-ctx a.chip.ticket { color: var(--primary-hi); background: none; text-decoration: underline; text-underline-offset: 2px; }
+.task-ctx a.chip.ticket { color: var(--primary-hi); background: none; text-decoration: underline; text-underline-offset: 2px; padding-block: 4px; }  /* alvo de 24 px no computador */
 .task-ctx a.chip.ticket:hover { background: none; }
 .chip.blocked-reason { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .check-row .label small.evidence { color: var(--success); display: inline-block; text-decoration: none; } /* inline-block: a rotina feita fica riscada, a evidência não */
@@ -907,7 +938,7 @@ dialog.sheet .menu-list > :last-child { border-bottom: 0; }
   /* Barra fixa no topo com a marca (como nos outros apps): o dragão e o nome,
      sempre; rolando a página, ganha uma linha embaixo. */
   .appbar { position: fixed; top: 0; left: 0; right: 0; z-index: 25; display: flex; align-items: center; gap: 6px;
-    height: calc(var(--bar-h) + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 8px 0 14px;
+    height: calc(var(--bar-h) + env(safe-area-inset-top)); padding: env(safe-area-inset-top) calc(8px + env(safe-area-inset-right)) 0 calc(14px + env(safe-area-inset-left));
     background: var(--surface); border-bottom: 1px solid transparent;
     transition: background-color var(--dur-medium) var(--ease-standard), border-color var(--dur-medium) var(--ease-standard); }
   /* Rolando (M3): a barra sobe para o contêiner; no escuro ganha também a linha fina. */
@@ -962,7 +993,8 @@ dialog.sheet .menu-list > :last-child { border-bottom: 0; }
   .task-main-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding-bottom: 18px; border-bottom: 1px solid var(--outline-variant); }
   .task-main-actions .btn { height: 48px; }
   .task-main-actions .btn.timer-on { color: var(--error); }
-  dialog.form-dialog { padding: 0 16px 24px; overflow-y: auto; }
+  dialog.form-dialog { padding: 0 calc(16px + env(safe-area-inset-right)) 24px calc(16px + env(safe-area-inset-left)); overflow-y: auto; }
+  dialog.task-dialog { padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left); }  /* deitado: fora do recorte */
   .dlg-bar .btn { height: 40px; padding: 0 20px; margin-right: 4px; }
   .task-sec .check-row button.icon { width: 48px; height: 48px; }
 }
@@ -1039,9 +1071,12 @@ body.rail .nav a .nav-badge { position: absolute; top: 2px; left: 26px; margin: 
 body.rail .who { justify-content: center; padding: 10px 0 0; }
 body.rail .who-me { flex: none; }
 body.rail .who-text, body.rail #btn-logout { display: none; }  /* Sair continua em Configurações */
-body.rail #timer-side { display: none !important; }
-body.rail .timer-mobile:not(.hidden) { display: flex; position: fixed; left: 89px; bottom: 16px; width: 380px; z-index: 40;
-  background: var(--secondary-container); color: var(--on-secondary-container); box-shadow: var(--elev-1); }
+/* Cronômetro no menu compacto: encaixado no trilho (ponto, tempo e parar), em vez de flutuar sobre os cartões.
+   O nome da tarefa volta quando o menu abre (rail-peek). */
+body.rail #timer-side { flex-direction: column; gap: 2px; margin-inline: -10px; padding: 8px 2px 4px; font-size: var(--type-label); }
+body.rail #timer-side:not(.timer-resume) .timer-task, body.rail #timer-side .timer-title { display: none; }
+body.rail #timer-side.timer-resume { padding: 4px 2px; }
+body.rail #timer-side.timer-resume .timer-task { flex: none; width: 32px; height: 32px; justify-content: center; }
 /* Menu compacto aberto pelo mouse (body.rail-peek, ver initRailPeek): a coluna
    continua com 73px e o menu inteiro passa por cima do conteúdo. */
 body.rail-peek .app { grid-template-columns: 73px 1fr; }
@@ -1197,6 +1232,7 @@ dialog .tour-intro { margin: 0 0 14px; line-height: 1.5; }
   .seg button.chip-btn { text-align: center; white-space: normal; }
 }
 .venc-row > .chip, .venc-row > .btn { white-space: nowrap; }
+.venc-row > .venc-gap { flex: none; width: 36px; height: 36px; visibility: hidden; }  /* o lugar do lápis e da lixeira nas linhas da equipe */
 
 /* ------------------------------------------------------------------ ajuda -- */
 dialog.help-dialog { max-height: min(88vh / var(--ui-zoom), 900px); overflow: hidden; padding-bottom: 0; }
@@ -1277,7 +1313,7 @@ dialog.help-dialog > .dialog-actions { flex: none; margin: 0 -24px; padding: 12p
 .mm-ring-track { stroke: var(--surface-container-highest); }
 .mm-ring-val { stroke: var(--primary); stroke-linecap: round; }
 .mm-ring-n { fill: var(--on-surface); font-size: 17px; font-weight: 600; text-anchor: middle; dominant-baseline: central; font-family: var(--font-sans); }
-.mm-spark { display: block; width: 100%; height: auto; margin-top: auto; overflow: visible; }
+.mm-spark { display: block; width: 100%; max-width: calc(286px / var(--ui-zoom)); height: auto; margin-top: auto; overflow: visible; }  /* o rótulo não cresce com o quadro largo */
 .mm-weeks { display: block; width: 100%; height: auto; overflow: visible; }
 .mm-spark text, .mm-weeks text { font-family: var(--font-sans); text-anchor: middle; }
 .mm-axis { fill: var(--on-surface-variant); font-size: 11px; }
@@ -1459,7 +1495,7 @@ li.mes-res { padding-top: 10px; border-top: 1px solid var(--outline-variant); }
 .obj-block .obj-progress { margin-bottom: 10px; }
 .obj-tasks { min-height: 8px; }
 .obj-task { display: flex; align-items: center; gap: 6px; padding: 6px 0; border-bottom: 1px solid var(--outline-variant); background: var(--surface-container); }
-.obj-task .t { flex: 1; min-width: 0; }
+.obj-task .t { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .obj-task.dragging, .obj-block.dragging { opacity: .45; }
 .obj-task.done { opacity: .7; }
 .obj-check-done { display: inline-grid; place-items: center; width: 40px; color: var(--success); }
@@ -1480,6 +1516,7 @@ li.mes-res { padding-top: 10px; border-top: 1px solid var(--outline-variant); }
   .venc-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
   .venc-row > .t { flex: 1 1 100%; }
   .venc-row > .chip { margin-right: 100%; }  /* prazo sozinho; botões na linha de baixo */
+  .venc-row > .venc-gap { display: none; }
 }
 
 /* Tema claro: o dragão padrão (branco) vira escuro; um logo enviado pelo admin fica como está. */
@@ -1807,3 +1844,49 @@ input:disabled { cursor: not-allowed; }
   .time-form .btn { height: 44px; }
   .time-form input { height: 44px; }
 }
+
+/* auditoria p02 */
+/* Admin › Contas no computador: duas linhas por conta. Papéis e equipes na mesma linha;
+   "criada · último acesso" à direita. No celular segue uma informação por linha. */
+@media (min-width: 861px) {
+  .admin-users .list-row .t { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; align-items: center; }
+  .admin-users .list-row .t > span, .admin-users .list-row .t > .account-meta { grid-column: 1; }
+  .admin-users .list-row .t > .account-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0 14px; min-width: 0; }
+  .admin-users .list-row .t > .account-meta small.account-teams { margin-top: 0; }
+  .admin-users .list-row .t > small.account-seen { grid-column: 2; grid-row: 1 / span 2; margin-top: 0; text-align: right; white-space: nowrap; }
+}
+/* Equipe › Precisa de atenção: "e mais N" abaixo da lista. */
+.eq-att-more { margin: 8px 0 0; }
+/* fim auditoria p02 */
+/* auditoria p04 */
+/* Foto que ainda está na fila do aparelho (fotos.js): miniatura com a etiqueta por cima. */
+.photo-thumb.photo-waiting { position: relative; cursor: default; }
+.photo-thumb.photo-waiting img { opacity: .6; }
+.photo-waiting-tag { position: absolute; left: 0; right: 0; bottom: 0; padding: 2px 4px; font-size: var(--type-caption); line-height: 1.2; text-align: center; background: var(--surface-container-high); color: var(--on-surface); }
+/* Ação presa por erro do servidor, na lista da fila (fila.js): o aviso e os botões quebram de linha no celular. */
+.token-row .stuck-box { flex-wrap: wrap; }
+.token-row .stuck-box > p { flex-basis: 100%; }
+/* auditoria p15 */
+/* Projeto: "Próximos prazos" e os objetivos são h2 (ordem dos títulos); mesma aparência de antes. */
+.proj-upcoming h2 { font-size: var(--type-body-s); font-weight: var(--weight-label); color: var(--on-surface-variant); margin: 0 0 4px; }
+.obj-block .obj-head h2 { font-size: var(--type-title); font-weight: var(--weight-title); margin: 0; }
+/* Objetivo concluído recolhido: uma linha. */
+.obj-block.obj-folded .obj-head { margin-bottom: 0; }
+/* rodada 2 r2-12 */
+/* Busca lateral (combobox): a sugestão marcada pelas setas, com o foco ainda no campo. */
+.sugg-item[aria-selected="true"] { background-image: linear-gradient(var(--hover-tint), var(--hover-tint)); outline: 2px solid var(--primary-hi); outline-offset: -2px; }
+@media (max-width: 480px) {
+  /* Detalhe em edição: com o Lembrete na linha inteira, a Prioridade também ocupa a linha (sem meia linha vazia). */
+  .props:has(> .field > input[type="datetime-local"]) > .field:has(> select[aria-label="Prioridade"]) { grid-column: 1 / -1; }
+  /* Tempo por projeto: o nome usa a linha toda (reticências só se faltar espaço); barra e tempo ficam embaixo. */
+  .sum-bar { grid-template-columns: minmax(0, 1fr) auto; row-gap: 2px; }
+  .sum-bar-l { grid-column: 1 / -1; }
+}
+/* Tarefas em janela baixa: o quadro não cabe no mínimo de 320px; as colunas soltam a altura e só a página rola. */
+@media (min-width: 861px) and (max-height: 600px) {
+  .main:has(> .view:not(.hidden) > .columns:only-child) { display: block; height: auto; }
+  .main > .view:has(> .columns:only-child) { min-height: 0; display: block; }
+  .view > .columns:only-child > .column { max-height: none; }
+  .view > .columns:only-child > .column > .column-body { overflow-y: visible; }
+}
+/* fim rodada 2 r2-12 */

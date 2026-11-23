@@ -12,25 +12,6 @@ from app.routers import auth as auth_mod
 from conftest import ligar_pedido_convite, Api, SENHA_PADRAO, hist, uid_de
 
 
-class _Agora:
-    """threading.Thread que roda na hora (o envio em segundo plano vira síncrono)."""
-
-    def __init__(self, target, args=(), daemon=None):
-        self.target, self.args = target, args
-
-    def start(self):
-        self.target(*self.args)
-
-
-@pytest.fixture
-def caixa(monkeypatch):
-    enviados = []
-    monkeypatch.setattr(mailer, "configured", lambda: True)
-    monkeypatch.setattr(mailer, "send", lambda to, subject, text, html=None, **kw: enviados.append((to, subject, text)))
-    monkeypatch.setattr(auth_mod.threading, "Thread", _Agora)
-    return enviados
-
-
 def _conta(admin, email):
     return next(u for u in admin.get("/admin/users").json() if u["email"] == email)
 
@@ -312,3 +293,11 @@ def test_migracao_nao_semeia_o_global():
     db.execute("INSERT INTO users (email, password_hash, role, ticket_url) VALUES ('u1@x.com', 'x', 'user', 'https://a/{id}')")
     db.execute_script((main.SQL_DIR / "037_faltas_admin.sql").read_text(encoding="utf-8"))
     assert db.query_one("SELECT ticket_url FROM app_settings WHERE id = 1")["ticket_url"] is None
+
+
+def test_historico_da_transferencia_nao_diz_abertas():
+    """Na exclusão com with_others_hours, a contagem inclui concluídas: o texto não pode dizer "abertas"."""
+    from app.routers.history import _label
+    row = {"action": "user.transfer_tasks", "before": None,
+           "after": {"count": 5, "from": "sai@example.com", "to": "fica@example.com"}}
+    assert _label(row) == "transferiu 5 tarefas de sai@example.com para fica@example.com"

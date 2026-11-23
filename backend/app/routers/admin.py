@@ -7,14 +7,14 @@ tarefas (routers/viewer.py).
 import logging
 import threading
 import unicodedata
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from psycopg.errors import UniqueViolation
 from psycopg.types.json import Jsonb
 
-from .. import audit, db, links, mailer, org, people, push, roles, teams
+from .. import audit, db, glpi, links, mailer, org, people, push, roles, teams, webhooks
 from ..deps import require_admin, require_admin_csrf
 from ..schemas import (AdminProfileIn, AppSettingsIn, BlockUserIn, DeleteUserIn, InviteIn, OrgIn, ResetPasswordIn,
                        RolesIn)
@@ -55,18 +55,31 @@ def _sort_key(name: str) -> str:
 def list_users(admin=Depends(require_admin)):
     """Contas em ordem de nome (o que a linha mostra), com o último acesso
     (`last_seen_at`: entrar ou usar o app; nulo = nunca entrou), a criação e
-    quantas tarefas abertas cada uma tem (`open_tasks`, para transferir)."""
+    quantas tarefas abertas cada uma tem (`open_tasks`, para transferir), quantas
+    guardam horas de outra pessoa (`others_hours_tasks`; as concluídas entre elas:
+    `others_hours_done`: excluir a conta só passando as tarefas adiante) e os
+    vencimentos dela compartilhados com equipes (`shared_renewals`, por equipe:
+    excluir a conta apaga, o diálogo de excluir avisa)."""
     rows = db.query_all(
         f"""SELECT u.id, u.email, u.role, u.created_at, u.accepts_assignments_at, u.invite_pending,
                    u.viewers_allowed, u.blocked_at, u.last_seen_at,
                    (SELECT count(*) FROM worklog_tasks w WHERE w.user_id = u.id AND w.status <> 'done')::int AS open_tasks,
+                   -- tarefas com horas de outra pessoa (roles.others_hours): o diálogo de excluir oferece passar adiante
+                   (SELECT count(*) FROM worklog_tasks w WHERE w.user_id = u.id AND EXISTS (
+                       SELECT 1 FROM time_entries e WHERE e.task_id = w.id AND e.user_id <> u.id))::int AS others_hours_tasks,
+                   (SELECT count(*) FROM worklog_tasks w WHERE w.user_id = u.id AND w.status = 'done' AND EXISTS (
+                       SELECT 1 FROM time_entries e WHERE e.task_id = w.id AND e.user_id <> u.id))::int AS others_hours_done,
+                   -- vencimentos da conta compartilhados com equipe: excluir a conta apaga, o diálogo avisa
+                   COALESCE((SELECT json_agg(json_build_object('team', x.name, 'count', x.n) ORDER BY lower(x.name))
+                               FROM (SELECT t.name, count(*)::int AS n FROM renewals r JOIN teams t ON t.id = r.team_id
+                                      WHERE r.user_id = u.id GROUP BY t.name) x), '[]'::json) AS shared_renewals,
                    -- convite pendente cujo link já venceu: o admin reenvia
                    (u.invite_pending AND NOT EXISTS (
                        SELECT 1 FROM auth_links l WHERE l.user_id = u.id AND l.kind = 'invite'
                           AND l.used_at IS NULL AND l.expires_at > now())) AS invite_expired,
                    {roles.ROLES_SQL},
                    -- equipes ativas (sql/043): coluna e filtro em Admin › Contas
-                   COALESCE((SELECT json_agg(json_build_object('id', t.id, 'name', t.name) ORDER BY lower(t.name))
+                   COALESCE((SELECT json_agg(json_build_object('id', t.id, 'name', t.name) ORDER BY nx_fold(t.name))
                                FROM teams t JOIN team_members m ON m.team_id = t.id
                               WHERE m.user_id = u.id AND t.archived_at IS NULL), '[]'::json) AS teams,
                    (u.id IS NOT DISTINCT FROM (SELECT s.master_user_id FROM app_settings s WHERE s.id = 1)) AS is_master
@@ -247,25 +260,34 @@ def _transfer_mail(titles: list[str], from_name: str, by_name: str):
     return m
 
 
-def transfer_open_tasks(src: dict, dest: dict, admin: dict) -> dict:
+def transfer_open_tasks(src: dict, dest: dict, admin: dict, with_others_hours: bool = False) -> dict:
     """Passa as tarefas abertas (não concluídas) de `src` para `dest`, numa
     gravação só: a tarefa muda de dono com as anotações, o checklist e as
     fotos; entra no projeto padrão de quem recebe (os projetos são de cada
     um); o tempo já registrado fica no registro de quem saiu (é trabalho dele).
     Cada tarefa vai ao histórico de quem recebe (worklog.transfer), e quem
-    recebe é avisado como numa atribuição (e-mail e notificação no aparelho)."""
+    recebe é avisado como numa atribuição (e-mail e notificação no aparelho).
+    `with_others_hours` (só na exclusão da conta): as CONCLUÍDAS que guardam horas
+    de outra pessoa vão junto, como estão (status, conclusão e resolução), para a
+    exclusão não apagar essas horas; entram na contagem, sem aviso (não são trabalho a fazer)."""
     rows = db.query_all(
-        """WITH t AS (SELECT id FROM worklog_tasks WHERE user_id = %(src)s AND status <> 'done' FOR UPDATE),
+        """WITH t AS (SELECT id FROM worklog_tasks w WHERE user_id = %(src)s
+                       AND (status <> 'done' OR (%(alheias)s AND EXISTS (
+                            SELECT 1 FROM time_entries e WHERE e.task_id = w.id AND e.user_id <> w.user_id)))
+                       FOR UPDATE),
                 x AS (DELETE FROM worklog_task_projects WHERE task_id IN (SELECT id FROM t)),
                 tm AS (DELETE FROM task_timers WHERE task_id IN (SELECT id FROM t)),
                 n AS (UPDATE task_notes SET user_id = %(dst)s, external_ref = NULL WHERE task_id IN (SELECT id FROM t)),
                 c AS (UPDATE task_checklist SET user_id = %(dst)s WHERE task_id IN (SELECT id FROM t)),
                 f AS (UPDATE photos SET user_id = %(dst)s, external_ref = NULL WHERE task_id IN (SELECT id FROM t)),
                 w AS (UPDATE worklog_tasks SET user_id = %(dst)s, project_id = %(p)s, objective_id = NULL,
-                                               exec_position = NULL, external_ref = NULL
-                       WHERE id IN (SELECT id FROM t) RETURNING id, title)
-           SELECT id, title FROM w ORDER BY id""",
-        {"src": src["id"], "dst": dest["id"], "p": default_project(dest["id"])})
+                                               exec_position = NULL, external_ref = NULL,
+                                               -- quem atribuiu recebeu de volta: vira tarefa dele, não "atribuída por mim"
+                                               assigned_at = CASE WHEN assigned_by = %(dst)s THEN NULL ELSE assigned_at END,
+                                               assigned_by = CASE WHEN assigned_by = %(dst)s THEN NULL ELSE assigned_by END
+                       WHERE id IN (SELECT id FROM t) RETURNING id, title, status)
+           SELECT id, title, status FROM w ORDER BY id""",
+        {"src": src["id"], "dst": dest["id"], "p": default_project(dest["id"]), "alheias": with_others_hours})
     from_name = people.profile(src["id"])["name"]
     to_name = people.profile(dest["id"])["name"]
     by_name = people.profile(admin["user_id"])["name"]
@@ -284,6 +306,9 @@ def transfer_open_tasks(src: dict, dest: dict, admin: dict) -> dict:
     # (o admin não lê o registro de ninguém; passar tarefas para si mesmo era um jeito de ler sem deixar rastro).
     audit.record(ctx, "user.transfer_tasks", "user", src["id"], user_id=src["id"],
                  after={"from": src["email"], "to": dest["email"], "count": len(rows), "by": admin["email"]})
+    rows = [r for r in rows if r["status"] != "done"]  # o aviso é das abertas (o que há para fazer)
+    if not rows:
+        return out
     titles = [r["title"] for r in rows]
     if mailer.configured():
         _spawn(dest["email"], _transfer_mail(titles, from_name, by_name))
@@ -444,8 +469,12 @@ def edit_profile(user_id: int, data: AdminProfileIn, admin=Depends(require_admin
 def delete_user(user_id: int, data: DeleteUserIn, admin=Depends(require_admin_csrf)):
     """Exclui a conta e TODOS os dados dela (tarefas, rotinas, tempo, chaves,
     histórico: ON DELETE CASCADE). Sem volta: o admin confirma digitando o
-    e-mail. Tarefas que essa pessoa atribuiu ficam com quem recebeu.
-    `transfer_to`: antes de excluir, as tarefas abertas passam para essa pessoa."""
+    e-mail. Tarefas que essa pessoa atribuiu ficam com quem recebeu. Os
+    vencimentos dela saem junto, inclusive os compartilhados com equipe (a
+    resposta conta: `renewals` e `shared_renewals`).
+    `transfer_to`: antes de excluir, as tarefas abertas passam para essa pessoa, e
+    também as concluídas que guardam horas de outra pessoa. Sem `transfer_to`, conta
+    com tarefa que guarda horas de outra pessoa = 409 (nada é apagado)."""
     if user_id == admin["user_id"]:
         raise HTTPException(status_code=400, detail="para a sua própria conta, use Configurações > Conta")
     target = _ensure_user(user_id)
@@ -456,7 +485,16 @@ def delete_user(user_id: int, data: DeleteUserIn, admin=Depends(require_admin_cs
     if "admin" in roles.of(user_id) and roles.admins_count() <= 1:
         raise HTTPException(status_code=400, detail="o sistema precisa de pelo menos um admin")
     dest = _receiver(user_id, data.transfer_to)
-    moved = transfer_open_tasks(target, dest, admin) if dest else None
+    moved = transfer_open_tasks(target, dest, admin, with_others_hours=True) if dest else None
+    # Tarefa que veio de outra pessoa guarda as horas dela: excluir a conta as apagaria em
+    # cascata. Com transfer_to elas já saíram acima; sem, recusa antes de apagar qualquer coisa.
+    alheias = roles.others_hours(user_id)
+    if alheias["tasks"]:
+        t, p = alheias["tasks"], alheias["people"]
+        raise HTTPException(status_code=409, detail=(
+            f"essa conta guarda {'1 tarefa' if t == 1 else f'{t} tarefas'} com horas de "
+            f"{'outra pessoa' if p == 1 else f'{p} outras pessoas'}, que seriam apagadas junto: "
+            f"transfira as tarefas para outra pessoa (exclua a conta escolhendo quem recebe)"))
     counts = account_counts(user_id)
     if not roles.delete_account(user_id):
         raise HTTPException(status_code=400, detail="o sistema precisa de pelo menos um admin")
@@ -470,7 +508,9 @@ def account_counts(user_id: int) -> dict:
     return db.query_one(
         """SELECT (SELECT count(*) FROM worklog_tasks WHERE user_id = %(u)s)::int AS tasks,
                   (SELECT count(*) FROM recurring_tasks WHERE user_id = %(u)s)::int AS routines,
-                  (SELECT count(*) FROM time_entries WHERE user_id = %(u)s)::int AS time_entries""",
+                  (SELECT count(*) FROM time_entries WHERE user_id = %(u)s)::int AS time_entries,
+                  (SELECT count(*) FROM renewals WHERE user_id = %(u)s)::int AS renewals,
+                  (SELECT count(*) FROM renewals WHERE user_id = %(u)s AND team_id IS NOT NULL)::int AS shared_renewals""",
         {"u": user_id})
 
 
@@ -478,7 +518,7 @@ def account_counts(user_id: int) -> dict:
 def get_settings(admin=Depends(require_admin)):
     r = db.query_one("SELECT support_contact FROM app_settings WHERE id = 1")
     # retro_days e photo_quota_mb: só leitura (fixos; ver config.PHOTO_QUOTA_MB e services.TASK_RETRO_DAYS).
-    return {**r, "retro_days": services.task_retro_days(), "photo_quota_mb": config.PHOTO_QUOTA_MB}
+    return {**r, "retro_days": services.TASK_RETRO_DAYS, "photo_quota_mb": config.PHOTO_QUOTA_MB}
 
 
 @router.put("/settings")
@@ -499,7 +539,10 @@ def get_org(admin=Depends(require_admin)):
     return {"team_visibility": o["team_visibility"], "team_visibility_since": o["team_visibility_since"],
             "assign_receive": o["assign_receive"], "assign_receive_since": o["assign_receive_since"],
             "identity_managed": o["identity_managed"], "invite_request_on": o["invite_request_on"],
-            "ticket_url": o["ticket_url"], "privacy_url": o["privacy_url"], "mail_configured": mailer.configured()}
+            "ticket_url": o["ticket_url"], "privacy_url": o["privacy_url"], "mail_configured": mailer.configured(),
+            # GLPI: o App-Token nunca volta; só se há um guardado.
+            "glpi_url": o["glpi_url"], "glpi_app_token_set": bool(db.query_one(
+                "SELECT 1 FROM app_settings WHERE id = 1 AND glpi_app_token IS NOT NULL"))}
 
 
 @router.put("/org")
@@ -538,6 +581,43 @@ def put_org(data: OrgIn, admin=Depends(require_admin_csrf)):
                 db.execute(f"UPDATE app_settings SET {key} = %s, updated_at = now() WHERE id = 1", (url,))
                 audit.record(ctx, f"app.{key}", "app_settings", 1, before={key: before[key]},
                              after={key: url, "by": admin["email"]})
+    # GLPI (app/glpi.py). Trocar o endereço desconecta todo mundo e solta as tarefas dos
+    # chamados: o token de cada pessoa, o App-Token e a numeração dos chamados são daquele
+    # GLPI e não seguem para outro endereço. As tarefas ficam.
+    if "glpi_url" in data.model_fields_set:
+        url = glpi.clean_base(data.glpi_url)
+        if url != before["glpi_url"]:
+            if url:
+                try:
+                    glpi.check_base(url)
+                except webhooks.Refused as e:
+                    raise HTTPException(status_code=400, detail=f"endereço do GLPI: {e}") from None
+            with db.transaction():
+                db.execute("UPDATE app_settings SET glpi_url = %s, updated_at = now() WHERE id = 1", (url,))
+                db.execute("DELETE FROM glpi_accounts")
+                # A chave "glpi:N" que a sincronização pôs na tarefa sai junto com o vínculo:
+                # senão o chamado de mesmo número no GLPI novo não seria importado.
+                db.execute("""UPDATE worklog_tasks w SET external_ref = NULL FROM glpi_tickets g
+                               WHERE g.task_id = w.id AND w.external_ref = 'glpi:' || g.ticket_id""")
+                # Idem a chave da anotação "o chamado saiu da lista" (única por pessoa): senão o
+                # chamado de mesmo número do GLPI novo não ganharia a dele.
+                db.execute("""UPDATE task_notes n SET external_ref = NULL FROM glpi_tickets g
+                               WHERE n.task_id = g.task_id AND n.external_ref = 'glpi:' || g.ticket_id || ':saiu'""")
+                links = db.execute("DELETE FROM glpi_tickets")
+                audit.record(ctx, "app.glpi_url", "app_settings", 1, before={"glpi_url": before["glpi_url"]},
+                             after={"glpi_url": url, "links": links, "by": admin["email"]})
+                # O App-Token guardado era do endereço antigo: sai na mesma transação (nem por um
+                # instante fica valendo para o endereço novo); se a chamada traz outro, entra logo abaixo.
+                if db.execute("UPDATE app_settings SET glpi_app_token = NULL WHERE id = 1 AND glpi_app_token IS NOT NULL"
+                              ) and "glpi_app_token" not in data.model_fields_set:
+                    audit.record(ctx, "app.glpi_app_token", "app_settings", 1,
+                                 after={"set": False, "by": admin["email"]})
+    if "glpi_app_token" in data.model_fields_set:
+        token = (data.glpi_app_token or "").strip() or None
+        db.execute("UPDATE app_settings SET glpi_app_token = %s, updated_at = now() WHERE id = 1",
+                   (glpi.seal(token) if token else None,))
+        audit.record(ctx, "app.glpi_app_token", "app_settings", 1,  # o valor nunca vai ao histórico
+                     after={"set": bool(token), "by": admin["email"]})
     return get_org(admin)
 
 
@@ -579,7 +659,12 @@ def reset_password(user_id: int, data: ResetPasswordIn | None = None, admin=Depe
                  after={"by": admin["email"], "method": method, **({"unblocked": True} if was_blocked else {})},
                  user_id=user_id)
     if method == "temp":
-        return {"email": target["email"], "temp_password": temp, "method": "temp"}
+        # A pessoa fica sabendo que a senha foi trocada, por quem e quando (sem a senha:
+        # ela vem de quem administra, por outro canal). O método link já avisa.
+        notified = mailer.configured()
+        if notified:
+            _spawn(target["email"], _temp_reset_mail(target["email"], people.profile(admin["user_id"])["name"], was_blocked))
+        return {"email": target["email"], "temp_password": temp, "method": "temp", "notified": notified}
     link = links.url("reset", links.issue(user_id, "reset", ttl=ADMIN_RESET_TTL))
     try:
         m = _admin_reset_mail(target["email"], people.profile(admin["user_id"])["name"], link, was_blocked)
@@ -592,6 +677,21 @@ def reset_password(user_id: int, data: ResetPasswordIn | None = None, admin=Depe
 
 
 ADMIN_RESET_TTL = timedelta(hours=24)  # o "Esqueci a senha" vale 1 hora; o mandado pelo admin, um dia
+
+
+def _temp_reset_mail(email: str, by_name: str, unblocked: bool):
+    from ..notify import Mail
+    quando = datetime.now(services.app_tz()).strftime("%d/%m/%Y às %H:%M")
+    m = Mail("A sua senha do Nexus foi redefinida",
+             "O seu acesso foi liberado" if unblocked else "A sua senha do Nexus foi redefinida",
+             f"{by_name}, que administra o Nexus, {'liberou o seu acesso e ' if unblocked else ''}redefiniu a sua senha "
+             f"em {quando}. A senha temporária não vai por e-mail: quem administra passa a você. "
+             "No primeiro acesso, o Nexus pede uma senha nova.")
+    m.blocks = [("A sua conta", [email]),
+                ("A senha antiga não vale mais", ["Os aparelhos conectados saíram da conta."]),
+                ("Não esperava por isso?", ["Fale com quem administra o Nexus."])]
+    m.reason, m.settings_tab = "Você recebe este e-mail porque um administrador do Nexus redefiniu a sua senha.", None
+    return m
 
 
 def _admin_reset_mail(email: str, by_name: str, link: str, unblocked: bool):

@@ -10,26 +10,6 @@ from conftest import ADMIN_EMAIL, ADMIN_PW, Api, SENHA_PADRAO, uid_de
 SENHA_NOVA = "Senha-Nova-Do-Link-1"
 
 
-class _Agora:
-    """threading.Thread que roda na hora (o envio em segundo plano vira síncrono)."""
-
-    def __init__(self, target, args=(), daemon=None):
-        self.target, self.args = target, args
-
-    def start(self):
-        self.target(*self.args)
-
-
-@pytest.fixture
-def caixa(monkeypatch):
-    """E-mail configurado; o que seria enviado fica na lista (para, assunto, texto)."""
-    enviados = []
-    monkeypatch.setattr(mailer, "configured", lambda: True)
-    monkeypatch.setattr(mailer, "send", lambda to, subject, text, html=None: enviados.append((to, subject, text)))
-    monkeypatch.setattr(auth_mod.threading, "Thread", _Agora)
-    return enviados
-
-
 def _token(texto, chave):
     return re.search(chave + r"=([\w-]+)", texto).group(1)
 

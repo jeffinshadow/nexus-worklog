@@ -30,6 +30,7 @@ from .. import assignable, audit, db, mailer, people, push, teams
 from ..deps import active_user_csrf, require_assigner, require_assigner_csrf, require_people_list
 from ..labels import PRIO_PT
 from ..schemas import AssignEditIn, AssignIn, ReturnIn
+from ..security import token_hash
 from ..services import app_today, app_tz, default_project
 
 router = APIRouter(prefix="/api/assign", tags=["assign"])
@@ -58,26 +59,32 @@ def list_people(team: Annotated[str | None, Query(max_length=20)] = None, user=D
     papel: todas as dela), para agrupar o Atribuir; `team` filtra por uma
     (o mesmo seletor da Equipe, teams.filter_sql)."""
     uid = user["user_id"]
-    is_admin = "admin" in (user.get("roles") or [])
+    # Admin só pelo app (como deps.require_people_list): a chave de API de um admin
+    # que também atribui vê o que o papel "Manda tarefas" vê, não todas as contas.
+    is_admin = "admin" in (user.get("roles") or []) and user.get("actor") == "web"
     master = teams.selector(uid, "assigner")["master"]
     cut = teams.filter_sql("u", uid, "assigner", team) if "assigner" in (user.get("roles") or []) else "TRUE"
     scope = "TRUE" if is_admin else assignable.scope_sql("u", uid)
     names = teams.names_sql("u.id") if master else teams.shared_names_sql(uid, "u.id")
     rows = db.query_all(
         f"""SELECT u.id, u.email, u.accepts_assignments_at, u.blocked_at IS NOT NULL AS blocked,
+                   u.invite_pending AS pending,
                    {assignable.receive_sql('u', uid)} AS accepts, {names} AS teams,
                    {teams.company_sql('u.id')} AS company
              FROM users u
             WHERE EXISTS (SELECT 1 FROM user_roles r WHERE r.user_id = u.id AND r.role = 'user')
               AND ({scope} OR u.id = %s) AND {cut}
-            ORDER BY NOT {assignable.receive_sql('u', uid)}, lower(u.email)""", (uid,))
+            ORDER BY NOT {assignable.receive_sql('u', uid)}, nx_fold(u.email)""", (uid,))
     # Uma leitura para a lista toda (eram três consultas por pessoa: "todos recebem", equipe e perfil).
     todos = assignable.everyone()
     perfis = people.profiles(r["id"] for r in rows)
     out = []
     for r in rows:
         everyone = r.pop("company") and todos  # o mesmo que assignable.everyone_for(r["id"])
+        pending = r.pop("pending")
         if not is_admin and not r["accepts"] and r["id"] != uid:
+            if r["blocked"] or pending:
+                continue  # bloqueada ou convite sem aceitar: não é "ainda não aceita", nem entra na conta
             out.append({"accepts": False, "everyone": everyone})
             continue
         p = dict(perfis[r["id"]])
@@ -125,7 +132,8 @@ def _send(to: str, mail) -> None:
     try:
         mailer.send(to, mail.subject, mail.text(), mail.html())
     except Exception as e:  # noqa: BLE001 — a tarefa já foi atribuída; o e-mail é aviso
-        log.warning("e-mail de atribuição para %s falhou: %s", to, e)
+        # Sem o e-mail em claro no log: o mesmo resumo com que se procura a conta, se precisar.
+        log.warning("e-mail de atribuição para %s falhou: %s", token_hash(to)[:12], e)
 
 
 def _spawn(to: str, mail) -> None:
@@ -147,13 +155,14 @@ def assign(data: AssignIn, user=Depends(require_assigner_csrf)):
         raise HTTPException(status_code=404, detail="usuário não encontrado")
     if not target["accepts"]:
         raise HTTPException(status_code=403, detail="essa pessoa não aceitou receber tarefas atribuídas")
-    if data.from_return is not None and not any(r["id"] == data.from_return for r in open_returns(user["user_id"])):
-        raise HTTPException(status_code=409, detail=RESOLVED_MSG)
     by_name = people.profile(user["user_id"])["name"]
     to_name = people.profile(target["id"])["name"]
     # A tarefa e as duas linhas do histórico (a de quem recebe e a de quem atribuiu, que
     # é de onde sai "Tarefas que atribuí") vão juntas; os avisos saem depois de gravar.
     with db.transaction():
+        _limit(user["user_id"], target["id"])
+        if data.from_return is not None:
+            _lock_open_return(user["user_id"], data.from_return, 409, RESOLVED_MSG)
         row = db.query_one(
             """INSERT INTO worklog_tasks (user_id, title, description, due_date, priority, ticket, after_hours,
                                           assigned_by, assigned_at, project_id)
@@ -172,6 +181,33 @@ def assign(data: AssignIn, user=Depends(require_assigner_csrf)):
         _spawn(target["email"], _assignment_mail({**snap, "due_date": data.due_date}, by_name, target["id"]))
     threading.Thread(target=push.notify_assigned, args=(target["id"], {"id": tid, "title": data.title}, by_name), daemon=True).start()
     return {"id": tid, "to": to_name, "emailed": emailed}
+
+
+# Freio por par (quem atribui, quem recebe): cada atribuição cria tarefa na conta de
+# outra pessoa e manda e-mail e push. Por destinatário, não um teto global: uma
+# conta-robô de integração precisa importar filas para várias pessoas. Vale para
+# app, chave de API e MCP (todos passam por assign()). Conta no histórico de quem
+# atribui (assign.send), que já guarda o destinatário: sobrevive a reinício do
+# backend e uma atribuição cancelada conta (o cancelar também manda e-mail).
+ASSIGN_MAX, ASSIGN_WINDOW = 20, 600
+
+
+def _limit(by: int, to: int) -> None:
+    """Dentro da transação do envio: a trava por remetente (solta ao gravar) põe em
+    fila os envios simultâneos da mesma pessoa, e cada um conta os que já gravaram."""
+    db.query_one("SELECT pg_advisory_xact_lock(hashtext('assign.limit'), %s::int)", (by,))
+    row = db.query_one(
+        """SELECT count(*)::int AS n, min(created_at) AS first, now() AS now FROM (
+               SELECT a.created_at FROM audit_log a
+                WHERE a.user_id = %s AND a.action = 'assign.send' AND (a.after->>'to_id')::bigint = %s
+                  AND a.created_at > now() - make_interval(secs => %s)
+                ORDER BY a.created_at DESC LIMIT %s) x""", (by, to, ASSIGN_WINDOW, ASSIGN_MAX))
+    if row["n"] >= ASSIGN_MAX:
+        wait = max(1, ASSIGN_WINDOW - int((row["now"] - row["first"]).total_seconds()))
+        raise HTTPException(
+            status_code=429, headers={"Retry-After": str(wait)},
+            detail=f"muitas tarefas para a mesma pessoa em pouco tempo (até {ASSIGN_MAX} a cada "
+                   f"{ASSIGN_WINDOW // 60} minutos); tente de novo em alguns minutos")
 
 
 def notify_assigner(task_id: int) -> None:
@@ -205,12 +241,19 @@ def sent(user=Depends(require_assigner)):
     `editable`: ainda dá para corrigir (o que quem recebeu não mudou);
     `cancelable`: ainda dá para cancelar. As que saíram da conta de
     quem recebeu continuam aqui (status "removed", com `ended`)."""
+    # Fora das equipes de quem atribuiu (`same_team` falso) a linha vem sem `description`
+    # nem `blocked_reason`; conta de destino excluída: "conta excluída", sem e-mail nem
+    # motivo da devolução (em _removed). Fica em comentário: a docstring vai para o openapi.
+    # `open`: "a fazer", sem nada registrado e no alcance (o que o cancelar exige). Alterar
+    # pede também a regra do PATCH: a pessoa ainda recebe, ou a conta está bloqueada
+    # (`editable` falso com `cancelable` verdadeiro: quem desligou o aceite).
+    scope = assignable.scope_sql('u', int(user['user_id']))
     rows = db.query_all(
         f"""SELECT w.id, w.title, w.description, w.status, w.due_date, w.assigned_at, w.completed_at, w.priority, w.blocked_reason,
                    w.user_id AS to_id, u.email AS to_email,
-                   (w.status = 'todo' AND NOT EXISTS ({_STARTED.format(t="w.id")})
-                    AND {assignable.scope_sql('u', int(user['user_id']))}) AS editable,
-                   {assignable.scope_sql('u', int(user['user_id']))} AS same_team
+                   (w.status = 'todo' AND NOT EXISTS ({_STARTED.format(t="w.id")}) AND {scope}) AS open,
+                   (u.blocked_at IS NOT NULL OR {assignable.consent_sql('u')}) AS receives,
+                   {scope} AS same_team
               FROM worklog_tasks w JOIN users u ON u.id = w.user_id
              WHERE w.assigned_by = %s
              ORDER BY w.assigned_at DESC NULLS LAST, w.id DESC
@@ -221,8 +264,14 @@ def sent(user=Depends(require_assigner)):
     nomes = people.profiles(r["to_id"] for r in rows)
     for r in rows:
         # Cancelar só enquanto quem recebeu não mexeu em nada (Alterar ainda vale
-        # para os campos que ela não mudou).
-        r["cancelable"] = bool(r["editable"] and not _touched(r["id"], r["to_id"]))
+        # para os campos que ela não mudou). Quem desligou o aceite: só cancelar.
+        aberta, recebe = r.pop("open"), r.pop("receives")
+        r["editable"] = bool(aberta and recebe)
+        r["cancelable"] = bool(aberta and not _touched(r["id"], r["to_id"]))
+        if not r["same_team"]:
+            # Fora do alcance de quem atribuiu: a linha fica (o que ela mandou), sem o
+            # que quem recebeu escreve hoje na tarefa.
+            r["description"] = r["blocked_reason"] = None
         r["to_name"] = nomes[r.pop("to_id")]["name"]
         r["late"] = bool(r["due_date"] and r["status"] != "done" and r["due_date"] < today)
         r["ended"] = None
@@ -253,8 +302,12 @@ def _removed(uid: int) -> list[dict]:
                                         AND u.action = 'assign.update' ORDER BY u.id DESC LIMIT 1),
                            a.after->>'title') AS title,
                   a.after->>'to' AS to_name,
-                  a.after->>'to_email' AS to_email, a.created_at AS assigned_at, f.action AS end_action, f.at AS ended_at,
-                  f.snap AS end_snap, z.action AS res_action, z.at AS res_at, z.to_name AS res_to
+                  a.after->>'to_email' AS to_email,
+                  EXISTS (SELECT 1 FROM users x
+                           WHERE x.id = COALESCE((a.after->>'to_id')::bigint,
+                                                 (SELECT y.id FROM users y WHERE y.email = a.after->>'to_email'))) AS to_exists,
+                  a.created_at AS assigned_at, f.action AS end_action, f.at AS ended_at,
+                  f.snap AS end_snap, z.action AS res_action, z.at AS res_at, z.to_name AS res_to, z.to_exists AS res_to_exists
              FROM audit_log a
              LEFT JOIN LATERAL (
                   SELECT d.action, d.created_at AS at, d.id, d.before->>'title' AS title, NULL::jsonb AS snap FROM audit_log d
@@ -271,7 +324,11 @@ def _removed(uid: int) -> list[dict]:
                      AND d.action = 'assign.returned'
                   ORDER BY id DESC LIMIT 1) f ON true
              LEFT JOIN LATERAL (
-                  SELECT r.action, r.created_at AS at, r.after->>'to' AS to_name FROM audit_log r
+                  SELECT r.action, r.created_at AS at, r.after->>'to' AS to_name,
+                         EXISTS (SELECT 1 FROM users x
+                                  WHERE x.id = COALESCE((r.after->>'to_id')::bigint,
+                                                        (SELECT y.id FROM users y WHERE y.email = r.after->>'to_email'))) AS to_exists
+                    FROM audit_log r
                    WHERE f.action = 'assign.returned' AND r.user_id = a.user_id AND r.id > f.id
                      AND ((r.entity = 'assignment' AND r.entity_id = a.entity_id AND r.action = 'assign.close')
                           OR (r.action = 'assign.send' AND r.after->>'from_return' = a.entity_id::text))
@@ -286,9 +343,16 @@ def _removed(uid: int) -> list[dict]:
     for r in rows:
         snap, kind = r.pop("end_snap") or {}, kinds.get(r.pop("end_action"), "removed")
         res_action, res_at, res_to = r.pop("res_action"), r.pop("res_at"), r.pop("res_to")
+        if not r.pop("res_to_exists"):
+            res_to = GONE  # quem recebeu a reatribuição saiu da instância: sem o nome, como em to_name
         ended = {"kind": kind, "at": r.pop("ended_at")}
+        gone = not r.pop("to_exists")
+        if gone:
+            # A conta de destino não existe mais: a linha fica (é o histórico de quem
+            # atribuiu), sem nome, e-mail nem o motivo que a pessoa escreveu.
+            r["to_name"], r["to_email"] = GONE, None
         if kind == "returned":
-            ended["reason"] = snap.get("reason")
+            ended["reason"] = None if gone else snap.get("reason")
             ended["resolved"] = None if not res_action else (
                 {"kind": "closed", "at": res_at} if res_action == "assign.close"
                 else {"kind": "reassigned", "at": res_at, "to": res_to})
@@ -299,15 +363,18 @@ def _removed(uid: int) -> list[dict]:
     return out
 
 
+GONE = "conta excluída"
 RESOLVED_MSG = "essa devolução já foi resolvida (atribuída de novo ou encerrada)"
 
 # Devolução ainda sem decisão de quem atribuiu: a tarefa não voltou (desfazer
 # de quem recebeu), não saiu de novo da conta dela e não foi atribuída de novo
 # nem encerrada.
 _OPEN_RETURNS = """
-    SELECT a.id AS hist_id, a.entity_id AS id, a.after->>'title' AS title, a.after->>'to' AS to_name,
-           (a.after->>'to_id')::bigint AS to_id, a.after->>'reason' AS reason, a.created_at AS at
-      FROM audit_log a
+    SELECT a.id AS hist_id, a.entity_id AS id, a.after->>'title' AS title,
+           CASE WHEN tu.id IS NULL THEN 'conta excluída' ELSE a.after->>'to' END AS to_name,
+           (a.after->>'to_id')::bigint AS to_id,
+           CASE WHEN tu.id IS NULL THEN NULL ELSE a.after->>'reason' END AS reason, a.created_at AS at
+      FROM audit_log a LEFT JOIN users tu ON tu.id = (a.after->>'to_id')::bigint
      WHERE a.user_id = %(u)s AND a.action = 'assign.returned' AND a.created_at > now() - interval '60 days'
        AND NOT EXISTS (SELECT 1 FROM worklog_tasks w WHERE w.id = a.entity_id)
        AND NOT EXISTS (SELECT 1 FROM audit_log d WHERE d.user_id = (a.after->>'to_id')::bigint AND d.entity = 'worklog'
@@ -320,6 +387,20 @@ _OPEN_RETURNS = """
 def open_returns(uid: int) -> list[dict]:
     """Devoluções que esperam quem atribuiu (a mais recente antes)."""
     return db.query_all(_OPEN_RETURNS + " ORDER BY a.id DESC LIMIT 50", {"u": uid})
+
+
+def _lock_open_return(uid: int, task_id: int, status: int, detail: str) -> dict:
+    """Dentro da transação de quem decide a devolução (atribuir de novo ou
+    encerrar): trava a linha assign.returned e confere de novo. Duas decisões
+    ao mesmo tempo: a segunda espera a primeira gravar e encontra a devolução
+    já resolvida."""
+    r = next((x for x in open_returns(uid) if x["id"] == task_id), None)
+    if r:
+        db.query_one("SELECT 1 FROM audit_log WHERE id = %s FOR UPDATE", (r["hist_id"],))
+        r = next((x for x in open_returns(uid) if x["id"] == task_id), None)
+    if not r:
+        raise HTTPException(status_code=status, detail=detail)
+    return r
 
 
 def return_resolved(task_id: int, assigner_id: int, since_id: int) -> bool:
@@ -375,6 +456,8 @@ def _change_mail(title: str, by_name: str, verb: str, lines: list[str], link: st
     return m
 
 
+NOT_RECEIVING_MSG = ("essa pessoa não recebe mais tarefas atribuídas: a tarefa continua com ela, "
+                     "mas você não pode mais alterá-la (ainda pode cancelar)")
 OUT_OF_TEAM_MSG = ("vocês não estão mais na mesma equipe: a tarefa continua na sua lista, "
                    "mas só quem recebeu pode mudá-la agora")
 
@@ -389,6 +472,27 @@ def update_sent(task_id: int, data: AssignEditIn, user=Depends(require_assigner_
         # Atribuição antiga entre quem não compartilha mais equipe: fica no
         # histórico de quem mandou (Tarefas que atribuí), mas não se altera.
         raise HTTPException(status_code=403, detail=OUT_OF_TEAM_MSG)
+    if not row["blocked"] and not assignable.can_receive(user["user_id"], row["user_id"]):
+        # A mesma regra do envio: quem desligou o aceite não tem a tarefa reescrita.
+        # Cancelar continua valendo (só o escopo). Conta bloqueada pelo admin segue
+        # como antes: dá para corrigir, sem e-mail (ninguém lê).
+        raise HTTPException(status_code=403, detail=NOT_RECEIVING_MSG)
+    with db.transaction():
+        after, by_name, desc_changed = _update_sent(task_id, data, row, user)
+    if mailer.configured() and not row["blocked"]:  # conta bloqueada: ninguém lê
+        lines = [after["title"]]
+        if desc_changed:
+            lines.append(after["description"] or "(sem descrição)")
+        if after["due_date"]:
+            lines.append(f"Prazo: {after['due_date'].strftime('%d/%m/%Y')}")
+        lines.append(f"Prioridade {PRIO_PT[after['priority']]}")
+        _spawn(row["email"], _change_mail(after["title"], by_name, "Alterou", lines, f"/#/tarefas?id={task_id}", row["user_id"]))
+    return {"id": task_id, "title": after["title"], "description": after["description"], "due_date": after["due_date"],
+            "priority": after["priority"]}
+
+
+def _update_sent(task_id: int, data: AssignEditIn, row: dict, user: dict):
+    """A gravação de update_sent (a tarefa e as duas linhas do histórico), dentro da transação de quem chama."""
     before = audit.worklog_snapshot(task_id, row["user_id"])
     changes = {k: v for k, v in data.model_dump(exclude_unset=True).items() if v is not None or k in ("due_date", "description")}
     changes = {k: v for k, v in changes.items() if audit._jsonable(v) != audit._jsonable(before[k])}
@@ -416,16 +520,7 @@ def update_sent(task_id: int, data: AssignEditIn, user=Depends(require_assigner_
                  before={k: before[k] for k in ("title", "description", "due_date", "priority")},
                  after={"title": after["title"], "description": after["description"], "due_date": after["due_date"],
                         "priority": after["priority"], "to": people.profile(row["user_id"])["name"]})
-    if mailer.configured() and not row["blocked"]:  # conta bloqueada: ninguém lê
-        lines = [after["title"]]
-        if "description" in changes:
-            lines.append(after["description"] or "(sem descrição)")
-        if after["due_date"]:
-            lines.append(f"Prazo: {after['due_date'].strftime('%d/%m/%Y')}")
-        lines.append(f"Prioridade {PRIO_PT[after['priority']]}")
-        _spawn(row["email"], _change_mail(after["title"], by_name, "Alterou", lines, f"/#/tarefas?id={task_id}", row["user_id"]))
-    return {"id": task_id, "title": after["title"], "description": after["description"], "due_date": after["due_date"],
-            "priority": after["priority"]}
+    return after, by_name, "description" in changes
 
 
 @router.post("/{task_id}/cancel")
@@ -436,29 +531,31 @@ def cancel_sent(task_id: int, user=Depends(require_assigner_csrf)):
     row = _own_sent(task_id, user["user_id"])
     if not assignable.in_scope(user["user_id"], row["user_id"]):
         raise HTTPException(status_code=403, detail=OUT_OF_TEAM_MSG)
-    before = audit.worklog_snapshot(task_id, row["user_id"])
-    if _touched(task_id, row["user_id"]):
-        raise HTTPException(status_code=409, detail=(
-            "a pessoa já mexeu nesta tarefa: cancelar apagaria o que ela escreveu. "
-            "Combine com ela (ela pode excluir) ou use Alterar"))
-    p = {"id": task_id, "by": user["user_id"], **{f"old_{k}": before[k] for k in
-                                                     ("title", "description", "due_date", "priority", "project_id")}}
-    # Tudo de novo na mesma gravação: nada registrado e nada mudado desde a leitura.
-    if not db.execute(
-            f"""DELETE FROM worklog_tasks
-                 WHERE id = %(id)s AND assigned_by = %(by)s AND status = 'todo'
-                   AND NOT EXISTS ({_STARTED.format(t="%(id)s")})
-                   AND title IS NOT DISTINCT FROM %(old_title)s AND description IS NOT DISTINCT FROM %(old_description)s
-                   AND due_date IS NOT DISTINCT FROM %(old_due_date)s AND priority = %(old_priority)s
-                   AND project_id IS NOT DISTINCT FROM %(old_project_id)s""", p):
-        raise HTTPException(status_code=409, detail=STARTED_MSG)
-    by_name = people.profile(user["user_id"])["name"]
-    # Lápide comum (*.delete) para o feed/webhook de quem recebeu, com quem cancelou.
-    audit.record(user, "worklog.delete", "worklog", task_id,
-                 before={**before, "by": by_name, "canceled_by": by_name, "children": {}},
-                 user_id=row["user_id"])
-    audit.record(user, "assign.cancel", "assignment", task_id,
-                 before={"title": row["title"], "to": people.profile(row["user_id"])["name"]})
+    # A exclusão e as duas linhas do histórico vão juntas; o e-mail sai depois de gravar.
+    with db.transaction():
+        before = audit.worklog_snapshot(task_id, row["user_id"])
+        if _touched(task_id, row["user_id"]):
+            raise HTTPException(status_code=409, detail=(
+                "a pessoa já mexeu nesta tarefa: cancelar apagaria o que ela escreveu. "
+                "Combine com ela (ela pode excluir) ou use Alterar"))
+        p = {"id": task_id, "by": user["user_id"], **{f"old_{k}": before[k] for k in
+                                                         ("title", "description", "due_date", "priority", "project_id")}}
+        # Tudo de novo na mesma gravação: nada registrado e nada mudado desde a leitura.
+        if not db.execute(
+                f"""DELETE FROM worklog_tasks
+                     WHERE id = %(id)s AND assigned_by = %(by)s AND status = 'todo'
+                       AND NOT EXISTS ({_STARTED.format(t="%(id)s")})
+                       AND title IS NOT DISTINCT FROM %(old_title)s AND description IS NOT DISTINCT FROM %(old_description)s
+                       AND due_date IS NOT DISTINCT FROM %(old_due_date)s AND priority = %(old_priority)s
+                       AND project_id IS NOT DISTINCT FROM %(old_project_id)s""", p):
+            raise HTTPException(status_code=409, detail=STARTED_MSG)
+        by_name = people.profile(user["user_id"])["name"]
+        # Lápide comum (*.delete) para o feed/webhook de quem recebeu, com quem cancelou.
+        audit.record(user, "worklog.delete", "worklog", task_id,
+                     before={**before, "by": by_name, "canceled_by": by_name, "children": {}},
+                     user_id=row["user_id"])
+        audit.record(user, "assign.cancel", "assignment", task_id,
+                     before={"title": row["title"], "to": people.profile(row["user_id"])["name"]})
     if mailer.configured() and not row["blocked"]:
         _spawn(row["email"], _change_mail(row["title"], by_name, "Cancelou", [row["title"], "A tarefa saiu da sua lista; não precisa fazer nada."], "/#/tarefas", row["user_id"]))
     return {"ok": True}
@@ -467,11 +564,10 @@ def cancel_sent(task_id: int, user=Depends(require_assigner_csrf)):
 def close_return(task_id: int, user=Depends(require_assigner_csrf)):
     """Encerra uma tarefa devolvida sem atribuir de novo: sai de "Precisa de
     atenção" e fica na lista como "devolvida · encerrada"."""
-    r = next((x for x in open_returns(user["user_id"]) if x["id"] == task_id), None)
-    if not r:
-        raise HTTPException(status_code=404, detail="não há devolução em aberto com esse número")
-    audit.record(user, "assign.close", "assignment", task_id,
-                 before={"title": r["title"], "to": r["to_name"], "reason": r["reason"]})
+    with db.transaction():
+        r = _lock_open_return(user["user_id"], task_id, 404, "não há devolução em aberto com esse número")
+        audit.record(user, "assign.close", "assignment", task_id,
+                     before={"title": r["title"], "to": r["to_name"], "reason": r["reason"]})
     return {"ok": True}
 
 
@@ -547,30 +643,49 @@ def return_task(task_id: int, data: ReturnIn, user=Depends(active_user_csrf)):
         raise HTTPException(status_code=409, detail="a tarefa já está concluída; para devolver, reabra antes")
     assigner = db.query_one("SELECT id, email, blocked_at IS NOT NULL AS blocked FROM users WHERE id = %s",
                             (before["assigned_by"],))
-    # Anotações, checklist e tempo saem junto (como na exclusão): ficam na lápide para o desfazer.
-    before["children"] = {
-        "notes": db.query_all("SELECT id, body, actor, token_name, created_at, external_ref FROM task_notes WHERE task_id = %s", (task_id,)),
-        "checklist": db.query_all("SELECT id, label, done, position FROM task_checklist WHERE task_id = %s", (task_id,)),
-        "time": db.query_all("SELECT id, minutes, day, note, actor, token_name, created_at, external_ref, started_at, ended_at"
-                              " FROM time_entries WHERE task_id = %s", (task_id,)),
-    }
-    if not db.execute("DELETE FROM worklog_tasks WHERE id = %s AND user_id = %s AND status <> 'done'", (task_id, uid)):
-        raise HTTPException(status_code=409, detail="a tarefa mudou enquanto você devolvia")
     quem = people.profile(uid)["name"]
     by_name = people.profile(assigner["id"])["name"] if assigner else "quem atribuiu"
-    # Lápide comum (*.delete) para o feed/webhook de quem recebeu, com o motivo.
-    audit.record(user, "worklog.delete", "worklog", task_id,
-                 before={**before, "returned_to": by_name, "return_reason": data.reason})
-    if assigner:
-        audit.record(user, "assign.returned", "assignment", task_id, user_id=assigner["id"], after={
-            **{k: before[k] for k in ("title", "description", "due_date", "priority", "ticket", "after_hours")},
-            "to": quem, "to_id": uid, "reason": data.reason})
-        if not assigner["blocked"]:
-            if mailer.configured():
-                _spawn(assigner["email"], _return_mail(before["title"], quem, data.reason))
-            threading.Thread(target=_push_return, args=(assigner["id"], task_id, before["title"], quem, data.reason),
-                             daemon=True).start()
+    from .worklog import stop_timer_of  # import tardio: worklog importa este módulo
+    # Tudo ou nada: parar o cronômetro, guardar os filhos, apagar e gravar as duas
+    # linhas do histórico. Uma falha no meio deixa a tarefa como estava (antes, a
+    # tarefa sumia sem lápide). E-mail e push só depois de gravar.
+    with db.transaction():
+        # Trava a tarefa: nada entra nela (tempo, anotação) entre a leitura e a exclusão.
+        if not db.query_one("SELECT 1 FROM worklog_tasks WHERE id = %s AND user_id = %s AND status <> 'done' FOR UPDATE",
+                            (task_id, uid)):
+            raise HTTPException(status_code=409, detail="a tarefa mudou enquanto você devolvia")
+        # Tarefa transferida pelo admin guarda horas de quem a tinha: a exclusão em
+        # cascata as apagaria (e o desfazer as devolveria na conta errada).
+        if db.query_one("SELECT 1 FROM time_entries WHERE task_id = %s AND user_id <> %s LIMIT 1", (task_id, uid)):
+            raise HTTPException(status_code=409, detail=FOREIGN_TIME_MSG)
+        # Cronômetro rodando nela: para e aponta antes (o tempo entra na lápide e volta com o desfazer).
+        stop_timer_of(user, task_id)
+        # Anotações, checklist e tempo saem junto (como na exclusão): ficam na lápide para o desfazer.
+        before["children"] = {
+            "notes": db.query_all("SELECT id, body, actor, token_name, created_at, external_ref FROM task_notes WHERE task_id = %s", (task_id,)),
+            "checklist": db.query_all("SELECT id, label, done, position FROM task_checklist WHERE task_id = %s", (task_id,)),
+            # user_id: de quem é cada apontamento (o desfazer devolve a quem apontou).
+            "time": db.query_all("SELECT id, user_id, minutes, day, note, actor, token_name, created_at, external_ref, started_at, ended_at"
+                                  " FROM time_entries WHERE task_id = %s", (task_id,)),
+        }
+        if not db.execute("DELETE FROM worklog_tasks WHERE id = %s AND user_id = %s AND status <> 'done'", (task_id, uid)):
+            raise HTTPException(status_code=409, detail="a tarefa mudou enquanto você devolvia")
+        # Lápide comum (*.delete) para o feed/webhook de quem recebeu, com o motivo.
+        audit.record(user, "worklog.delete", "worklog", task_id,
+                     before={**before, "returned_to": by_name, "return_reason": data.reason})
+        if assigner:
+            audit.record(user, "assign.returned", "assignment", task_id, user_id=assigner["id"], after={
+                **{k: before[k] for k in ("title", "description", "due_date", "priority", "ticket", "after_hours")},
+                "to": quem, "to_id": uid, "reason": data.reason})
+    if assigner and not assigner["blocked"]:
+        if mailer.configured():
+            _spawn(assigner["email"], _return_mail(before["title"], quem, data.reason))
+        threading.Thread(target=_push_return, args=(assigner["id"], task_id, before["title"], quem, data.reason),
+                         daemon=True).start()
     return {"ok": True, "to": by_name}
+
+
+FOREIGN_TIME_MSG = "esta tarefa guarda horas de quem a passou para você; conclua em vez de devolver"
 
 
 # ------------------------------------------------- aviso do Hoje (E7) --

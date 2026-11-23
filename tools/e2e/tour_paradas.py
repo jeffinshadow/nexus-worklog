@@ -59,3 +59,5 @@ try:
         passeio("ajuda pelo Mais", list(ajuda_mob))
 finally:
     p.terminate(); print("erros JS:", erros or "nenhum")
+if erros:
+    sys.exit(1)  # erro de JavaScript na página não sai com código 0

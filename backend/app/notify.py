@@ -9,11 +9,13 @@ morning/evening saem nos dias úteis do usuário — ou em qualquer dia com roti
 na agenda (ex.: backup de sábado). Cada (usuário, tipo, dia)
 é registrado em notification_log ANTES do envio: nunca manda duas vezes,
 mesmo reiniciando. Aviso sem nada a dizer não sai (fica registrado assim).
+Única exceção: o SMTP caiu antes de aceitar a mensagem (mailer.MailNotSent);
+aí a reserva é apagada e a próxima passada tenta de novo, dentro das 2 h.
 """
 import asyncio
 import html
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from . import db, mailer
@@ -120,7 +122,7 @@ class Mail:
 
 
 def build_morning(uid: int, today: date, show: bool) -> Mail:
-    b = get_board(uid, today)
+    b = get_board(uid, today, done_limit=1)  # as concluídas não entram no aviso
     do_dia = [r["label"] for r in b["recurring"] if r.get("due") and not r["done_today"]]
     abertas = b["in_progress"]
     hoje = [t["title"] for t in abertas if t["due_date"] == today]
@@ -146,7 +148,7 @@ def build_morning(uid: int, today: date, show: bool) -> Mail:
 
 
 def build_evening(uid: int, today: date, show: bool) -> Mail:
-    b = get_board(uid, today)
+    b = get_board(uid, today, done_limit=1)  # as concluídas não entram no aviso
     devidas = [r for r in b["recurring"] if r.get("due")]
     faltam = [r["label"] for r in devidas if not r["done_today"]]
     feitas = len(devidas) - len(faltam)
@@ -174,7 +176,7 @@ def build_weekly(uid: int, today: date, show: bool, force: bool = False) -> Mail
     m.block("Tempo por projeto", [f"{p['name'] or 'Sem projeto'}: {_dur(p['minutes'])}" for p in r["projects"] if p["minutes"]], show)
     m.block("Rotinas que ficaram para trás",
             [f"{x['label']} ({x['done']}/{x['due']})" for x in r["recurring_stats"] if x["due"] > x["done"]], show)
-    b = get_board(uid, today)
+    b = get_board(uid, today, done_limit=1)
     atrasadas = [t["title"] for t in b["in_progress"] if t["due_date"] and t["due_date"] < today]
     m.block("Atrasadas agora", atrasadas, show)
     if m.empty and not s["active_days"] and not force:
@@ -225,7 +227,9 @@ def _finish(uid: int, kind: str, ref: date, ok: bool | None, error: str | None) 
 
 
 def deliver(uid: int, email: str, kind: str, ref: date, mail: Mail, send=None, cc: str | None = None) -> str:
-    """Manda (ou registra que não havia nada). Devolve 'sent', 'empty' ou 'error'."""
+    """Manda (ou registra que não havia nada). Devolve 'sent', 'empty', 'error' ou
+    'retry' (o servidor de e-mail não chegou a aceitar: a reserva sai e a próxima
+    passada tenta de novo)."""
     send = send or mailer.send
     if mail.empty:
         _finish(uid, kind, ref, None, "nada a avisar")
@@ -233,6 +237,10 @@ def deliver(uid: int, email: str, kind: str, ref: date, mail: Mail, send=None, c
     extra = {k: v for k, v in (("attachments", mail.attachments), ("cc", cc)) if v}
     try:
         send(email, mail.subject, mail.text(), mail.html(), **extra)
+    except mailer.MailNotSent as e:  # nada saiu: sem reserva, tenta de novo (o erro fica em mailer.last, na Saúde)
+        db.execute("DELETE FROM notification_log WHERE user_id = %s AND kind = %s AND ref_date = %s", (uid, kind, ref))
+        log.warning("aviso %s para usuário %s não saiu (tenta de novo na próxima passada): %s", kind, uid, e)
+        return "retry"
     except Exception as e:  # noqa: BLE001 — registra e segue para o próximo
         _finish(uid, kind, ref, False, str(e)[:300])
         log.warning("aviso %s para usuário %s falhou: %s", kind, uid, e)
@@ -251,6 +259,7 @@ def run_once(now: datetime, send=None) -> list[tuple[int, str, str]]:
              FROM notification_prefs p JOIN users u ON u.id = p.user_id
             WHERE (p.morning OR p.evening OR p.weekly) AND NOT u.must_change_password""")
     for u in users:
+        _beat()  # muita gente ou SMTP lento: a passada está andando
         try:
             done += _user_pass(u, now, today, send)
         except Exception:  # noqa: BLE001 — uma pessoa com erro (banco lento) não tira o aviso das outras
@@ -298,7 +307,7 @@ def _user_pass(u: dict, now: datetime, today: date, send) -> list[tuple[int, str
 async def scheduler() -> None:
     """Loop do agendador (uma passada por minuto), dentro do backend: os e-mails
     (com SMTP configurado), as notificações dos aparelhos (app/push.py), os
-    avisos de agenda (app/agenda.py) e os webhooks (app/webhooks.py)."""
+    avisos de agenda (app/agenda.py), os webhooks (app/webhooks.py) e o GLPI (app/glpi.py)."""
     from . import agenda, push, webhooks
     tz = ZoneInfo(config.APP_TZ)
     log.info("agendador ativo: e-mail %s, notificações nos aparelhos", config.SMTP_HOST or "desligado")
@@ -313,34 +322,87 @@ async def scheduler() -> None:
                 log.exception("entrega dos webhooks falhou nesta passada")
             await asyncio.sleep(60 - datetime.now(tz).second + 5)  # logo depois dos avisos de agenda do minuto
 
-    hooks_task = asyncio.create_task(hooks())
+    async def glpi_sync() -> None:
+        """O GLPI também em laço próprio: um GLPI lento não atrasa avisos nem webhooks."""
+        from . import glpi
+        while True:
+            try:
+                await asyncio.to_thread(glpi.run_once)
+            except Exception:  # noqa: BLE001
+                log.exception("sincronização com o GLPI falhou nesta passada")
+            await asyncio.sleep(60)
+
+    tasks = [asyncio.create_task(hooks()), asyncio.create_task(glpi_sync())]
     try:
         await _passes(tz, agenda, push)
     finally:
-        hooks_task.cancel()
+        for t in tasks:
+            t.cancel()
+
+
+# Último sinal de vida do agendador (UTC), para a Saúde do Nexus: passou de 5 min, está preso.
+# Marcado no começo e no fim da passada, entre os serviços e a cada pessoa do e-mail:
+# passada longa (SMTP pendurado, muita gente) não acende "agendador parado" em falso.
+last_pass: datetime | None = None
+
+
+def _beat() -> None:
+    global last_pass
+    last_pass = datetime.now(timezone.utc)
+
+
+def faxina() -> None:
+    """Uma vez por hora: o que venceu sai do banco, mesmo sem ninguém entrar por senha e sem SMTP."""
+    # Sessões vencidas e histórico antigo (o desfazer só vale para o recente;
+    # excluir de verdade não pode durar para sempre no log).
+    db.execute("DELETE FROM sessions WHERE expires_at <= now()")
+    db.execute("DELETE FROM audit_log WHERE created_at < now() - interval '180 days'")
+    # Links de convite/senha já usados ou vencidos não servem para nada depois de um mês.
+    db.execute("""DELETE FROM auth_links WHERE created_at < now() - interval '30 days'
+                   AND (used_at IS NOT NULL OR expires_at <= now())""")
+    # Pedidos de convite são dados de quem nem tem conta: decididos saem em 30
+    # dias (a lista já os escondia), os nunca respondidos em 180.
+    db.execute("""DELETE FROM invite_requests
+                   WHERE (status <> 'pending' AND decided_at < now() - interval '30 days')
+                      OR (status = 'pending' AND created_at < now() - interval '180 days')""")
+    # O registro de avisos enviados só serve para não repetir o do dia e para a tela de Avisos.
+    db.execute("DELETE FROM notification_log WHERE sent_at < now() - interval '30 days'")
+
+
+async def _pass(now: datetime, agenda, push) -> None:
+    """Uma passada. As notificações dos aparelhos e os avisos de agenda saem ANTES
+    do e-mail: SMTP lento (ou a segunda às 8h, com resumo e PDF) não atrasa o que é "na hora"."""
+    _beat()
+    try:
+        await asyncio.to_thread(push.run_once, now)
+    except Exception:  # noqa: BLE001
+        log.exception("agendador de notificações falhou nesta passada")
+    _beat()
+    try:  # avisos de agenda (followup.due...) antes da entrega: saem nos webhooks
+        await asyncio.to_thread(agenda.run_once, now)
+    except Exception:  # noqa: BLE001
+        log.exception("avisos de agenda falharam nesta passada")
+    _beat()
+    if config.SMTP_HOST:
+        try:
+            await asyncio.to_thread(run_once, now)
+        except Exception:  # noqa: BLE001
+            log.exception("agendador de avisos falhou nesta passada")
+        _beat()
+    if now.minute == 0:  # uma vez por hora: fotos excluídas há 7 dias e de tarefas que não voltam mais; o que venceu
+        try:
+            from .routers.photos import cleanup
+            await asyncio.to_thread(cleanup)
+        except Exception:  # noqa: BLE001
+            log.exception("faxina das fotos falhou")
+        try:
+            await asyncio.to_thread(faxina)
+        except Exception:  # noqa: BLE001
+            log.exception("faxina do banco falhou")
+    _beat()
 
 
 async def _passes(tz, agenda, push) -> None:
     while True:
-        now = datetime.now(tz)
-        if config.SMTP_HOST:
-            try:
-                await asyncio.to_thread(run_once, now)
-            except Exception:  # noqa: BLE001
-                log.exception("agendador de avisos falhou nesta passada")
-        try:
-            await asyncio.to_thread(push.run_once, now)
-        except Exception:  # noqa: BLE001
-            log.exception("agendador de notificações falhou nesta passada")
-        try:  # avisos de agenda (followup.due...) antes da entrega: saem nos webhooks
-            await asyncio.to_thread(agenda.run_once, now)
-        except Exception:  # noqa: BLE001
-            log.exception("avisos de agenda falharam nesta passada")
-        if now.minute == 0:  # uma vez por hora: fotos excluídas há 7 dias e de tarefas que não voltam mais
-            try:
-                from .routers.photos import cleanup
-                await asyncio.to_thread(cleanup)
-            except Exception:  # noqa: BLE001
-                log.exception("faxina das fotos falhou")
+        await _pass(datetime.now(tz), agenda, push)
         await asyncio.sleep(60 - datetime.now(tz).second)  # perto do início de cada minuto
-

@@ -153,6 +153,7 @@ def get_avatar(user_id: int, user=Depends(web_active)):
         media_type=r["mime"],
         headers={
             "Cache-Control": "private, max-age=86400",
+            "Vary": "Cookie",  # depois de Sair, o navegador não reaproveita a cópia guardada
             "X-Content-Type-Options": "nosniff",
             "Content-Security-Policy": "default-src 'none'; sandbox",
         },
@@ -197,7 +198,7 @@ def visibility(user=Depends(web_active)):
                 FROM users u
                WHERE u.id <> %s AND u.blocked_at IS NULL AND NOT u.invite_pending) x
             WHERE cardinality(x.roles) > 0
-            ORDER BY lower(COALESCE(x.display_name, x.email))""",
+            ORDER BY nx_fold(COALESCE(x.display_name, x.email))""",
         (me_,),
     )
     return [{"name": r["display_name"] or people.name_from_email(r["email"]), "roles": r["roles"],
@@ -352,6 +353,10 @@ def delete_me(data: DeleteMeIn, response: Response, user=Depends(web_active_csrf
         raise HTTPException(status_code=400, detail="você é o único admin: dê o papel de admin a outra pessoa antes")
     if teams.is_master(uid):
         raise HTTPException(status_code=400, detail=MASTER_DELETE)
+    # Tarefa que veio de outra pessoa guarda as horas dela: excluir a conta as apagaria em cascata.
+    if roles.others_hours(uid)["tasks"]:
+        raise HTTPException(status_code=409, detail=(
+            "esta conta guarda tarefas com horas de outra pessoa; peça ao admin para excluir com transferência"))
     if not roles.delete_account(uid):
         raise HTTPException(status_code=400, detail="você é o único admin: dê o papel de admin a outra pessoa antes")
     logging.getLogger("uvicorn.error").info("conta %s excluída pela própria pessoa", uid)

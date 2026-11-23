@@ -45,6 +45,10 @@ try:
     p, cmd, ev = browser(9521); procs.append(p)
     cmd("Emulation.setDeviceMetricsOverride", width=1440, height=900, deviceScaleFactor=1, mobile=False)
     check("login", login(cmd, ev) == 200)
+    # O número no ícone conta as atrasadas: o roteiro cria a sua (não depende de a conta ter uma) e apaga depois.
+    escreve = lambda m, u, d="null": ev(f"fetch('/api/auth/me').then(r=>r.json()).then(me=>fetch('/api{u}',{{method:'{m}',headers:{{'Content-Type':'application/json','X-CSRF-Token':me.csrf_token}},body:{d}}})).then(r=>r.json().catch(()=>null))")
+    atrasada = escreve("POST", "/worklog", "JSON.stringify({title:'E2E atrasada (número no ícone)',due_date:new Date(Date.now()-3*864e5).toISOString().slice(0,10)})")
+    check("tarefa atrasada criada", bool(atrasada and atrasada.get("id")), atrasada)
     go(cmd, "/#/hoje")
     m = cmd("Page.getAppManifest")
     check("manifest sem erros", not m.get("errors"), m.get("errors"))
@@ -66,8 +70,9 @@ try:
     check("atalho rápido: campo com foco", ev("document.activeElement && document.activeElement.getAttribute('aria-label')") == "Registrar tarefa rápida",
           ev("document.activeElement && document.activeElement.outerHTML.slice(0,80)"))
 
-    # Número no ícone: atrasadas (a demo tem 1)
+    # Número no ícone: atrasadas (a criada no começo)
     check("número no ícone", ev("window.__badge.length>0 && window.__badge[window.__badge.length-1]>=1"), ev("JSON.stringify(window.__badge)"))
+    if atrasada and atrasada.get("id"): escreve("DELETE", f"/worklog/{atrasada['id']}", "undefined")
 
     # Compartilhar: texto curto
     go(cmd, "/?title=" + urllib.parse.quote("Impressora do RH sem toner") + "&text=" + urllib.parse.quote("Pediram pelo WhatsApp\nsala 2"))
@@ -130,3 +135,5 @@ try:
 finally:
     for p in procs: p.terminate()
     print("OK:", len(ok)); print("FALHAS:", "\n  ".join(falhas) or "nenhuma"); print("ERROS JS:", erros or "nenhum")
+if falhas or erros:
+    sys.exit(1)  # roteiro com FALHAS ou erro de JavaScript não sai com código 0

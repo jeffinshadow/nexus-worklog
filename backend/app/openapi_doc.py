@@ -8,6 +8,9 @@ geradores de cliente: o esquema do FastAPI com o que ele não sabe sozinho.
 - Rotas só do app (sessão do navegador: Admin, chaves, webhooks, Equipe,
   conta): `x-session-only: true`, `security: []` e a frase na descrição; por
   chave de API respondem 403.
+- `x-scope` por operação: o menor escopo de chave que a rota aceita: `read`
+  (GET), `append` (as de deps.APPEND_ROUTES, "só registrar") ou `write`. Rotas
+  públicas e só do app não levam.
 - `X-Total-Count` declarado nas listas paginadas; `Retry-After` nas respostas
   429 e 503 (todas as rotas podem dar 503 com o banco ocupado).
 
@@ -27,6 +30,8 @@ SESSION_DEPS = {deps.web_user_csrf, deps.web_active, deps.web_active_csrf, deps.
 # Dependências que autenticam (sessão ou chave).
 AUTH_DEPS = SESSION_DEPS | {deps.current_user, deps.active_user, deps.active_user_csrf, deps.require_assigner,
                             deps.require_assigner_csrf, deps.require_people_list}
+# Dependências que exigem escopo de escrita da chave (deps._require_write).
+WRITE_DEPS = {deps.active_user_csrf, deps.require_assigner_csrf}
 SESSION_NOTE = "Só pelo app (sessão do navegador): por chave de API responde 403."
 
 
@@ -89,6 +94,11 @@ def build(app) -> dict:
                 op["description"] = (op.get("description", "") + "\n\n" + SESSION_NOTE).strip()
             elif not calls & AUTH_DEPS and route.path_format != "/mcp":  # /mcp confere a chave por dentro
                 op["security"] = []  # pública
+            elif route.path_format == "/mcp":
+                op["x-scope"] = "read"  # qualquer chave conecta; as ferramentas seguem o escopo dela
+            else:
+                op["x-scope"] = ("read" if not calls & WRITE_DEPS else
+                                 "append" if (method, route.path_format) in deps.APPEND_ROUTES else "write")
             resp = op.setdefault("responses", {})
             if _paginated(route):
                 ok = next((c for c in ("200", "201") if c in resp), None)

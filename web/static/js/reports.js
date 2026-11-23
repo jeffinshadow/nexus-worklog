@@ -61,7 +61,6 @@ export async function mount(root, opts = {}) {
     const sel = picked >= 0 && fits(picked) ? picked : periods.findIndex((_, i) => fits(i));
     [...quick.children].forEach((b, i) => {
       b.setAttribute("aria-pressed", String(i === sel));
-      b.setAttribute("aria-selected", String(i === sel)); // mesmo visual do .seg
     });
   }
   for (const el of [startInput, endInput]) el.addEventListener("change", () => { picked = -1; markPeriod(); });
@@ -129,10 +128,15 @@ export async function mount(root, opts = {}) {
   if (!opts.exportBase) {
     // Cada exportação é um item de lista (Material 3): título, descrição
     // e o download no fim; a linha toda é o botão.
-    // Tempo e Tarefas: o período escolhido acima (os dois dias), ou tudo se faltar um.
+    // Tempo e Tarefas: o mesmo recorte do PDF acima. O projeto escolhido vai junto; em
+    // "Projeto completo" as datas (escondidas) não vão; sem projeto, o período (os dois
+    // dias), ou tudo se faltar um.
     const periodQs = () => {
+      const proj = projSel.value;
       const start = startInput.value, end = endInput.value;
-      return start && end && start <= end ? `?start=${start}&end=${end}` : "";
+      const useDates = (!proj || !whole) && start && end && start <= end;
+      const qs = [useDates ? `start=${start}&end=${end}` : "", proj ? `project=${proj}` : ""].filter(Boolean).join("&");
+      return qs ? `?${qs}` : "";
     };
     const dl = (path, label, help) => {
       const b = h("button", { type: "button", class: "export-item", onClick: async () => {
@@ -146,13 +150,13 @@ export async function mount(root, opts = {}) {
     root.append(h("div", { class: "report-section" },
       h("h3", { text: "Exportar dados" }),
       h("p", { class: "sub", text: "Seus dados em arquivos abertos (o CSV abre em qualquer planilha), para faturamento, conferência ou backup." }),
-      dl(() => "/export/apontamentos.csv" + periodQs(), "Tempo apontado (CSV)", "uma linha por apontamento: dia, horas, tarefa, projeto e observação (usa o período escolhido acima)"),
-      dl(() => "/export/tarefas.csv" + periodQs(), "Tarefas (CSV)", "as tarefas que estiveram em aberto no período escolhido acima, com situação, prioridade, projeto, prazo, checklist, as horas no período e as horas no total"),
+      dl(() => "/export/apontamentos.csv" + periodQs(), "Tempo apontado (CSV)", "uma linha por apontamento: dia, horas, tarefa, projeto e observação (usa o projeto e o período escolhidos acima)"),
+      dl(() => "/export/tarefas.csv" + periodQs(), "Tarefas (CSV)", "as tarefas que estiveram em aberto no período escolhido acima (só as do projeto, se houver um escolhido), com situação, prioridade, projeto, prazo, checklist, as horas no período e as horas no total"),
       dl(() => "/export/plantao.csv?" + new URLSearchParams(Object.entries({ start: startInput.value, end: endInput.value }).filter(([, v]) => v)),
         "Plantão do período (CSV)", "os apontamentos das tarefas marcadas como plantão, de todos os projetos, com as horas e o total — para fechar sobreaviso ou banco de horas (usa o período escolhido acima)"),
       dl(() => "/export/rotinas.csv?" + new URLSearchParams(Object.entries({ start: startInput.value, end: endInput.value }).filter(([, v]) => v)),
         "Rotinas e evidências (CSV)", "para comprovar: cada rotina em cada dia, se foi feita e o que foi conferido (usa o período escolhido acima)"),
-      dl("/export/tudo.json", "Tudo (cópia completa, para backup)", "um arquivo JSON com tarefas, anotações, checklist, tempo e como foram resolvidas; rotinas com dias feitos e evidências; vencimentos; projetos"),
+      dl("/export/tudo.json", "Tudo (cópia completa, para backup)", "um arquivo JSON com tarefas, anotações, checklist, tempo e como foram resolvidas; rotinas com passos, pausas, dias feitos e evidências; vencimentos; projetos; revisões da semana, equipes e papéis"),
       dl("/export/fotos.zip", "Fotos (ZIP)", "todas as fotos das tarefas e das evidências das rotinas, numa pasta por tarefa e por rotina")));
   }
 

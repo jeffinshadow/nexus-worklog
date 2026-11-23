@@ -9,6 +9,8 @@ desligadas por padrão (o padrão é o organizador pessoal). sql/036.
   privacy_url       endereço da política de privacidade (login, Conta, convite; sql/042)
   ticket_url        endereço do sistema de chamados da instância ({id} = o número; sql/037);
                     vazio = cada pessoa usa o seu (users.ticket_url)
+  glpi_url          endereço do GLPI (sql/060, app/glpi.py): liga a integração para quem
+                    conectar a própria conta; vale com ou sem equipe
 
 Equipes (sql/043): "Para empresas" vale só para quem está em alguma equipe
 (teams.company_applies). Sem equipe, a visibilidade gerenciada, "Todos recebem",
@@ -26,7 +28,7 @@ from fastapi import HTTPException
 from . import db, teams
 
 DEFAULTS = {"team_visibility": "self", "assign_receive": "self", "identity_managed": False, "invite_request_on": False,
-            "ticket_url": None, "privacy_url": None}
+            "ticket_url": None, "privacy_url": None, "glpi_url": None}
 
 IDENTITY_LOCKED = "Nesta instância do Nexus, nome e e-mail são definidos pela administração. Para mudar, fale com quem administra."
 VISIBILITY_LOCKED = ("Nesta instância do Nexus, quem gerencia a equipe vê as tarefas de todos "
@@ -37,7 +39,7 @@ ASSIGN_LOCKED = ("Nesta instância do Nexus, todos recebem tarefas de quem atrib
 
 def get() -> dict:
     r = db.query_one("""SELECT team_visibility, team_visibility_since, assign_receive, assign_receive_since,
-                               identity_managed, invite_request_on, ticket_url, privacy_url
+                               identity_managed, invite_request_on, ticket_url, privacy_url, glpi_url
                           FROM app_settings WHERE id = 1""")
     return {**DEFAULTS, "team_visibility_since": None, "assign_receive_since": None, **(r or {})}
 
@@ -99,7 +101,9 @@ def for_user(user_id: int) -> dict:
         "email_pending": pending["new_email"] if pending else None,
         # Endereço do sistema de chamados: o da instância (Admin › Para empresas), se
         # houver, vale para todos (a Conta mostra travado); senão, o da pessoa.
-        "ticket_url": o["ticket_url"] or u.get("ticket_url"),
+        # Sem nenhum dos dois e com o GLPI configurado: o endereço do chamado de lá.
+        "ticket_url": o["ticket_url"] or u.get("ticket_url")
+        or (o["glpi_url"] and o["glpi_url"] + "/front/ticket.form.php?id={id}"),
         "ticket_url_managed": bool(o["ticket_url"]),
         "privacy_url": o["privacy_url"],  # link na Conta (nulo = a instância não definiu)
     }

@@ -22,6 +22,7 @@ from psycopg.errors import UniqueViolation
 
 from .. import audit, db, mailer, people, roles, teams
 from ..deps import require_admin, require_admin_csrf
+from ..labels import fold
 from ..schemas import MasterConfirmIn, MasterRolesIn, MasterTransferIn, TeamEditIn, TeamIn, UserTeamsIn
 from ..security import login_limiter, token_hash, verify_password
 
@@ -56,7 +57,7 @@ def _members(team_id: int) -> list[dict]:
                             WHERE m.team_id = %s""", (team_id,))
     perfis = people.profiles(r["id"] for r in rows)
     out = [{"id": r["id"], "email": r["email"], "name": perfis[r["id"]]["name"]} for r in rows]
-    return sorted(out, key=lambda r: (r["name"].lower(), r["email"]))
+    return sorted(out, key=lambda r: (fold(r["name"]), r["email"]))
 
 
 def _check_users(ids: list[int]) -> list[int]:
@@ -80,7 +81,7 @@ def check_teams(ids: list[int], archived_ok: bool = False) -> list[int]:
 
 
 def _names(ids: list[int]) -> list[str]:
-    return [r["name"] for r in db.query_all("SELECT name FROM teams WHERE id = ANY(%s) ORDER BY lower(name)", (ids,))]
+    return [r["name"] for r in db.query_all("SELECT name FROM teams WHERE id = ANY(%s) ORDER BY nx_fold(name)", (ids,))]
 
 
 def set_user_teams(user_id: int, team_ids: list[int]) -> tuple[list[int], list[int]]:
@@ -101,7 +102,7 @@ def set_user_teams(user_id: int, team_ids: list[int]) -> tuple[list[int], list[i
 @router.get("/teams")
 def list_teams(admin=Depends(require_admin)):
     """Equipes (ativas primeiro, por nome) com os membros, e o master da instância."""
-    rows = db.query_all("SELECT id, name, created_at, archived_at FROM teams ORDER BY archived_at IS NOT NULL, lower(name)")
+    rows = db.query_all("SELECT id, name, created_at, archived_at FROM teams ORDER BY archived_at IS NOT NULL, nx_fold(name)")
     return [{**r, "members": _members(r["id"])} for r in rows]
 
 
@@ -157,13 +158,16 @@ def edit_team(team_id: int, data: TeamEditIn, admin=Depends(require_admin_csrf))
 
 @router.delete("/teams/{team_id}")
 def delete_team(team_id: int, admin=Depends(require_admin_csrf)):
-    """Exclui a equipe (os membros só saem dela; nada das pessoas é apagado)."""
+    """Exclui a equipe (os membros só saem dela; nada das pessoas é apagado).
+    `last`: era a última cadastrada, a instância voltou ao uso pessoal (sem
+    escopo de equipe), como o `first` de criar avisa a ida."""
     t = _team(team_id)
     members = [m["id"] for m in _members(team_id)]
     db.execute("DELETE FROM teams WHERE id = %s", (team_id,))
+    last = not teams.any_active()
     audit.record(_ctx(admin), "team.delete", "team", team_id,
-                 before={"name": t["name"], "members": members, "by": admin["email"]})
-    return {"ok": True, "name": t["name"]}
+                 before={"name": t["name"], "members": members, "by": admin["email"]}, after={"last": last})
+    return {"ok": True, "name": t["name"], "last": last}
 
 
 @router.put("/users/{user_id}/teams")

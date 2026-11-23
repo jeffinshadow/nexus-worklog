@@ -52,7 +52,10 @@ function row(r, onChange, compact = false) {
         onChange();
         toast("Vencimento excluído.", { action: "Desfazer", onAction: () => undoLatest("renewal", r.id, onChange) });
       } catch (e) { errorToast(e); }
-    } }, icon("trash")));
+    } }, icon("trash")),
+    // Vencimento da equipe cadastrado por outra pessoa: sem lápis e lixeira, mas com o lugar deles guardado
+    // (as ações ficam na mesma coluna em todas as linhas).
+    ...(compact || r.mine ? [] : [h("span", { class: "venc-gap", "aria-hidden": "true" }), h("span", { class: "venc-gap", "aria-hidden": "true" })]));
 }
 
 // Cadastro e edição; renew = só a nova data ("Renovei").
@@ -87,7 +90,7 @@ function openRenewal(r, onChange, renew = false) {
     : [field("O que vence", label), h("div", { class: "field-row" }, field("Vence em", expires), field("Avisar com quantos dias", warn)),
       h("div", { class: "field-row" }, field("Projeto", proj), field("Repete a cada (meses, opcional)", months)),
       field("Observação", note), teamField];
-  const form = h("form", {}, h("h2", { text: renew ? "Renovado" : r ? "Editar vencimento" : "Novo vencimento" }), ...fields, err,
+  const form = h("form", {}, h("h2", { text: renew ? "Renovei: nova data" : r ? "Editar vencimento" : "Novo vencimento" }), ...fields, err,
     h("div", { class: "dialog-actions" },
       h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
       h("button", { type: "submit", class: "btn btn-primary", text: "Salvar" })));

@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from .. import db, people, teams
 from ..config import config
 from ..deps import require_viewer
+from ..labels import fold
 from ..visibility import active_sql, consent_sql, log_master_view, scope_sql, visible_sql
 from .dashboard import MONTH, parse_month
 from ..services import (TREND_MONTHS, _add_months, _month_end, app_today, app_tz, get_board, get_dashboard,
@@ -60,13 +61,24 @@ def list_users(team: TeamQ = None, viewer=Depends(require_viewer)):
     rows = db.query_all(f"""SELECT u.id, u.email FROM users u
                              WHERE {visible_sql('u', viewer['user_id'])} AND {active_sql('u')} AND {cut}""")
     perfis = people.profiles(r["id"] for r in rows)
-    return sorted(({**r, **perfis[r["id"]]} for r in rows), key=lambda x: (x["name"].lower(), x["email"]))
+    return sorted(({**r, **perfis[r["id"]]} for r in rows), key=lambda x: (fold(x["name"]), x["email"]))
+
+
+_BOARD_PRIVATE = ("remind_at", "first_on", "touched_at")
 
 
 @router.get("/users/{user_id}/board")
 def user_board(user_id: int, day: Optional[date] = Query(default=None), viewer=Depends(require_viewer)):
     _ensure_user(user_id, viewer, "quadro")
-    return get_board(user_id, check_board_day(day))
+    out = get_board(user_id, check_board_day(day))
+    # Quem acompanha vê o que foi feito e o que está aberto, não o minuto a minuto:
+    # sem o cronômetro ligado, os lembretes, o "Primeiro amanhã" e a hora do último toque.
+    out["timer"] = None
+    for key in ("recurring", "in_progress", "done"):
+        for t in out.get(key) or []:
+            for f in _BOARD_PRIVATE:
+                t.pop(f, None)
+    return out
 
 
 @router.get("/users/{user_id}/dashboard")
@@ -89,7 +101,7 @@ def user_dashboard(user_id: int, month: Optional[str] = MONTH, viewer=Depends(re
 def user_projects(user_id: int, viewer=Depends(require_viewer)):
     """Projetos da pessoa (para tirar o relatório de um cliente dela)."""
     _ensure_user(user_id, viewer, "projetos")
-    return db.query_all("SELECT id, name, archived FROM projects WHERE user_id = %s ORDER BY archived, lower(name)", (user_id,))
+    return db.query_all("SELECT id, name, archived FROM projects WHERE user_id = %s ORDER BY archived, nx_fold(name), id", (user_id,))
 
 
 @router.get("/users/{user_id}/reports/export")
@@ -101,7 +113,7 @@ def user_report_export(
     viewer=Depends(require_viewer),
 ):
     target = _ensure_user(user_id, viewer, None)
-    resp = build_pdf_response(target["email"], user_id, start, end, project)
+    resp = build_pdf_response(target["email"], user_id, start, end, project, requester_id=viewer["user_id"])
     log_master_view(viewer, user_id, "pdf")  # só depois de o PDF sair (falha não conta como visto)
     return resp
 
@@ -150,11 +162,14 @@ def _team_people(viewer_id: int, cut: str = "TRUE") -> tuple[list[dict], int]:
                                   WHERE l.user_id = u.id AND l.action LIKE ANY(%(acts)s)) la ON true
              WHERE {visible_sql('u', viewer_id)} AND {active_sql('u')} AND {cut}""",
         {"acts": list(people.WORK_ACTIONS)})
+    tz = app_tz()
     out = [{"id": r["id"], "email": r["email"], "display_name": r["display_name"],
             "name": r["display_name"] or people.name_from_email(r["email"]),
             "avatar": f"/api/me/avatar/{r['id']}?v={r['av']}" if r["av"] else None,
-            "open": r["open"], "waiting": r["waiting"], "last_activity": r["last_activity"]} for r in rows]
-    out.sort(key=lambda p: (p["name"].lower(), p["email"]))
+            "open": r["open"], "waiting": r["waiting"],
+            # Só o dia (no fuso do app), sem a hora: é para saber se a pessoa está ativa, não quando.
+            "last_activity": r["last_activity"].astimezone(tz).date() if r["last_activity"] else None} for r in rows]
+    out.sort(key=lambda p: (fold(p["name"]), p["email"]))
     hidden = db.query_one(
         f"""SELECT count(*)::int AS n FROM users u
              WHERE u.id <> %s AND {active_sql('u')} AND {cut}
@@ -176,12 +191,13 @@ def _team_first_day(uids: list[int]) -> date:
         {"tz": config.APP_TZ, "u": uids})["d"] or app_today()
 
 
-def _attention(uids: list[int], viewer_id: int, names: dict[int, str]) -> list[dict]:
+def _attention(uids: list[int], viewer_id: int, names: dict[int, str]) -> tuple[list[dict], int]:
     """O que destrava trabalho, agora: tarefas que EU atribuí e foram
     devolvidas (até eu decidir), estão aguardando ou paradas (a fazer, sem nada
     registrado há ASSIGNED_STALE dias), o que aguarda há mais tempo e os
     vencimentos próximos. Até ATTENTION_MAX, alternando os tipos (cada um
-    aparece). As devolvidas são minhas (estão na minha lista de atribuídas):
+    aparece), mais o total (a tela diz "e mais N"). As tarefas de quem está
+    olhando não entram (ele já as vê em Tarefas). As devolvidas são minhas (estão na minha lista de atribuídas):
     entram mesmo de quem não compartilha o dia a dia."""
     from .assign import open_returns
     today = app_today()
@@ -190,8 +206,9 @@ def _attention(uids: list[int], viewer_id: int, names: dict[int, str]) -> list[d
                  "name": r["to_name"], "status": "returned", "due_date": None, "blocked_reason": None,
                  "follow_up_on": None, "reason": r["reason"],
                  "days": (today - r["at"].astimezone(tz).date()).days} for r in open_returns(viewer_id)]
+    uids = [u for u in uids if u != viewer_id]
     if not uids:
-        return returned[:ATTENTION_MAX]
+        return returned[:ATTENTION_MAX], len(returned)
     rows = db.query_all(
         """SELECT w.id, w.user_id, w.title, w.status, w.due_date, w.blocked_at, w.blocked_reason, w.follow_up_on,
                   w.assigned_at, (w.assigned_by IS NOT DISTINCT FROM %(me)s) AS mine,
@@ -223,6 +240,7 @@ def _attention(uids: list[int], viewer_id: int, names: dict[int, str]) -> list[d
     due = sorted((item(r, "due", (r["due_date"] - today).days) for r in rows
                   if r["due_date"] and r["due_date"] <= today + timedelta(days=DUE_SOON_DAYS)),
                  key=lambda x: (x["due_date"], x["task_id"]))
+    total = len({x["task_id"] for g in (returned, mine, waiting, due) for x in g})
     out, seen, groups = [], set(), [returned, mine, waiting, due]
     while len(out) < ATTENTION_MAX and any(groups):
         for g in groups:
@@ -233,7 +251,7 @@ def _attention(uids: list[int], viewer_id: int, names: dict[int, str]) -> list[d
                 seen.add(x["task_id"])
                 out.append(x)
     order = {"returned": 0, "assigned": 1, "waiting": 2, "due": 3}
-    return sorted(out, key=lambda x: order[x["kind"]])  # estável: dentro do tipo, a ordem da escolha
+    return sorted(out, key=lambda x: order[x["kind"]]), total  # estável: dentro do tipo, a ordem da escolha
 
 
 @router.get("/team")
@@ -279,6 +297,7 @@ def team_panel(month: Optional[str] = MONTH, team: TeamQ = None, viewer=Depends(
                       **({"now": last == today} if x == m else {})})
         x = _add_months(x, 1)
     cur = trend[-1]
+    attention, attention_total = _attention(uids, viewer["user_id"], {p["id"]: p["name"] for p in folks})
 
     return {
         "period": {"month": m.strftime("%Y-%m"), "start": m, "end": end, "now": end == today},
@@ -290,7 +309,8 @@ def team_panel(month: Optional[str] = MONTH, team: TeamQ = None, viewer=Depends(
         "waiting": sum(p["waiting"] for p in folks),  # agora (não é do mês)
         "open": sum(p["open"] for p in folks),
         "trend": trend,
-        "attention": _attention(uids, viewer["user_id"], {p["id"]: p["name"] for p in folks}),
+        "attention": attention,
+        "attention_total": attention_total,  # a lista traz até ATTENTION_MAX; a tela diz "e mais N"
         "projects": sorted(projects.values(), key=lambda p: -p["minutes"]),
         "multi_project": multi,
         "people": folks,

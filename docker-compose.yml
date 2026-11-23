@@ -8,6 +8,14 @@ services:
     logging: *logging
     image: postgres:16-alpine
     restart: unless-stopped
+    # O /dev/shm padrão do Docker (64 MB) não comporta consulta paralela em tabela
+    # grande: o Postgres respondia "could not resize shared memory segment" (erro 500).
+    shm_size: 256m
+    # Só as capacidades que o Postgres usa para trocar para o usuário postgres e
+    # cuidar do volume; nenhum processo ganha privilégio depois de iniciado.
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    security_opt: ["no-new-privileges:true"]
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -26,6 +34,10 @@ services:
     logging: *logging
     build: ./backend
     restart: unless-stopped
+    # Sem capacidades e sem ganho de privilégio. (Disco só leitura fica de fora:
+    # o fotos.zip grava o temporário em /tmp e, em tmpfs, ele contaria na memória.)
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
     # Todas as variáveis vêm do .env; os padrões ficam num lugar só (app/config.py).
     env_file: .env
     # Versão e último backup gravados pelo deploy.sh (Saúde do Nexus, Admin > Geral).
@@ -51,6 +63,9 @@ services:
     logging: *logging
     build: ./web
     restart: unless-stopped
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETGID, SETUID]   # o mestre do nginx troca para o usuário nginx
+    security_opt: ["no-new-privileges:true"]
     depends_on:
       backend:
         condition: service_healthy

@@ -5,6 +5,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from psycopg.errors import UniqueViolation
+from pydantic import BaseModel, Field
 
 from .. import audit, db, links, mailer, org, people, roles
 from ..config import config
@@ -18,9 +19,10 @@ from ..deps import (
     set_session_cookie,
 )
 from ..schemas import ChangePasswordIn, EmailConfirmIn, ForgotIn, LinkPasswordIn, LinkPeekIn, LoginIn, SettingsIn
-from ..services import app_today, app_tz, task_retro_days
+from ..services import app_today, app_tz, TASK_RETRO_DAYS
 from .recurring import replace_routine
 from ..security import (
+    WEAK_PASSWORD,
     burn_password_check,
     hash_password,
     login_email_limiter,
@@ -33,6 +35,7 @@ from ..security import (
     revoke_access,
     token_hash,
     verify_password,
+    weak_password,
 )
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -52,7 +55,7 @@ def _public(row: dict, csrf: str) -> dict:
         "assistant": people.assistant_prefs(uid),
         "role": row["role"],
         "roles": row["roles"] if row.get("roles") is not None else roles.of(uid),  # a sessão já traz (deps); o login, não
-        "retro_days": task_retro_days(),  # limite de datas retroativas em tarefas
+        "retro_days": TASK_RETRO_DAYS,  # limite de datas retroativas em tarefas
         "support_contact": (db.query_one("SELECT support_contact FROM app_settings WHERE id = 1") or {}).get("support_contact"),
         "must_change_password": row["must_change_password"],
         "work_days": row["work_days"],
@@ -61,17 +64,29 @@ def _public(row: dict, csrf: str) -> dict:
     }
 
 
+def too_many(seconds: int) -> HTTPException:
+    """429 do login dizendo quanto falta de verdade: no Retry-After (segundos) e na frase (minutos)."""
+    seconds = max(1, seconds)
+    minutes = -(-seconds // 60)
+    wait = "1 minuto" if minutes == 1 else f"{minutes} minutos"
+    return HTTPException(status_code=429, detail=f"Muitas tentativas. Espere {wait}.",
+                         headers={"Retry-After": str(seconds)})
+
+
 @router.post("/login")
 def login(data: LoginIn, request: Request, response: Response):
     ip = client_ip(request)
     email = data.email.lower()
     fail_keys = (f"em:{email}|{ip}", f"em:{email}")
-    if (not login_limiter.allow(f"ip:{ip}") or login_limiter.blocked(fail_keys[0])
-            or login_email_limiter.blocked(fail_keys[1])):
-        raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
+    # Por IP contam só as falhas (em falhou): quem entra certo não gasta o limite dos colegas.
+    wait = max(login_limiter.retry_after(f"ip:{ip}"), login_limiter.retry_after(fail_keys[0]),
+               login_email_limiter.retry_after(fail_keys[1]))
+    if wait:
+        raise too_many(wait)
 
     def falhou():
         log.warning("login falhou: ip=%s conta=%s", ip, token_hash(email)[:12])  # sem o e-mail em claro
+        login_limiter.allow(f"ip:{ip}")
         login_limiter.allow(fail_keys[0])
         login_email_limiter.allow(fail_keys[1])
         dica = ", ou use Esqueci a senha" if mailer.configured() else ""
@@ -92,18 +107,9 @@ def login(data: LoginIn, request: Request, response: Response):
             (hash_password(data.password), user["id"]),
         )
 
-    # Faxina barata: sessoes vencidas e historico antigo (o desfazer so vale
-    # para o recente; excluir de verdade nao pode durar para sempre no log).
-    db.execute("DELETE FROM sessions WHERE expires_at <= now()")
-    db.execute("DELETE FROM audit_log WHERE created_at < now() - interval '180 days'")
-    # Links de convite/senha já usados ou vencidos não servem para nada depois de um mês.
-    db.execute("""DELETE FROM auth_links WHERE created_at < now() - interval '30 days'
-                   AND (used_at IS NOT NULL OR expires_at <= now())""")
-    # Pedidos de convite são dados de quem nem tem conta: decididos saem em 30
-    # dias (a lista já os escondia), os nunca respondidos em 180.
-    db.execute("""DELETE FROM invite_requests
-                   WHERE (status <> 'pending' AND decided_at < now() - interval '30 days')
-                      OR (status = 'pending' AND created_at < now() - interval '180 days')""")
+    if not config.MAIL_SCHEDULER:  # sem o agendador (que faz a faxina de hora em hora), ela roda aqui
+        from ..notify import faxina
+        faxina()
 
     return _start_session(user, response)
 
@@ -147,6 +153,14 @@ def _reset_mail(email: str, link: str):
     return m
 
 
+def _blocked_mail():
+    from ..notify import Mail
+    m = Mail("Seu acesso ao Nexus está bloqueado", "Acesso bloqueado",
+             "Seu acesso ao Nexus está bloqueado por quem administra. Para voltar a entrar, peça que libere o acesso.")
+    m.reason, m.settings_tab = "Enviado a pedido da tela de login (Esqueci a senha).", None
+    return m
+
+
 def _passkeys_mail(n: int):
     from ..notify import Mail
     m = Mail("Sua senha do Nexus foi redefinida", "Senha redefinida",
@@ -174,13 +188,24 @@ def forgot(data: ForgotIn, request: Request):
     email = data.email.lower()
     if not reset_limiter.allow(f"ip:{client_ip(request)}") or not reset_email_limiter.allow(f"em:{email}"):
         raise HTTPException(status_code=429, detail="muitos pedidos, tente mais tarde")
-    # Conta bloqueada pelo admin não recebe link (a resposta é a mesma).
-    user = db.query_one("SELECT id, email FROM users WHERE email = %s AND blocked_at IS NULL", (email,))
-    if user:
-        link = links.url("reset", links.issue(user["id"], "reset"))
-        threading.Thread(target=_send_quiet, args=(user["email"], _reset_mail(user["email"], link)), daemon=True).start()
-        audit.record({"user_id": user["id"], "actor": "web"}, "password.forgot", "password", user["id"])
+    # Responde já: consulta, link, histórico e envio ficam na thread (com ou sem conta, o tempo é o mesmo).
+    threading.Thread(target=_forgot_work, args=(email,), daemon=True).start()
     return {"ok": True}
+
+
+def _forgot_work(email: str) -> None:
+    try:
+        user = db.query_one("SELECT id, email, blocked_at FROM users WHERE email = %s", (email,))
+        if not user:
+            return
+        if user["blocked_at"]:  # não recebe link; recebe a explicação (a tela responde igual)
+            _send_quiet(user["email"], _blocked_mail())
+            return
+        link = links.url("reset", links.issue(user["id"], "reset"))
+        audit.record({"user_id": user["id"], "actor": "web"}, "password.forgot", "password", user["id"])
+        _send_quiet(user["email"], _reset_mail(user["email"], link))
+    except Exception as e:  # noqa: BLE001 — a resposta já foi dada
+        log.warning("pedido de nova senha falhou: %s", e)
 
 
 @router.post("/link")
@@ -219,8 +244,11 @@ def accept_invite(data: LinkPasswordIn, request: Request, response: Response):
         raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
     # Confere o link sem gastar, calcula o hash e só então gasta: com o servidor ocupado (503) a
     # pessoa não perde o convite, e um link inválido não custa um hash ao servidor.
-    if not links.peek(data.token, "invite"):
+    row = links.peek(data.token, "invite")
+    if not row:
         raise HTTPException(status_code=400, detail="convite inválido, vencido ou já usado: peça um novo ao administrador")
+    if weak_password(data.password, row["email"]):  # antes de gastar o convite
+        raise HTTPException(status_code=400, detail=WEAK_PASSWORD)
     hashed = hash_password(data.password)
     uid = links.consume(data.token, "invite")
     # Só conta que ainda espera o convite: depois de um "Redefinir senha" do admin, o convite
@@ -242,8 +270,11 @@ def reset_by_link(data: LinkPasswordIn, request: Request, response: Response):
     if not link_limiter.allow(f"ip:{client_ip(request)}"):
         raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
     # Como no convite: confere sem gastar, calcula o hash, gasta.
-    if not links.peek(data.token, "reset"):
+    row = links.peek(data.token, "reset")
+    if not row:
         raise HTTPException(status_code=400, detail="link inválido, vencido ou já usado: peça outro na tela de login")
+    if weak_password(data.password, row["email"]):  # antes de gastar o link
+        raise HTTPException(status_code=400, detail=WEAK_PASSWORD)
     hashed = hash_password(data.password)
     uid = links.consume(data.token, "reset")
     if not uid:
@@ -308,11 +339,20 @@ def confirm_email(data: EmailConfirmIn, request: Request):
     return {"ok": True, "email": new}
 
 
+class LogoutIn(BaseModel):
+    # Inscrição de notificações deste navegador (PushSubscription.endpoint): sai junto com a sessão.
+    endpoint: str | None = Field(default=None, max_length=1000)
+
+
 @router.post("/logout")
-def logout(request: Request, response: Response, session=Depends(web_user_csrf)):
+def logout(request: Request, response: Response, data: LogoutIn | None = None, session=Depends(web_user_csrf)):
+    """Encerra esta sessão. `endpoint` (opcional): a inscrição de notificações
+    deste aparelho, que deixa de receber avisos da conta."""
     token = request.cookies.get(config.SESSION_COOKIE)
     if token:
         db.execute("DELETE FROM sessions WHERE token_hash = %s", (token_hash(token),))
+    if data and data.endpoint:
+        db.execute("DELETE FROM push_subscriptions WHERE user_id = %s AND endpoint = %s", (session["user_id"], data.endpoint))
     clear_session_cookie(response)
     return {"ok": True}
 
@@ -328,9 +368,13 @@ def sessions(session=Depends(web_active)):
 @router.post("/logout-others")
 def logout_others(session=Depends(web_user_csrf)):
     """Sai dos outros aparelhos sem trocar a senha (celular perdido, computador
-    emprestado). Esta sessão continua; chaves de API e calendário não mudam."""
+    emprestado). Esta sessão continua; chaves de API e calendário não mudam.
+    As notificações saem de TODOS os aparelhos da conta (o celular perdido não
+    mostra mais nada); este se inscreve de novo logo em seguida (o app chama
+    POST /api/push/subscribe ao receber a resposta) e também ao abrir."""
     rows = db.query_all("DELETE FROM sessions WHERE user_id = %s AND id <> %s RETURNING id",
                         (session["user_id"], session["sid"]))
+    db.execute("DELETE FROM push_subscriptions WHERE user_id = %s", (session["user_id"],))
     audit.record(session, "sessions.logout_others", "user", session["user_id"], after={"ended": len(rows)})
     return {"ok": True, "ended": len(rows)}
 
@@ -349,6 +393,8 @@ def change_password(data: ChangePasswordIn, session=Depends(web_user_csrf)):
     row = db.query_one("SELECT password_hash FROM users WHERE id = %s", (session["user_id"],))
     if not row or not verify_password(row["password_hash"], data.current_password):
         raise HTTPException(status_code=400, detail="senha atual incorreta")
+    if weak_password(data.new_password, session["email"]):
+        raise HTTPException(status_code=400, detail=WEAK_PASSWORD)
 
     db.execute(
         "UPDATE users SET password_hash = %s, must_change_password = false WHERE id = %s",
@@ -371,13 +417,16 @@ def save_settings(data: SettingsIn, session=Depends(active_user_csrf)):
     Mudar os dias úteis NÃO reescreve o passado: cada rotina "nos dias úteis"
     que já tem história fica congelada com os dias antigos (vira semanal) e
     recomeça hoje seguindo os novos; as já encerradas só congelam."""
-    uid, before = session["user_id"], session["work_days"]
-    if before == data.work_days:
-        return {"ok": True, "work_days": before}
+    uid = session["user_id"]
     today = app_today()
     # Tudo ou nada: com metade das rotinas congeladas e os dias úteis antigos
     # ainda valendo, os números do passado mudariam sem ninguém ter pedido.
     with db.transaction():
+        # Trava a linha e lê o valor de agora (o da sessão pode estar velho): dois pedidos iguais ao
+        # mesmo tempo (duplo clique, duas abas) não congelam as rotinas duas vezes.
+        before = db.query_one("SELECT work_days FROM users WHERE id = %s FOR UPDATE", (uid,))["work_days"]
+        if before == data.work_days:
+            return {"ok": True, "work_days": before}
         for r in db.query_all(
                 """SELECT id FROM recurring_tasks WHERE user_id = %s AND COALESCE(freq, 'daily') = 'daily'
                       AND (active OR deactivated_at IS NOT NULL)""", (uid,)):

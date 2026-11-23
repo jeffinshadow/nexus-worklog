@@ -37,6 +37,7 @@ DEADLINE = 15  # segundos, o envio inteiro (destino que responde aos pinguinhos 
 BACKOFF_MIN = (1, 5, 30, 120, 720)  # espera depois da 1ª, 2ª... falha seguida
 MAX_FAILURES = 5
 BATCH = 20  # eventos por webhook em cada passada
+BUDGET = 20  # segundos por webhook em cada passada: destino lento não atrasa os das outras pessoas
 LAG_SECONDS = 2  # como o feed: gravações simultâneas podem terminar fora de ordem
 # Entidades cujo estado (o "depois" do histórico) vai no corpo; o resto vai só
 # com o evento. Fotos nunca vão (o corpo leva no máximo quantas há).
@@ -70,10 +71,15 @@ def signature(secret: str, t: int, body: bytes) -> str:
 PORTS = {443, 8443, 80}
 
 
+NAT64 = ipaddress.ip_network("64:ff9b::/96")  # 64:ff9b::7f00:1 chegaria ao 127.0.0.1 atrás de um NAT64
+
+
 def _ip_ok(raw: str) -> bool:
     ip = ipaddress.ip_address(raw.split("%")[0])
     if ip.version == 6 and ip.ipv4_mapped:  # ::ffff:127.0.0.1
         ip = ip.ipv4_mapped
+    if ip.version == 6 and ip in NAT64:
+        return False
     return ip.is_global and not ip.is_multicast
 
 
@@ -176,21 +182,38 @@ def payload(row: dict) -> dict:
     if row["action"] == "assign.returned" and row["after"]:
         # Tarefa que a pessoa atribuiu foi devolvida: o quê, por quem e o porquê (texto de quem devolveu).
         item["data"] = {k: row["after"].get(k) for k in ("title", "to", "to_id", "reason")}
+    if row["entity"] == "worklog" and isinstance(item["data"], dict) and row["action"] != "assign.returned":
+        item["data"] = {**item["data"], **_task_extras(row["entity_id"], item["data"], row["user_id"])}
     return audit._jsonable(item)
+
+
+def _task_extras(task_id, data: dict, owner: int) -> dict:
+    """Só no webhook (o feed não leva): o que quem recebe quase sempre busca em seguida.
+    Calculados na hora da entrega: nome do projeto (o do evento; null sem projeto ou se o projeto
+    foi excluído), minutos que o dono do webhook apontou na tarefa até agora (as horas de quem a tinha
+    antes de uma transferência não vão: a API também as esconde do novo dono) e o endereço dela no app."""
+    proj = db.query_one("SELECT name FROM projects WHERE id = %s", (data["project_id"],)) if data.get("project_id") else None
+    mins = db.query_one("SELECT COALESCE(sum(minutes), 0)::int AS m FROM time_entries WHERE task_id = %s AND user_id = %s",
+                        (task_id, owner))
+    return {"project_name": proj["name"] if proj else None, "minutes": mins["m"],
+            "url": f"{config.APP_URL.rstrip('/')}/#/tarefas?id={task_id}"}
 
 
 def _deliver(hook: dict, send) -> tuple[int, str | None]:
     """Entrega os eventos pendentes de um webhook, em ordem; para na 1ª falha.
     Devolve (quantos entregou, erro ou None)."""
     rows = db.query_all(
-        """SELECT id, created_at, actor, token_name, action, entity, entity_id, before, after
+        """SELECT id, user_id, created_at, actor, token_name, action, entity, entity_id, before, after
              FROM audit_log
             WHERE user_id = %s AND id > %s AND created_at <= now() - make_interval(secs => %s)
             ORDER BY id LIMIT %s""",
         (hook["user_id"], hook["last_event_id"], LAG_SECONDS, BATCH),
     )
     secret, last, sent, error = secret_for(hook["secret_salt"]), hook["last_event_id"], 0, None
+    start = time.monotonic()
     for r in rows:
+        if time.monotonic() - start > BUDGET:  # o resto fica para a passada seguinte (nada se perde)
+            break
         if not matches(hook["events"], r["action"], r["entity"]):
             last = r["id"]
             continue

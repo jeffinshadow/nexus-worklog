@@ -5,6 +5,7 @@ import { api } from "./api.js";
 import { h, icon, dateTime } from "./dom.js";
 import { codeBox, modal, toast } from "./ui.js";
 
+const SCHEDULER_STUCK_MIN = 5; // o agendador passa a cada minuto: mais que isso sem passada, está preso
 const BACKUP_OLD_DAYS = 14; // backup é feito a cada deploy: passou disso, vale conferir
 
 const mb = (bytes) => {
@@ -21,10 +22,23 @@ const ago = (iso) => { const d = daysAgo(iso); return d <= 0 ? "hoje" : d === 1 
 function rows(s) {
   const v = s.version, b = s.backup, e = s.email, p = s.push, f = s.photos, w = s.webhooks;
   const out = [];
+  const num = v.number ? `${v.number} · ` : "";
   out.push(["Versão", v.commit
-    ? `${v.commit}` + (v.deployed_at ? ` · deploy ${when(v.deployed_at)}` : "") + ` · migração ${v.migration}`
-    : `sem informação do deploy · migração ${v.migration}`, v.commit ? "ok" : ""]);
+    ? `${num}${v.commit}` + (v.deployed_at ? ` · deploy ${when(v.deployed_at)}` : "") + ` · migração ${v.migration}`
+    : `${num}sem informação do deploy · migração ${v.migration}`, v.commit ? "ok" : ""]);
   out.push(["No ar desde", when(v.started_at), ""]);
+  // Agendador: avisos por e-mail, notificações dos aparelhos, avisos de agenda e a faxina.
+  const min = (a, b) => Math.floor((new Date(a).getTime() - new Date(b).getTime()) / 60000);
+  const last = s.scheduler_last_pass;
+  if (!e.scheduler) out.push(["Agendador", "desligado no servidor (MAIL_SCHEDULER): avisos e notificações agendadas não saem", "warn"]);
+  else if (last) {
+    const parado = min(s.now, last);
+    out.push(["Agendador", `último sinal ${when(last)}` + (parado > SCHEDULER_STUCK_MIN ? ` · parado há ${parado} min: confira o servidor` : ""),
+      parado > SCHEDULER_STUCK_MIN ? "warn" : "ok"]);
+  } else {
+    const semPassada = min(s.now, v.started_at) > SCHEDULER_STUCK_MIN;
+    out.push(["Agendador", semPassada ? "nenhuma passada desde que o servidor subiu: confira o servidor" : "aguardando a primeira passada", semPassada ? "warn" : ""]);
+  }
   if (b && b.at) {
     const old = daysAgo(b.at) > BACKUP_OLD_DAYS;
     out.push(["Último backup", `${when(b.at)} (${ago(b.at)})` + (b.size_bytes ? ` · ${mb(b.size_bytes)}` : "") + (b.tables ? ` · ${b.tables} tabelas` : "")

@@ -5,6 +5,7 @@
 // aparelhos). A revisão da semana grava no mesmo campo (as prioridades
 // escolhidas viram o primeiro do próximo dia útil): não há outra escolha.
 import { api } from "./api.js";
+import { BOARD_TODAY } from "./fila.js";
 import { h, icon, clear, shortDate, addDays } from "./dom.js";
 import { errorToast, modal, pager, pageSlice, toast } from "./ui.js";
 import { projectChip } from "./projects.js";
@@ -27,9 +28,10 @@ export function firstLabel(b) {
   return n ? `Primeiro ${quando}: ${n} ${n === 1 ? "escolhida" : "escolhidas"}` : `Escolher o primeiro de ${quando}`;
 }
 
-// b: o /board já carregado (opcional). onDone: depois de salvar.
+// b: o /board já carregado (opcional; sem ele, pede o mesmo endereço que fica guardado para abrir sem sinal).
+// onDone: depois de salvar.
 export async function pickFirst(onDone, b = null) {
-  try { b = b || await api.get("/board"); } catch (e) { errorToast(e, "Não foi possível abrir as tarefas."); return; }
+  try { b = b || await api.get(BOARD_TODAY); } catch (e) { errorToast(e, "Não foi possível abrir as tarefas."); return; }
   const day = b.first_day, quando = firstDayLabel(day, b.today);
   // Aguardando depende de outra pessoa: não entra. A ordem é a do Hoje (prazo e prioridade primeiro).
   const lista = b.in_progress.filter((t) => t.status !== "blocked" && !t.pending);

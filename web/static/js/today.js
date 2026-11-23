@@ -1,6 +1,7 @@
 // Tela inicial "Hoje": o dia em um olhar e as ações mais comuns sem trocar de
 // tela. É o único lugar das rotinas (marcar até 7 dias atrás, editar, achado).
 import { api } from "./api.js";
+import { BOARD_TODAY, BOARD_ROUTINES } from "./fila.js";
 import { h, icon, clear, weekdayDate, localDay, addDays, shortDate, sendRow } from "./dom.js";
 import { errorToast, modal, toast, busy, refocusBy, actionMenu, calmMotion, undoLatest } from "./ui.js";
 import { reminderState, refreshReminders } from "./lembretes.js";
@@ -9,13 +10,14 @@ import { openRecurring, pauseRecurring, openWorklog, finishTask, askResolution, 
 import { openTask } from "./task.js";
 import { fillProjectSelect } from "./projects.js";
 import { summaryPanel } from "./summary.js";
-import { quickRegister, lastDone, lastUnknown, projectOffer, pasteHandler } from "./quick.js";
+import { quickRegister, lastDone, lastOpen, lastUnknown, projectOffer, pasteHandler } from "./quick.js";
 import { todayCard } from "./assistant.js";
 import { timerButton } from "./timer.js";
 import { todayRenewals } from "./renewals.js";
 import { packButton } from "./pacotes.js";
 import { markWithSteps } from "./passos.js";
 import { pickFirst, firstLabel } from "./primeiro.js";
+import { openReview } from "./review.js";
 
 const LAST_PROJECT = "nexus.quick.project";
 const OPEN_FILTER = "nexus.today.filter";
@@ -38,7 +40,7 @@ export async function mount(root, ctx, opts = {}) {
   const refresh = () => mount(root, ctx, { day });
   const vencP = todayRenewals(() => mount(root, ctx, { day })); // em paralelo com o quadro
   const [b, sum] = await Promise.all([
-    api.get(day ? `/board?day=${day}` : "/board"),
+    api.get(day ? `${BOARD_TODAY}&day=${day}` : BOARD_TODAY),  // o mesmo endereço que fica guardado para abrir sem sinal
     opts.summary ? Promise.resolve(opts.summary) : api.get("/summary").catch(() => null),
   ]);
   const today = b.today;
@@ -114,13 +116,17 @@ export async function mount(root, ctx, opts = {}) {
       }
       try {
         await api.post(`/recurring/${r.id}/toggle`, { done: cb.checked, day: b.day }); // o dia da tela, não o do relógio
-        refreshReminders();
-        await refresh();
-        refocusBy(root, r.label); // a lista foi redesenhada: o foco volta para a mesma rotina
       } catch (e) {
         cb.checked = !cb.checked;
         errorToast(e, "Não foi possível salvar.");
+        return;
       }
+      // Gravou: se só a releitura falhar, a caixa fica como o servidor guardou.
+      refreshReminders();
+      try {
+        await refresh();
+        refocusBy(root, r.label); // a lista foi redesenhada: o foco volta para a mesma rotina
+      } catch { toast("Salvo, mas a tela não atualizou.", { error: true }); } // não o "tente de novo" do erro de rede: já gravou
     });
     // Esmaecida: a própria linha diz por quê (e o leitor de tela também, pela descrição da caixa).
     const hint = [r.paused_until ? `pausada até ${shortDate(r.paused_until)}` : "", scheduleLabel(r, b.day),
@@ -176,7 +182,9 @@ export async function mount(root, ctx, opts = {}) {
     .then(() => proj.addEventListener("change", () => sessionStorage.setItem(LAST_PROJECT, proj.value)))
     .catch(() => {});
   const quick = h("input", { type: "text", maxlength: "200", "aria-label": "Registrar tarefa rápida",
-    placeholder: "O que você fez? — 15min" });
+    // O texto inteiro da auditoria ("… (com “— 15min” já conclui)") não cabe no campo em nenhuma
+    // largura (327 px de texto para 218 a 289 px de campo): a pergunta fica aqui e a regra do tempo, na linha de baixo.
+    placeholder: "O que fez ou vai fazer?" });
   // Colou uma lista (várias linhas): prévia com uma tarefa por linha.
   quick.addEventListener("paste", pasteHandler({ project: () => (proj.value && proj.value !== "__new" ? Number(proj.value) : null),
     onDone: () => mount(root, ctx, { day, summary: sum }) }));
@@ -209,10 +217,11 @@ export async function mount(root, ctx, opts = {}) {
     try {
       // "Ver": a linha nova fica abaixo da dobra no celular (concluídas ou abertas).
       const msg = await quickRegister(quick.value, project_id);
-      const done = lastDone, unknown = lastUnknown; // registrada já concluída ("— 30min"): pergunta como resolveu, como o Concluir
+      const done = lastDone, open = lastOpen, unknown = lastUnknown; // registrada já concluída ("— 30min"): pergunta como resolveu, como o Concluir
       toast(msg, { actions: [
-        ["Ver", () => document.querySelector(/conclu/i.test(msg) ? ".t-done" : ".t-open")?.scrollIntoView({ behavior: calmMotion() ? "auto" : "smooth", block: "start" })],
+        open && unknown ? null : ["Ver", () => document.querySelector(/conclu/i.test(msg) ? ".t-done" : ".t-open")?.scrollIntoView({ behavior: calmMotion() ? "auto" : "smooth", block: "start" })],
         done ? ["Como resolveu?", () => askResolution(done, refresh)] : null,
+        open ? ["Concluir", () => finishTask(open, refresh)] : null,  // ficou em aberto (sem tempo no texto): conclui daqui
         unknown ? projectOffer(unknown, refresh) : null,  // "@Manutenção" que não é projeto: cria e põe a tarefa nele
       ].filter(Boolean) });
     } catch (e) {
@@ -230,7 +239,7 @@ export async function mount(root, ctx, opts = {}) {
     // O projeto fica fora do <form> do campo: com outro campo no mesmo form, o Chrome do
     // Android troca o Enter do teclado por "próximo" (pula para o projeto e não registra).
     h("div", { class: "quick-row" }, sendRow(quick, register, "Registrar", "quick-send"), proj),
-    h("p", { class: "quick-hint" }, "Enter ou a seta registra. Projeto, chamado e prazo no próprio texto: ",
+    h("p", { class: "quick-hint" }, "Enter ou a seta registra; com “— 15min” no fim, já conclui. Projeto, chamado e prazo no próprio texto: ",
       h("button", { type: "button", class: "link-btn", text: "ver marcadores", onClick: () => window.dispatchEvent(new CustomEvent("nexus:help", { detail: "marcadores" })) })), hint);
   // Filtro (fica na aba): o número de cada opção ajuda a decidir antes de clicar.
   let filter = sessionStorage.getItem(OPEN_FILTER) || "all";
@@ -240,7 +249,7 @@ export async function mount(root, ctx, opts = {}) {
     ...FILTERS.map(([key, label, test]) => {
       const n = open.filter((t) => test(t, today)).length;
       return h("button", { type: "button", class: "chip-btn", "data-filter": key, "aria-pressed": String(key === filter),
-        "aria-selected": String(key === filter), text: key === "all" ? label : `${label} · ${n}`,
+        text: key === "all" ? label : `${label} · ${n}`,
         onClick: () => { filter = key; sessionStorage.setItem(OPEN_FILTER, key); paintOpen(); } });
     }));
   if (open.length) openPanel.append(seg);
@@ -250,7 +259,6 @@ export async function mount(root, ctx, opts = {}) {
     for (const b of seg.children) {
       const on = b.dataset.filter === filter;
       b.setAttribute("aria-pressed", String(on));
-      b.setAttribute("aria-selected", String(on)); // mesmo visual do .seg
     }
     clear(list);
     const shown = open.filter((t) => test(t, today));
@@ -354,10 +362,12 @@ async function showHandoff(b, refresh) {
     h("p", { class: "dialog-note", text: "O que fica aberto, o que está aguardando e por quê, o que foi concluído nas últimas 12 h. Cole no chat da equipe." }),
     area,
     // Fechando o dia: até 3 tarefas para começar o próximo dia útil (abrem o Hoje e saem sozinhas depois).
-    b && b.first_day && b.in_progress.some((t) => t.status !== "blocked" && !t.pending)
-      ? h("div", { class: "handoff-first" },
-        h("button", { type: "button", class: "btn btn-ghost btn-sm", onClick: () => { dlg.close(); pickFirst(refresh, b); } }, icon("play"), firstLabel(b)))
-      : null,
+    // E a revisão da semana, que no computador não tinha outra entrada à vista.
+    h("div", { class: "handoff-first" },
+      b && b.first_day && b.in_progress.some((t) => t.status !== "blocked" && !t.pending)
+        ? h("button", { type: "button", class: "btn btn-ghost btn-sm", onClick: () => { dlg.close(); pickFirst(refresh, b); } }, icon("play"), firstLabel(b))
+        : null,
+      h("button", { type: "button", class: "btn btn-ghost btn-sm", onClick: () => { dlg.close(); openReview(refresh); } }, icon("check"), "Revisão da semana")),
     h("div", { class: "dialog-actions" },
       h("button", { type: "button", class: "btn btn-text", text: "Fechar", onClick: () => dlg.close() }),
       h("button", { type: "button", class: "btn btn-primary", onClick: async () => {
@@ -374,7 +384,7 @@ async function showHandoff(b, refresh) {
 // Salva de uma vez, com Desfazer.
 async function reorderRoutines(uid, onDone) {
   let list;
-  try { list = (await api.get("/board")).recurring.slice().sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || a.id - b.id); }
+  try { list = (await api.get(BOARD_ROUTINES)).recurring.slice().sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || a.id - b.id); }
   catch (e) { errorToast(e, "Não foi possível abrir as rotinas."); return; }
   const ol = h("ol", { class: "reorder-list" });
   const live = h("p", { class: "sr-only", "aria-live": "polite" });

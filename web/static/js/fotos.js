@@ -55,6 +55,12 @@ export async function prepare(file) {
 // Envia uma ou mais fotos para `path` (/worklog/{id}/photos ou /recurring/{id}/photos?day=).
 // Sem sinal, a foto (já reduzida) fica na fila do aparelho e vai depois.
 export async function upload(path, files) {
+  const r = await sendAll(path, files);
+  return r.queued ? 0 : r.ok;
+}
+
+// { ok, queued }: quantas foram aceitas e, delas, quantas ficaram na fila.
+async function sendAll(path, files) {
   const list = [...files].filter(isImage);
   let ok = 0, queued = 0;
   for (const f of list) {
@@ -62,14 +68,18 @@ export async function upload(path, files) {
     catch (e) { errorToast(e, "Não foi possível enviar a foto."); break; }
   }
   if (queued) toast(queued > 1 ? `${queued} fotos guardadas: vão quando a conexão voltar.` : "Foto guardada: vai quando a conexão voltar.");
-  return queued ? 0 : ok;
+  return { ok, queued };
 }
+
+// Miniatura que ainda está na fila do aparelho (base64): WebP, ou JPEG onde o navegador não grava WebP.
+const queuedThumb = (b64) => `data:image/${String(b64).startsWith("/9j/") ? "jpeg" : "webp"};base64,${b64}`;
 
 const thumbUrl = (id) => `/api/photos/${id}?thumb=true`;
 const photoUrl = (id) => `/api/photos/${id}`;
 
 // Grade de miniaturas + "Adicionar foto". onChange: recarregar quem mostra.
-export function photoGrid(photos, { path, onChange }) {
+export function photoGrid(all, { path, onChange }) {
+  const photos = all.filter((p) => !p.pending), waiting = all.filter((p) => p.pending && p.thumb);
   const input = h("input", { type: "file", accept: "image/*", multiple: "multiple", class: "hidden", "aria-label": "Escolher fotos" });
   // Enquanto envia, avisa quem está em volta (o diálogo da evidência segura o "Salvar").
   const busyEvent = (on) => grid.dispatchEvent(new CustomEvent("photo-busy", { detail: on, bubbles: true }));
@@ -77,7 +87,11 @@ export function photoGrid(photos, { path, onChange }) {
     if (!files || ![...files].some(isImage)) return;
     toast("Enviando foto…");
     busyEvent(true);
-    try { if (await upload(path, files)) { toast("Foto adicionada."); onChange(); } }
+    try {
+      const r = await sendAll(path, files);
+      if (r.ok && !r.queued) toast("Foto adicionada.");
+      if (r.ok) onChange();  // guardada sem sinal: a releitura mostra a miniatura "esperando conexão"
+    }
     finally { busyEvent(false); }
   };
   input.addEventListener("change", () => { add(input.files); input.value = ""; });
@@ -85,7 +99,10 @@ export function photoGrid(photos, { path, onChange }) {
     ...photos.map((p, i) => h("button", { type: "button", class: "photo-thumb", "aria-label": `Abrir a foto ${i + 1} de ${photos.length}`,
       onClick: () => viewer(photos, i, onChange) },
     h("img", { src: thumbUrl(p.id), alt: "", loading: "lazy", width: "96", height: "96" }))),
-    photos.length < 10 ? h("button", { type: "button", class: "photo-add", title: "Adicionar foto (câmera, galeria ou arquivo)",
+    ...waiting.map((p) => h("div", { class: "photo-thumb photo-waiting" },
+      h("img", { src: queuedThumb(p.thumb), alt: "Foto guardada no aparelho", width: "96", height: "96" }),
+      h("span", { class: "photo-waiting-tag", text: "esperando conexão" }))),
+    all.length < 10 ? h("button", { type: "button", class: "photo-add", title: "Adicionar foto (câmera, galeria ou arquivo)",
       "aria-label": "Adicionar foto", onClick: () => input.click() }, icon("camera"), h("span", { text: "Foto" })) : null,
     input);
   // Arrastar o arquivo para cima da grade.

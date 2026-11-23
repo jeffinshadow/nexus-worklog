@@ -152,5 +152,5 @@ def test_idor_nao_membro_por_id_app_api_e_mcp(cena):
     assert "Certificado do site" not in texto(chave_caio.tool("list_renewals"))
     # O membro vê pelo MCP, marcado como equipe e só leitura.
     t = texto(Bearer(criar_chave(bia)["token"]).tool("list_renewals"))
-    assert "Certificado do site" in t and "equipe Infra, de Ana" in t
+    assert "Certificado do site" in t and "equipe Infra, de «Ana»" in t  # nome de pessoa entre « » (p10)
     assert len(ana.get("/renewals").json()) == 1
