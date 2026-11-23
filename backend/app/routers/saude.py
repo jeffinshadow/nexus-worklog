@@ -95,7 +95,8 @@ def admin_health(admin=Depends(require_admin)):
         "version": {"number": VERSION, "commit": (deploy or {}).get("commit"), "deployed_at": (deploy or {}).get("at"),
                     "migration": migrations[-1] if migrations else None, "started_at": STARTED_AT},
         "backup": backup,
-        # Fim da última passada do agendador (null = nenhuma desde que subiu, ou agendador desligado).
+        # Último sinal de vida do agendador: começo/fim da passada e entre os serviços
+        # (null = nenhuma passada desde que subiu, ou agendador desligado).
         "scheduler_last_pass": notify.last_pass,
         "email": {"configured": mailer.configured(), "scheduler": config.MAIL_SCHEDULER, "last_ok_at": ok_at,
                   "last_error_at": err[0] if err else None, "last_error": _clean(err[1]) if err else None},
