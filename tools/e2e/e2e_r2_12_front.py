@@ -36,7 +36,11 @@ def pagina(b, w, h, mobile=False, tema="dark", atalhos=None):
 
 def abre(pg, rota, seletor, tema=None):
     pg.goto(BASE + rota)
-    pg.wait_for_selector(seletor)
+    try:
+        pg.wait_for_selector(seletor)
+    except Exception:  # rede do laboratório oscilando (ERR_NETWORK_CHANGED): uma segunda chance
+        pg.reload()
+        pg.wait_for_selector(seletor, timeout=15000)
     if tema:  # a conta guarda o tema e sobrepõe o do aparelho: força o do caso
         pg.evaluate("t => window.nexusTheme && window.nexusTheme.set(t)", tema)
     pg.wait_for_timeout(700)
