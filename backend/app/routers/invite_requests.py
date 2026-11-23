@@ -28,12 +28,6 @@ from .auth import invite_request_open
 log = logging.getLogger("uvicorn.error")
 router = APIRouter(tags=["invite-requests"])
 
-# Origens genéricas (sql/037): servem a qualquer instância. "site" e "github"
-# só aparecem em pedidos antigos (saem sozinhos em até 180 dias).
-SOURCES = {"colega": "indicação de colega", "empresa": "pela empresa ou equipe", "internet": "internet ou redes sociais",
-           "outro": "outro", "site": "site", "github": "GitHub"}
-
-
 # Tempo mínimo e máximo entre mostrar o formulário e enviar (humano leva mais de 3 s para preencher e
 # enviar; robô manda na hora, ou com um carimbo velho guardado).
 FILL_MIN, FILL_MAX = 3, 3600
@@ -70,24 +64,27 @@ def request_form():
 DAILY_CAP = 20
 
 
+AVISO_ADMIN = "Chegou um pedido de convite. Veja em Admin."
+
+
 def _mail_admins(req: dict) -> None:
+    """Só texto fixo e o endereço de quem pediu: o formulário é público, e o nome e o
+    motivo (texto livre) virariam um e-mail redigido por um anônimo, saindo do SMTP da
+    instância para os admins. Os dois ficam no app, em Admin."""
     from ..notify import Mail
     admins = db.query_all("""SELECT u.id, u.email FROM users u
                               WHERE EXISTS (SELECT 1 FROM user_roles r WHERE r.user_id = u.id AND r.role = 'admin')""")
-    origem = SOURCES[req["source"]] + (f" ({req['source_note']})" if req.get("source_note") else "")
     for a in admins:
         try:
-            m = Mail(f"Pedido de convite: {req['name']}", f"{req['name']} quer usar o Nexus",
-                     "Um pedido de convite chegou pela tela de login. Convide ou recuse em Admin.")
-            m.blocks = [("Quem pede", [req["name"], req["email"], f"Como conheceu: {origem}"]),
-                        ("Por que gostaria de usar", [req["reason"]])]
+            m = Mail("Pedido de convite", "Pedido de convite", AVISO_ADMIN)
+            m.blocks = [("Quem pede", [req["email"]])]
             m.link, m.button = "/#/admin", "Abrir em Admin"
             m.reason, m.settings_tab = "Você recebe este e-mail porque é administrador do Nexus.", None
             mailer.send(a["email"], m.subject, m.text(), m.html())
         except Exception as e:  # noqa: BLE001 — um admin sem e-mail não impede os outros
             log.warning("aviso de pedido de convite para o admin %s falhou: %s", a["id"], e)
         try:
-            push.send(a["id"], {"title": "Pedido de convite", "body": f"{req['name']} quer usar o Nexus",
+            push.send(a["id"], {"title": "Pedido de convite", "body": AVISO_ADMIN,
                                 "url": "/#/admin", "tag": f"convite-{req['id']}", "kind": "convite"}, urgency="normal", ttl=86400)
         except Exception:  # noqa: BLE001
             log.exception("notificação do pedido de convite falhou")
@@ -159,14 +156,14 @@ def _decide(rid: int, status: str, admin: dict) -> dict:
 def invite(rid: int, data: InviteChoiceIn | None = None, admin=Depends(require_admin_csrf)):
     """Convida quem pediu, com o nome (revisado pelo admin; padrão: o do pedido)
     e os papéis escolhidos ali (padrão: só Usuário), como em POST /admin/users."""
-    req = db.query_one("SELECT * FROM invite_requests WHERE id = %s AND status = 'pending'", (rid,))
-    if not req:
-        raise HTTPException(status_code=404, detail="pedido não encontrado ou já decidido")
     data = data or InviteChoiceIn()
-    nome = data.display_name if "display_name" in data.model_fields_set else (req["name"] or "")[:60]
-    out = invite_user(InviteIn(email=req["email"], display_name=nome or None, roles=data.roles, team_ids=data.team_ids), admin=admin)  # 409 se já tiver conta
-    _decide(rid, "invited", admin)
-    return out
+    # A decisão primeiro e na mesma transação da conta: com dois admins no mesmo
+    # pedido, quem chega depois leva 404 e nada é criado; o 409 de conta que já
+    # existe desfaz a decisão (o pedido continua pendente).
+    with db.transaction():
+        req = _decide(rid, "invited", admin)
+        nome = data.display_name if "display_name" in data.model_fields_set else (req["name"] or "")[:60]
+        return invite_user(InviteIn(email=req["email"], display_name=nome or None, roles=data.roles, team_ids=data.team_ids), admin=admin)
 
 
 @router.post("/api/admin/invite-requests/{rid}/decline")
