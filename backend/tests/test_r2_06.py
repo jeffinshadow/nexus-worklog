@@ -137,3 +137,23 @@ def test_limite_nao_conta_atribuicao_cancelada(cena):
     h = next(x for x in hist(kaique, entity="worklog", entity_id=ids[1]) if x["action"] == "worklog.delete")
     assert kaique.post(f"/history/{h['id']}/undo").status_code == 200
     assert chefe.post("/assign", {"user_id": uid_de(kaique), "title": "Outra"}).status_code == 429
+
+
+# ------------------------------------ devolver com cronômetro esquecido --
+
+def test_devolver_com_cronometro_esquecido_descarta_o_tempo(cena):
+    chefe, kaique, _ = cena
+    tid = _manda(chefe, kaique)
+    assert kaique.post("/timer/start", {"task_id": tid}).status_code in (200, 201)
+    db.execute("UPDATE task_timers SET started_at = now() - interval '13 hours' WHERE task_id = %s", (tid,))
+    assert kaique.post(f"/worklog/{tid}/return", {"reason": "não é da minha área"}).status_code == 200
+    assert kaique.get("/timer").json()["timer"] is None
+    # Mais de 12 h rodando: o tempo é descartado (timer.discard), não vira apontamento.
+    assert _conta("audit_log WHERE action = 'timer.discard' AND user_id = %s AND entity_id = %s", uid_de(kaique), tid) == 1
+    lapide = db.query_one("SELECT before FROM audit_log WHERE action = 'worklog.delete' AND entity_id = %s", (tid,))["before"]
+    assert lapide["children"]["time"] == []
+    assert _conta("time_entries WHERE user_id = %s", uid_de(kaique)) == 0
+    # O desfazer devolve a tarefa sem tempo fantasma.
+    h = next(x for x in hist(kaique, entity="worklog", entity_id=tid) if x["action"] == "worklog.delete")
+    assert kaique.post(f"/history/{h['id']}/undo").status_code == 200
+    assert kaique.get(f"/worklog/{tid}").json()["minutes"] == 0
