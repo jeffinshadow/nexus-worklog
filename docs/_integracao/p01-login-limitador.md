@@ -44,6 +44,9 @@ Correções
 - **test_revisao.py** (editei UMA asserção, fora da lista de arquivos do pacote):
   `test_ip_v6_agrupa_por_64_e_limitador_cheio_recusa_novas` afirmava o comportamento antigo (cheio recusa chave nova),
   que este pacote muda de propósito. Virou `..._nao_recusa_novas` e afirma que a chave nova passa.
+- **test_admin_gauntlet.py** (editei UMA asserção, também fora da lista): `test_bloquear_acesso_e_liberar` afirmava
+  que o "Esqueci a senha" de conta bloqueada não manda nada; agora afirma que não vai link e vai só o aviso de
+  bloqueio.
 - **Decisão da R3 revista**: a R3 decidiu "limitador cheio recusa chave nova (não zera)". Mantive o "não zera" para
   quem já estourou (o bloqueio de quem errou 10 vezes continua) e troquei o "recusa" por descartar as chaves que não
   estouraram. Risco conferido pelo revisor do pentest: o teto por e-mail fica em outro dicionário
