@@ -9017,6 +9017,162 @@
         "security": []
       }
     },
+    "/api/me/glpi": {
+      "get": {
+        "tags": [
+          "glpi"
+        ],
+        "summary": "Get Glpi",
+        "description": "Estado da conexão com o GLPI: `available` (o admin configurou), `connected`,\no nome no GLPI, a última sincronização, o erro (se houver) e as soluções que o GLPI recusou.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
+        "operationId": "get_glpi_api_me_glpi_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
+          }
+        },
+        "x-session-only": true,
+        "security": []
+      },
+      "put": {
+        "tags": [
+          "glpi"
+        ],
+        "summary": "Connect Glpi",
+        "description": "Conecta com o token pessoal do GLPI (Preferências › API token): confere no\nGLPI antes de guardar (cifrado) e já faz a primeira sincronização.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
+        "operationId": "connect_glpi_api_me_glpi_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GlpiTokenIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
+          }
+        },
+        "x-session-only": true,
+        "security": []
+      },
+      "delete": {
+        "tags": [
+          "glpi"
+        ],
+        "summary": "Disconnect Glpi",
+        "description": "Desconecta: apaga o token. As tarefas ficam; nada mais é enviado ao GLPI.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
+        "operationId": "disconnect_glpi_api_me_glpi_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
+          }
+        },
+        "x-session-only": true,
+        "security": []
+      }
+    },
+    "/api/me/glpi/sync": {
+      "post": {
+        "tags": [
+          "glpi"
+        ],
+        "summary": "Sync Glpi",
+        "description": "Atualizar agora: puxa os chamados e manda as soluções pendentes (tira a pausa por falhas).\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
+        "operationId": "sync_glpi_api_me_glpi_sync_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
+          }
+        },
+        "x-session-only": true,
+        "security": []
+      }
+    },
+    "/api/admin/glpi/test": {
+      "post": {
+        "tags": [
+          "glpi"
+        ],
+        "summary": "Test Glpi",
+        "description": "Testa o endereço e o App-Token salvos: {ok, error}. Não usa o token de ninguém.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
+        "operationId": "test_glpi_api_admin_glpi_test_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
+          }
+        },
+        "x-session-only": true,
+        "security": []
+      }
+    },
     "/api/notes/{note_id}": {
       "patch": {
         "tags": [
@@ -10023,6 +10179,21 @@
         ],
         "title": "ForgotIn"
       },
+      "GlpiTokenIn": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 10,
+            "title": "Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "title": "GlpiTokenIn"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -10626,6 +10797,31 @@
               }
             ],
             "title": "Ticket Url"
+          },
+          "glpi_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300,
+                "pattern": "^(https?://\\S+)?$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Glpi Url"
+          },
+          "glpi_app_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Glpi App Token"
           }
         },
         "type": "object",

@@ -106,6 +106,10 @@ class OrgIn(BaseModel):
     privacy_url: Optional[str] = Field(default=None, max_length=300, pattern=r"^(https://\S+)?$")
     # Endereço do sistema de chamados da instância ({id} = o número); "" ou null = sem endereço.
     ticket_url: Optional[str] = Field(default=None, max_length=300, pattern=r"^(https?://\S+)?$")
+    # GLPI (app/glpi.py): endereço do GLPI ("" ou null = desliga a integração) e o App-Token do
+    # cliente de API de lá ("" ou null = sem; só entra, nunca é devolvido).
+    glpi_url: Optional[str] = Field(default=None, max_length=300, pattern=r"^(https?://\S+)?$")
+    glpi_app_token: Optional[str] = Field(default=None, max_length=200)
 
 
 class AdminProfileIn(BaseModel):
@@ -664,6 +668,10 @@ class TourIn(BaseModel):
 class TicketUrlIn(BaseModel):
     # Ex.: https://glpi.empresa.com/front/ticket.form.php?id={id}  ({id} vira o número)
     ticket_url: Optional[str] = Field(default=None, max_length=300, pattern=r"^(https?://\S+)?$")
+
+
+class GlpiTokenIn(BaseModel):
+    token: str = Field(min_length=10, max_length=200)  # token pessoal do GLPI (Preferências › API token)
 
 
 class TimerIn(BaseModel):

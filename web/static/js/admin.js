@@ -711,6 +711,7 @@ async function mountOrg(root, me) {
           + (cfg.mail_configured ? "" : " Hoje o e-mail não está configurado no servidor, então o pedido não aparece mesmo ligado."),
         "Pronto: a tela de login oferece o pedido de convite.", "Pronto: a tela de login não oferece mais o pedido de convite.")),
     ticketField(),
+    glpiField(),
     privacyField())));
 
   // Política de privacidade da instância: link na tela de login, na Conta e no convite.
@@ -735,6 +736,54 @@ async function mountOrg(root, me) {
       field("Endereço da política de privacidade", url),
       h("p", { class: "dialog-note field-note", text: "Preenchido, o link aparece na tela de login, em Configurações > Conta e no e-mail de convite. Vazio (padrão), nenhum link aparece." }),
       err, h("div", { class: "row-actions" }, saveBtn));
+  }
+
+  // GLPI: o endereço (e o App-Token, se o GLPI exigir). Cada pessoa conecta a própria conta em Configurações.
+  function glpiField() {
+    const url = h("input", { type: "url", maxlength: "300", value: cfg.glpi_url || "", id: "org-glpi-url",
+      placeholder: "https://glpi.empresa.com.br" });
+    const app = h("input", { type: "password", maxlength: "200", autocomplete: "off", id: "org-glpi-app",
+      placeholder: cfg.glpi_app_token_set ? "Guardado (digite para trocar)" : "Opcional" });
+    const err = h("p", { class: "error-text", role: "alert" });
+    const result = h("p", { class: "dialog-note field-note", role: "status" });
+    url.addEventListener("input", () => markInvalid([url], err, false));
+    const fail = (e) => {
+      err.textContent = e.status === 422 ? "Use um endereço começando com http:// ou https://." : e.message || "Não foi possível salvar.";
+      markInvalid([url], err);
+      url.focus();
+    };
+    const saveBtn = h("button", { type: "button", class: "btn btn-primary", text: "Salvar GLPI", onClick: busy(async () => {
+      err.textContent = result.textContent = "";
+      const v = url.value.trim(), t = app.value.trim();
+      if (cfg.glpi_url && v.replace(/\/+$/, "") !== cfg.glpi_url && !(await confirmDialog({
+        title: v ? "Trocar o endereço do GLPI?" : "Desligar a integração com o GLPI?",
+        text: "Todas as pessoas conectadas são desconectadas (os tokens delas são apagados). As tarefas ficam.",
+        confirm: v ? "Trocar" : "Desligar", danger: true }))) return;
+      try {
+        await save({ glpi_url: v || null, ...(t ? { glpi_app_token: t } : {}) },
+          v ? "Pronto: cada pessoa conecta a própria conta em Configurações › Conta › GLPI." : "Pronto: integração com o GLPI desligada.");
+        url.value = cfg.glpi_url || "";
+        app.value = "";
+        app.placeholder = cfg.glpi_app_token_set ? "Guardado (digite para trocar)" : "Opcional";
+      } catch (e) { fail(e); }
+    }) });
+    const testBtn = h("button", { type: "button", class: "btn btn-ghost", text: "Testar", onClick: busy(async () => {
+      err.textContent = "";
+      result.textContent = "Testando…";
+      try {
+        const r = await api.post("/admin/glpi/test");
+        result.textContent = r.ok ? "Tudo certo: o GLPI respondeu e aceitou o App-Token." : "Não deu certo: " + r.error + ".";
+      } catch (e) { result.textContent = ""; errorToast(e, "Não foi possível testar."); }
+    }) });
+    const clearBtn = h("button", { type: "button", class: "btn btn-ghost", text: "Tirar o App-Token", onClick: busy(async () => {
+      try { await save({ glpi_app_token: null }, "Pronto: App-Token removido."); app.placeholder = "Opcional"; }
+      catch (e) { errorToast(e); }
+    }) });
+    return h("fieldset", { class: "org-option org-ticket" }, h("legend", { text: "GLPI" }),
+      field("Endereço do GLPI", url),
+      field("App-Token do cliente de API (se o GLPI exigir)", app),
+      h("p", { class: "dialog-note field-note", text: "Com o endereço preenchido, cada pessoa conecta a própria conta do GLPI em Configurações › Conta: os chamados abertos no nome dela viram tarefas, e a tarefa concluída vira a solução do chamado. Precisa do GLPI 11 ou superior, com a API ligada (Configurar › Geral › API) e um cliente de API que aceite o IP do Nexus. Prefira https://: em http:// os tokens trafegam sem proteção. O App-Token fica guardado cifrado e não aparece de novo." }),
+      err, h("div", { class: "row-actions" }, saveBtn, testBtn, cfg.glpi_app_token_set ? clearBtn : null), result);
   }
 
   // Endereço do sistema de chamados da instância. Vazio = cada pessoa usa o seu (Conta).

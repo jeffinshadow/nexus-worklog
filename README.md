@@ -234,7 +234,10 @@ mudança fica no histórico do admin. Toda conta nova faz o tour guiado no prime
   (`remind_at` em `create_task`/`update_task`). A IA não exclui tarefa, rotina, projeto nem
   objetivo. Liga no Claude Code, Cursor, Claude Desktop e Gemini CLI
   (docs/API.md); ChatGPT e claude.ai na web ainda não (exigem OAuth).
-- **Integração** — API REST aberta, sem conector para produto específico:
+- **GLPI** (11 ou superior) — o chamado aberto no seu nome vira tarefa, e a tarefa concluída vira a solução do
+  chamado. O admin informa o endereço; cada pessoa conecta com o próprio token. O GLPI segue dono do chamado
+  (docs/ADMIN.md, *Integração com o GLPI*).
+- **Integração** — API REST aberta para o resto:
   `external_ref` em tarefas, projetos, anotações e tempo (repetir não duplica),
   feed de mudanças (`/api/history?after=`) e webhooks de saída assinados
   (HMAC-SHA256), com os eventos numa lista para marcar, edição sem trocar o

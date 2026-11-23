@@ -96,7 +96,7 @@ export async function mount(root, ctx) {
     // Quem é (nome, foto, tema), o que muda o dia (dias úteis, projeto padrão), quem vê e atribui tarefas, o resto.
     conta: async (again) => isUser
       ? [profilePanel(ctx.me, again), themePanel(ctx.me), workDays(ctx.me), defaultProjectPanel(ctx.me, (r) => meChanged(ctx.me, r)),
-        privacyPanel(ctx.me), assistantPanel(ctx.me), ticketsPanel(ctx.me), shortcutsPanel(), account(ctx.me),
+        privacyPanel(ctx.me), assistantPanel(ctx.me), ticketsPanel(ctx.me), await glpiPanel(again), shortcutsPanel(), account(ctx.me),
         await otherDevicesPanel(), await passkeysPanel(again)]
       : [profilePanel(ctx.me, again), themePanel(ctx.me), account(ctx.me), await otherDevicesPanel(), await passkeysPanel(again)],
     // Notificações dos aparelhos primeiro; e-mail depois.
@@ -278,6 +278,59 @@ function ticketsPanel(me) {
     h("div", { class: "panel-head" }, h("h2", { text: "Chamados e ordens de serviço" })),
     h("p", { class: "help", text: "Opcional. Se a sua equipe usa um sistema de chamados ou de ordens de serviço, cole o endereço de um deles, trocando o número por {id} (ex.: https://sistema.empresa/os/{id}). Sem {id}, o número vai no fim. Com o endereço, o “#4821” das tarefas abre o chamado." }),
     field("Endereço do chamado ou OS", url), err);
+}
+
+// ------------------------------------------------------------------- GLPI --
+
+// Só aparece quando a administração configurou o GLPI (Admin › Para empresas). O token entra e nunca volta.
+async function glpiPanel(rerender) {
+  let st;
+  try { st = await api.get("/me/glpi"); } catch { return null; }
+  if (!st.available) return null;
+  const frase = (t) => t ? t.charAt(0).toUpperCase() + t.slice(1) + (/[.!?]$/.test(t) ? "" : ".") : "";
+  const panel = (...kids) => h("section", { class: "panel", id: "glpi" },
+    h("div", { class: "panel-head" }, h("h2", { text: "GLPI" })), ...kids);
+  if (!st.connected) {
+    const token = h("input", { type: "password", maxlength: "200", autocomplete: "off", placeholder: "Cole o seu token do GLPI" });
+    const err = errorLine();
+    const form = h("form", {}, field("Seu token de API do GLPI", token), err,
+      h("div", { class: "row-actions" }, h("button", { type: "submit", class: "btn btn-primary", text: "Conectar" })));
+    form.addEventListener("submit", busy(async () => {
+      fieldError(err, token, "");
+      try {
+        const r = await api.put("/me/glpi", { token: token.value.trim() });
+        toast(r.error ? "Conectado, mas a primeira atualização falhou." : `Conectado ao GLPI como ${r.name}.`);
+        rerender();
+      } catch (e) {
+        fieldError(err, token, e.status === 422 ? "Cole o token inteiro." : frase(e.message) || "Não foi possível conectar.");
+        token.focus();
+      }
+    }));
+    return panel(
+      h("p", { class: "help", text: "Os chamados abertos no seu nome no GLPI viram tarefas aqui. Ao concluir a tarefa, o que você escreveu em “Como foi resolvido” (e o tempo apontado) vira a solução do chamado. O token fica no GLPI, em Preferências › API token (gere um, se estiver vazio)." }),
+      form);
+  }
+  const act = (label, fn) => h("button", { type: "button", class: "btn btn-ghost", text: label, onClick: busy(fn) });
+  const n = st.open;
+  return panel(
+    h("p", { class: "help", text: `Conectado como ${st.name || "você"}. ${n === 1 ? "1 chamado aberto virou tarefa" : n + " chamados abertos viraram tarefas"}`
+      + (st.last_sync_at ? `; atualizado em ${dateTime(st.last_sync_at)}.` : ".")
+      + (st.pending ? ` ${st.pending === 1 ? "1 solução sai" : st.pending + " soluções saem"} na próxima atualização.` : "") }),
+    st.error ? warnBox((st.paused ? "A atualização parou: " : "A última atualização falhou: ") + st.error + ".") : null,
+    ...st.failed.map((f) => warnBox(`Chamado #${f.ticket_id}: ${f.error}.`)),
+    h("div", { class: "row-actions" },
+      act("Atualizar agora", async () => {
+        try {
+          const r = await api.post("/me/glpi/sync");
+          toast(r.error ? frase(r.error) : "Chamados atualizados.", r.error ? { error: true } : {});
+          rerender();
+        } catch (e) { errorToast(e, "Não foi possível atualizar."); }
+      }),
+      act("Desconectar", async () => {
+        if (!(await confirmDialog({ title: "Desconectar do GLPI?", text: "O seu token é apagado daqui. As tarefas ficam; chamados novos não chegam e nada mais é enviado ao GLPI.", confirm: "Desconectar", danger: true }))) return;
+        try { await api.del("/me/glpi"); toast("Desconectado do GLPI."); rerender(); }
+        catch (e) { errorToast(e, "Não foi possível desconectar."); }
+      })));
 }
 
 // ---------------------------------------------------------------- atalhos --
