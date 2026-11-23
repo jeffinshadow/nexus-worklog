@@ -235,18 +235,22 @@ def notify_assigner(task_id: int) -> None:
 @router.get("/sent")
 def sent(user=Depends(require_assigner)):
     """Tarefas que esta pessoa atribuiu, com o status atual (as mais recentes).
-    `editable`: ainda dá para corrigir (o que quem recebeu não mudou);
-    `cancelable`: ainda dá para cancelar. As que saíram da conta de
+    `editable`: ainda dá para corrigir (o que quem recebeu não mudou; falso se
+    ela deixou de receber tarefas atribuídas); `cancelable`: ainda dá para
+    cancelar (vale mesmo sem `editable`). As que saíram da conta de
     quem recebeu continuam aqui (status "removed", com `ended`)."""
     # Fora das equipes de quem atribuiu (`same_team` falso) a linha vem sem `description`
     # nem `blocked_reason`; conta de destino excluída: "conta excluída", sem e-mail nem
     # motivo da devolução (em _removed). Fica em comentário: a docstring vai para o openapi.
+    # `open`: "a fazer", sem nada registrado e no alcance (o que o cancelar exige). Alterar
+    # pede também a regra do PATCH: a pessoa ainda recebe, ou a conta está bloqueada.
+    scope = assignable.scope_sql('u', int(user['user_id']))
     rows = db.query_all(
         f"""SELECT w.id, w.title, w.description, w.status, w.due_date, w.assigned_at, w.completed_at, w.priority, w.blocked_reason,
                    w.user_id AS to_id, u.email AS to_email,
-                   (w.status = 'todo' AND NOT EXISTS ({_STARTED.format(t="w.id")})
-                    AND {assignable.scope_sql('u', int(user['user_id']))}) AS editable,
-                   {assignable.scope_sql('u', int(user['user_id']))} AS same_team
+                   (w.status = 'todo' AND NOT EXISTS ({_STARTED.format(t="w.id")}) AND {scope}) AS open,
+                   (u.blocked_at IS NOT NULL OR {assignable.consent_sql('u')}) AS receives,
+                   {scope} AS same_team
               FROM worklog_tasks w JOIN users u ON u.id = w.user_id
              WHERE w.assigned_by = %s
              ORDER BY w.assigned_at DESC NULLS LAST, w.id DESC
@@ -257,8 +261,10 @@ def sent(user=Depends(require_assigner)):
     nomes = people.profiles(r["to_id"] for r in rows)
     for r in rows:
         # Cancelar só enquanto quem recebeu não mexeu em nada (Alterar ainda vale
-        # para os campos que ela não mudou).
-        r["cancelable"] = bool(r["editable"] and not _touched(r["id"], r["to_id"]))
+        # para os campos que ela não mudou). Quem desligou o aceite: só cancelar.
+        aberta, recebe = r.pop("open"), r.pop("receives")
+        r["editable"] = bool(aberta and recebe)
+        r["cancelable"] = bool(aberta and not _touched(r["id"], r["to_id"]))
         if not r["same_team"]:
             # Fora do alcance de quem atribuiu: a linha fica (o que ela mandou), sem o
             # que quem recebeu escreve hoje na tarefa.
