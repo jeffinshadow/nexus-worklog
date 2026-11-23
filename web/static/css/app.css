@@ -1807,3 +1807,10 @@ input:disabled { cursor: not-allowed; }
   .time-form .btn { height: 44px; }
   .time-form input { height: 44px; }
 }
+
+/* auditoria p15 */
+/* Projeto: "Próximos prazos" e os objetivos são h2 (ordem dos títulos); mesma aparência de antes. */
+.proj-upcoming h2 { font-size: var(--type-body-s); font-weight: var(--weight-label); color: var(--on-surface-variant); margin: 0 0 4px; }
+.obj-block .obj-head h2 { font-size: var(--type-title); font-weight: var(--weight-title); margin: 0; }
+/* Objetivo concluído recolhido: uma linha. */
+.obj-block.obj-folded .obj-head { margin-bottom: 0; }

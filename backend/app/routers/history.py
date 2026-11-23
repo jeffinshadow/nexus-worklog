@@ -116,7 +116,7 @@ ACTION_LABELS = {
     "note.delete": "excluiu uma anotação da tarefa",
     "checklist.create": "adicionou o item",
     "checklist.update": "editou o item",
-    "checklist.delete": "removeu o item",
+    "checklist.delete": "excluiu o item",
     "time.create": "apontou tempo em",
     "time.update": "corrigiu um apontamento de",
     "time.delete": "excluiu um apontamento de",

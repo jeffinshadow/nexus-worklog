@@ -101,7 +101,7 @@ export async function assignDialog({ fromReturn = null, edit = null, onDone } = 
     field("Título", title),
     field("Descrição (opcional, até 300 caracteres)", desc),
     h("div", { class: "field-row" }, field("Prazo (opcional)", due), field("Prioridade", prio)),
-    edit ? null : h("div", { class: "field-row" }, field("Chamado (opcional)", ticket),
+    edit ? null : h("div", { class: "field-row" }, field("Nº do chamado ou OS (opcional)", ticket),
       h("div", { class: "field field-check" }, h("label", { class: "check-line" }, after, h("span", { text: "Plantão / fora do horário" })))),
     h("p", { class: "dialog-note", text: edit
       ? `${edit.to_name} recebe um e-mail com a mudança. Depois que a tarefa for começada, só quem recebeu pode mudá-la.`

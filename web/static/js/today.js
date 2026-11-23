@@ -125,7 +125,7 @@ export async function mount(root, ctx, opts = {}) {
       try {
         await refresh();
         refocusBy(root, r.label); // a lista foi redesenhada: o foco volta para a mesma rotina
-      } catch (e) { errorToast(e, "Salvo, mas a tela não atualizou."); }
+      } catch { toast("Salvo, mas a tela não atualizou.", { error: true }); } // não o "tente de novo" do erro de rede: já gravou
     });
     // Esmaecida: a própria linha diz por quê (e o leitor de tela também, pela descrição da caixa).
     const hint = [r.paused_until ? `pausada até ${shortDate(r.paused_until)}` : "", scheduleLabel(r, b.day),
@@ -181,7 +181,9 @@ export async function mount(root, ctx, opts = {}) {
     .then(() => proj.addEventListener("change", () => sessionStorage.setItem(LAST_PROJECT, proj.value)))
     .catch(() => {});
   const quick = h("input", { type: "text", maxlength: "200", "aria-label": "Registrar tarefa rápida",
-    placeholder: "O que fez ou vai fazer (com “— 15min” já conclui)" });
+    // O texto inteiro da auditoria ("… (com “— 15min” já conclui)") não cabe no campo em nenhuma
+    // largura (327 px de texto para 218 a 289 px de campo): a pergunta fica aqui e a regra do tempo, na linha de baixo.
+    placeholder: "O que fez ou vai fazer?" });
   // Colou uma lista (várias linhas): prévia com uma tarefa por linha.
   quick.addEventListener("paste", pasteHandler({ project: () => (proj.value && proj.value !== "__new" ? Number(proj.value) : null),
     onDone: () => mount(root, ctx, { day, summary: sum }) }));
@@ -235,7 +237,7 @@ export async function mount(root, ctx, opts = {}) {
     // O projeto fica fora do <form> do campo: com outro campo no mesmo form, o Chrome do
     // Android troca o Enter do teclado por "próximo" (pula para o projeto e não registra).
     h("div", { class: "quick-row" }, sendRow(quick, register, "Registrar", "quick-send"), proj),
-    h("p", { class: "quick-hint" }, "Enter ou a seta registra. Projeto, chamado e prazo no próprio texto: ",
+    h("p", { class: "quick-hint" }, "Enter ou a seta registra; com “— 15min” no fim, já conclui. Projeto, chamado e prazo no próprio texto: ",
       h("button", { type: "button", class: "link-btn", text: "ver marcadores", onClick: () => window.dispatchEvent(new CustomEvent("nexus:help", { detail: "marcadores" })) })), hint);
   // Filtro (fica na aba): o número de cada opção ajuda a decidir antes de clicar.
   let filter = sessionStorage.getItem(OPEN_FILTER) || "all";

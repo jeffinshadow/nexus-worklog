@@ -50,7 +50,7 @@ export function markWithSteps(r, day, onDone) {
     h("h2", { text: r.label }),
     h("p", { class: "dialog-note", text: "Desmarque o que ficou sem fazer: isso fica anotado no PDF. A rotina conta como feita uma vez." }),
     list,
-    h("label", { class: "field" }, r.require_note ? "Observação (esta rotina exige evidência)" : "Observação (opcional)", text),
+    h("label", { class: "field" }, r.require_note ? "Evidência: o que foi conferido (obrigatória nesta rotina)" : "Observação (opcional)", text),
     photoBox,
     err,
     h("div", { class: "dialog-actions" },
