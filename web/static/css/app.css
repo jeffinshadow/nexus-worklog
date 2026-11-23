@@ -1872,3 +1872,7 @@ input:disabled { cursor: not-allowed; }
 .obj-block .obj-head h2 { font-size: var(--type-title); font-weight: var(--weight-title); margin: 0; }
 /* Objetivo concluído recolhido: uma linha. */
 .obj-block.obj-folded .obj-head { margin-bottom: 0; }
+/* rodada 2 r2-12 */
+/* Busca lateral (combobox): a sugestão marcada pelas setas, com o foco ainda no campo. */
+.sugg-item[aria-selected="true"] { background-image: linear-gradient(var(--hover-tint), var(--hover-tint)); outline: 2px solid var(--primary-hi); outline-offset: -2px; }
+/* fim rodada 2 r2-12 */
