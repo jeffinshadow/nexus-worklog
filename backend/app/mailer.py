@@ -16,6 +16,16 @@ class MailError(Exception):
     pass
 
 
+class MailNotSent(MailError):
+    """Falhou ANTES de o servidor aceitar a mensagem (conexão, TLS, login): nada
+    saiu, então dá para tentar de novo sem risco de mandar duas vezes."""
+
+
+# Conexão e saudação do SMTP: 5 s (servidor pendurado não prende o agendador);
+# depois de conectado, a conversa segue com o prazo de sempre.
+CONNECT_TIMEOUT, TALK_TIMEOUT = 5, 20
+
+
 # Último envio (ok e falha) deste processo, para a Saúde do Nexus (Admin > Geral):
 # pega também convites e links de senha, que não passam pelo notification_log.
 last = {"ok_at": None, "error_at": None, "error": None}
@@ -35,7 +45,7 @@ def send(to: str, subject: str, text: str, html: str | None = None,
     msg["To"] = to
     if cc:
         msg["Cc"] = cc
-    msg["Subject"] = subject
+    msg["Subject"] = " ".join(subject.split())  # título com quebra de linha: o cabeçalho recusaria
     msg["Date"] = formatdate(localtime=True)
     domain = parseaddr(config.MAIL_FROM)[1].rpartition("@")[2] or "localhost"
     msg["Message-ID"] = make_msgid(domain=domain)
@@ -49,20 +59,25 @@ def send(to: str, subject: str, text: str, html: str | None = None,
         maintype, _, subtype = mime.partition("/")
         msg.add_attachment(data, maintype=maintype, subtype=subtype, filename=name)
 
+    entregando = False  # True a partir do send_message: daí em diante o servidor pode ter aceitado
     try:
         if config.SMTP_PORT == 465:
-            smtp = smtplib.SMTP_SSL(config.SMTP_HOST, 465, timeout=20, context=ssl.create_default_context())
+            smtp = smtplib.SMTP_SSL(config.SMTP_HOST, 465, timeout=CONNECT_TIMEOUT, context=ssl.create_default_context())
         else:
-            smtp = smtplib.SMTP(config.SMTP_HOST, config.SMTP_PORT, timeout=20)
+            smtp = smtplib.SMTP(config.SMTP_HOST, config.SMTP_PORT, timeout=CONNECT_TIMEOUT)
+        with smtp:
             if config.SMTP_PORT == 587:
                 smtp.starttls(context=ssl.create_default_context())
-        with smtp:
             if config.SMTP_USER:
                 smtp.login(config.SMTP_USER, config.SMTP_PASSWORD)
+            smtp.timeout = TALK_TIMEOUT
+            if getattr(smtp, "sock", None):
+                smtp.sock.settimeout(TALK_TIMEOUT)
+            entregando = True
             smtp.send_message(msg)
     except (smtplib.SMTPException, OSError) as e:
         # Mensagem curta para o usuário/log; nunca inclui a senha.
-        err = MailError(f"falha no envio: {type(e).__name__}: {str(e)[:160]}")
+        err = (MailError if entregando else MailNotSent)(f"falha no envio: {type(e).__name__}: {str(e)[:160]}")
         last.update(error_at=datetime.now(timezone.utc), error=str(err))
         raise err from e
     last["ok_at"] = datetime.now(timezone.utc)
