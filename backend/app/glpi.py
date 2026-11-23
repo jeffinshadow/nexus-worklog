@@ -134,6 +134,13 @@ def clean_base(url: str | None) -> str | None:
     return url or None
 
 
+def host_header(host: str, port: int) -> str:
+    """O cabeçalho Host: IPv6 literal vai entre colchetes; a porta só aparece fora da padrão."""
+    if ":" in host:
+        host = f"[{host}]"
+    return host if port in (80, 443) else f"{host}:{port}"
+
+
 def request(base: str, method: str, path: str, headers: dict, body: dict | None = None) -> tuple[int, object]:
     """Uma chamada à API legada: (status, JSON ou None). Sem seguir
     redirecionamento; prazo por operação e para a chamada inteira; resposta limitada."""
@@ -143,7 +150,7 @@ def request(base: str, method: str, path: str, headers: dict, body: dict | None 
     else:
         conn = http.client.HTTPConnection(ip, port, timeout=webhooks.TIMEOUT)
     data = json.dumps(body).encode() if body is not None else None
-    headers = {"Host": host if port in (80, 443) else f"{host}:{port}", **headers,
+    headers = {"Host": host_header(host, port), **headers,
                **({"Content-Type": "application/json"} if data else {})}
 
     def cut():
