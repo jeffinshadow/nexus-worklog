@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from psycopg.errors import UniqueViolation
 from psycopg.types.json import Jsonb
 
-from .. import audit, db, links, mailer, org, people, push, roles, teams
+from .. import audit, db, glpi, links, mailer, org, people, push, roles, teams, webhooks
 from ..deps import require_admin, require_admin_csrf
 from ..schemas import (AdminProfileIn, AppSettingsIn, BlockUserIn, DeleteUserIn, InviteIn, OrgIn, ResetPasswordIn,
                        RolesIn)
@@ -512,7 +512,10 @@ def get_org(admin=Depends(require_admin)):
     return {"team_visibility": o["team_visibility"], "team_visibility_since": o["team_visibility_since"],
             "assign_receive": o["assign_receive"], "assign_receive_since": o["assign_receive_since"],
             "identity_managed": o["identity_managed"], "invite_request_on": o["invite_request_on"],
-            "ticket_url": o["ticket_url"], "privacy_url": o["privacy_url"], "mail_configured": mailer.configured()}
+            "ticket_url": o["ticket_url"], "privacy_url": o["privacy_url"], "mail_configured": mailer.configured(),
+            # GLPI: o App-Token nunca volta; só se há um guardado.
+            "glpi_url": o["glpi_url"], "glpi_app_token_set": bool(db.query_one(
+                "SELECT 1 FROM app_settings WHERE id = 1 AND glpi_app_token IS NOT NULL"))}
 
 
 @router.put("/org")
@@ -551,6 +554,27 @@ def put_org(data: OrgIn, admin=Depends(require_admin_csrf)):
                 db.execute(f"UPDATE app_settings SET {key} = %s, updated_at = now() WHERE id = 1", (url,))
                 audit.record(ctx, f"app.{key}", "app_settings", 1, before={key: before[key]},
                              after={key: url, "by": admin["email"]})
+    # GLPI (app/glpi.py). Trocar o endereço desconecta todo mundo: o token de cada
+    # pessoa foi dado àquele GLPI e não segue para outro endereço.
+    if "glpi_url" in data.model_fields_set:
+        url = glpi.clean_base(data.glpi_url)
+        if url != before["glpi_url"]:
+            if url:
+                try:
+                    glpi.check_base(url)
+                except webhooks.Refused as e:
+                    raise HTTPException(status_code=400, detail=f"endereço do GLPI: {e}") from None
+            with db.transaction():
+                db.execute("UPDATE app_settings SET glpi_url = %s, updated_at = now() WHERE id = 1", (url,))
+                db.execute("DELETE FROM glpi_accounts")
+                audit.record(ctx, "app.glpi_url", "app_settings", 1, before={"glpi_url": before["glpi_url"]},
+                             after={"glpi_url": url, "by": admin["email"]})
+    if "glpi_app_token" in data.model_fields_set:
+        token = (data.glpi_app_token or "").strip() or None
+        db.execute("UPDATE app_settings SET glpi_app_token = %s, updated_at = now() WHERE id = 1",
+                   (glpi.seal(token) if token else None,))
+        audit.record(ctx, "app.glpi_app_token", "app_settings", 1,  # o valor nunca vai ao histórico
+                     after={"set": bool(token), "by": admin["email"]})
     return get_org(admin)
 
 

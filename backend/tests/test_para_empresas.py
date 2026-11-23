@@ -44,7 +44,8 @@ def test_tudo_desligado_por_padrao(admin, usuario):
     assert admin.get("/admin/org").json() == {"team_visibility": "self", "team_visibility_since": None,
                                               "assign_receive": "self", "assign_receive_since": None,
                                               "identity_managed": False, "invite_request_on": False,
-                                              "ticket_url": None, "privacy_url": None, "mail_configured": False}
+                                              "ticket_url": None, "privacy_url": None, "mail_configured": False,
+                                              "glpi_url": None, "glpi_app_token_set": False}
     me = usuario.get("/auth/me").json()
     assert me["org"] == {"team_visibility": "self", "assign_receive": "self", "identity_managed": False}
     assert me["visibility_notice"] is False and me["assign_notice"] is False and me["email_pending"] is None

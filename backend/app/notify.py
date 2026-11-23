@@ -306,7 +306,7 @@ def _user_pass(u: dict, now: datetime, today: date, send) -> list[tuple[int, str
 async def scheduler() -> None:
     """Loop do agendador (uma passada por minuto), dentro do backend: os e-mails
     (com SMTP configurado), as notificações dos aparelhos (app/push.py), os
-    avisos de agenda (app/agenda.py) e os webhooks (app/webhooks.py)."""
+    avisos de agenda (app/agenda.py), os webhooks (app/webhooks.py) e o GLPI (app/glpi.py)."""
     from . import agenda, push, webhooks
     tz = ZoneInfo(config.APP_TZ)
     log.info("agendador ativo: e-mail %s, notificações nos aparelhos", config.SMTP_HOST or "desligado")
@@ -321,11 +321,22 @@ async def scheduler() -> None:
                 log.exception("entrega dos webhooks falhou nesta passada")
             await asyncio.sleep(60 - datetime.now(tz).second + 5)  # logo depois dos avisos de agenda do minuto
 
-    hooks_task = asyncio.create_task(hooks())
+    async def glpi_sync() -> None:
+        """O GLPI também em laço próprio: um GLPI lento não atrasa avisos nem webhooks."""
+        from . import glpi
+        while True:
+            try:
+                await asyncio.to_thread(glpi.run_once)
+            except Exception:  # noqa: BLE001
+                log.exception("sincronização com o GLPI falhou nesta passada")
+            await asyncio.sleep(60)
+
+    tasks = [asyncio.create_task(hooks()), asyncio.create_task(glpi_sync())]
     try:
         await _passes(tz, agenda, push)
     finally:
-        hooks_task.cancel()
+        for t in tasks:
+            t.cancel()
 
 
 # Fim da última passada completa (UTC), para a Saúde do Nexus: passou de 5 min, o agendador está preso.

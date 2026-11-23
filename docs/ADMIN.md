@@ -173,12 +173,71 @@ vai ao histórico do admin.
 | **Receber tarefas atribuídas** | "Cada pessoa escolhe" (padrão): recebe só quem aceitou. "Todos recebem de quem atribui": todo Usuário com conta em uso (convite aceito, sem bloqueio) recebe de quem tem o papel Manda tarefas; a chave fica bloqueada e as escolhas, guardadas; quem já usava vê um aviso único |
 | **Nome e e-mail definidos pela administração** | Ligado, só o admin muda nome e e-mail (Contas > ⋮ > Editar); na Conta de cada pessoa os campos ficam bloqueados com o motivo. Desligado, cada um muda os seus e o e-mail novo só vale depois de confirmado por link |
 | **Endereço do sistema de chamados** | URL com `{id}` no lugar do número (GLPI, TomTicket, Jira…) valendo para todos; vazio, cada pessoa usa o seu |
+| **GLPI** | Endereço do GLPI (e o App-Token, se o cliente de API de lá exigir): liga a integração para quem conectar a própria conta (ver *Integração com o GLPI*, abaixo); vazio, desligada |
 | **Política de privacidade** | URL `https://`; vira link na tela de login, na Conta e no e-mail de convite; vazio, sem link |
 | **"Solicitar convite" na tela de login** | Ligado (exige e-mail no servidor), a tela de login oferece o pedido; desligado, só entra quem o admin convidou |
 
 Visibilidade e recebimento são duas coisas independentes: nada disso dá ao admin acesso ao registro de alguém.
 Com equipes cadastradas, estas opções valem só para quem está em alguma equipe, exceto o pedido de convite e a
-política de privacidade, que valem para a instância toda (ver *Equipes e admin master*).
+política de privacidade, que valem para a instância toda (ver *Equipes e admin master*). A integração com o GLPI
+também vale para a instância toda (cada pessoa decide se conecta).
+
+### Integração com o GLPI
+
+O chamado aberto **no nome da pessoa** no GLPI vira tarefa no Nexus; a tarefa concluída vira a **solução** do chamado
+(o GLPI passa o chamado para "solucionado"; fechar continua sendo regra de lá: aprovação do requerente, fechamento
+automático). O GLPI segue dono do chamado: o Nexus guarda só o número e não espelha acompanhamentos, SLA, categorias
+nem filas de grupo.
+
+**Requer GLPI 11 ou superior** (testado com **11.0.13** e **12.0.2**), pela API REST legada (`apirest.php`), que
+continua disponível nas duas. Ao conectar, o Nexus confere a versão e recusa GLPI anterior à 11. O GLPI recomenda a
+API nova (v2, com OAuth) "quando possível" e não deu data para tirar a legada; se um dia tirar, a troca fica toda em
+`backend/app/glpi.py`.
+
+No GLPI (uma vez, quem administra o GLPI):
+
+1. Configurar > Geral > aba API (em inglês: Setup > General > API): ligar **Habilitar REST API legada** ("Enable
+   Legacy REST API") e **Habilitar que se faça login com token externo** ("Enable login with external token"). Os
+   nomes são os das telas do GLPI 11.0.13 e do 12.0.2, iguais nos dois; o 12 pede a senha de novo para abrir essa
+   tela. Pela linha de comando do GLPI: `php bin/console config:set enable_api 1` e
+   `php bin/console config:set enable_api_login_external_token 1`.
+2. No mesmo lugar (**Clientes de API (API Legado)** > Adicionar cliente de API), um **cliente de API** ativo cuja
+   faixa de IPv4 inclua o endereço de onde o Nexus chama (o IP do servidor ou do contêiner do backend). Se o cliente
+   tiver **App-Token** ("Token da aplicação"), copie-o.
+3. Os técnicos precisam de um perfil que liste e solucione os próprios chamados (o Technician/Técnico padrão serve).
+   Sem a permissão de solucionar, a tarefa conclui no Nexus, a solução não entra e Configurações mostra a recusa.
+
+No Nexus (admin): Admin > Para empresas > **GLPI**: o endereço do GLPI (ex.: `https://glpi.empresa.com.br`, sem o
+`/apirest.php`), o App-Token (se houver), **Salvar GLPI** e **Testar**. O teste diz, em linguagem comum, se o endereço
+não respondeu, se a API está desligada, se falta o App-Token ou se ele foi recusado (App-Token errado e IP fora da
+faixa do cliente de API dão a mesma resposta no GLPI).
+
+Cada pessoa: no GLPI, menu do usuário > Minhas configurações > **Token de API** (em inglês: My settings > API
+token; **Re-gerar**, se vazio); no Nexus, Configurações > Conta > **GLPI**, colar o token e **Conectar**. Dali em
+diante:
+
+- A cada 5 minutos (e em **Atualizar agora**), os chamados abertos em que ela é o técnico viram tarefas: título,
+  descrição (só texto), prioridade, prazo (tempo para solução) e o número (`#123`, que vira link). Só cria: o que a
+  pessoa muda na tarefa fica. Chamado só com o grupo não entra. Tarefa excluída não volta.
+- Tarefa concluída: dois minutos depois (tempo de desfazer e de escrever o "Como resolveu?"), o texto de "Como foi resolvido" (ou "Concluído.") e o
+  tempo apontado viram a solução do chamado, assinada por ela. As anotações da tarefa **não** vão.
+- Solução recusada (o chamado reabre no GLPI): a tarefa reabre, com uma anotação. Chamado que saiu do nome dela com a
+  tarefa aberta (outro encerrou, ou foi reatribuído): a tarefa ganha uma anotação e a pessoa decide o que fazer.
+- GLPI fora do ar não trava nada nem pausa ninguém: a tarefa conclui e a solução sai quando ele voltar (nova
+  tentativa em 1 e 5 min, depois a cada 30 min). Outras falhas (API desligada, App-Token recusado, perfil que não
+  lista chamados): nova tentativa em 1, 5, 30 min, 2 h e 12 h; 5 seguidas pausam até a pessoa apertar **Atualizar
+  agora**. Token revogado no GLPI pausa na hora e pede para conectar de novo.
+
+Segurança: o token de cada pessoa e o App-Token ficam **cifrados** no banco (chave derivada do `SECRET_KEY`: trocar o
+`SECRET_KEY` obriga todos a conectar de novo), nunca voltam pela API nem vão ao log. As rotas são só do app (chave de
+API não conecta, não sincroniza e não lê o estado). Só a sincronização cria o vínculo que autoriza mandar solução: uma
+tarefa criada por chave de API com `external_ref` `glpi:N` não escreve no GLPI. Em `http://` os tokens trafegam sem
+proteção: use `https://` (certificado válido; autoassinado é recusado). O endereço aceita rede interna (é onde o GLPI
+costuma ficar), não segue redirecionamento e tem prazo curto.
+
+**Trocar o endereço desconecta todo mundo** (os tokens são apagados; cada pessoa conecta de novo). Os vínculos com os
+chamados ficam: a troca serve para o **mesmo** GLPI (novo nome, `https`). Para apontar para **outro** GLPI, com outra
+numeração de chamados, apague antes os vínculos (`DELETE FROM glpi_tickets;` no banco).
 
 ## 8. Saúde do Nexus
 
