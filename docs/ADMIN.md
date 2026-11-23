@@ -51,7 +51,7 @@ O backend lê tudo de `backend/app/config.py`; o compose repassa o `.env`. Valor
 
 | Variável | O que é | Padrão |
 | --- | --- | --- |
-| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Credenciais e nome do banco criado pelo container `db`. Gere a senha com `openssl rand -hex 24` (só letras e números): ela vai dentro da `DATABASE_URL`, e `/`, `@`, `#`, `?` ou `%` quebram a conexão (o `deploy.sh` recusa). O banco guarda a senha do **primeiro** início: para trocar depois, veja a seção 13 | sem padrão no compose |
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Credenciais e nome do banco criado pelo container `db`. Gere a senha com `openssl rand -hex 24` (só letras e números): ela vai dentro da `DATABASE_URL`, e `/`, `@`, `#`, `?` ou `%` quebram a conexão (o `deploy.sh` recusa). Também é recusada a senha já codificada (`%XX`) escrita igual nas duas variáveis: o banco seria criado com o `%40` ao pé da letra e a URL entregaria `@`. Se a senha tiver mesmo de levar um desses caracteres, escreva-a crua em `POSTGRES_PASSWORD` e codificada só na `DATABASE_URL` (ex.: `ab@cd` numa, `ab%40cd` na outra). O banco guarda a senha do **primeiro** início: para trocar depois, veja a seção 13 | sem padrão no compose |
 | `DATABASE_URL` | Conexão do backend ao banco (`postgresql://usuário:senha@db:5432/banco`, com os **mesmos** valores acima) | obrigatória |
 | `SECRET_KEY` | Segredo (pepper) dos HMAC de sessão, chaves de API e calendário. 32+ caracteres, senão o backend não sobe. **Trocar invalida sessões, chaves e links.** Gere com `python3 -c "import secrets; print(secrets.token_urlsafe(64))"` | obrigatória |
 | `ADMIN_EMAIL`, `ADMIN_INITIAL_PASSWORD` | Primeiro admin, criado só se ainda não existir; a senha tem troca obrigatória no primeiro acesso. **Depois do primeiro acesso, apague `ADMIN_INITIAL_PASSWORD` do `.env`** (seção 5) | vazios (sem eles, nenhum admin é criado) |
@@ -109,8 +109,9 @@ filtra por equipe (ou "Sem equipe").
 
 - **Sem nenhuma equipe cadastrada** (uso pessoal): tudo funciona como antes; o escopo só passa a valer quando a primeira
   equipe é criada (o diálogo avisa). Equipe arquivada não conta para nada, mas **arquivar não volta ao uso pessoal**:
-  com todas arquivadas, ninguém compartilha equipe (só o admin master alcança). Só excluir a última equipe devolve o
-  uso pessoal (o diálogo avisa).
+  com todas arquivadas, ninguém compartilha equipe (só o admin master alcança): quem via ou atribuía a alguém só por
+  estar na mesma equipe deixa de ver e de atribuir, até uma equipe ser desarquivada. Só excluir a última equipe
+  devolve o uso pessoal (o diálogo avisa).
 - **Com equipes**, "Vê a equipe" e "Manda tarefas" alcançam só quem compartilha **pelo menos uma equipe** com quem vê
   ou atribui, somado às regras de sempre (o aceite da pessoa ou as opções de Para empresas). Vale no app, na API, no
   MCP, no CSV e no PDF, no painel da Equipe e em "Precisa de atenção". Quem está **sem equipe** não é visto nem recebe
@@ -245,11 +246,15 @@ também para a troca de nome ou de `http` para `https` do mesmo GLPI: as tarefas
 
 ## 8. Saúde do Nexus
 
-Em Admin > Geral, só leitura: versão (commit e data do último deploy, última migração, início do backend), último
-**backup** (data, tamanho, tabelas), e-mail, push, fotos (quem passa de 80% da cota), webhooks (quantos
-desligados), contas, pedidos de convite, chaves de API e tamanho do banco. Só contagens e datas. "Copiar diagnóstico"
-gera um texto para suporte, sem dados de pessoas nem segredos. O `deploy.sh` alimenta versão e backup pela pasta
-`estado/`; sem ele rodar, esses campos ficam vazios.
+Em Admin > Geral, só leitura: versão (número, commit e data do último deploy, última migração, início do backend),
+a última passada do **agendador** (avisa se parou ou está desligado), último **backup** (data, tamanho, tabelas),
+e-mail, push, fotos (quem passa de 80% da cota), webhooks (quantos desligados), contas, pedidos de convite, chaves de
+API e tamanho do banco. Só contagens e datas. "Copiar diagnóstico"
+gera um texto para suporte, sem dados de pessoas nem segredos. O `deploy.sh` alimenta o commit, a data do deploy e o
+backup pela pasta `estado/`; sem ele rodar, esses campos ficam vazios. O commit e a data **só mudam quando um
+`./deploy.sh` termina bem**: depois de trocar o código à mão (`git checkout` + `docker compose up -d --build`) a Saúde
+continua mostrando o commit do último deploy (seção 9, "Qual versão está no ar"). O número da versão e a última
+migração vêm do código que está rodando e estão sempre certos.
 
 **Vigia (opcional):** `tools/vigia.sh` com o timer do systemd (`tools/nexus-vigia.service` e `.timer`, instruções nos
 arquivos) confere a cada 5 minutos se `/api/health` responde pelo nginx (o mesmo teste do `deploy.sh`) e o estado dos
@@ -289,7 +294,10 @@ dump não inclui o `.env`: guarde-o à parte, em lugar seguro. Sem o mesmo `SECR
 links antigos deixam de valer. O dump usa zstd: só restaura com `pg_restore` 16 ou mais novo compilado com zstd. O do
 container `db` serve (é o que os comandos abaixo usam); o de outra máquina pode não servir.
 
-Backup manual avulso, na pasta do projeto (o mesmo comando do script, sem verificação nem registro na Saúde):
+Backup manual avulso, na pasta do projeto (o mesmo comando do script, sem verificação nem registro na Saúde).
+**Ele não fica guardado para sempre:** todo `*.dump` de `backups/` entra na conta do `KEEP_BACKUPS`, e o próximo
+`./deploy.sh` (ou `--backup` do cron) apaga os mais antigos, manuais inclusive. Com o cron diário e o padrão de 14,
+um dump manual dura cerca de duas semanas: o que for para guardar, copie para fora da pasta.
 
 ```bash
 docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc --compress=zstd:1' > backups/manual-$(date +%Y%m%d-%H%M%S).dump
@@ -314,8 +322,29 @@ recria a partir do dump; antes, faça um backup do estado atual (`./deploy.sh --
 6. Se o dump é de uma versão **anterior** do código, volte o código também: `git checkout <commit do nome do arquivo>`
    (o nome do dump termina com o commit em uso quando ele foi feito). Se é da versão atual, fique no `main`.
 7. Suba tudo: `docker compose up -d --build`. O backend reaplica as migrações aditivas, que são idempotentes.
-8. Confira: `curl http://127.0.0.1:${WEB_PORT}/api/health`, entre no app e veja a Saúde do Nexus. Religue o timer do
-   vigia (`sudo systemctl start nexus-vigia.timer`) e volte ao `main` (`git checkout main`) quando quiser atualizar de novo.
+8. Confira: `curl http://127.0.0.1:${WEB_PORT}/api/health` (só diz `{"ok":true}`: app e banco respondendo) e entre no
+   app. Se voltou o código no passo 6, confira a versão como em "Qual versão está no ar", abaixo: a Saúde do Nexus
+   ainda mostra o commit de antes. Religue o timer do vigia (`sudo systemctl start nexus-vigia.timer`) e volte ao
+   `main` (`git checkout main`) quando quiser atualizar de novo.
+
+**Qual versão está no ar (depois de voltar o código à mão).** Na Saúde do Nexus, o commit e a data do deploy vêm de
+`estado/deploy.json`, que só o `./deploy.sh` grava, e só quando termina bem. Um `git checkout <commit>` seguido de
+`docker compose up -d --build` não toca nesse arquivo: a Saúde segue mostrando o commit do último deploy, que não é
+mais o que roda. (Se o deploy **falhou**, o arquivo não foi regravado e o commit mostrado já é o anterior.) Confira
+assim:
+
+```bash
+git rev-parse --short HEAD        # o código que está na pasta
+docker compose exec -T backend python -c "from app.version import VERSION; print(VERSION)"   # o número que roda
+```
+
+Na Saúde, o número da versão (a partir da 2.2.0) e a "migração" saem do código em uso e servem de conferência; o
+`/api/health` não traz versão. Para a Saúde voltar a mostrar o commit certo sem esperar o próximo deploy, regrave o
+estado (vale na hora, sem reiniciar nada):
+
+```bash
+printf '{"commit":"%s","at":"%s"}\n' "$(git rev-parse --short HEAD)" "$(date -u +%FT%TZ)" > estado/deploy.json
+```
 
 **Restaurar numa máquina nova:** clone o projeto e copie o **mesmo `.env`** (principalmente `SECRET_KEY`,
 `POSTGRES_*` e `DATABASE_URL`). **Não rode o `./deploy.sh` nem `docker compose up -d` antes de restaurar:** o backend
@@ -339,8 +368,21 @@ O `deploy.sh`: confere o `.env`; faz o backup verificado (seção 9); `git pull 
 (`docker compose pull db` e `docker compose build --pull`); `docker compose up -d`; espera o `/api/health` responder pelo nginx (até 1 minuto); grava `estado/deploy.json` (commit novo, commit anterior,
 hora). Se a aplicação não responder, ele **não desfaz sozinho**: imprime o rollback do código
 (`git checkout <commit anterior> && docker compose up -d --build`) e do banco (apagar, recriar e `pg_restore`, como
-na seção 9; só se uma migração estragou dados).
+na seção 9; só se uma migração estragou dados). Voltar o código à mão depois de um deploy que **deu certo** não muda
+o commit da Saúde do Nexus: confira a versão como na seção 9 ("Qual versão está no ar").
 
+- **Parada durante a atualização:** o `docker compose up -d` recria todo container cuja imagem ou configuração
+  mudou, e o app fica fora do ar enquanto isso (502 e conexão recusada, não uma página de manutenção). Quando o
+  **banco** também é recriado (imagem nova do Postgres, ou mudança no serviço `db` do compose, como na 2.2.0), os
+  três containers sobem de novo: conte **cerca de 20 segundos** (22 s medidos na atualização da 2.1.0 para a 2.2.0,
+  com as imagens já baixadas; em máquina lenta, mais). Os dados ficam no volume. Atualize fora do horário de uso; o
+  app aberto trata o 502 como falta de sinal (mostra a cópia guardada e põe na fila o que for feito).
+- **As imagens base mudam de versão sozinhas:** `nginx:stable-alpine` e `postgres:16-alpine` são etiquetas móveis, e
+  o `deploy.sh` as baixa de novo a cada deploy (`build --pull` e `compose pull db`). Um deploy sem nenhuma mudança
+  no Nexus pode trazer um nginx ou um Postgres 16.x mais novo e, com ele, a parada acima. O Postgres fica na linha 16
+  (troca só de correção); o nginx segue a linha estável do momento.
+  Se o `pull` do banco falhar (sem rede), o script avisa e segue com a imagem que já está na máquina. Para saber o
+  que está rodando: `docker compose exec -T db postgres --version` e `docker compose exec -T web nginx -v`.
 - **Migrações** (`backend/sql/*.sql`) são numeradas, **só aditivas e idempotentes**, aplicadas a cada início do backend:
   atualizar não apaga dado, e rodar de novo não faz mal. Por isso voltar o código sem voltar o banco costuma funcionar.
 - **nginx:** a configuração (`web/nginx.conf`) vai na imagem `web`, reconstruída pelo próprio `deploy.sh`. Recriar só o
@@ -383,6 +425,7 @@ de versão quando o `requirements.txt` muda ou a imagem base muda); mantenha o t
 | Backend não sobe: "Variavel de ambiente obrigatoria ausente" ou "SECRET_KEY curta demais" | Falta `DATABASE_URL` ou `SECRET_KEY`, ou ela tem menos de 32 caracteres. `docker compose logs backend` |
 | `deploy.sh`: ".env ainda contém valores placeholder" | Algum valor do `.env` ainda tem `CHANGEME`, `seu-dominio`… A mensagem lista as variáveis: preencha (ou esvazie as opcionais, como `MAIL_FROM`) |
 | Backend não sobe: `failed to resolve host` com um pedaço da senha no nome | A senha do banco tem `/`, `@`, `#`, `?` ou `%` e cortou a `DATABASE_URL`. Troque por uma só com letras e números (`openssl rand -hex 24`) nas duas variáveis; se o banco já existe, troque nele também (linha abaixo) |
+| `deploy.sh`: "POSTGRES_PASSWORD tem caractere reservado de URL" | A senha tem `/`, `@`, `#`, `?`, `%` ou espaço e aparece igual dentro da `DATABASE_URL` (vale também para a já codificada com `%XX` nas duas). Use uma só com letras e números, ou a crua em `POSTGRES_PASSWORD` e a codificada só na `DATABASE_URL` (seção 3) |
 | Backend não sobe: `password authentication failed for user` | A senha do `.env` não é a que o banco guardou no primeiro início (mudar `POSTGRES_PASSWORD` depois não muda o banco). Com a senha nova já no `.env` (só letras e números): `docker compose up -d db`, depois `docker compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d postgres -c "ALTER USER \"$POSTGRES_USER\" PASSWORD \$\$$POSTGRES_PASSWORD\$\$"'` e `docker compose up -d` |
 | Único admin sem acesso (senha perdida, e-mail errado) | Gere o hash de uma senha provisória: `docker compose exec -T backend python -c "from app.security import hash_password; print(hash_password('<senha provisória>'))"`. Abra o banco (`docker compose exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'`) e rode `UPDATE users SET password_hash = '<hash>', must_change_password = true, blocked_at = NULL WHERE email = '<e-mail do admin>';` (confira o e-mail com `SELECT id, email, role FROM users WHERE role = 'admin';`). Entre com a provisória; o app obriga a trocar |
 | `deploy.sh`: "pg_dump falhou. Abortado" | Nada foi alterado. Veja `docker compose ps` (banco saudável?) e o espaço em disco; rode de novo |
