@@ -569,6 +569,8 @@ async function boot() {
       h("p", { class: "dialog-note", text: "Funcionam fora dos campos de texto. Esc fecha qualquer janela. Dá para desligá-los em Configurações." }),
       h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-text", text: "Fechar", onClick: () => dlg.close() })));
   }
+  // "Ver os atalhos", em Configurações, abre esta mesma janela (também com os atalhos desligados).
+  window.addEventListener("nexus:atalhos", showShortcuts);
   document.addEventListener("keydown", (ev) => {
     if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
     const sc = SHORTCUTS[ev.key.length === 1 ? ev.key.toLowerCase() : ""] || SHORTCUTS[ev.key];
