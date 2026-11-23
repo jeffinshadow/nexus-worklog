@@ -1875,4 +1875,8 @@ input:disabled { cursor: not-allowed; }
 /* rodada 2 r2-12 */
 /* Busca lateral (combobox): a sugestão marcada pelas setas, com o foco ainda no campo. */
 .sugg-item[aria-selected="true"] { background-image: linear-gradient(var(--hover-tint), var(--hover-tint)); outline: 2px solid var(--primary-hi); outline-offset: -2px; }
+@media (max-width: 480px) {
+  /* Detalhe em edição: com o Lembrete na linha inteira, a Prioridade também ocupa a linha (sem meia linha vazia). */
+  .props:has(> .field > input[type="datetime-local"]) > .field:has(> select[aria-label="Prioridade"]) { grid-column: 1 / -1; }
+}
 /* fim rodada 2 r2-12 */
