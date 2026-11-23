@@ -259,6 +259,7 @@ def run_once(now: datetime, send=None) -> list[tuple[int, str, str]]:
              FROM notification_prefs p JOIN users u ON u.id = p.user_id
             WHERE (p.morning OR p.evening OR p.weekly) AND NOT u.must_change_password""")
     for u in users:
+        _beat()  # muita gente ou SMTP lento: a passada está andando
         try:
             done += _user_pass(u, now, today, send)
         except Exception:  # noqa: BLE001 — uma pessoa com erro (banco lento) não tira o aviso das outras
@@ -339,8 +340,15 @@ async def scheduler() -> None:
             t.cancel()
 
 
-# Fim da última passada completa (UTC), para a Saúde do Nexus: passou de 5 min, o agendador está preso.
+# Último sinal de vida do agendador (UTC), para a Saúde do Nexus: passou de 5 min, está preso.
+# Marcado no começo e no fim da passada, entre os serviços e a cada pessoa do e-mail:
+# passada longa (SMTP pendurado, muita gente) não acende "agendador parado" em falso.
 last_pass: datetime | None = None
+
+
+def _beat() -> None:
+    global last_pass
+    last_pass = datetime.now(timezone.utc)
 
 
 def faxina() -> None:
@@ -364,20 +372,23 @@ def faxina() -> None:
 async def _pass(now: datetime, agenda, push) -> None:
     """Uma passada. As notificações dos aparelhos e os avisos de agenda saem ANTES
     do e-mail: SMTP lento (ou a segunda às 8h, com resumo e PDF) não atrasa o que é "na hora"."""
-    global last_pass
+    _beat()
     try:
         await asyncio.to_thread(push.run_once, now)
     except Exception:  # noqa: BLE001
         log.exception("agendador de notificações falhou nesta passada")
+    _beat()
     try:  # avisos de agenda (followup.due...) antes da entrega: saem nos webhooks
         await asyncio.to_thread(agenda.run_once, now)
     except Exception:  # noqa: BLE001
         log.exception("avisos de agenda falharam nesta passada")
+    _beat()
     if config.SMTP_HOST:
         try:
             await asyncio.to_thread(run_once, now)
         except Exception:  # noqa: BLE001
             log.exception("agendador de avisos falhou nesta passada")
+        _beat()
     if now.minute == 0:  # uma vez por hora: fotos excluídas há 7 dias e de tarefas que não voltam mais; o que venceu
         try:
             from .routers.photos import cleanup
@@ -388,7 +399,7 @@ async def _pass(now: datetime, agenda, push) -> None:
             await asyncio.to_thread(faxina)
         except Exception:  # noqa: BLE001
             log.exception("faxina do banco falhou")
-    last_pass = datetime.now(timezone.utc)
+    _beat()
 
 
 async def _passes(tz, agenda, push) -> None:
