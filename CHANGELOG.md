@@ -327,7 +327,7 @@ está na primeira seção. Migration nova: `sql/060_glpi.sql` (aditiva).
 ### Testes
 - Matriz de permissões por rota (rota nova sem dono falha), lacunas de segurança provadas por mutação, migrations
   reaplicadas em banco cheio, webhook preso ao IP, laço do agendador e SMTP; roteiros e2e com código de saída. A suíte
-  passou de 593 para 888 testes.
+  passou de 593 para 890 testes.
 - Cada ação que tem "Desfazer" no Histórico (36) agora é feita, desfeita e conferida contra o banco; ação nova sem
   teste faz a suíte falhar com o aviso de onde acrescentar.
 - Os dois testes que falhavam no fim de semana e na virada do dia agora rodam em sábado, domingo e atravessando a
