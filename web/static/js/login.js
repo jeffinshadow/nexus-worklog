@@ -215,6 +215,7 @@ async function openLink(kind, token) {
   $("link-email").value = info.email; // o gerenciador de senhas guarda com o e-mail certo
   if (invite) $("link-name").value = info.display_name || "";
   matchPasswords($("link-pw"), $("link-pw2"));
+  $("link-submit").disabled = false; // nasce desligado no HTML; daqui em diante há quem atenda o envio
   $("form-link").onsubmit = async (ev) => { // onsubmit: um link novo troca o anterior
     ev.preventDefault();
     err.textContent = "";
@@ -233,3 +234,8 @@ async function openLink(kind, token) {
     }
   };
 }
+
+// Os botões de envio nascem desligados no HTML (login.html): sem este arquivo carregado, tocar em
+// "Entrar" ou dar Enter não envia nada (o envio nativo poria e-mail e senha na URL). Chegou aqui,
+// os formulários já têm quem os atenda. O do link do e-mail só liga com o link conferido (openLink).
+for (const id of ["form-login", "form-forgot", "form-request"]) $(id).querySelector("button[type=submit]").disabled = false;
