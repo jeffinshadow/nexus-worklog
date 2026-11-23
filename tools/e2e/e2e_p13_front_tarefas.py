@@ -87,6 +87,8 @@ def registro_rapido(pg):
         ("Atendi a recepção 20min", ["Ficou em aberto.", "“20min” ficou no título", "use “— 20min”"]),
         ("Algo — 30h", ["Ficou em aberto.", "“30h” ficou no título: o máximo é 24h por apontamento"]),
         ("Reunião ^31/02", ["Ficou em aberto.", "“^31/02” ficou no título"]),
+        ("Algo — 0min", ["Ficou em aberto.", "“0min” ficou no título: não entendi o tempo"]),
+        ("Algo — 20min !alta", ["Ficou em aberto (alta).", "“20min” ficou no título: o tempo vai no fim da linha"]),
         ("Visita técnica @Filial Sul — 1h", ["Registrada e concluída com 1h", "«Filial Sul» não é um projeto seu"]),
     ]
     for valor, nome in [(opcoes[0] if opcoes else "", "com projeto"), ("", "sem projeto")]:

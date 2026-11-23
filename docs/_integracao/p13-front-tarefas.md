@@ -11,7 +11,7 @@ Nada de backend, `app.css`, `index.html`, `today.js` ou `ui.js`.
 - Cartão da tarefa: o leitor de tela ouve "checklist 0 de 2", "tempo apontado 40 min", "1 anotação",
   "3 fotos"; o link do chamado diz "Chamado N (abre em nova aba)".
 - Registro rápido: a tarefa sem tempo responde "Ficou em aberto: «título»."; o aviso diz o que ficou no
-  título sem ser lido ("20min" sem o traço, tempo acima de 24h, "^31/02") e avisa do "@Nome" que não é
+  título sem ser lido ("20min" sem o traço, tempo acima de 24h, zerado ou antes de um marcador, "^31/02") e avisa do "@Nome" que não é
   projeto também com um projeto escolhido ao lado; "--" vale como o travessão; `!aguarda` já nasce com o
   dia para cobrar (5 dias úteis).
 - Nova tarefa: sempre avisa "Tarefa criada." com Abrir; Enter e Salvar no mesmo instante criam uma só;

@@ -80,7 +80,7 @@ async function parseMarks(text) {
 // "Loja X - 2h", "Backup — 1:30". Sem o traço, "Reunião 14h" e "Ligar 15:30"
 // ficam como título (hora do dia não vira tempo gasto). "--" vale como o travessão.
 const DUR_TEXT = "\\d+(?:[.,]\\d+)?\\s*h(?:\\s*\\d{1,2})?(?:\\s*min)?|\\d+\\s*min|\\d+:\\d{2}";
-const QUICK_DUR = /\s+(?:--|[-–—])\s*(\d+(?:[.,]\d+)?\s*h(?:\s*\d{1,2})?(?:\s*min)?|\d+\s*min|\d+:\d{2})$/i;
+const QUICK_DUR = new RegExp(`\\s+(?:--|[-–—])\\s*(${DUR_TEXT})$`, "i");
 
 // Uma linha do registro → { payload, minutes, durText, marks, extras } (sem enviar).
 async function parseLine(text, project_id = null) {
@@ -131,13 +131,17 @@ export let lastUnknown = null;
 export let lastOpen = null;
 
 // O que sobrou no fim do título sem ser lido: tempo sem o traço ("Atendi 20min"),
-// tempo acima de 24h ("Algo — 30h") ou um "^" que não é dia nem hora ("^31/02").
+// tempo com traço que não entrou (acima de 24h, zero, ou antes de um marcador:
+// "Algo — 20min !alta") ou um "^" que não é dia nem hora ("^31/02").
 // Devolve a frase do aviso (ou ""). As regras não mudam: só passa a dizer.
 // Frases curtas: o aviso mostra duas linhas (no celular, umas 90 letras).
 function leftover(title, hasTime) {
   let m;
   if (hasTime) { /* o tempo já entrou: "Reunião 14h — 30min" não precisa da dica */ }
-  else if ((m = title.match(new RegExp(`\\s+(?:--|[-–—])\\s*(${DUR_TEXT})$`, "i")))) return ` “${m[1].trim()}” ficou no título: o máximo é 24h por apontamento.`;
+  else if ((m = title.match(QUICK_DUR))) {
+    const min = parseDuration(m[1].replace(/\s+/g, "").replace(",", "."));
+    return ` “${m[1].trim()}” ficou no título: ` + (min > 1440 ? "o máximo é 24h por apontamento." : min ? "o tempo vai no fim da linha." : "não entendi o tempo.");
+  }
   else if ((m = title.match(new RegExp(`\\s(${DUR_TEXT})$`, "i")))) return ` “${m[1].trim()}” ficou no título: para apontar, use “— ${m[1].trim()}”.`;
   if ((m = title.match(/\s(\^\S{1,20})$/))) return ` “${m[1]}” ficou no título: não entendi a data.`;
   return "";
