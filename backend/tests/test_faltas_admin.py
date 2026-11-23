@@ -12,25 +12,6 @@ from app.routers import auth as auth_mod
 from conftest import ligar_pedido_convite, Api, SENHA_PADRAO, hist, uid_de
 
 
-class _Agora:
-    """threading.Thread que roda na hora (o envio em segundo plano vira síncrono)."""
-
-    def __init__(self, target, args=(), daemon=None):
-        self.target, self.args = target, args
-
-    def start(self):
-        self.target(*self.args)
-
-
-@pytest.fixture
-def caixa(monkeypatch):
-    enviados = []
-    monkeypatch.setattr(mailer, "configured", lambda: True)
-    monkeypatch.setattr(mailer, "send", lambda to, subject, text, html=None, **kw: enviados.append((to, subject, text)))
-    monkeypatch.setattr(auth_mod.threading, "Thread", _Agora)
-    return enviados
-
-
 def _conta(admin, email):
     return next(u for u in admin.get("/admin/users").json() if u["email"] == email)
 

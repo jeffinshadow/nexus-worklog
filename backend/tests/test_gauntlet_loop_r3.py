@@ -10,16 +10,7 @@ from app import db, mailer
 from app.routers import auth as auth_mod
 from conftest import Api, Bearer, SENHA_PADRAO, criar_chave, hist, texto, uid_de
 from test_passkeys import _cadastrar
-
-
-class _Agora:
-    """threading.Thread que roda na hora (o envio em segundo plano vira síncrono)."""
-
-    def __init__(self, target, args=(), daemon=None):
-        self.target, self.args = target, args
-
-    def start(self):
-        self.target(*self.args)
+from conftest import Agora as _Agora  # ajudantes comuns (auditoria p07)
 
 
 @pytest.fixture
@@ -55,6 +46,16 @@ def test_convite_antigo_nao_vale_depois_de_redefinir_a_senha(admin, caixa):
     uid = db.query_one("SELECT id FROM users WHERE email = 'nova@example.com'")["id"]
     assert admin.post(f"/admin/users/{uid}/reset-password", {"method": "temp"}).status_code == 200
     assert Api().post("/auth/invite/accept", {"token": tok, "password": SENHA_PADRAO}).status_code == 400
+    # A guarda do próprio aceite (auth.py, "só conta que ainda espera o convite"): mesmo com um link de convite
+    # VÁLIDO, conta que já não espera convite não ganha senha por ele. O link é emitido direto, porque o
+    # "Redefinir senha" também invalida os links (defesa repetida) e esconderia a falta desta guarda.
+    from app import links
+    tok = links.issue(uid, "invite")
+    assert Api().post("/auth/link", {"kind": "invite", "token": tok}).status_code == 200  # o link em si vale
+    antes = db.query_one("SELECT password_hash FROM users WHERE id = %s", (uid,))["password_hash"]
+    r = Api().post("/auth/invite/accept", {"token": tok, "password": SENHA_PADRAO})
+    assert r.status_code == 400 and "set-cookie" not in r.headers
+    assert db.query_one("SELECT password_hash FROM users WHERE id = %s", (uid,))["password_hash"] == antes
     # E o e-mail corrigido pelo admin cancela o convite mandado ao endereço antigo.
     r = admin.post("/admin/users", {"email": "erado@example.com"})
     tok = r.json()["invite_url"].split("#convite=")[1]

@@ -27,6 +27,16 @@ from fastapi.testclient import TestClient  # noqa: E402
 from app import db, main, security  # noqa: E402
 from app.main import app  # noqa: E402
 
+# Argon2 barato só na suíte: o de produção (19 MiB, 2 passadas) rodava em toda fixture e era metade do
+# tempo da suíte. O objeto ORIGINAL fica guardado: test_aud_p07 confere nele os parâmetros de produção.
+from argon2 import PasswordHasher  # noqa: E402
+
+# (este arquivo é importado duas vezes, como "conftest" e como "tests.conftest": o original fica no módulo do app,
+# senão a 2ª importação guardaria o barato)
+PH_PRODUCAO = security.__dict__.setdefault("_ph_producao", security._ph)
+security._ph = PasswordHasher(time_cost=1, memory_cost=8, parallelism=1)
+security._DUMMY_HASH = security._ph.hash("x")
+
 ADMIN_EMAIL = os.environ["ADMIN_EMAIL"]
 ADMIN_PW_INICIAL = os.environ["ADMIN_INITIAL_PASSWORD"]
 ADMIN_PW = "Admin-Definitiva-Teste-1"
@@ -56,6 +66,12 @@ def _pedido_sem_tempo_minimo(monkeypatch):
     monkeypatch.setattr(ir, "form_ok", lambda token: True)
 
 
+def _limitadores():
+    import sys
+    return {id(v): v for nome, m in list(sys.modules.items()) if nome == "app" or nome.startswith("app.")
+            for v in vars(m).values() if isinstance(v, security.RateLimiter)}.values()
+
+
 @pytest.fixture(autouse=True)
 def _banco_limpo():
     existentes = {r["tablename"] for r in db.query_all(
@@ -67,10 +83,8 @@ def _banco_limpo():
     if "app_settings" in existentes:
         db.execute("INSERT INTO app_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING")
     main.seed_admin()
-    for limiter in (security.login_limiter, security.login_email_limiter,
-                    security.pdf_limiter, security.reset_limiter, security.reset_email_limiter,
-                    security.invite_req_limiter, security.invite_req_email_limiter, security.link_limiter,
-                    security.webhook_test_limiter, security.token_limiter, security.client_error_limiter):
+    # Todo limitador do app (qualquer módulo), não uma lista à mão: limitador novo já nasce zerado entre os testes.
+    for limiter in _limitadores():
         limiter._hits.clear()
     yield
 
@@ -218,3 +232,34 @@ def texto(res):
 
 def uid_de(u):
     return db.query_one("SELECT id FROM users WHERE email = %s", (u.me["email"],))["id"]
+
+
+def papeis(admin, u, roles):
+    """Define os papéis de `u` pela tela de Permissões do admin."""
+    r = admin.put(f"/admin/users/{uid_de(u)}/roles", {"roles": roles})
+    assert r.status_code == 200, r.text
+    return r
+
+
+class Agora:
+    """threading.Thread que roda na hora (o envio em segundo plano vira síncrono)."""
+
+    def __init__(self, target, args=(), daemon=None):
+        self.target, self.args = target, args
+
+    def start(self):
+        self.target(*self.args)
+
+
+@pytest.fixture
+def caixa(monkeypatch):
+    """E-mail configurado, sem SMTP e sem thread: o que seria enviado fica na lista (para, assunto, texto).
+    Arquivo que precisa trocar mais coisa (push, assign._spawn) define a sua `caixa` por cima desta."""
+    import threading
+
+    from app import mailer
+    enviados = []
+    monkeypatch.setattr(mailer, "configured", lambda: True)
+    monkeypatch.setattr(mailer, "send", lambda to, subject, text, html=None, **kw: enviados.append((to, subject, text)))
+    monkeypatch.setattr(threading, "Thread", Agora)
+    return enviados

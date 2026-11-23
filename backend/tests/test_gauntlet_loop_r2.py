@@ -40,7 +40,8 @@ def test_datas_fora_de_faixa_sao_recusadas_e_as_antigas_nao_derrubam_nada(usuari
 
 def test_quem_acompanha_nao_recebe_ranking_nem_backlog(admin, usuario):
     usuario.put("/me/viewers", {"accept": True})
-    rid = usuario.post("/recurring", {"label": "Ronda"}).json()["id"]
+    # Todo dia: o padrão (dias úteis) não é devido no sábado e no domingo, e o teste falhava no fim de semana.
+    rid = usuario.post("/recurring", {"label": "Ronda", "freq": "weekly", "weekdays": 127}).json()["id"]
     usuario.post(f"/recurring/{rid}/toggle", {"done": True})
     usuario.post("/worklog", {"title": "Aberta"})
     uid = uid_de(usuario)
