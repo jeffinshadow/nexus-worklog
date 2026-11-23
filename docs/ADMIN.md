@@ -98,7 +98,9 @@ define (no diálogo da equipe, em Contas > ⋮ > **Equipes…** ou já no convit
 filtra por equipe (ou "Sem equipe").
 
 - **Sem nenhuma equipe cadastrada** (uso pessoal): tudo funciona como antes; o escopo só passa a valer quando a primeira
-  equipe é criada (o diálogo avisa). Equipe arquivada não conta para nada, mas **arquivar não volta ao uso pessoal**: com todas arquivadas, ninguém compartilha equipe (só o admin master alcança). Só excluir a última equipe devolve o uso pessoal (o diálogo avisa).
+  equipe é criada (o diálogo avisa). Equipe arquivada não conta para nada, mas **arquivar não volta ao uso pessoal**:
+  com todas arquivadas, ninguém compartilha equipe (só o admin master alcança). Só excluir a última equipe devolve o
+  uso pessoal (o diálogo avisa).
 - **Com equipes**, "Vê a equipe" e "Manda tarefas" alcançam só quem compartilha **pelo menos uma equipe** com quem vê
   ou atribui, somado às regras de sempre (o aceite da pessoa ou as opções de Para empresas). Vale no app, na API, no
   MCP, no CSV e no PDF, no painel da Equipe e em "Precisa de atenção". Quem está **sem equipe** não é visto nem recebe
