@@ -65,15 +65,30 @@ def _parse_when(raw: str, label: str) -> tuple[datetime, bool]:
         when = datetime.fromisoformat(raw.replace("Z", "+00:00"))
     except ValueError:
         raise HTTPException(status_code=400, detail=f"{label}: use AAAA-MM-DD ou AAAA-MM-DDTHH:MM") from None
-    return (when if when.tzinfo else when.replace(tzinfo=app_tz())), False
+    when = when if when.tzinfo else when.replace(tzinfo=app_tz())
+    try:  # ano 1 com fuso à frente (ou 9999 com fuso atrás) não cabe no calendário: dava 500
+        when.astimezone(timezone.utc)
+    except OverflowError:
+        raise HTTPException(status_code=400, detail=f"{label} no futuro" if when.year > 2 else _too_old(label)) from None
+    return when, False
+
+
+def _too_old(label: str) -> str:
+    msg = f"{label}: até {task_retro_days()} dias atrás"
+    if label == "data de criação":  # o tempo aceita dia mais antigo que a tarefa: diz o caminho
+        msg += "; para trabalho mais antigo, crie a tarefa com a data de hoje e aponte o tempo no dia certo"
+    return msg
 
 
 def _check_window(when: datetime, label: str, now: datetime) -> None:
     if when > now + timedelta(minutes=10):  # folga para o relógio do aparelho (feito sem sinal)
         raise HTTPException(status_code=400, detail=f"{label} no futuro")
-    limit = task_retro_days()
-    if (app_today() - when.astimezone(app_tz()).date()).days > limit:
-        raise HTTPException(status_code=400, detail=f"{label}: até {limit} dias atrás")
+    try:
+        old = (app_today() - when.astimezone(app_tz()).date()).days > task_retro_days()
+    except OverflowError:  # primeiros dias do ano 1 no fuso da app
+        old = True
+    if old:
+        raise HTTPException(status_code=400, detail=_too_old(label))
 
 
 def resolve_created(raw: Optional[str], now: datetime) -> datetime:
@@ -108,15 +123,19 @@ def resolve_completed(raw: Optional[str], created: datetime, now: datetime) -> d
     return when
 
 
-def stop_timer_of(user: dict, task_id: int, ended_at: datetime | None = None) -> None:
+def stop_timer_of(user: dict, task_id: int, ended_at: datetime | None = None) -> dict | None:
     """Concluir a tarefa com o cronômetro rodando nela para o cronômetro e aponta o
-    tempo. ended_at: a conclusão veio com hora (feita sem sinal): para ali."""
+    tempo. ended_at: a conclusão veio com hora (feita sem sinal): para ali.
+    Devolve o mesmo `stopped` de POST /api/timer/stop: o apontamento, None (nada
+    rodava ali) ou needs_review (esquecido há mais de 12 h: parou sem apontar)."""
     from .timer import stop_running  # import tardio: timer usa log_time daqui
-    stop_running(user, only_task=task_id, ended_at=min(ended_at, datetime.now(timezone.utc)) if ended_at else None)
+    return stop_running(user, only_task=task_id, ended_at=min(ended_at, datetime.now(timezone.utc)) if ended_at else None)
 
 
-def _own_task(uid: int, task_id: int) -> dict:
-    row = audit.worklog_snapshot(task_id, uid)
+def _own_task(uid: int, task_id: int, lock: bool = False) -> dict:
+    """lock (dentro de db.transaction): a linha fica travada até o fim, e o "antes"
+    do histórico é o estado que a mudança encontrou (duas edições ao mesmo tempo)."""
+    row = audit.worklog_snapshot(task_id, uid, lock=lock)
     if not row:
         raise HTTPException(status_code=404, detail="tarefa não encontrada (pode ter sido excluída)")
     return row
@@ -162,7 +181,18 @@ def check_remind(when: Optional[datetime]) -> Optional[datetime]:
 
 
 def _by_ref(uid: int, ref: str):
-    return db.query_one("SELECT id FROM worklog_tasks WHERE user_id = %s AND external_ref = %s", (uid, ref))
+    return db.query_one("SELECT id, status FROM worklog_tasks WHERE user_id = %s AND external_ref = %s", (uid, ref))
+
+
+def _existing(found: dict, data: WorklogIn, user: dict) -> dict:
+    """Resposta de criar com external_ref já usado: a tarefa que existe, com o status
+    dela. Corpo com status done e a existente aberta: conclui com a regra do finish
+    (o alerta que normalizou fecha a tarefa com a mesma chamada que a abriu)."""
+    out = {"id": found["id"], "existing": True, "status": found["status"]}
+    if data.status == "done" and found["status"] != "done":
+        res = finish(found["id"], FinishIn(completed_at=data.completed_at, resolution=data.resolution), user=user)
+        out.update(status="done", stopped=res.get("stopped"))
+    return out
 
 
 @router.post("", status_code=201)
@@ -172,7 +202,7 @@ def create(data: WorklogIn, response: Response, user=Depends(active_user_csrf)):
     uid = user["user_id"]
     if data.external_ref and (found := _by_ref(uid, data.external_ref)):
         response.status_code = 200
-        return {"id": found["id"], "existing": True}
+        return _existing(found, data, user)
     # Com objetivo e sem projeto: o projeto do objetivo. Sem projeto informado
     # (nem null): o padrão da pessoa (Configurações > Conta).
     if data.objective_id is not None and "project_id" not in data.model_fields_set:
@@ -222,7 +252,7 @@ def create(data: WorklogIn, response: Response, user=Depends(active_user_csrf)):
                          after=audit.worklog_snapshot(row["id"], uid))
     if row is None:
         response.status_code = 200
-        return {"id": _by_ref(uid, data.external_ref)["id"], "existing": True}
+        return _existing(_by_ref(uid, data.external_ref), data, user)
     return {"id": row["id"]}
 
 
@@ -325,7 +355,19 @@ def detail(task_id: int, user=Depends(active_user)):
 
 @router.patch("/{task_id}")
 def update(task_id: int, data: WorklogUpdate, user=Depends(active_user_csrf)):
-    before = _own_task(user["user_id"], task_id)
+    """Com status done, `stopped` é o cronômetro que rodava na tarefa (como em
+    POST /api/timer/stop; needs_review = esquecido, parou sem apontar)."""
+    # A mudança, os projetos extras e o histórico (o desfazer) vão juntos. O "antes" é
+    # lido com a linha travada: duas edições ao mesmo tempo gravavam antes/depois errado.
+    with db.transaction():
+        notify, stopped = _update(task_id, data, user)
+    if notify:  # depois de gravar: o aviso usa outra conexão
+        safe_notify(task_id)
+    return {"ok": True, "stopped": stopped}
+
+
+def _update(task_id: int, data: WorklogUpdate, user: dict) -> tuple[bool, dict | None]:
+    before = _own_task(user["user_id"], task_id, lock=True)
 
     fields, values = [], []
     if data.title is not None:
@@ -413,54 +455,70 @@ def update(task_id: int, data: WorklogUpdate, user=Depends(active_user_csrf)):
 
     if not fields and not extras:
         raise HTTPException(status_code=400, detail="nada para atualizar")
-    if data.status == "done":
-        stop_timer_of(user, task_id)
+    stopped = stop_timer_of(user, task_id) if data.status == "done" else None
 
-    with db.transaction():  # a mudança, os projetos extras e o histórico (o desfazer) vão juntos
-        if fields:
-            values += [task_id, user["user_id"]]
-            db.execute(
-                f"UPDATE worklog_tasks SET {', '.join(fields)} WHERE id = %s AND user_id = %s",
-                tuple(values),
-            )
-        # Trocou o principal: os extras se ajustam (sem repetir; sem principal, nenhum).
-        if extras or "project_id" in sent:
-            set_extra_projects(user["user_id"], task_id,
-                               data.extra_project_ids if extras else before["extra_project_ids"])
-        audit.record(user, "worklog.update", "worklog", task_id, before=before,
-                     after=audit.worklog_snapshot(task_id, user["user_id"]))
-    if final_status == "done" and before["status"] != "done":
-        safe_notify(task_id)
-    return {"ok": True}
+    if fields:
+        values += [task_id, user["user_id"]]
+        db.execute(
+            f"UPDATE worklog_tasks SET {', '.join(fields)} WHERE id = %s AND user_id = %s",
+            tuple(values),
+        )
+    # Trocou o principal: os extras se ajustam (sem repetir; sem principal, nenhum).
+    if extras or "project_id" in sent:
+        set_extra_projects(user["user_id"], task_id,
+                           data.extra_project_ids if extras else before["extra_project_ids"])
+    audit.record(user, "worklog.update", "worklog", task_id, before=before,
+                 after=audit.worklog_snapshot(task_id, user["user_id"]))
+    return final_status == "done" and before["status"] != "done", stopped
 
 
 @router.post("/{task_id}/finish")
 def finish(task_id: int, data: Optional[FinishIn] = None, user=Depends(active_user_csrf)):
-    """Conclui agora, ou na data informada (retroativo). Já concluída e sem
-    data: mantém a conclusão que tinha."""
-    before = _own_task(user["user_id"], task_id)
+    """Conclui agora, ou na data informada (retroativo). Já concluída e sem nada
+    a mudar (sem data ou a mesma data, sem solução ou a mesma solução): mantém a
+    conclusão que tinha e responde existing. `stopped`: o cronômetro que rodava
+    na tarefa, como em POST /api/timer/stop (needs_review = esquecido há mais de
+    12 h, parou sem apontar: a pessoa informa o tempo)."""
+    uid = user["user_id"]
     raw = data.completed_at if data else None
-    if before["status"] == "done" and not raw and not (data and (data.resolution or "").strip()):
-        # Já concluída e nada a mudar: não grava outro worklog.finish (feed,
-        # webhooks e o aviso a quem atribuiu sairiam de novo). Vale para toda chave.
-        return {"ok": True, "existing": True, "completed_at": before["completed_at"]}
-    deny_append(user, before["status"] == "done")  # "só registrar" conclui, não muda a conclusão
-    when = before["completed_at"] if (before["completed_at"] and not raw) else \
-        resolve_completed(raw, before["created_at"], datetime.now(timezone.utc))
-    stop_timer_of(user, task_id, when if raw else None)
     resolution = ((data.resolution if data else None) or "").strip() or None  # mantém as quebras de linha (passos)
-    with db.transaction():  # concluir e a linha do histórico (feed, webhooks, desfazer) vão juntos
-        db.execute(
+    # Concluir, parar o cronômetro e a linha do histórico (feed, webhooks, desfazer) vão
+    # juntos, com a linha travada: a rajada (dois toques, fila do celular, automação que
+    # repete) espera a primeira e cai no existing, sem outro worklog.finish nem outro aviso.
+    with db.transaction():
+        before = _own_task(uid, task_id, lock=True)
+        done = before["status"] == "done"
+        now = datetime.now(timezone.utc)
+        when = None
+        if done and raw:
+            try:
+                when = resolve_completed(raw, before["created_at"], now)
+            except HTTPException:  # data inválida: o erro sai adiante, depois da regra da chave
+                when = None
+        if done and (not raw or when == before["completed_at"]) and resolution in (None, before["resolution"]):
+            # Já concluída e nada a mudar: não grava outro worklog.finish (feed,
+            # webhooks e o aviso a quem atribuiu sairiam de novo). Vale para toda chave.
+            return {"ok": True, "existing": True, "completed_at": before["completed_at"], "stopped": None}
+        deny_append(user, done)  # "só registrar" conclui, não muda a conclusão
+        if not raw:
+            when = before["completed_at"] or resolve_completed(None, before["created_at"], now)
+        elif when is None:
+            when = resolve_completed(raw, before["created_at"], now)
+        stopped = stop_timer_of(user, task_id, when if raw else None)
+        row = db.query_one(
+            # status <> 'done' quando o antes era aberta: cinto e suspensório da trava acima.
             """UPDATE worklog_tasks SET status = 'done', completed_at = %s,
                       blocked_reason = NULL, blocked_at = NULL, follow_up_on = NULL,
                       resolution = COALESCE(%s, resolution)
-                WHERE id = %s AND user_id = %s""",
-            (when, resolution, task_id, user["user_id"]),
+                WHERE id = %s AND user_id = %s AND (%s OR status <> 'done') RETURNING id""",
+            (when, resolution, task_id, uid, done),
         )
+        if not row:
+            return {"ok": True, "existing": True, "completed_at": when, "stopped": stopped}
         audit.record(user, "worklog.finish", "worklog", task_id, before=before,
-                     after=audit.worklog_snapshot(task_id, user["user_id"]))
+                     after=audit.worklog_snapshot(task_id, uid))
     safe_notify(task_id)
-    return {"ok": True}
+    return {"ok": True, "stopped": stopped}
 
 
 @router.post("/{task_id}/snooze")
@@ -533,12 +591,20 @@ def delete(task_id: int, user=Depends(active_user_csrf)):
     # A cópia para o desfazer, a exclusão e a linha do histórico vão juntas: se o
     # histórico não gravasse, a tarefa (com anotações e tempo) sumia sem volta.
     with db.transaction():
-        before = _own_task(user["user_id"], task_id)
+        before = _own_task(user["user_id"], task_id, lock=True)
+        # Tarefa que veio de outra pessoa (transferência) guarda as horas dela: o CASCADE
+        # as apagaria do relatório de quem saiu. Excluir tarefa só com tempo próprio segue igual.
+        if db.query_one("SELECT 1 FROM time_entries WHERE task_id = %s AND user_id <> %s LIMIT 1",
+                        (task_id, user["user_id"])):
+            raise HTTPException(status_code=409, detail=(
+                "esta tarefa guarda horas de quem a passou para você; conclua em vez de excluir"))
+        # Cronômetro rodando nela: para e aponta antes, para o tempo entrar na cópia do desfazer.
+        stop_timer_of(user, task_id)
         # Anotações, checklist e tempo vão junto (CASCADE): ficam no histórico para o desfazer.
         before["children"] = {
             "notes": db.query_all("SELECT id, body, actor, token_name, created_at, external_ref FROM task_notes WHERE task_id = %s", (task_id,)),
             "checklist": db.query_all("SELECT id, label, done, position FROM task_checklist WHERE task_id = %s", (task_id,)),
-            "time": db.query_all("SELECT id, minutes, day, note, actor, token_name, created_at, external_ref, started_at, ended_at"
+            "time": db.query_all("SELECT id, user_id, minutes, day, note, actor, token_name, created_at, external_ref, started_at, ended_at"
                                   " FROM time_entries WHERE task_id = %s", (task_id,)),
         }
         db.execute("DELETE FROM worklog_tasks WHERE id = %s AND user_id = %s", (task_id, user["user_id"]))

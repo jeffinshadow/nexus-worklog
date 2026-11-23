@@ -94,7 +94,7 @@ def test_external_ref_idempotente_e_isolado(usuario, novo_usuario):
     r1 = usuario.post("/worklog", {"title": "Sessão 1", "external_ref": "sess-abc"})
     r2 = usuario.post("/worklog", {"title": "Sessão 1 (de novo)", "external_ref": "sess-abc"})
     assert r1.status_code == 201 and r2.status_code == 200
-    assert r2.json() == {"id": r1.json()["id"], "existing": True}
+    assert r2.json() == {"id": r1.json()["id"], "existing": True, "status": "todo"}
     assert db.query_one("SELECT count(*)::int AS n FROM worklog_tasks WHERE external_ref = 'sess-abc'")["n"] == 1
     # Outra pessoa pode usar a mesma chave.
     outro = novo_usuario("outro@example.com")

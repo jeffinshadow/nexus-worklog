@@ -10,7 +10,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 
 from .. import audit, db
-from ..deps import active_user, active_user_csrf
+from ..deps import active_user, active_user_csrf, deny_append
 from ..schemas import TimeIn, TimerIn, TimerStopIn
 from ..services import app_tz, running_timer
 from .worklog import device_time, log_time
@@ -22,6 +22,15 @@ def client_time(at: Optional[datetime]) -> Optional[datetime]:
     """Hora de uma ação do cronômetro feita sem sinal e enviada depois: a regra é a
     de worklog.device_time (uma só), com a frase do cronômetro."""
     return device_time(at, detail="o cronômetro feito sem conexão passou de 24 h; aponte o tempo à mão")
+
+
+# Chave "só registrar": o `at` serve para o atraso da rede, não para reescrever o
+# cronômetro (parar com at = início virava 3 h em 1 min).
+APPEND_AT_MAX = timedelta(minutes=5)
+
+
+def _deny_append_retro(user: dict, at: Optional[datetime]) -> None:
+    deny_append(user, at is not None and datetime.now(timezone.utc) - at > APPEND_AT_MAX)
 
 
 # Acima disso o cronômetro foi esquecido: parar não inventa horas, pede o tempo certo.
@@ -54,7 +63,8 @@ def _stop_running(user: dict, only_task: int | None = None, ended_at: datetime |
                      after={"task_id": t["task_id"], "title": title["title"] if title else ""})
         return {"task_id": t["task_id"], "minutes": 0, "needs_review": True,
                 "started_at": t["started_at"].isoformat(), "title": title["title"] if title else ""}
-    minutes = max(1, round((end - t["started_at"]).total_seconds() / 60))
+    # Meio minuto exato sobe (150 s = 3 min); round() do Python levava ao par (2 min).
+    minutes = max(1, int((end - t["started_at"]).total_seconds() / 60 + 0.5))
     day = t["started_at"].astimezone(app_tz()).date()
     # Cronômetro esquecido por dias não pode travar concluir/parar/trocar: aponta só
     # o que ainda cabe nas 24h daquele dia (dia cheio = descarta, sem erro).
@@ -104,19 +114,27 @@ def start(data: TimerIn, user=Depends(active_user_csrf)):
     if current and current["task_id"] == data.task_id:
         return {"timer": current, "stopped": None}
     at = client_time(data.at)
+    _deny_append_retro(user, at)
     if current and at is not None and at < current["started_at"]:  # início feito sem sinal, já superado
         raise HTTPException(status_code=409, detail="o cronômetro já mudou em outro aparelho; nada foi alterado")
     if at is not None and (o := overlap(user["user_id"], at)):  # início antigo, depois de outro aparelho parar
         raise HTTPException(status_code=409, detail=overlap_msg(o))
     with db.transaction():  # apontar a anterior e começar a nova: juntos
+        # Relê com a linha travada: concluída em outro aparelho neste instante não ganha
+        # cronômetro nem volta para "em andamento" com data de conclusão.
+        task = audit.worklog_snapshot(data.task_id, user["user_id"], lock=True)
+        if not task:
+            raise HTTPException(status_code=404, detail="tarefa não encontrada")
+        if task["status"] == "done":
+            raise HTTPException(status_code=400, detail="a tarefa já está concluída")
         stopped = stop_running(user, ended_at=at)  # trocar de tarefa aponta o tempo da anterior
         # ON CONFLICT: dois aparelhos iniciando ao mesmo tempo. O segundo fica valendo, em vez de erro 500.
         db.execute("""INSERT INTO task_timers (user_id, task_id, started_at) VALUES (%s, %s, COALESCE(%s, now()))
                       ON CONFLICT (user_id) DO UPDATE SET task_id = EXCLUDED.task_id, started_at = EXCLUDED.started_at""",
                    (user["user_id"], data.task_id, at))
-        if task["status"] == "todo":  # quem começa a cronometrar está fazendo (edição comum, desfazível)
-            db.execute("UPDATE worklog_tasks SET status = 'in_progress' WHERE id = %s AND user_id = %s",
-                       (data.task_id, user["user_id"]))
+        # Quem começa a cronometrar está fazendo (edição comum, desfazível). Só de "a fazer".
+        if db.execute("UPDATE worklog_tasks SET status = 'in_progress' WHERE id = %s AND user_id = %s AND status = 'todo'",
+                      (data.task_id, user["user_id"])):
             audit.record(user, "worklog.update", "worklog", data.task_id, before=task,
                          after=audit.worklog_snapshot(data.task_id, user["user_id"]))
         # Entidade própria: não conta como "última ação da tarefa" para o desfazer.
@@ -132,6 +150,7 @@ def stop(data: Optional[TimerStopIn] = None, user=Depends(active_user_csrf)):
     # Parada feita sem sinal que chega depois: só vale para o mesmo cronômetro
     # (outro aparelho pode ter trocado de tarefa nesse meio tempo).
     at = client_time(data.at if data else None)
+    _deny_append_retro(user, at)
     if data and ((data.task_id is not None and data.task_id != current["task_id"])
                  or (at is not None and at < current["started_at"])):
         raise HTTPException(status_code=409, detail="o cronômetro já mudou em outro aparelho; nada foi apontado")

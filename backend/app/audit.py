@@ -60,9 +60,13 @@ _RECURRING_COLS = ("id, label, position, active, created_at, deactivated_at, "
                    "freq, weekdays, month_day, interval_days, require_note, remind_at, steps")
 
 
-def worklog_snapshot(task_id: int, user_id: int):
+def worklog_snapshot(task_id: int, user_id: int, lock: bool = False):
+    """lock: trava a linha até o fim da transação (db.transaction) em que foi lida, para
+    o "antes" do histórico ser mesmo o estado que a mudança encontrou. NO KEY UPDATE:
+    não briga com quem só aponta tempo ou anota na tarefa (chave estrangeira)."""
     return db.query_one(
-        f"SELECT {_WORKLOG_COLS} FROM worklog_tasks WHERE id = %s AND user_id = %s",
+        f"SELECT {_WORKLOG_COLS} FROM worklog_tasks WHERE id = %s AND user_id = %s"
+        + (" FOR NO KEY UPDATE OF worklog_tasks" if lock else ""),
         (task_id, user_id),
     )
 
