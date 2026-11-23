@@ -767,7 +767,7 @@ async function mountOrg(root, me) {
           + (v ? (t ? "O App-Token guardado é trocado pelo que você digitou." : "O App-Token guardado é removido: se o GLPI novo exigir, digite-o antes de trocar.") : "O App-Token guardado é removido."),
         confirm: v ? "Trocar" : "Desligar", danger: true }))) return;
       try {
-        await save({ glpi_url: v || null, ...(t ? { glpi_app_token: t } : {}) },
+        await save({ glpi_url: v || null, ...(t && v ? { glpi_app_token: t } : {}) },  // desligando, o App-Token digitado não é guardado
           v ? "Pronto: cada pessoa conecta a própria conta em Configurações › Conta › GLPI." : "Pronto: integração com o GLPI desligada.");
         url.value = cfg.glpi_url || "";
         app.value = "";
