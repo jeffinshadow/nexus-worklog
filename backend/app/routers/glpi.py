@@ -45,6 +45,8 @@ def connect_glpi(data: GlpiTokenIn, user=Depends(web_active_csrf)):
 @router.post("/api/me/glpi/sync")
 def sync_glpi(user=Depends(web_active_csrf)):
     """Atualizar agora: puxa os chamados e manda as soluções pendentes (tira a pausa por falhas)."""
+    if "user" not in user["roles"]:
+        raise HTTPException(status_code=403, detail="esta conta não tem registro próprio")
     _limit(user)
     glpi.retry(user["user_id"])
     glpi.sync(user["user_id"], manual=True)

@@ -319,7 +319,7 @@ async function mountUsers(root, me) {
     const err = h("p", { class: "error-text", role: "alert" });
     input.addEventListener("input", () => markInvalid([input], err, false));
     const form = h("form", {},
-      h("p", { class: "help", text: `Exclui a conta ${u.email} e tudo o que está nela: tarefas, rotinas, tempo, anotações, chaves de API e histórico. Não dá para desfazer. Tarefas que essa pessoa atribuiu a outras continuam com quem recebeu. O e-mail e as contagens ficam registrados no seu histórico (180 dias).` }),
+      h("p", { class: "help", text: `Exclui a conta ${u.email} e tudo o que está nela: tarefas, rotinas, tempo, anotações, vencimentos pessoais, chaves de API e histórico. Não dá para desfazer. Tarefas que essa pessoa atribuiu a outras continuam com quem recebeu. O e-mail e as contagens ficam registrados no seu histórico (180 dias).` }),
       h("p", { class: "help", text: "Só quer cortar o acesso agora (férias, celular perdido)? Use “Bloquear acesso” no menu da conta: a pessoa sai de todos os aparelhos e os dados ficam." }),
       // Vencimentos da conta compartilhados com equipe saem junto: a equipe deixa de ver.
       ...(u.shared_renewals || []).map((s) => warnBox(`${plural(s.count, "vencimento compartilhado", "vencimentos compartilhados")} com a equipe ${s.team} ${s.count === 1 ? "será apagado" : "serão apagados"}. A equipe deixa de ver; se ainda precisa, peça para alguém da equipe cadastrar de novo antes de excluir.`)),
@@ -763,10 +763,11 @@ async function mountOrg(root, me) {
       const v = url.value.trim(), t = app.value.trim();
       if (cfg.glpi_url && v.replace(/\/+$/, "") !== cfg.glpi_url && !(await confirmDialog({
         title: v ? "Trocar o endereço do GLPI?" : "Desligar a integração com o GLPI?",
-        text: "Todas as pessoas conectadas são desconectadas (os tokens delas são apagados). As tarefas ficam.",
+        text: "Todas as pessoas conectadas são desconectadas (os tokens delas são apagados). Os vínculos das tarefas com os chamados são apagados: as tarefas ficam, mas deixam de enviar a solução ao GLPI. "
+          + (v ? (t ? "O App-Token guardado é trocado pelo que você digitou." : "O App-Token guardado é removido: se o GLPI novo exigir, digite-o antes de trocar.") : "O App-Token guardado é removido."),
         confirm: v ? "Trocar" : "Desligar", danger: true }))) return;
       try {
-        await save({ glpi_url: v || null, ...(t ? { glpi_app_token: t } : {}) },
+        await save({ glpi_url: v || null, ...(t && v ? { glpi_app_token: t } : {}) },  // desligando, o App-Token digitado não é guardado
           v ? "Pronto: cada pessoa conecta a própria conta em Configurações › Conta › GLPI." : "Pronto: integração com o GLPI desligada.");
         url.value = cfg.glpi_url || "";
         app.value = "";

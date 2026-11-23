@@ -574,8 +574,9 @@ def put_org(data: OrgIn, admin=Depends(require_admin_csrf)):
                 db.execute(f"UPDATE app_settings SET {key} = %s, updated_at = now() WHERE id = 1", (url,))
                 audit.record(ctx, f"app.{key}", "app_settings", 1, before={key: before[key]},
                              after={key: url, "by": admin["email"]})
-    # GLPI (app/glpi.py). Trocar o endereço desconecta todo mundo: o token de cada
-    # pessoa foi dado àquele GLPI e não segue para outro endereço.
+    # GLPI (app/glpi.py). Trocar o endereço desconecta todo mundo e solta as tarefas dos
+    # chamados: o token de cada pessoa, o App-Token e a numeração dos chamados são daquele
+    # GLPI e não seguem para outro endereço. As tarefas ficam.
     if "glpi_url" in data.model_fields_set:
         url = glpi.clean_base(data.glpi_url)
         if url != before["glpi_url"]:
@@ -587,8 +588,23 @@ def put_org(data: OrgIn, admin=Depends(require_admin_csrf)):
             with db.transaction():
                 db.execute("UPDATE app_settings SET glpi_url = %s, updated_at = now() WHERE id = 1", (url,))
                 db.execute("DELETE FROM glpi_accounts")
+                # A chave "glpi:N" que a sincronização pôs na tarefa sai junto com o vínculo:
+                # senão o chamado de mesmo número no GLPI novo não seria importado.
+                db.execute("""UPDATE worklog_tasks w SET external_ref = NULL FROM glpi_tickets g
+                               WHERE g.task_id = w.id AND w.external_ref = 'glpi:' || g.ticket_id""")
+                # Idem a chave da anotação "o chamado saiu da lista" (única por pessoa): senão o
+                # chamado de mesmo número do GLPI novo não ganharia a dele.
+                db.execute("""UPDATE task_notes n SET external_ref = NULL FROM glpi_tickets g
+                               WHERE n.task_id = g.task_id AND n.external_ref = 'glpi:' || g.ticket_id || ':saiu'""")
+                links = db.execute("DELETE FROM glpi_tickets")
                 audit.record(ctx, "app.glpi_url", "app_settings", 1, before={"glpi_url": before["glpi_url"]},
-                             after={"glpi_url": url, "by": admin["email"]})
+                             after={"glpi_url": url, "links": links, "by": admin["email"]})
+                # O App-Token guardado era do endereço antigo: sai na mesma transação (nem por um
+                # instante fica valendo para o endereço novo); se a chamada traz outro, entra logo abaixo.
+                if db.execute("UPDATE app_settings SET glpi_app_token = NULL WHERE id = 1 AND glpi_app_token IS NOT NULL"
+                              ) and "glpi_app_token" not in data.model_fields_set:
+                    audit.record(ctx, "app.glpi_app_token", "app_settings", 1,
+                                 after={"set": False, "by": admin["email"]})
     if "glpi_app_token" in data.model_fields_set:
         token = (data.glpi_app_token or "").strip() or None
         db.execute("UPDATE app_settings SET glpi_app_token = %s, updated_at = now() WHERE id = 1",

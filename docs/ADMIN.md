@@ -235,9 +235,13 @@ tarefa criada por chave de API com `external_ref` `glpi:N` não escreve no GLPI.
 proteção: use `https://` (certificado válido; autoassinado é recusado). O endereço aceita rede interna (é onde o GLPI
 costuma ficar), não segue redirecionamento e tem prazo curto.
 
-**Trocar o endereço desconecta todo mundo** (os tokens são apagados; cada pessoa conecta de novo). Os vínculos com os
-chamados ficam: a troca serve para o **mesmo** GLPI (novo nome, `https`). Para apontar para **outro** GLPI, com outra
-numeração de chamados, apague antes os vínculos (`DELETE FROM glpi_tickets;` no banco).
+**Trocar o endereço (ou esvaziar) desconecta todo mundo e solta as tarefas dos chamados**: os tokens das pessoas são
+apagados (cada uma conecta de novo), os vínculos das tarefas com os chamados são apagados (as tarefas ficam, com o
+número do chamado, mas deixam de enviar solução; solução ainda não enviada não sai mais) e o App-Token guardado é
+removido, a não ser que você digite um novo junto com o endereço. O Nexus trata o endereço novo como **outro** GLPI:
+os chamados abertos de lá voltam como tarefas novas na próxima sincronização, mesmo com números repetidos. Isso vale
+também para a troca de nome ou de `http` para `https` do mesmo GLPI: as tarefas abertas dos chamados aparecem de novo
+(as antigas ficam sem vínculo; exclua as repetidas). A quantidade de vínculos apagados fica no histórico do admin.
 
 ## 8. Saúde do Nexus
 
