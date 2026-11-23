@@ -50,3 +50,37 @@ Branch `lab/p11-sw-boot-appjs`. Arquivos: `web/static/sw.js`, `js/app.js`, `js/f
   digitado na janela se perde, como já acontecia com o Esc. Ficam de fora o detalhe lateral (é da rota) e o tour.
 - **`aria-expanded` no campo de busca** foi posto como o item pede, com `aria-controls`. O campo continua
   `type="search"` (não virou `combobox`); um validador estrito pode reclamar do atributo nesse papel.
+
+## Como foi conferido
+
+Roteiros de Playwright (Chromium, 390 px e 1280 px) contra o a11, fora do repositório, adaptados dos relatórios
+`mobile-pwa` e `frontend-codigo`. Resultado na versão final: 21/21, 11/11 e 7/7.
+
+- Primeiro login: casco com 49 arquivos; recarregar sem rede abre (390 e 1280 px).
+- Backend parado (502 real do nginx): reabre da cópia; com o backend de volta, abre da rede.
+- Proxy "buraco": 1ª abertura 13,8 s (paga um estouro de 10 s), 2ª e 3ª em 5,3 s, sem nenhum JS/CSS pedido à rede.
+  Rede de volta: 1,1 s, da rede. Erro rápido (modo avião) não liga a espera curta. Rede lenta mas viva (2,5 s) depois
+  do buraco: passados os 60 s volta a valer a rede (não fica presa na cópia).
+- Módulo abortado: "Não abriu" com "Tentar de novo", que recarrega e abre; rede lenta (250 ms por arquivo) sem aviso
+  em falso.
+- `sw.js` abortado: Configurações carrega em 3,3 s com "Desligadas neste aparelho".
+- Erro forçado no Hoje: 1 POST em `/api/client-errors`; sessão vencida (401): 0.
+- Voltar com a Nova tarefa aberta e com janela sobre janela: fecham; `#/tarefas?id=N` abre o detalhe e ele fica.
+- Sair: com inscrição push simulada, o POST leva o endpoint e `unsubscribe()` é chamado; o casco fica e as leituras
+  saem. Sem rede e sem permissão de push, sai em 1,4 s.
+- Suíte do backend inteira (`lab.sh test 11`): 592 passaram, 1 pulado.
+
+## Não verificado / pendências
+
+- **Push de verdade**: o Chromium do laboratório não assina push; a inscrição foi simulada. Falta conferir num
+  aparelho que o Sair desliga a notificação, e junto com o p01 que o servidor apaga a inscrição pelo endpoint.
+- **Safari/iPhone e Firefox**: nada foi visto fora do Chromium. O "resto do casco vem da cópia" depende de
+  `resultingClientId`; num navegador sem ele, a página ainda ganha a espera curta, mas cada arquivo volta a esperar
+  10 s (como hoje).
+- **Service worker reiniciado pelo navegador** perde as duas marcas (são variáveis de módulo): a espera volta ao
+  normal e a abertura em curso volta a ser rede primeiro. Não foi provocado em teste.
+- Em sinal fraco contínuo, a cada 60 s um pedido paga a espera cheia de novo (é o que impede a rede lenta de ficar
+  presa na cópia).
+- Com o backend parado, reabrir levou 6,5 s (a página vem da rede, as leituras da cópia); não investiguei onde o tempo
+  vai, nem a observação do revisor do frontend-codigo ("Não foi possível carregar" 12 s depois).
+- O rascunho da Nova tarefa ao voltar (mobile-pwa #9) não é deste pacote: o Voltar fecha a janela e o texto se perde.
