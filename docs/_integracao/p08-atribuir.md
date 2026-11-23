@@ -20,8 +20,11 @@ sem rota nova.
 - **`GET /api/assign/sent`**: com `same_team` falso, `description` e `blocked_reason` vêm `null`. Conta de
   destino excluída: `to_name` = "conta excluída", `to_email` = `null`, `ended.reason` = `null` (o `audit_log`
   não é reescrito). O mesmo em `open_returns()` (usado por "Precisa de atenção" em `viewer.py`).
-- **`PATCH /api/assign/{id}`**: além do escopo, exige `can_receive`; aceite desligado ou conta bloqueada = 403
-  (`NOT_RECEIVING_MSG`). O cancelar continua só com `in_scope`.
+- **`PATCH /api/assign/{id}`**: além do escopo, exige `can_receive`; aceite desligado = 403
+  (`NOT_RECEIVING_MSG`). O cancelar continua só com `in_scope`. Conta bloqueada pelo admin ficou como
+  estava (alterar passa, sem e-mail): `test_gauntlet_r3.py::test_conta_bloqueada_nao_aceita_nem_recebe`
+  fixa esse comportamento e não podia ser editado; se o dono quiser 403 também aí, é tirar o
+  `not row["blocked"] and` e ajustar esse teste.
 - **A mesma devolução só é decidida uma vez**: `assign` com `from_return` e `close_return` travam a linha
   `assign.returned` (`_lock_open_return`) e conferem de novo dentro da transação.
 - **Limite**: 20 atribuições por par atribuidor+destinatário a cada 10 min; a 21ª responde 429 com
@@ -40,8 +43,8 @@ sem rota nova.
   × atribuir de novo" (concorrência #5, T22) só fecha quando o desfazer fizer o mesmo
   `SELECT 1 FROM audit_log WHERE id = <assign.returned> FOR UPDATE` e conferir `return_resolved` de novo.
 - **p03 (worklog.py)**: o 409 de horas alheias vale aqui só para o devolver; a exclusão comum é do p03.
-- **openapi**: nenhuma rota ou parâmetro novo; a docstring de `/assign/people` e `/assign/sent` mudou
-  (se o `openapi.json` guarda descrições, regerar).
+- **openapi**: nenhuma rota, parâmetro ou docstring de rota mudou (`test_openapi_em_dia` passa sem regerar).
+  O 429 de `POST /api/assign` e os campos `null` de `/assign/sent` não estão descritos lá.
 - **Docs para o dono atualizar** (não toquei): README (o que fica após excluir a conta), `docs/API.md` se
   cita o comportamento de `/assign/sent`, 429 em `POST /api/assign`.
 

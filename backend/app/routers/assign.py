@@ -51,8 +51,7 @@ def list_people(team: Annotated[str | None, Query(max_length=20)] = None, user=D
     Quem não é admin (o papel Manda tarefas) vê com nome e e-mail só quem pode
     receber (e a própria conta). Quem não pode receber vem só como
     `{"accepts": false, "everyone": …}`, sem id, e-mail nem bloqueio: conta
-    para "as outras N ainda não aceitam", sem expor quem disse não (conta
-    bloqueada ou com convite pendente não entra nessa conta). Com equipes
+    para "as outras N ainda não aceitam", sem expor quem disse não. Com equipes
     (sql/043), quem está fora do escopo de quem atribui nem entra na conta
     (o admin continua vendo todos, com `accepts` pela regra dele).
 
@@ -238,10 +237,10 @@ def sent(user=Depends(require_assigner)):
     """Tarefas que esta pessoa atribuiu, com o status atual (as mais recentes).
     `editable`: ainda dá para corrigir (o que quem recebeu não mudou);
     `cancelable`: ainda dá para cancelar. As que saíram da conta de
-    quem recebeu continuam aqui (status "removed", com `ended`). Fora das
-    equipes de quem atribuiu (`same_team` falso) a linha vem sem `description`
-    nem `blocked_reason`; conta de destino excluída: "conta excluída", sem
-    e-mail nem motivo da devolução."""
+    quem recebeu continuam aqui (status "removed", com `ended`)."""
+    # Fora das equipes de quem atribuiu (`same_team` falso) a linha vem sem `description`
+    # nem `blocked_reason`; conta de destino excluída: "conta excluída", sem e-mail nem
+    # motivo da devolução (em _removed). Fica em comentário: a docstring vai para o openapi.
     rows = db.query_all(
         f"""SELECT w.id, w.title, w.description, w.status, w.due_date, w.assigned_at, w.completed_at, w.priority, w.blocked_reason,
                    w.user_id AS to_id, u.email AS to_email,
@@ -458,9 +457,10 @@ def update_sent(task_id: int, data: AssignEditIn, user=Depends(require_assigner_
         # Atribuição antiga entre quem não compartilha mais equipe: fica no
         # histórico de quem mandou (Tarefas que atribuí), mas não se altera.
         raise HTTPException(status_code=403, detail=OUT_OF_TEAM_MSG)
-    if not assignable.can_receive(user["user_id"], row["user_id"]):
-        # A mesma regra do envio: quem desligou o aceite (ou foi bloqueada) não
-        # tem a tarefa reescrita. Cancelar continua valendo (só o escopo).
+    if not row["blocked"] and not assignable.can_receive(user["user_id"], row["user_id"]):
+        # A mesma regra do envio: quem desligou o aceite não tem a tarefa reescrita.
+        # Cancelar continua valendo (só o escopo). Conta bloqueada pelo admin segue
+        # como antes: dá para corrigir, sem e-mail (ninguém lê).
         raise HTTPException(status_code=403, detail=NOT_RECEIVING_MSG)
     with db.transaction():
         after, by_name, desc_changed = _update_sent(task_id, data, row, user)
