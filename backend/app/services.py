@@ -812,7 +812,7 @@ def _report_inputs(user_id: int, start: date, end: date, project: dict | None = 
     pid = project["id"] if project else None
     pontuais = db.query_all(
         """
-        SELECT w.id, w.title, w.description, w.priority, w.created_at, w.completed_at, w.resolution,
+        SELECT w.id, w.title, w.description, w.priority, w.created_at, w.completed_at, w.resolution, w.project_id,
                p.name AS project, p.color AS project_color, """ + PROJECT_ICON + """,
                (w.completed_at AT TIME ZONE %s)::date AS done_date,
                (SELECT n.body FROM task_notes n WHERE n.task_id = w.id ORDER BY n.created_at DESC LIMIT 1) AS last_note,
@@ -826,6 +826,7 @@ def _report_inputs(user_id: int, start: date, end: date, project: dict | None = 
     entries = db.query_all(
         """
         SELECT e.day, e.minutes, e.note, w.id AS task_id, w.title, w.after_hours, p.name AS project, p.color AS project_color,
+               e.started_at, e.ended_at, w.status, w.project_id,
                """ + PROJECT_ICON + """,
                """ + ENTRY_EXTRA_PROJECTS + """
           FROM time_entries e
@@ -1012,6 +1013,25 @@ def get_report_range(user_id: int, start: date, end: date, project: dict | None 
             p = by_project.setdefault(name or "", {"name": name, "color": color, "icon": ic, "minutes": 0, "done": 0})
             p["done"] += 1
 
+    # Tempo do PERÍODO por tarefa (a coluna `minutes` das concluídas é o total da vida
+    # da tarefa) e, no relatório de projeto, em que outros projetos a tarefa também está.
+    def also_in(r):
+        if pid is None:
+            return []
+        return ([r["project"]] if r.get("project") and r.get("project_id") != pid else []) + \
+            [x["name"] for x in r.get("extra_projects") or [] if x.get("id") != pid]
+    by_task: dict[int, dict] = {}
+    tz = ZoneInfo(config.APP_TZ)
+    for e in entries:
+        if e.get("started_at") and e.get("ended_at"):  # veio do cronômetro: o horário, no fuso da app
+            e["clock"] = f"{e['started_at'].astimezone(tz):%H:%M}–{e['ended_at'].astimezone(tz):%H:%M}"
+        t = by_task.setdefault(e["task_id"], {"task_id": e["task_id"], "title": e["title"], "minutes": 0,
+                                              "done": e.get("status") == "done", "also_in": also_in(e)})
+        t["minutes"] += e["minutes"]
+    for w in pontuais:
+        w["period_minutes"] = by_task.get(w["id"], {}).get("minutes", 0)
+        w["also_in"] = also_in(w)
+
     return {
         "start": start,
         "end": end,
@@ -1026,6 +1046,8 @@ def get_report_range(user_id: int, start: date, end: date, project: dict | None 
         "projects": sorted(by_project.values(), key=lambda p: (-p["minutes"], -p["done"])),
         "multi_project": any(r.get("extra_projects") for r in [*entries, *pontuais]),
         "deliveries": pontuais,
+        # toda tarefa com tempo no período, concluída ou não; a soma é o `minutes` do resumo
+        "time_by_task": sorted(by_task.values(), key=lambda t: (-t["minutes"], t["title"].lower())),
         "open": abertas,
         "summary": {
             "recurring_done": total_done,

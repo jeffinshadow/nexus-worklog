@@ -12,7 +12,8 @@ from .. import db, teams
 from ..visibility import active_sql, visible_sql
 from ..deps import active_user
 from ..labels import PRIO_PT, STATUS_PT
-from ..services import TASK_COUNTS, app_today, app_tz, is_due, rotinas, work_mask
+from ..services import ASSIGNER_NAME, ENTRY_EXTRA_PROJECTS, IN_PROJECT, TASK_COUNTS, app_today, app_tz, is_due, rotinas, work_mask
+from .reports import file_slug
 
 router = APIRouter(prefix="/api", tags=["export"])
 
@@ -42,15 +43,36 @@ def _download(content: bytes, media: str, name: str) -> Response:
                     headers={"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-store"})
 
 
-def _tasks(uid: int, start: date | None = None, end: date | None = None) -> list[dict]:
+# IN_PROJECT (principal ou extra) com parâmetro nomeado, para as consultas daqui.
+_IN_PROJECT = IN_PROJECT.replace("%s", "%(proj)s")
+
+
+def _others(extra) -> str:
+    """Coluna outros_projetos: os projetos extras da tarefa (o principal está em `projeto`)."""
+    return ", ".join(x["name"] for x in extra or [])
+
+
+def _project(uid: int, project_id: int | None) -> dict | None:
+    """O projeto do filtro `project` (None = sem filtro); inexistente ou de outra pessoa = 404."""
+    if project_id is None:
+        return None
+    row = db.query_one("SELECT id, name FROM projects WHERE id = %s AND user_id = %s", (project_id, uid))
+    if not row:
+        raise HTTPException(status_code=404, detail="projeto não encontrado")
+    return row
+
+
+def _tasks(uid: int, start: date | None = None, end: date | None = None, project: int | None = None) -> list[dict]:
     """Todas as tarefas; com período, as que estiveram em aberto em algum momento
     dele (criadas até o fim e não concluídas antes do início) ou com tempo apontado
-    nele, e period_minutes = o tempo apontado no período."""
+    nele, e period_minutes = o tempo apontado no período. project: só as desse
+    projeto (principal ou extra, como no PDF)."""
     period = start is not None and end is not None
     return db.query_all(
         """SELECT w.id, w.title, w.description, w.status, w.priority, w.due_date, w.created_at, w.completed_at,
                   w.ticket, w.after_hours, w.blocked_reason, w.blocked_at, w.follow_up_on, w.resolution, p.name AS project,
                   w.project_id, w.external_ref, w.objective_id,
+                  w.remind_at, w.assigned_at, """ + ASSIGNER_NAME.replace("AS assigned_by_name", "AS assigned_by") + """,
                   """ + TASK_COUNTS + """,
                   (SELECT COALESCE(sum(t.minutes), 0) FROM time_entries t
                     WHERE t.task_id = w.id AND t.user_id = w.user_id AND t.day BETWEEN %(s)s AND %(e)s)::int AS period_minutes
@@ -61,8 +83,9 @@ def _tasks(uid: int, start: date | None = None, end: date | None = None) -> list
                        AND (w.completed_at IS NULL OR (w.completed_at AT TIME ZONE %(tz)s)::date >= %(s)s))
                    OR EXISTS (SELECT 1 FROM time_entries t WHERE t.task_id = w.id AND t.user_id = w.user_id
                                  AND t.day BETWEEN %(s)s AND %(e)s))
+              AND (%(proj)s::bigint IS NULL OR """ + _IN_PROJECT + """)
             ORDER BY w.created_at""",
-        {"uid": uid, "p": period, "s": start, "e": end, "tz": app_tz().key})
+        {"uid": uid, "p": period, "s": start, "e": end, "tz": app_tz().key, "proj": project})
 
 
 def _period(start: date | None, end: date | None) -> tuple[date | None, date | None]:
@@ -75,28 +98,37 @@ def _period(start: date | None, end: date | None) -> tuple[date | None, date | N
 
 
 def time_csv(uid: int | None, filename: str, viewer: int | None = None,
-             start: date | None = None, end: date | None = None, extra: str = "TRUE") -> Response:
+             start: date | None = None, end: date | None = None, extra: str = "TRUE",
+             project: int | None = None) -> Response:
     """Apontamentos em CSV. uid=None = de todos (visualizador: horas da equipe
     por cliente; o projeto vai por nome, pois cada pessoa tem os seus).
     viewer = só de quem esse visualizador pode ver (visibility.visible_sql;
-    `extra`: o recorte do seletor de equipe). start/end: só esse período."""
+    `extra`: o recorte do seletor de equipe). start/end: só esse período.
+    project: só as tarefas desse projeto (principal ou extra, como no PDF).
+    Colunas novas entram sempre no fim (quem lê por posição não quebra)."""
+    # NB: tarefas.csv não ganhou outros_projetos: a última coluna dele é contrato de teste antigo.
     # active_sql: como a lista e o painel da Equipe (as horas de uma conta bloqueada entravam só aqui, e a soma não fechava).
     vis = f"{visible_sql('u', int(viewer))} AND {active_sql('u')} AND {extra}" if viewer is not None else "TRUE"
     rows = db.query_all(
         f"""SELECT e.day, e.minutes, w.id AS task_id, w.title, p.name AS project, e.note, e.actor, e.token_name,
-                  w.ticket, w.after_hours, u.email
+                  w.ticket, w.after_hours, u.email, e.started_at, e.ended_at, {ENTRY_EXTRA_PROJECTS}
              FROM time_entries e JOIN worklog_tasks w ON w.id = e.task_id
              JOIN users u ON u.id = e.user_id
              LEFT JOIN projects p ON p.id = w.project_id AND p.user_id = e.user_id
             WHERE (%(uid)s::bigint IS NULL OR e.user_id = %(uid)s) AND {vis}
               AND (%(s)s::date IS NULL OR e.day >= %(s)s) AND (%(e)s::date IS NULL OR e.day <= %(e)s)
-            ORDER BY e.day, u.email, e.id""", {"uid": uid, "s": start, "e": end})
+              AND (%(proj)s::bigint IS NULL OR {_IN_PROJECT})
+            ORDER BY e.day, u.email, e.id""", {"uid": uid, "s": start, "e": end, "proj": project})
     header = ["data", "minutos", "horas", "tarefa_id", "tarefa", "projeto", "observacao", "origem", "chamado", "plantao"]
     data = [[r["day"], r["minutes"], str(round(r["minutes"] / 60, 2)).replace(".", ","), r["task_id"], r["title"],
              r["project"] or "", r["note"] or "", r["token_name"] or r["actor"], r["ticket"] or "",
              "sim" if r["after_hours"] else ""] + ([r["email"]] if uid is None else [])
+            # inicio/fim: só no apontamento que veio do cronômetro (o digitado não tem horário).
+            # Só no CSV da própria pessoa: no da equipe, `usuario` continua a última coluna.
+            + ([_others(r["extra_projects"]), _local(r["started_at"]), _local(r["ended_at"])] if uid is not None else [])
             for r in rows]
-    return _download(_csv(data, header + (["usuario"] if uid is None else [])), "text/csv; charset=utf-8", filename)
+    return _download(_csv(data, header + (["usuario"] if uid is None else ["outros_projetos", "inicio", "fim"])),
+                     "text/csv; charset=utf-8", filename)
 
 
 @router.get("/export/plantao.csv")
@@ -156,14 +188,19 @@ def rotinas_csv(start: Optional[date] = Query(None), end: Optional[date] = Query
 
 
 @router.get("/export/{kind}")
-def export(kind: str, start: Optional[date] = Query(None), end: Optional[date] = Query(None), user=Depends(active_user)):
-    """tarefas.csv e apontamentos.csv aceitam start/end (os dois): só o período."""
+def export(kind: str, start: Optional[date] = Query(None), end: Optional[date] = Query(None),
+           project: Optional[int] = Query(None), user=Depends(active_user)):
+    """tarefas.csv e apontamentos.csv aceitam start/end (os dois): só o período;
+    e project: só o que é desse projeto (principal ou extra, como no PDF)."""
     uid = user["user_id"]
     stamp = app_today().isoformat()
     if kind in ("tarefas.csv", "apontamentos.csv"):
         start, end = _period(start, end)
         if start:
             stamp = f"{start.isoformat()}-a-{end.isoformat()}"
+        proj = _project(uid, project)
+        if proj:  # o nome do arquivo diz de que projeto é
+            stamp = f"{file_slug(proj['name'], 'projeto')}-{stamp}"
     if kind == "tarefas.csv":
         horas = lambda m: str(round(m / 60, 2)).replace(".", ",")  # noqa: E731
         rows = [[t["id"], t["title"], t["description"] or "", STATUS_PT.get(t["status"], t["status"]), PRIO_PT.get(t["priority"], ""),
@@ -172,13 +209,13 @@ def export(kind: str, start: Optional[date] = Query(None), end: Optional[date] =
                  horas(t["minutes"]), t["notes_count"],
                  t["ticket"] or "", "sim" if t["after_hours"] else "", t["blocked_reason"] or "", t["resolution"] or ""]
                 + ([t["period_minutes"], horas(t["period_minutes"])] if start else [])
-                for t in _tasks(uid, start, end)]
+                for t in _tasks(uid, start, end, project)]
         return _download(_csv(rows, ["id", "titulo", "descricao", "status", "prioridade", "projeto", "criada_em", "prazo",
                                      "concluida_em", "checklist", "minutos", "horas", "anotacoes", "chamado", "plantao",
                                      "aguardando", "como_resolveu"] + (["minutos_no_periodo", "horas_no_periodo"] if start else [])),
                          "text/csv; charset=utf-8", f"nexus-tarefas-{stamp}.csv")
     if kind == "apontamentos.csv":
-        return time_csv(uid, f"nexus-apontamentos-{stamp}.csv", start=start, end=end)
+        return time_csv(uid, f"nexus-apontamentos-{stamp}.csv", start=start, end=end, project=project)
     if kind == "tudo.json":
         tasks = _tasks(uid)
         by_id = {t["id"]: t for t in tasks}
@@ -192,7 +229,8 @@ def export(kind: str, start: Optional[date] = Query(None), end: Optional[date] =
         # quem apontou, mas a tarefa não é mais dele. Esse tempo vai à parte, com o título.
         time_elsewhere = []
         for e in db.query_all(
-                """SELECT e.task_id, w.title AS task_title, e.day, e.minutes, e.note, e.actor, e.token_name
+                """SELECT e.task_id, w.title AS task_title, e.day, e.minutes, e.note, e.actor, e.token_name,
+                          e.started_at, e.ended_at
                      FROM time_entries e JOIN worklog_tasks w ON w.id = e.task_id
                     WHERE e.user_id = %s ORDER BY e.day, e.id""", (uid,)):
             task = by_id.get(e["task_id"])
@@ -202,7 +240,8 @@ def export(kind: str, start: Optional[date] = Query(None), end: Optional[date] =
             del e["task_id"], e["task_title"]
             task["time"].append(e)
         recurring = db.query_all(
-            """SELECT id, label, active, freq, weekdays, month_day, interval_days, require_note, remind_at, created_at, deactivated_at
+            """SELECT id, label, active, freq, weekdays, month_day, interval_days, require_note, remind_at, created_at, deactivated_at,
+                      steps, after_from
                  FROM recurring_tasks WHERE user_id = %s ORDER BY position, id""", (uid,))
         done, evid = {}, {}
         for c in db.query_all("SELECT task_id, completed_date, note FROM recurring_completions WHERE user_id = %s ORDER BY completed_date", (uid,)):
@@ -212,6 +251,12 @@ def export(kind: str, start: Optional[date] = Query(None), end: Optional[date] =
         for r in recurring:
             r["completed_dates"] = done.get(r["id"], [])
             r["evidence"] = evid.get(r["id"], [])  # o que foi anotado ao marcar
+            r["pauses"] = []
+        rec_by_id = {r["id"]: r for r in recurring}
+        for x in db.query_all(
+                """SELECT recurring_id, start_d, end_d, created_at FROM recurring_pauses
+                    WHERE recurring_id = ANY(%s) ORDER BY start_d, id""", (list(rec_by_id),)):
+            rec_by_id[x.pop("recurring_id")]["pauses"].append(x)
         for x in db.query_all("SELECT task_id, project_id FROM worklog_task_projects WHERE task_id = ANY(%s) ORDER BY project_id",
                               (list(by_id),)):
             by_id[x["task_id"]].setdefault("extra_project_ids", []).append(x["project_id"])
@@ -253,6 +298,13 @@ def export(kind: str, start: Optional[date] = Query(None), end: Optional[date] =
             # Tempo apontado em tarefas que passaram para outra pessoa (o título é o de hoje).
             "time_on_transferred_tasks": time_elsewhere,
             "recurring": recurring,
+            "week_reviews": db.query_all(
+                "SELECT week_start, done_at, dismissed_at FROM week_reviews WHERE user_id = %s ORDER BY week_start", (uid,)),
+            # Onde a pessoa está: as equipes de que faz parte (só o nome) e os papéis da conta.
+            "teams": [r["name"] for r in db.query_all(
+                """SELECT t.name FROM team_members m JOIN teams t ON t.id = m.team_id
+                    WHERE m.user_id = %s ORDER BY lower(t.name)""", (uid,))],
+            "roles": [r["role"] for r in db.query_all("SELECT role FROM user_roles WHERE user_id = %s ORDER BY role", (uid,))],
             "renewals": db.query_all(
                 """SELECT r.label, r.expires_on, r.warn_days, r.renew_months, p.name AS project, r.note, r.created_at
                      FROM renewals r LEFT JOIN projects p ON p.id = r.project_id
