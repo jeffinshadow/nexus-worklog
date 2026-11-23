@@ -46,7 +46,7 @@ async function send(method, path, { body, type, timeout = 20000, publicCall = fa
     throw Object.assign(new Error(slow ? "O servidor demorou para responder. Tente de novo." : NO_NET), { status: 0, slow });
   }
   // Servidor fora (deploy, reinício: o nginx responde 502, 503 ou 504): vale como sem conexão,
-  // para a ação entrar na fila e a leitura guardada abrir. O 500 não entra: é erro da própria operação.
+  // para a ação entrar na fila. O 500 não entra: é erro da própria operação.
   if (res.status >= 502 && res.status <= 504) throw Object.assign(new Error(NO_NET), { status: 0 });
 
   // 401 fora das rotas de auth = sessao expirou -> volta ao login.

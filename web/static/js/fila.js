@@ -57,8 +57,17 @@ async function tx(store, mode, fn) {
 export const all = () => tx(STORE, "readonly", (s) => s.getAll()).catch(() => []);
 export const failures = () => tx(FAILED, "readonly", (s) => s.getAll()).catch(() => []);
 
-// Guarda a ação. A hora do aparelho vai junto onde o servidor aceita.
-export async function enqueue(method, path, body) {
+// Guarda a ação, uma de cada vez: toques seguidos falham quase juntos, e cada um precisa ver
+// na fila o que o anterior acabou de guardar (para não repetir a mesma ação).
+let enqueueing = Promise.resolve();
+export function enqueue(method, path, body) {
+  const p = enqueueing.then(() => enqueueOne(method, path, body));
+  enqueueing = p.catch(() => {});
+  return p;
+}
+
+// A hora do aparelho vai junto onde o servidor aceita.
+async function enqueueOne(method, path, body) {
   const now = new Date();
   body = { ...(body || {}) };
   // Três toques em Concluir com o sinal ruim: a ação igual à última da fila não entra de novo.
@@ -276,7 +285,7 @@ async function flushHere() {
         const g = s.get(op.qid);
         g.onsuccess = () => {
           const extra = ((g.result && g.result.then) || []).slice(n0);
-          if (extra.length) s.put({ ...op, created: res && res.id, then: extra });
+          if (extra.length) s.put({ ...op, stuck: undefined, created: res && res.id, then: extra });  // os passos novos ainda não deram erro
           else s.delete(op.qid);
         };
         return { get result() { return ((g.result && g.result.then) || []).slice(n0).length; } };
@@ -453,9 +462,13 @@ async function showList() {
       const row = h("div", { class: "token-row" }, h("span", { class: "token-name", text: describe(op) }), h("span", { class: "token-meta", text: when(op.at) }));
       // Só a primeira segura a fila. Presa por erro do servidor: dá para tirar à mão (o texto fica para copiar).
       if (i || !op.stuck) return row;
-      const full = op.body && (op.body.body || op.body.note || op.body.title);
+      // Tarefa já criada: o que está preso (e sai no Descartar) é só o passo seguinte dela.
+      const step = op.created && op.then.length ? op.then[0] : null;
+      const held = (step || op).body;
+      const full = held && (held.body || held.note || held.title);
       row.append(h("div", { class: "failed-box stuck-box" },
-        h("p", { text: "O servidor respondeu com erro ao receber esta. Enquanto ela não for, as outras esperam." }),
+        h("p", { text: step ? `A tarefa foi criada, mas o servidor respondeu com erro ao receber: ${describeStep(step)}. Enquanto isso não for, as outras esperam.`
+          : "O servidor respondeu com erro ao receber esta. Enquanto ela não for, as outras esperam." }),
         full ? h("p", { text: full }) : null,
         full ? copyButton(full) : null,
         h("button", { type: "button", class: "btn btn-text btn-sm", text: "Descartar", onClick: async () => {

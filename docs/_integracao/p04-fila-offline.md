@@ -36,6 +36,11 @@ Branch `lab/p04-fila-offline`. Sem rota nem parâmetro novo na API (o `docs/open
   da fila (`raw`) recusa leitura que veio do cache (`X-Nexus-Cache`) com `status: 0, cached: true`.
 - A fila grava dois campos novos no item (IndexedDB, sem mudar a versão do banco): `sig` (para não repetir a ação
   igual à última) e `stuck` (presa por erro do servidor). Itens antigos sem os campos seguem valendo.
+- Revisão: `enqueue` guarda uma ação de cada vez (três toques quase juntos em Concluir viravam três itens, porque
+  cada um lia a fila antes de o anterior gravar); na ação presa que é passo de uma tarefa já criada, o aviso e o
+  "Copiar" mostram o passo (o que o "Descartar" tira), não o título da tarefa.
+- Servidor fora com 502 a 504 numa leitura: a tela mostra "Sem conexão", mas a cópia guardada não abre (o `sw.js`
+  só cai para ela quando a rede falha; arquivo de outro pacote).
 - `fila.js`: `wipe()` não foi tocada (p11). `settings.js` só importa e chama antes de ir ao login. Depois do
   `wipe()`, a tela de login guarda de novo `/api/branding` (público) em `nexus-dados`.
 - `app.css`: bloco no fim, `/* auditoria p04 */` (miniatura na fila e a caixa da ação presa).
