@@ -52,7 +52,10 @@ function row(r, onChange, compact = false) {
         onChange();
         toast("Vencimento excluído.", { action: "Desfazer", onAction: () => undoLatest("renewal", r.id, onChange) });
       } catch (e) { errorToast(e); }
-    } }, icon("trash")));
+    } }, icon("trash")),
+    // Vencimento da equipe cadastrado por outra pessoa: sem lápis e lixeira, mas com o lugar deles guardado
+    // (as ações ficam na mesma coluna em todas as linhas).
+    ...(compact || r.mine ? [] : [h("span", { class: "venc-gap", "aria-hidden": "true" }), h("span", { class: "venc-gap", "aria-hidden": "true" })]));
 }
 
 // Cadastro e edição; renew = só a nova data ("Renovei").
