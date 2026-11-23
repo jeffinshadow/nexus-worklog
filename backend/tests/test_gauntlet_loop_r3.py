@@ -10,16 +10,7 @@ from app import db, mailer
 from app.routers import auth as auth_mod
 from conftest import Api, Bearer, SENHA_PADRAO, criar_chave, hist, texto, uid_de
 from test_passkeys import _cadastrar
-
-
-class _Agora:
-    """threading.Thread que roda na hora (o envio em segundo plano vira síncrono)."""
-
-    def __init__(self, target, args=(), daemon=None):
-        self.target, self.args = target, args
-
-    def start(self):
-        self.target(*self.args)
+from conftest import Agora as _Agora  # ajudantes comuns (auditoria p07)
 
 
 @pytest.fixture

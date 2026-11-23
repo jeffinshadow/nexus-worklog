@@ -14,14 +14,7 @@ from app.routers import admin as admin_mod
 from app.routers import assign as assign_mod
 from app.routers import equipes as equipes_mod
 from conftest import ADMIN_PW, Bearer, SENHA_PADRAO, criar_chave, ligar_pedido_convite, texto, uid_de
-
-
-class _Agora:
-    def __init__(self, target, args=(), daemon=None):
-        self.target, self.args = target, args
-
-    def start(self):
-        self.target(*self.args)
+from conftest import Agora as _Agora, papeis as _papeis  # ajudantes comuns (auditoria p07)
 
 
 @pytest.fixture
@@ -34,11 +27,6 @@ def caixa(monkeypatch):
     monkeypatch.setattr(admin_mod.threading, "Thread", _Agora)
     monkeypatch.setattr(assign_mod, "_spawn", lambda to, mail: enviados.append((to, mail.subject, mail.text())))
     return enviados
-
-
-def _papeis(admin, u, roles):
-    r = admin.put(f"/admin/users/{uid_de(u)}/roles", {"roles": roles})
-    assert r.status_code == 200, r.text
 
 
 def _equipe(admin, nome, *membros):

@@ -6,14 +6,7 @@ from app import db, mailer
 from app.routers import assign as assign_mod
 from app.routers import auth as auth_mod
 from conftest import Api, SENHA_PADRAO, criar_chave, hist, uid_de
-
-
-class _Agora:
-    def __init__(self, target, args=(), daemon=None):
-        self.target, self.args = target, args
-
-    def start(self):
-        self.target(*self.args)
+from conftest import Agora as _Agora  # ajudantes comuns (auditoria p07)
 
 
 @pytest.fixture

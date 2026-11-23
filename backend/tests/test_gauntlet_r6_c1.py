@@ -17,14 +17,7 @@ from app.routers import auth as auth_mod
 from app.version import VERSION
 from conftest import Api, Bearer, criar_chave, dia_hoje, hist, ligar_pedido_convite, texto, uid_de
 from test_api_aberta import _novo, dns  # noqa: F401 — dns é fixture
-
-
-class _Agora:
-    def __init__(self, target, args=(), daemon=None):
-        self.target, self.args = target, args
-
-    def start(self):
-        self.target(*self.args)
+from conftest import Agora as _Agora  # ajudantes comuns (auditoria p07)
 
 
 @pytest.fixture
