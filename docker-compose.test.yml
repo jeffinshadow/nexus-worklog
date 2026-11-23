@@ -37,6 +37,7 @@ services:
       OPENAPI_FILE: /docs/openapi.json  # test_openapi_em_dia compara com o versionado
     volumes:
       - ./docs:/docs:ro
+      - ./web/nginx.conf:/web/nginx.conf:ro  # test_nginx_nao_grava_a_rota_do_link lê o arquivo de verdade
     depends_on:
       db-test:
         condition: service_healthy

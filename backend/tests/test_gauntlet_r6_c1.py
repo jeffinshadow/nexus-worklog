@@ -100,8 +100,7 @@ def test_link_por_post_com_token_no_corpo(admin, caixa):
 def test_nginx_nao_grava_a_rota_do_link():
     import pathlib
     conf = (pathlib.Path(__file__).parents[2] / "web" / "nginx.conf")
-    if not conf.exists():
-        pytest.skip("nginx.conf fora do container de testes")
+    assert conf.exists(), "web/nginx.conf não está montado no container de testes (volume do docker-compose.test.yml)"
     txt = conf.read_text()
     bloco = txt.split("location = /api/auth/link", 1)[1].split("}", 1)[0]
     assert "access_log off" in bloco
