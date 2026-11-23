@@ -1,8 +1,16 @@
 // Service Worker: deixa o Nexus instalável, mostra as notificações do sistema
 // (app/push.py), mesmo com o app fechado, recebe o "compartilhar" de outros
-// apps e segura o app sem sinal. Rede primeiro, sempre: com conexão, tudo vem
-// do servidor (nada de versão velha); a cópia guardada só aparece quando a rede
-// falha — e a resposta da API vem marcada (X-Nexus-Cache) para a tela avisar.
+// apps e segura o app sem sinal. Rede primeiro: com conexão, tudo vem do
+// servidor (nada de versão velha); a cópia guardada só aparece quando a rede
+// falha, demora demais ou o servidor está fora (502, 503, 504) — e a resposta
+// da API vem marcada (X-Nexus-Cache) para a tela avisar.
+// Duas exceções, as duas só depois de a rede falhar:
+// - Sinal fraco: depois de um estouro de TEMPO da página ou de uma leitura (não
+//   de erro rápido), as duas esperam a rede só 1,5 s durante 60 s; a primeira
+//   resposta do servidor, ou o fim dos 60 s, devolve a espera normal.
+// - Quando a página veio da cópia guardada, o resto do app (CSS, JS, fontes)
+//   vem da cópia nessa abertura: os módulos se importam sem versão na URL, e
+//   misturar rede e cópia logo depois de uma atualização quebraria o app.
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
 
@@ -13,7 +21,7 @@ const SHARE = 'nexus-compartilhado';
 const CASCO = 'nexus-casco';   // páginas, CSS, JS, fontes, ícones
 const DADOS = 'nexus-dados';   // as últimas leituras das telas principais
 // Leituras que valem sem sinal (as de abrir o dia). Relatórios, busca e admin, não.
-const API_OK = /^\/api\/(auth\/me|board|projects|branding|timer|recurring\/reminders|summary(\/[a-z]+)?|renewals|worklog\/\d+)$/;
+const API_OK = /^\/api\/(auth\/me|board|projects(\/\d+\/overview)?|branding|timer|recurring\/reminders|summary(\/[a-z]+)?|renewals|worklog\/\d+)$/;
 
 // Arquivo com versão na URL (app.js?v=166): ao guardar a nova, a cópia da versão
 // anterior sai (senão cada atualização deixava mais um jogo de arquivos no aparelho).
@@ -31,17 +39,32 @@ async function dropOldVersions(cache, req) {
   }
 }
 
-async function networkFirst(req, cacheName, timeout, mark) {
+const CURTA = 1500, LENTO_POR = 60000;
+let lentoAte = 0;            // até quando a espera é a curta (o último pedido estourou o tempo)
+const daCopia = new Set();   // aberturas (id da página) em que a página veio da cópia guardada
+const espera = (normal) => (Date.now() < lentoAte ? CURTA : normal);
+
+// onCopy: chamada quando a resposta sai da cópia guardada.
+async function networkFirst(req, cacheName, timeout, mark, onCopy) {
   const cache = await caches.open(cacheName);
+  let fora = null;
   try {
     const res = await fetch(req, { signal: AbortSignal.timeout(timeout) });
+    lentoAte = 0;  // o servidor (ou o proxy) respondeu: a rede está viva
+    // Servidor reiniciando ou fora atrás do proxy: vale a cópia guardada, como sem rede.
+    if (res.status >= 502 && res.status <= 504) { fora = res; throw new Error('servidor fora'); }
     if (res.ok && res.type === 'basic') {
       cache.put(req, res.clone()).then(() => dropOldVersions(cache, req)).catch(() => {});  // cota cheia: segue sem guardar
     }
     return res;
   } catch (e) {
     const hit = (await cache.match(req)) || (req.mode === 'navigate' ? await cache.match('/') : null);
-    if (!hit) throw e;
+    // Só a espera cheia da página ou de uma leitura liga a espera curta: se a curta também ligasse, uma rede
+    // lenta mas viva (resposta em 2 a 5 s) ficaria presa na cópia para sempre. Passados os 60 s, o próximo
+    // pedido espera o tempo normal de novo e decide.
+    if (e && e.name === 'TimeoutError' && timeout > CURTA && (mark || req.mode === 'navigate')) lentoAte = Date.now() + LENTO_POR;
+    if (!hit) { if (fora) return fora; throw e; }
+    if (onCopy) onCopy();
     if (!mark) return hit;
     const headers = new Headers(hit.headers);
     headers.set('X-Nexus-Cache', hit.headers.get('Date') || new Date().toUTCString());
@@ -56,10 +79,24 @@ self.addEventListener('fetch', (event) => {
   if (req.method === 'GET') {
     if (url.pathname.startsWith('/api/')) {
       // A abertura (auth/me) desiste antes: o app espera 6,5 s por ela e a cópia guardada precisa chegar antes disso.
-      if (API_OK.test(url.pathname)) event.respondWith(networkFirst(req, DADOS, url.pathname === '/api/auth/me' ? 5000 : 8000, true));
+      if (API_OK.test(url.pathname)) event.respondWith(networkFirst(req, DADOS, espera(url.pathname === '/api/auth/me' ? 5000 : 8000), true));
       return;  // o resto da API: só rede
     }
     if (url.pathname === '/login' || url.pathname === '/sw.js') return;
+    if (req.mode === 'navigate') {
+      const id = event.resultingClientId;
+      event.respondWith(networkFirst(req, CASCO, espera(10000), false, () => {
+        if (!id) return;
+        if (daCopia.size > 30) daCopia.clear();
+        daCopia.add(id);
+      }));
+      return;
+    }
+    // A página desta abertura veio da cópia: o resto vem de lá também (só o que faltar vai à rede).
+    if (event.clientId && daCopia.has(event.clientId)) {
+      event.respondWith(caches.open(CASCO).then((c) => c.match(req)).then((hit) => hit || networkFirst(req, CASCO, 10000, false)));
+      return;
+    }
     event.respondWith(networkFirst(req, CASCO, 10000, false));
     return;
   }

@@ -16,7 +16,7 @@ import { avatar } from "./profile.js";
 import { startIdle } from "./idle.js";
 import { startReminders } from "./lembretes.js";
 import { canOfferInstall, install, offerInstall, sharedTask, stashShare, takeShortcut } from "./instalar.js";
-import { offerNotifications, syncOnBoot } from "./notificacoes.js";
+import { leaveDevice, offerNotifications, syncOnBoot } from "./notificacoes.js";
 import { pendingCount, startQueue, wipe } from "./fila.js";
 import { configure as configureAssistant } from "./assistant.js";
 import { session } from "./session.js";
@@ -24,7 +24,7 @@ import { initTimer, stopTimer, timerState } from "./timer.js";
 import { openTask, closeSidePanel } from "./task.js";
 import { startTour, changesNotice } from "./tour.js";
 import { openReview } from "./review.js";
-import { modal, busy, confirmDialog, initTooltips, initRailPeek, syncRail, calmMotion, toast, singleKeysOn, repaintBadges } from "./ui.js";
+import { announce, modal, busy, confirmDialog, initTooltips, initRailPeek, syncRail, calmMotion, toast, singleKeysOn, repaintBadges } from "./ui.js";
 
 let me = null;
 
@@ -157,6 +157,8 @@ async function route() {
     };
     await view.mount(el, { me, setActions: actions, setBack: back, setEyebrow: eyebrowOf, setTitle: titleOf, setAssist: assist, go });
   } catch (e) {
+    // Erro do próprio app ao montar a tela (não é resposta da API nem sessão vencida): vai para o log do servidor.
+    if (e && e.status === undefined && e.message !== "nao autenticado") reportError(e.stack || e.message, name);
     clear(el);
     // Servidor fora (ou o app abriu do cache do aparelho): a frase e o botão, como na abertura.
     el.append(h("div", { class: "auth-card view-error", role: "alert" },
@@ -242,7 +244,9 @@ async function finishLeave() {
 async function logout() {
   const n = pendingCount();
   if (n && !(await confirmLeave(n))) return;
-  try { await api.post("/auth/logout"); }
+  // Este aparelho para de receber as notificações da conta (falhar aqui não impede o Sair).
+  const endpoint = await leaveDevice().catch(() => null);
+  try { await api.post("/auth/logout", endpoint ? { endpoint } : undefined); }
   catch (e) {
     // Sem conexão, o servidor não soube da saída e o cookie da sessão continua valendo: fica
     // anotado qual sessão era, e na próxima vez que o app abrir com rede ela é encerrada antes
@@ -311,6 +315,7 @@ function showHelp(focus) {
         ["Tarefas", "O quadro completo e o detalhe de cada tarefa: anotações, checklist, cronômetro, tempo."],
         ["Projetos", "Cada projeto com os objetivos em ordem de execução e as tarefas de cada um."],
         ["Meu mês", "Como foi o mês numa frase, com o PDF do mês. Embaixo, o painel: rotinas em dia, tarefas concluídas e horas apontadas, cada um com os últimos 6 meses e uma palavra que situa o mês na sua própria média (acima, na média, abaixo — só para você ver o seu ritmo; quem acompanha a equipe não vê); o calendário do mês, com cada dia pintado pela parte das rotinas feitas (mais forte = mais feitas); o ritmo por semana; o tempo por projeto; e as rotinas que pedem atenção. Depois, o que foi entregue. Outro período, um projeto e a exportação dos dados ficam em “Outro período ou formato”."]] : []),
+      ...(user ? [["Revisão da semana", "Três passos curtos para fechar a semana: o que fechou, o que ficou e o que vem. Abre pela Passagem de turno, no Hoje; no celular, também em Mais."]] : []),
       ["Histórico", "Tudo o que mudou, com desfazer."],
       ...(has("viewer") ? [["Equipe", "Do papel “Vê a equipe”. Um painel para coordenar, não para comparar: os números da equipe somados (rotinas em dia, tarefas concluídas, horas, aguardando), o que precisa de atenção, o tempo por projeto e as pessoas em ordem alfabética. Tocar numa pessoa abre o mês e o quadro dela, só para ver. Entra só quem permitiu (cada pessoa decide em Configurações > Conta). No topo: Horas da equipe (CSV) e PDF."]] : []),
       ...(has("assigner") ? [["Atribuir (na Equipe)", "Do papel “Manda tarefas”. “Atribuir tarefa”, no alto da tela Equipe, manda uma tarefa para quem aceitou receber. Logo abaixo ficam as Tarefas que atribuí: enquanto ela está a fazer, você ainda altera ou cancela; depois, é da pessoa. Quem recebeu pode devolver com o motivo: aí você atribui de novo (a ela ou a outra pessoa) ou encerra."]] : []),
@@ -427,7 +432,13 @@ async function boot() {
   if (window.nexusTheme && me.theme && me.theme !== window.nexusTheme.get()) window.nexusTheme.set(me.theme);  // a escolha da conta vale aqui também
   // Outra conta neste aparelho: nada do que ficou guardado da anterior serve.
   try {
-    if (localStorage.getItem("nexus.uid") !== String(me.id)) { await wipe(); localStorage.setItem("nexus.uid", String(me.id)); }
+    if (localStorage.getItem("nexus.uid") !== String(me.id)) {
+      await wipe();
+      localStorage.setItem("nexus.uid", String(me.id));
+      // A leitura da conta saiu junto (era a desta abertura): pede de novo só para ficar guardada, senão o app não reabria sem sinal.
+      api.get("/auth/me").catch(() => {});
+      loadBranding();
+    }
   } catch { /* sem armazenamento */ }
   if (me.must_change_password) {
     showChangePassword();
@@ -482,6 +493,8 @@ async function boot() {
   // Resultados enquanto digita (até 5 tarefas e 2 projetos); Enter abre a Busca completa.
   const sugg = h("div", { class: "side-sugg hidden", id: "side-sugg", "aria-label": "Sugestões da busca" });
   document.getElementById("side-search").append(sugg);
+  sideQ.setAttribute("aria-controls", "side-sugg");
+  sideQ.setAttribute("aria-expanded", "false");
   let suggTimer = null, suggSeq = 0;
   // Idempotente: tirar da tela a sugestão com foco dispara o focusout, que chama de novo.
   function hideSugg() {
@@ -489,6 +502,7 @@ async function boot() {
     if (sugg.classList.contains("hidden")) return;
     sugg.classList.add("hidden");
     sugg.replaceChildren();
+    sideQ.setAttribute("aria-expanded", "false");
   }
   const suggItems = () => [...sugg.querySelectorAll(".sugg-item")];
   sideQ.addEventListener("input", () => {
@@ -513,6 +527,9 @@ async function boot() {
       if (!tasks.length && !projs.length) sugg.append(h("p", { class: "sugg-empty", text: "Nada encontrado." }));
       sugg.append(h("button", { type: "submit", class: "sugg-all", text: "Ver todos os resultados" }));
       sugg.classList.remove("hidden");
+      sideQ.setAttribute("aria-expanded", "true");
+      const n = tasks.length + projs.length;
+      announce(n ? `${n} ${n === 1 ? "sugestão" : "sugestões"}; seta para baixo percorre` : "Nada encontrado.");
     }, 250);
   });
   // Setas andam entre as sugestões; Esc fecha e volta ao campo.
@@ -570,7 +587,13 @@ async function boot() {
       else if (acao === "rapido") document.querySelector('#view-hoje [aria-label="Registrar tarefa rápida"]')?.focus();
     };
   };
-  window.addEventListener("hashchange", () => { const run = shortcut(); route().then(run); });
+  window.addEventListener("hashchange", () => {
+    // Voltar do aparelho (ou um link) com uma janela aberta: ela fecha antes de a tela trocar, a de cima primeiro.
+    // O detalhe lateral é da rota (closeSidePanel) e o tour obrigatório se reabre sozinho.
+    for (const d of [...document.querySelectorAll("dialog[open]:not(.side):not(.tour-dialog)")].reverse()) d.close();
+    const run = shortcut();
+    route().then(run);
+  });
   const run = shortcut();
   await route();
   run();
