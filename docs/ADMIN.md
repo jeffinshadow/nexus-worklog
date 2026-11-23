@@ -206,9 +206,10 @@ o token e **Conectar**. Dali em diante:
   tempo apontado viram a solução do chamado, assinada por ela. As anotações da tarefa **não** vão.
 - Solução recusada (o chamado reabre no GLPI): a tarefa reabre, com uma anotação. Chamado que saiu do nome dela com a
   tarefa aberta (outro encerrou, ou foi reatribuído): a tarefa ganha uma anotação e a pessoa decide o que fazer.
-- GLPI fora do ar não trava nada: a tarefa conclui e a solução sai quando ele voltar (nova tentativa em 1, 5, 30 min,
-  2 h e 12 h; 5 falhas seguidas pausam até a pessoa apertar **Atualizar agora**). Token revogado no GLPI pausa na
-  hora e pede para conectar de novo.
+- GLPI fora do ar não trava nada nem pausa ninguém: a tarefa conclui e a solução sai quando ele voltar (nova
+  tentativa em 1 e 5 min, depois a cada 30 min). Outras falhas (API desligada, App-Token recusado, perfil que não
+  lista chamados): nova tentativa em 1, 5, 30 min, 2 h e 12 h; 5 seguidas pausam até a pessoa apertar **Atualizar
+  agora**. Token revogado no GLPI pausa na hora e pede para conectar de novo.
 
 Segurança: o token de cada pessoa e o App-Token ficam **cifrados** no banco (chave derivada do `SECRET_KEY`: trocar o
 `SECRET_KEY` obriga todos a conectar de novo), nunca voltam pela API nem vão ao log. As rotas são só do app (chave de

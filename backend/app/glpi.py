@@ -10,8 +10,10 @@ sendo regra de lá). O GLPI segue dono do chamado: o Nexus só guarda o número.
 - Os dois tokens ficam cifrados (Fernet, chave derivada do SECRET_KEY): o
   vazamento só do banco não os entrega. Nunca voltam pela API nem vão ao log.
 - Roda no agendador (notify.scheduler), em laço próprio: a cada 5 minutos por
-  pessoa conectada, mais o "Atualizar agora". Falha → 1, 5, 30 min, 2 h e 12 h;
-  5 seguidas pausam (a tela mostra o motivo). Token recusado pausa na hora.
+  pessoa conectada, mais o "Atualizar agora". Uma passada por pessoa de cada vez
+  (duas ao mesmo tempo gravariam a solução duas vezes). Falha → 1, 5, 30 min,
+  2 h e 12 h; 5 seguidas pausam (a tela mostra o motivo). Token recusado pausa na
+  hora. GLPI fora do ar nunca pausa: tenta de novo a cada 30 minutos, no máximo.
 - O vínculo chamado -> tarefa (glpi_tickets, sql/060) é gravado só aqui: uma
   tarefa criada por chave de API com external_ref "glpi:N" não manda solução.
 - O endereço é só do admin e tem checagem própria (rede interna é aceita de
@@ -48,7 +50,11 @@ MAX_TICKETS = 100  # chamados abertos por pessoa em cada passada
 MAX_BODY = 1024 * 1024  # resposta do GLPI, em bytes
 UNDO_SECONDS = 120  # a solução espera: dá tempo de desfazer a conclusão e de escrever o "Como resolveu?"
 SOLVED = 5  # status do chamado no GLPI: 5 solucionado, 6 fechado
+DOWN_RETRY_MIN = 30  # GLPI fora do ar: a espera entre as tentativas não passa disto
 CTX = {"actor": "system", "token_name": "GLPI"}  # autoria do que a sincronização grava
+# Uma passada por pessoa de cada vez (agendador x "Atualizar agora" x dois cliques). O backend é um
+# processo só (backend/Dockerfile); com mais de um, a trava teria de ir para o banco.
+_busy: dict[int, threading.Lock] = {}
 
 REOPENED = "O chamado foi reaberto no GLPI (a solução não foi aceita)."
 GONE = "Este chamado não está mais aberto no seu nome no GLPI (foi encerrado ou passou para outra pessoa)."
@@ -402,7 +408,18 @@ def _push(user_id: int, call, manual: bool) -> None:
 
 def sync(user_id: int, manual: bool = False) -> GlpiError | None:
     """Uma passada de uma pessoa: puxa os chamados e manda as soluções pendentes.
-    Nunca levanta por causa do GLPI: a falha fica registrada na conta (e é devolvida)."""
+    Nunca levanta por causa do GLPI: a falha fica registrada na conta (e é devolvida).
+    Com outra passada da mesma pessoa em andamento, não faz nada (aquela já está fazendo)."""
+    lock = _busy.setdefault(user_id, threading.Lock())
+    if not lock.acquire(blocking=False):
+        return None
+    try:
+        return _sync(user_id, manual)
+    finally:
+        lock.release()
+
+
+def _sync(user_id: int, manual: bool) -> GlpiError | None:
     acc = db.query_one("SELECT token, failures FROM glpi_accounts WHERE user_id = %s", (user_id,))
     if not acc:
         return None
@@ -415,10 +432,13 @@ def sync(user_id: int, manual: bool = False) -> GlpiError | None:
             _push(user_id, call, manual)
     except GlpiError as e:
         step = webhooks.BACKOFF_MIN[min(acc["failures"], len(webhooks.BACKOFF_MIN) - 1)]
+        # GLPI fora do ar não é problema da conta: não chega à pausa (uma madrugada de manutenção
+        # pausaria todo mundo, e ninguém é avisado da pausa) e volta a tentar logo.
+        top = MAX_FAILURES - 1 if e.down else MAX_FAILURES
         db.execute(
-            """UPDATE glpi_accounts SET failures = CASE WHEN %s THEN %s ELSE failures + 1 END, last_error = %s,
+            """UPDATE glpi_accounts SET failures = CASE WHEN %s THEN %s ELSE LEAST(failures + 1, %s) END, last_error = %s,
                       next_attempt_at = now() + make_interval(mins => %s) WHERE user_id = %s""",
-            (e.auth, MAX_FAILURES, str(e)[:200], step, user_id))
+            (e.auth, MAX_FAILURES, top, str(e)[:200], min(step, DOWN_RETRY_MIN) if e.down else step, user_id))
         return e
     db.execute("""UPDATE glpi_accounts SET last_sync_at = now(), failures = 0, last_error = NULL, next_attempt_at = NULL
                    WHERE user_id = %s""", (user_id,))

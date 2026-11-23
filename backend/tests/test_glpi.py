@@ -446,16 +446,47 @@ def test_glpi_fora_do_ar_nao_trava_o_nexus_e_tenta_de_novo(ana, novo_usuario, fa
     assert st["connected"] and "recusou a conexão" in st["error"] and st["pending"] == 1
     fake.fail = 503
     assert "HTTP 503" in ana.post("/me/glpi/sync").json()["error"]
-    # 5 falhas seguidas pausam; o agendador não tenta mais até a pessoa pedir.
+    # GLPI fora do ar nunca pausa (não é problema da conta) e a espera não passa de 30 minutos.
     db.execute("UPDATE glpi_accounts SET failures = 4, next_attempt_at = NULL WHERE user_id = %s", (uid_de(ana),))
     db.execute("UPDATE glpi_accounts SET next_attempt_at = now() + interval '1 hour' WHERE user_id <> %s", (uid_de(ana),))
+    passada(ana)
+    conta = db.query_one("""SELECT failures, next_attempt_at <= now() + interval '31 minutes' AS logo
+                              FROM glpi_accounts WHERE user_id = %s""", (uid_de(ana),))
+    assert conta == {"failures": 4, "logo": True} and ana.get("/me/glpi").json()["paused"] is False
+    # 5 falhas seguidas de outro tipo (aqui, a API desligada no GLPI) pausam; o agendador não tenta mais até a pessoa pedir.
+    fake.fail, fake.off = None, "api"
+    db.execute("UPDATE glpi_accounts SET next_attempt_at = NULL WHERE user_id = %s", (uid_de(ana),))
     passada(ana)
     assert ana.get("/me/glpi").json()["paused"] is True
     db.execute("UPDATE glpi_accounts SET next_attempt_at = NULL WHERE user_id = %s", (uid_de(ana),))
     assert uid_de(ana) not in [r[0] for r in passada(ana)]
-    fake.fail = None
+    fake.off = None
     st = ana.post("/me/glpi/sync").json()
     assert (st["paused"], st["error"], st["pending"]) == (False, None, 0) and fake.tickets[1]["status"] == 5
+
+
+def test_duas_passadas_da_mesma_pessoa_ao_mesmo_tempo_mandam_uma_solucao_so(ana, fake):
+    """Agendador x "Atualizar agora" (ou dois cliques): no GLPI de verdade, as duas conferiam o status
+    antes de qualquer uma enviar e o chamado ficava com duas soluções. A segunda agora não faz nada."""
+    fake.add(1, 7)
+    ana.post("/me/glpi/sync")
+    t = tarefas(ana)[0]
+    ana.post(f"/worklog/{t['id']}/finish", {"resolution": "feito"})
+    original, dentro = glpi._push, []
+
+    def push(user_id, call, manual):  # no meio da passada, chega outra da mesma pessoa
+        dentro.append(glpi.sync(user_id, manual=True))
+        dentro.append(len(fake.calls))
+        return original(user_id, call, manual)
+    glpi._push = push
+    try:
+        n = len(fake.calls)
+        assert ana.post("/me/glpi/sync").status_code == 200
+    finally:
+        glpi._push = original
+    assert dentro[0] is None and dentro[1] == n + 2  # a de dentro não conversou com o GLPI (só initSession e a busca, da de fora)
+    assert len(fake.solutions) == 1 and fake.tickets[1]["status"] == 5
+    assert ana.post("/me/glpi/sync").json()["pending"] == 0  # a trava foi solta
 
 
 def test_token_revogado_pausa_na_hora_e_reconectar_resolve(ana, fake):
