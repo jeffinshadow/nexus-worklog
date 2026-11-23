@@ -119,7 +119,9 @@ def _call(fn, *args, **kwargs):
         raise ToolError(str(e.detail)) from None
     except ValidationError as e:
         raise ToolError(f"parâmetros inválidos: {_pt_errors(e)}") from None
-    except psycopg.DataError:
+    except psycopg.DataError as e:
+        # Uma linha no log (sem o valor), como a REST (main._bad_data): se for defeito nosso, dá para achar.
+        log.warning("MCP: dado recusado em %s: %s", getattr(fn, "__name__", fn), e.__class__.__name__)
         raise ToolError(BAD_DATA) from None
 
 
@@ -1789,7 +1791,8 @@ def _handle(ctx, msg):
             raise
         except HTTPException as e:  # rota chamada direto, fora do _call
             text, is_error = str(e.detail), True
-        except (psycopg.DataError, UnicodeEncodeError):
+        except (psycopg.DataError, UnicodeEncodeError) as e:
+            log.warning("MCP: dado recusado em %s: %s", name, e.__class__.__name__)
             text, is_error = BAD_DATA, True
         except KeyError as e:
             text, is_error = f"falta o campo {e.args[0]}", True
