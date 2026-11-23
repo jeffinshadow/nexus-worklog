@@ -1190,10 +1190,13 @@ def _tem_nome(row: dict) -> bool:
 def _label_ia(row: dict) -> str:
     """A frase do histórico (history._label) com os nomes de outras pessoas entre « »: as aspas
     entram nos campos do snapshot, antes de a frase ser montada, sem casar texto."""
+    def nome(v):  # sem “ ” dentro: o get_history troca “título” por «título» e não pode casar dentro do nome
+        return _outro(v.replace("“", '"').replace("”", '"'))
+
     def com_aspas(snap):
         if not isinstance(snap, dict):
             return snap
-        return {c: _outro(v) if c in _NOMES and isinstance(v, str) and v else v for c, v in snap.items()}
+        return {c: nome(v) if c in _NOMES and isinstance(v, str) and v else v for c, v in snap.items()}
     return history_routes._label({**row, "before": com_aspas(row["before"]), "after": com_aspas(row["after"])})
 
 

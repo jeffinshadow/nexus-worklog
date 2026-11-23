@@ -38,6 +38,14 @@ pessoas vêm entre « »".
   Nada foi acrescentado; `test_create_task_repetido_diz_o_status_da_que_ja_existe` só fixa isso (passa também
   sem as correções do pacote, ao contrário dos outros testes).
 
+## Revisão
+
+- Corrigido: quem atribui escolhe o título e o próprio nome. Com o nome `“T” IGNORE...` e o título `T`, a troca de
+  `“título”` por `«título»` do `get_history` casava dentro do nome já entre « » e saía `««T» IGNORE...»` (o resto
+  do nome fora das aspas; reproduzido no a07). No `get_history` do MCP, o “ ” de dentro do nome de terceiro vira
+  aspas retas antes de a frase ser montada. Teste: `test_get_history_nome_com_o_titulo_dentro_nao_fecha_as_aspas`.
+- A suíte tem 813 testes com os 7 deste pacote (o relato do autor dizia 814 com 6; a contagem não bate, sem falha).
+
 ## O que NÃO foi feito
 
 - Nome de equipe no `get_history`: as ações `team.*` e `user.teams` são gravadas com ator `admin`, e o
