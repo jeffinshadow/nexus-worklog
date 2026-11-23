@@ -50,7 +50,17 @@ Nenhuma rota, campo ou parâmetro novo.
 - "Depois de salvar, atualize o tokenState": a tela já chamava `tokenState()` depois de salvar; com a resposta nova
   (`glpi_app_token_set: false`) o botão some sozinho. Nenhuma linha nova foi precisa.
 
-## Testes (backend/tests/test_r2_04.py, 7)
+## Correções do revisor
+
+- A troca de endereço zera também o `external_ref` `glpi:<id>:saiu` das anotações das tarefas desvinculadas (a chave
+  é única por pessoa: sem isso, o chamado de mesmo número do GLPI novo não ganharia a anotação "saiu da lista").
+  Teste novo: `test_anotacao_de_chamado_que_saiu_vale_de_novo_no_glpi_novo` (falha sem a correção).
+- O App-Token antigo sai dentro da transação da troca mesmo quando a chamada traz um novo (antes, por um instante, o
+  endereço novo valia com o token antigo; o novo entra logo depois, fora da transação).
+- Não resolvido (fica registrado): uma sincronização já em curso no momento da troca pode gravar um vínculo/tarefa do
+  GLPI antigo depois do apagamento (janela de segundos; já existia para as contas).
+
+## Testes (backend/tests/test_r2_04.py, 8)
 
 Sem a correção falham 5. Os outros 2 ("troca com App-Token novo guarda o novo" e "salvar o mesmo endereço não apaga
 nada") passam também no código antigo: são guardas contra regressão pedidas pelo pacote, não dá para fazê-las falhar

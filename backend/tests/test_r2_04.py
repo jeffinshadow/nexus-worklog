@@ -61,6 +61,22 @@ def test_chamado_de_mesmo_numero_no_glpi_novo_e_importado(ana, instancia, fake, 
     assert db.query_one("SELECT count(*) AS n FROM worklog_tasks WHERE user_id = %s", (uid_de(ana),))["n"] == 2
 
 
+def test_anotacao_de_chamado_que_saiu_vale_de_novo_no_glpi_novo(ana, instancia, fake, monkeypatch):
+    fake.add(9, 7)
+    ana.post("/me/glpi/sync")
+    fake.tickets[9]["status"] = 5
+    ana.post("/me/glpi/sync")  # a tarefa do GLPI antigo ganha a anotação "saiu da lista"
+    instancia.put("/admin/org", {"glpi_url": OUTRO, "glpi_app_token": APP})
+    novo = type(fake)()
+    novo.add(9, 7)
+    monkeypatch.setattr(glpi, "request", lambda base, *a, **k: novo(URL, *a, **k) if base == OUTRO else None)
+    assert ana.put("/me/glpi", {"token": "token-pessoal-da-ana-0123456789abcdef"}).status_code == 200
+    novo.tickets[9]["status"] = 5
+    ana.post("/me/glpi/sync")
+    t = tarefas(ana)[0]
+    assert [n["body"] for n in ana.get(f"/worklog/{t['id']}").json()["notes"]] == [glpi.GONE]
+
+
 def test_trocar_o_endereco_com_app_token_novo_guarda_o_novo(ana, instancia):
     r = instancia.put("/admin/org", {"glpi_url": OUTRO, "glpi_app_token": "app-token-do-glpi-novo-0123456789"})
     assert r.json()["glpi_app_token_set"] is True

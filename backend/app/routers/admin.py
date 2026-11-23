@@ -572,12 +572,17 @@ def put_org(data: OrgIn, admin=Depends(require_admin_csrf)):
                 # senão o chamado de mesmo número no GLPI novo não seria importado.
                 db.execute("""UPDATE worklog_tasks w SET external_ref = NULL FROM glpi_tickets g
                                WHERE g.task_id = w.id AND w.external_ref = 'glpi:' || g.ticket_id""")
+                # Idem a chave da anotação "o chamado saiu da lista" (única por pessoa): senão o
+                # chamado de mesmo número do GLPI novo não ganharia a dele.
+                db.execute("""UPDATE task_notes n SET external_ref = NULL FROM glpi_tickets g
+                               WHERE n.task_id = g.task_id AND n.external_ref = 'glpi:' || g.ticket_id || ':saiu'""")
                 links = db.execute("DELETE FROM glpi_tickets")
                 audit.record(ctx, "app.glpi_url", "app_settings", 1, before={"glpi_url": before["glpi_url"]},
                              after={"glpi_url": url, "links": links, "by": admin["email"]})
-                # O App-Token guardado era do endereço antigo: sem um novo nesta chamada, sai.
-                if "glpi_app_token" not in data.model_fields_set and db.execute(
-                        "UPDATE app_settings SET glpi_app_token = NULL WHERE id = 1 AND glpi_app_token IS NOT NULL"):
+                # O App-Token guardado era do endereço antigo: sai na mesma transação (nem por um
+                # instante fica valendo para o endereço novo); se a chamada traz outro, entra logo abaixo.
+                if db.execute("UPDATE app_settings SET glpi_app_token = NULL WHERE id = 1 AND glpi_app_token IS NOT NULL"
+                              ) and "glpi_app_token" not in data.model_fields_set:
                     audit.record(ctx, "app.glpi_app_token", "app_settings", 1,
                                  after={"set": False, "by": admin["email"]})
     if "glpi_app_token" in data.model_fields_set:
