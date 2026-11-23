@@ -172,8 +172,10 @@ export async function quickRegister(text, project_id = null) {
     return also ? `Ficou em aberto${com}.${also}` : `Ficou em aberto: «${shown}»${com}.`;
   }
   try {
-    await api.post(`/worklog/${created.id}/time`, { minutes });
+    const r = await api.post(`/worklog/${created.id}/time`, { minutes });
     if (marks.blocked === null) lastDone = { id: created.id, title: marks.title };
+    // A tarefa entrou e o sinal caiu antes do tempo: ele está na fila do aparelho, ainda não no servidor.
+    if (r && r.queued) return `Tarefa registrada${com}. Sem sinal: o tempo (${durText}) sai quando a conexão voltar.${also}`;
     return `${marks.blocked !== null ? "Registrada" : "Registrada e concluída"} com ${durText}${com}.${also}`;
   } catch {
     return "Tarefa registrada, mas o tempo não entrou. Abra a tarefa e use Apontar.";
@@ -278,8 +280,8 @@ async function openListPreview(lines, opts) {
   form.addEventListener("submit", busy(async (ev) => {
     ev.preventDefault();
     const chosen = parsed.filter((_, i) => boxes[i].checked);
-    const made = [];  // { id, time? } criadas no servidor ou { qid } na fila do aparelho
-    let failed = 0, queued = 0;
+    const made = [];  // { id, time?, timeQid? } criadas no servidor ou { qid } na fila do aparelho
+    let failed = 0, queued = 0, waiting = 0;  // waiting: tarefas criadas cujo tempo ficou na fila
     for (const [i, p] of chosen.entries()) {
       go.textContent = `Criando ${i + 1} de ${chosen.length}…`;
       if (!p.marks.title) { failed++; continue; }
@@ -293,7 +295,13 @@ async function openListPreview(lines, opts) {
           continue;
         }
         const item = { id: created.id };
-        if (p.minutes) { try { item.time = (await api.post(`/worklog/${created.id}/time`, { minutes: p.minutes })).id; } catch { /* a tarefa fica */ } }
+        if (p.minutes) {
+          try {
+            const r = await api.post(`/worklog/${created.id}/time`, { minutes: p.minutes });
+            // Sem sinal o tempo vai para a fila (sem id): o Desfazer tira da fila em vez de apagar no servidor.
+            if (r && r.queued) { item.timeQid = r.qid; waiting++; } else if (r) item.time = r.id;
+          } catch { /* a tarefa fica */ }
+        }
         made.push(item);
       } catch (e) {
         if (e.status === 400 || e.status === 422) { failed++; continue; }  // a linha tem algo inválido: segue
@@ -308,6 +316,7 @@ async function openListPreview(lines, opts) {
     if (!n) { toast(failed ? "Nenhuma tarefa criada: confira as linhas." : "Nada criado.", { error: !!failed }); return; }
     const msg = (queued ? `Sem conexão: ${n === 1 ? "1 tarefa guardada" : `${n} tarefas guardadas`}; vão quando a conexão voltar.`
       : n === 1 ? "1 tarefa criada." : `${n} tarefas criadas.`)
+      + (waiting ? ` Sem sinal: o tempo de ${waiting === 1 ? "1 delas" : `${waiting} delas`} sai quando a conexão voltar.` : "")
       + (failed ? ` ${failed} não ${failed > 1 ? "entraram" : "entrou"} (confira o texto).` : "");
     toast(msg, { action: "Desfazer", onAction: () => undoBatch(made, opts.onDone) });
   }));
@@ -330,6 +339,7 @@ async function undoBatch(made, onDone) {
   for (const m of [...made].reverse()) {
     try {
       if (m.qid !== undefined) { if (await cancel(m.qid)) ok++; else bad++; continue; }
+      if (m.timeQid !== undefined) await cancel(m.timeQid);  // tempo ainda na fila: sai dela (se já foi, a tarefa leva junto)
       if (m.time) await undo("time", m.time);
       await undo("worklog", m.id);
       ok++;

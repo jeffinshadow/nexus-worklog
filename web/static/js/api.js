@@ -47,7 +47,7 @@ async function send(method, path, { body, type, timeout = 20000, publicCall = fa
   }
   // Servidor fora (deploy, reinício: o nginx responde 502, 503 ou 504): vale como sem conexão,
   // para a ação entrar na fila. O 500 não entra: é erro da própria operação.
-  if (res.status >= 502 && res.status <= 504) throw Object.assign(new Error(NO_NET), { status: 0 });
+  if (res.status >= 502 && res.status <= 504) throw Object.assign(new Error(NO_NET), { status: 0, down: true });
 
   // 401 fora das rotas de auth = sessao expirou -> volta ao login.
   if (res.status === 401 && !publicCall && !path.startsWith("/auth/")) {
@@ -106,7 +106,7 @@ async function request(method, path, body, opts = {}) {
   } catch (e) {
     if (e.status === 0 && queueable(method, path)) return { queued: true, qid: await enqueue(method, path, body), id: null };
     // O que não entra na fila (Aguardando, checklist, editar): diz o motivo e o que fazer.
-    if (e.status === 0 && method !== "GET" && !e.slow && !path.startsWith("/auth/")) e.message = "Sem sinal: faça quando a conexão voltar.";
+    if (e.status === 0 && method !== "GET" && !e.slow && !path.startsWith("/auth/")) e.message = e.down ? "O servidor está fora do ar: faça de novo em instantes." : "Sem sinal: faça quando a conexão voltar.";
     throw e;
   }
   if (method === "GET") {

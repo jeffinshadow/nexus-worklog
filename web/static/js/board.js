@@ -528,13 +528,14 @@ export function openWorklog(onDone, opts = {}) {
         return;
       }
       // A tarefa já existe: se o tempo falhar, não reenviar (duplicaria).
+      let timeQueued = false;  // a tarefa entrou e o sinal caiu antes do tempo: ele fica na fila do aparelho
       try {
-        if (minutes) await api.post(`/worklog/${created.id}/time`, { minutes });
+        if (minutes) timeQueued = !!((await api.post(`/worklog/${created.id}/time`, { minutes })) || {}).queued;
         // Texto compartilhado de outro app que não coube na descrição: vira anotação.
         if (opts.note) await api.post(`/worklog/${created.id}/notes`, { body: opts.note });
         if (opts.files && opts.files.length) await upload(`/worklog/${created.id}/photos`, opts.files);
       } catch (e) {
-        toast(`Tarefa criada, mas ${minutes ? "o tempo" : "algum item"} não foi salvo: ${e.message || "tente pelo detalhe"}.`, { error: true });
+        toast(`Tarefa criada, mas ${minutes && !timeQueued ? "o tempo" : "algum item"} não foi salvo: ${e.message || "tente pelo detalhe"}.`, { error: true });
       }
       discard = true;
       dlg.close();
@@ -542,7 +543,7 @@ export function openWorklog(onDone, opts = {}) {
       // Sempre avisa (a tarefa pode cair fora da tela: outro filtro, outra página), com o "Abrir".
       // Diz o que leu do título; um "@Nome" que não é projeto fica no título, com a oferta de criar.
       const unknown = read && read.unknown ? { id: created.id, ...read.unknown } : null;
-      toast(`Tarefa criada${read && read.extras.length ? ` (${read.extras.join(", ")})` : ""}.${unknown ? ` «${unknown.name}» não é um projeto seu: ficou no título.` : ""}`,
+      toast(`Tarefa criada${read && read.extras.length ? ` (${read.extras.join(", ")})` : ""}.${unknown ? ` «${unknown.name}» não é um projeto seu: ficou no título.` : ""}${timeQueued ? " Sem sinal: o tempo sai quando a conexão voltar." : ""}`,
         { actions: [["Abrir", () => openTask(created.id, onDone)], unknown ? projectOffer(unknown, onDone) : null].filter(Boolean) });
     } catch (e) {
       errorToast(e, "Não foi possível salvar.");
