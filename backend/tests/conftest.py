@@ -31,7 +31,9 @@ from app.main import app  # noqa: E402
 # tempo da suíte. O objeto ORIGINAL fica guardado: test_aud_p07 confere nele os parâmetros de produção.
 from argon2 import PasswordHasher  # noqa: E402
 
-PH_PRODUCAO = security._ph
+# (este arquivo é importado duas vezes, como "conftest" e como "tests.conftest": o original fica no módulo do app,
+# senão a 2ª importação guardaria o barato)
+PH_PRODUCAO = security.__dict__.setdefault("_ph_producao", security._ph)
 security._ph = PasswordHasher(time_cost=1, memory_cost=8, parallelism=1)
 security._DUMMY_HASH = security._ph.hash("x")
 
