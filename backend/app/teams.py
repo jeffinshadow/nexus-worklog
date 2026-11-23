@@ -6,8 +6,10 @@ quem recebe: só responde "estão na mesma equipe?", "está em alguma equipe?",
 
   - Uma pessoa pode estar em várias equipes; todo mundo começa sem equipe e só
     o admin define. Equipe arquivada não conta para nada (guarda os membros).
-  - Instância sem nenhuma equipe ativa (uso pessoal) = tudo como antes das
-    equipes: o escopo só passa a valer quando o admin cria a primeira.
+  - Instância sem nenhuma equipe CADASTRADA (uso pessoal) = tudo como antes das
+    equipes: o escopo só passa a valer quando o admin cria a primeira. Arquivar
+    não devolve o uso pessoal (com só equipes arquivadas, ninguém compartilha
+    equipe: só o master alcança); excluir a última, sim.
   - Admin master (app_settings.master_user_id): o primeiro admin da instância,
     sempre exatamente um. Vê e atribui para todos, com ou sem equipe, só com os
     próprios papéis "Vê a equipe"/"Manda tarefas" ligados.
@@ -21,7 +23,9 @@ from fastapi import HTTPException
 
 from . import db
 
-ANY_SQL = "EXISTS (SELECT 1 FROM teams tx WHERE tx.archived_at IS NULL)"
+# A instância usa equipes: há alguma cadastrada, ativa ou arquivada (arquivar a
+# última não pode abrir tudo para quem vê e para quem atribui).
+ANY_SQL = "EXISTS (SELECT 1 FROM teams tx)"
 
 
 _COL = re.compile(r"^[a-z_][a-z0-9_]*\.id$")
@@ -83,6 +87,7 @@ def scope_sql(actor, who, role: str) -> str:
 # ------------------------------------------------------------------ leituras --
 
 def any_active() -> bool:
+    """A instância usa equipes (há alguma cadastrada, mesmo arquivada)."""
     return bool(db.query_one(f"SELECT 1 WHERE {ANY_SQL}"))
 
 

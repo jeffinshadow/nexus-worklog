@@ -153,6 +153,7 @@ def get_avatar(user_id: int, user=Depends(web_active)):
         media_type=r["mime"],
         headers={
             "Cache-Control": "private, max-age=86400",
+            "Vary": "Cookie",  # depois de Sair, o navegador não reaproveita a cópia guardada
             "X-Content-Type-Options": "nosniff",
             "Content-Security-Policy": "default-src 'none'; sandbox",
         },

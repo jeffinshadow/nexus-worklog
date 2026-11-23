@@ -13,7 +13,7 @@
 // abaixo do painel, "Tarefas que atribuí" (atribuir.js). Quem só atribui vê só
 // a lista e o botão: nada de números, painel ou pessoas.
 import { api } from "./api.js";
-import { h, icon, clear, field, localDay, dateTime, shortDate, addDays } from "./dom.js";
+import { h, icon, clear, field, localDay, shortDate, addDays } from "./dom.js";
 import { busy, errorToast, hashPage, modal, pager, pageSlice, setHashPage, toast } from "./ui.js";
 import { session } from "./session.js";
 import { assignDialog, sentPanel } from "./atribuir.js";
@@ -235,17 +235,21 @@ function attentionTile(a, sent) {
   if (!a.attention.length) return tile(h("p", { class: "mes-ok" }, icon("check"), h("span", { text: "Nada devolvido, aguardando, vencendo nos próximos 7 dias ou ainda não começado." })));
   // A devolvida não existe mais no quadro de ninguém: abre a linha dela em Tarefas que atribuí.
   const open = (x) => (x.kind === "returned" && sent ? sent.focusReturned(x.task_id) : openPerson(x.user_id, "quadro", x.task_id));
+  // A lista traz os primeiros; o total diz quantos ficaram de fora (só o texto).
+  const rest = (a.attention_total || 0) - a.attention.length;
   return tile(h("ul", { class: "eq-att-list" }, ...a.attention.map((x) => h("li", {},
     h("button", { type: "button", class: "eq-att", onClick: () => open(x) },
       icon(KIND_ICON[x.kind]),
       h("span", { class: "eq-att-t", text: x.title }),
-      h("span", { class: "eq-att-m", text: `${x.name} · ${attentionLine(x)}` }))))));
+      h("span", { class: "eq-att-m", text: `${x.name} · ${attentionLine(x)}` }))))),
+    rest > 0 ? h("p", { class: "help eq-att-more", text: rest === 1 ? "e mais 1 item que não coube aqui." : `e mais ${rest} itens que não couberam aqui.` }) : null);
 }
 
 // 4) Pessoas: em ordem alfabética (o servidor já manda assim), nada de placar.
-function lastSeen(ts) {
-  if (!ts) return "sem registro ainda";
-  const day = localDay(ts), today = localDay(Date.now());
+// O servidor manda só o dia da última atividade ("AAAA-MM-DD", no fuso do app), sem a hora.
+function lastSeen(day) {
+  if (!day) return "sem registro ainda";
+  const today = localDay(Date.now());
   if (day === today) return "última atividade hoje";
   if (day === addDays(today, -1)) return "última atividade ontem";
   return `última atividade em ${shortDate(day)}`;
@@ -293,7 +297,7 @@ function peopleTile(a, ctx) {
         initial(p),
         h("span", { class: "eq-p-name", text: label(p) }),
         h("span", { class: "eq-p-n", text: `${p.open} em aberto · ${p.waiting} aguardando` }),
-        h("span", { class: "eq-p-last", title: p.last_activity ? dateTime(p.last_activity) : "", text: lastSeen(p.last_activity) })))));
+        h("span", { class: "eq-p-last", text: lastSeen(p.last_activity) })))));
     box.querySelector(".pager")?.remove();
     const nav = pager({ page: peoplePage, total: a.people.length, size: PEOPLE_PAGE, label: "pessoas",
       onPage: (n) => { peoplePage = n; paint(); }, focus: () => tile.querySelector(".mm-title") });
