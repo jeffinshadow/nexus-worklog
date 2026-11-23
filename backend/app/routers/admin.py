@@ -253,15 +253,21 @@ def _transfer_mail(titles: list[str], from_name: str, by_name: str):
     return m
 
 
-def transfer_open_tasks(src: dict, dest: dict, admin: dict) -> dict:
+def transfer_open_tasks(src: dict, dest: dict, admin: dict, with_others_hours: bool = False) -> dict:
     """Passa as tarefas abertas (não concluídas) de `src` para `dest`, numa
     gravação só: a tarefa muda de dono com as anotações, o checklist e as
     fotos; entra no projeto padrão de quem recebe (os projetos são de cada
     um); o tempo já registrado fica no registro de quem saiu (é trabalho dele).
     Cada tarefa vai ao histórico de quem recebe (worklog.transfer), e quem
-    recebe é avisado como numa atribuição (e-mail e notificação no aparelho)."""
+    recebe é avisado como numa atribuição (e-mail e notificação no aparelho).
+    `with_others_hours` (só na exclusão da conta): as CONCLUÍDAS que guardam horas
+    de outra pessoa vão junto, como estão (status, conclusão e resolução), para a
+    exclusão não apagar essas horas; entram na contagem, sem aviso (não são trabalho a fazer)."""
     rows = db.query_all(
-        """WITH t AS (SELECT id FROM worklog_tasks WHERE user_id = %(src)s AND status <> 'done' FOR UPDATE),
+        """WITH t AS (SELECT id FROM worklog_tasks w WHERE user_id = %(src)s
+                       AND (status <> 'done' OR (%(alheias)s AND EXISTS (
+                            SELECT 1 FROM time_entries e WHERE e.task_id = w.id AND e.user_id <> w.user_id)))
+                       FOR UPDATE),
                 x AS (DELETE FROM worklog_task_projects WHERE task_id IN (SELECT id FROM t)),
                 tm AS (DELETE FROM task_timers WHERE task_id IN (SELECT id FROM t)),
                 n AS (UPDATE task_notes SET user_id = %(dst)s, external_ref = NULL WHERE task_id IN (SELECT id FROM t)),
@@ -272,9 +278,9 @@ def transfer_open_tasks(src: dict, dest: dict, admin: dict) -> dict:
                                                -- quem atribuiu recebeu de volta: vira tarefa dele, não "atribuída por mim"
                                                assigned_at = CASE WHEN assigned_by = %(dst)s THEN NULL ELSE assigned_at END,
                                                assigned_by = CASE WHEN assigned_by = %(dst)s THEN NULL ELSE assigned_by END
-                       WHERE id IN (SELECT id FROM t) RETURNING id, title)
-           SELECT id, title FROM w ORDER BY id""",
-        {"src": src["id"], "dst": dest["id"], "p": default_project(dest["id"])})
+                       WHERE id IN (SELECT id FROM t) RETURNING id, title, status)
+           SELECT id, title, status FROM w ORDER BY id""",
+        {"src": src["id"], "dst": dest["id"], "p": default_project(dest["id"]), "alheias": with_others_hours})
     from_name = people.profile(src["id"])["name"]
     to_name = people.profile(dest["id"])["name"]
     by_name = people.profile(admin["user_id"])["name"]
@@ -293,6 +299,9 @@ def transfer_open_tasks(src: dict, dest: dict, admin: dict) -> dict:
     # (o admin não lê o registro de ninguém; passar tarefas para si mesmo era um jeito de ler sem deixar rastro).
     audit.record(ctx, "user.transfer_tasks", "user", src["id"], user_id=src["id"],
                  after={"from": src["email"], "to": dest["email"], "count": len(rows), "by": admin["email"]})
+    rows = [r for r in rows if r["status"] != "done"]  # o aviso é das abertas (o que há para fazer)
+    if not rows:
+        return out
     titles = [r["title"] for r in rows]
     if mailer.configured():
         _spawn(dest["email"], _transfer_mail(titles, from_name, by_name))
@@ -457,6 +466,8 @@ def delete_user(user_id: int, data: DeleteUserIn, admin=Depends(require_admin_cs
     vencimentos dela saem junto, inclusive os compartilhados com equipe (a
     resposta conta: `renewals` e `shared_renewals`).
     `transfer_to`: antes de excluir, as tarefas abertas passam para essa pessoa."""
+    # Com transfer_to vão também as concluídas que guardam horas de outra pessoa; sem, conta com
+    # tarefa assim = 409. (Fora da docstring: ela entra no docs/openapi.json; ver a nota do r2-01.)
     if user_id == admin["user_id"]:
         raise HTTPException(status_code=400, detail="para a sua própria conta, use Configurações > Conta")
     target = _ensure_user(user_id)
@@ -467,7 +478,16 @@ def delete_user(user_id: int, data: DeleteUserIn, admin=Depends(require_admin_cs
     if "admin" in roles.of(user_id) and roles.admins_count() <= 1:
         raise HTTPException(status_code=400, detail="o sistema precisa de pelo menos um admin")
     dest = _receiver(user_id, data.transfer_to)
-    moved = transfer_open_tasks(target, dest, admin) if dest else None
+    moved = transfer_open_tasks(target, dest, admin, with_others_hours=True) if dest else None
+    # Tarefa que veio de outra pessoa guarda as horas dela: excluir a conta as apagaria em
+    # cascata. Com transfer_to elas já saíram acima; sem, recusa antes de apagar qualquer coisa.
+    alheias = roles.others_hours(user_id)
+    if alheias["tasks"]:
+        t, p = alheias["tasks"], alheias["people"]
+        raise HTTPException(status_code=409, detail=(
+            f"essa conta guarda {'1 tarefa' if t == 1 else f'{t} tarefas'} com horas de "
+            f"{'outra pessoa' if p == 1 else f'{p} outras pessoas'}, que seriam apagadas junto: "
+            f"transfira as tarefas para outra pessoa (exclua a conta escolhendo quem recebe)"))
     counts = account_counts(user_id)
     if not roles.delete_account(user_id):
         raise HTTPException(status_code=400, detail="o sistema precisa de pelo menos um admin")
