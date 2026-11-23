@@ -319,7 +319,7 @@ async function mountUsers(root, me) {
     const err = h("p", { class: "error-text", role: "alert" });
     input.addEventListener("input", () => markInvalid([input], err, false));
     const form = h("form", {},
-      h("p", { class: "help", text: `Exclui a conta ${u.email} e tudo o que está nela: tarefas, rotinas, tempo, anotações, chaves de API e histórico. Não dá para desfazer. Tarefas que essa pessoa atribuiu a outras continuam com quem recebeu. O e-mail e as contagens ficam registrados no seu histórico (180 dias).` }),
+      h("p", { class: "help", text: `Exclui a conta ${u.email} e tudo o que está nela: tarefas, rotinas, tempo, anotações, vencimentos pessoais, chaves de API e histórico. Não dá para desfazer. Tarefas que essa pessoa atribuiu a outras continuam com quem recebeu. O e-mail e as contagens ficam registrados no seu histórico (180 dias).` }),
       h("p", { class: "help", text: "Só quer cortar o acesso agora (férias, celular perdido)? Use “Bloquear acesso” no menu da conta: a pessoa sai de todos os aparelhos e os dados ficam." }),
       // Vencimentos da conta compartilhados com equipe saem junto: a equipe deixa de ver.
       ...(u.shared_renewals || []).map((s) => warnBox(`${plural(s.count, "vencimento compartilhado", "vencimentos compartilhados")} com a equipe ${s.team} ${s.count === 1 ? "será apagado" : "serão apagados"}. A equipe deixa de ver; se ainda precisa, peça para alguém da equipe cadastrar de novo antes de excluir.`)),
