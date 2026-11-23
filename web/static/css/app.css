@@ -1866,3 +1866,9 @@ input:disabled { cursor: not-allowed; }
 /* Ação presa por erro do servidor, na lista da fila (fila.js): o aviso e os botões quebram de linha no celular. */
 .token-row .stuck-box { flex-wrap: wrap; }
 .token-row .stuck-box > p { flex-basis: 100%; }
+/* auditoria p15 */
+/* Projeto: "Próximos prazos" e os objetivos são h2 (ordem dos títulos); mesma aparência de antes. */
+.proj-upcoming h2 { font-size: var(--type-body-s); font-weight: var(--weight-label); color: var(--on-surface-variant); margin: 0 0 4px; }
+.obj-block .obj-head h2 { font-size: var(--type-title); font-weight: var(--weight-title); margin: 0; }
+/* Objetivo concluído recolhido: uma linha. */
+.obj-block.obj-folded .obj-head { margin-bottom: 0; }

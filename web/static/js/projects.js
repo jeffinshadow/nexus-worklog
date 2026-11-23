@@ -126,7 +126,7 @@ export function defaultProjectPanel(me, onSaved) {
   });
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Projeto padrão" })),
-    h("p", { class: "help", text: "Quando você cria uma tarefa sem escolher projeto, ela entra neste. Vale também para o registro rápido, os modelos sem projeto, a IA e as tarefas que você recebe por atribuição." }),
+    h("p", { class: "help", text: "Quando você cria uma tarefa sem escolher projeto, ela entra neste. Vale também para o registro rápido, a IA e as tarefas que você recebe por atribuição." }),
     field("Projeto padrão", sel));
 }
 

@@ -222,8 +222,12 @@ function unlock() {
   } catch { audio = null; }
 }
 
+// Diálogo modal aberto: o cartão (e o botão de silenciar) fica inerte atrás dele.
+const modalOpen = () => [...document.querySelectorAll("dialog[open]")].some((d) => d.matches(":modal"));
+
 function chime() {
   if (!audio || audio.state !== "running") return;
+  if (modalOpen()) return; // não toca sem dar como calar; retoma no próximo toque depois de fechar
   const t0 = audio.currentTime;
   for (const [i, f] of [[0, 880], [1, 1318.5]]) {
     const o = audio.createOscillator(), g = audio.createGain();

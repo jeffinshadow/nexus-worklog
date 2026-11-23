@@ -194,7 +194,7 @@ async function mountProject(root, ctx, pid) {
 
   clear(root);
   const upcoming = o.upcoming.length ? h("div", { class: "proj-upcoming" },
-    h("h3", { text: "Próximos prazos" }),
+    h("h2", { text: "Próximos prazos" }),
     h("ul", {}, ...o.upcoming.map((x) => {
       const late = x.due_date < today;
       const label = h("span", { class: "proj-up-t" }, x.kind === "objective" ? icon("target") : null, x.title);
@@ -230,7 +230,7 @@ function objectiveBlock(ob, index, o, pid, today, refresh) {
   const key = `${pid}:${oid ?? ""}`;
   const st = blockPages.get(key) || { open: 1, done: 1 };
   blockPages.set(key, st);
-  const heading = h("h3", { text: ob ? ob.title : "Sem objetivo" });
+  const heading = h("h2", { text: ob ? ob.title : "Sem objetivo" }); // h2: vem logo depois do h1 da página
   const list = h("div", { class: "obj-tasks", "data-objective": oid === null ? "" : String(oid) });
   const openPages = h("div", { class: "obj-pages" });
   // A ordem de execução vale para o bloco inteiro: a página mostra uma fatia e,
@@ -284,7 +284,7 @@ function objectiveBlock(ob, index, o, pid, today, refresh) {
     doneRows.append(...rows.map((t) => doneRow(t, oid, o, pid, refresh)));
     doneList.querySelector(".pager")?.remove();
     const nav = pager({ page: n, total: data.done, size: DONE_PAGE, label: `concluídas de ${ob ? ob.title : "Sem objetivo"}`, compact: true,
-      onPage: async (k) => { await paintDone(k); if (!phone()) bindGrips(doneRows); }, focus: () => doneToggle });
+      onPage: async (k) => { await paintDone(k); if (!phone()) bindGrips(doneRows); }, focus: () => foldBtn || doneToggle });
     if (nav) doneList.append(nav);
   };
   if (data.done) {
@@ -298,6 +298,10 @@ function objectiveBlock(ob, index, o, pid, today, refresh) {
     onClick: () => { const hide = doneList.classList.toggle("hidden"); st.doneOpen = !hide; doneToggle.setAttribute("aria-expanded", String(!hide)); } }) : null;
 
   const head = [];
+  // Objetivo concluído sem tarefa aberta: uma linha só (número, nome, selo e "N concluídas"),
+  // que abre ao clicar. O trabalho em aberto dos outros blocos sobe para a primeira dobra.
+  const folded = !!ob && ob.status === "done" && !data.tasks.length;
+  let foldBtn = null;
   if (ob) {
     const grip = h("button", { type: "button", class: "icon grip only-desk", title: "Arrastar para mudar a ordem", "aria-label": `Arrastar ${ob.title}`, tabindex: "-1" }, icon("grip"));
     const menuBtn = h("button", { type: "button", class: "icon", title: "Ações do objetivo", "aria-label": `Ações de ${ob.title}` }, icon("more-v"));
@@ -315,6 +319,9 @@ function objectiveBlock(ob, index, o, pid, today, refresh) {
       heading,
       h("span", { class: "chip obj-status " + ob.status, text: STATUS[ob.status] }),
       ob.due_date ? h("span", { class: "chip " + (late ? "late" : ""), text: (late ? "atrasado · " : "prazo ") + shortDate(ob.due_date) }) : null,
+      folded ? (foldBtn = h("button", { type: "button", class: "btn btn-text btn-sm obj-fold", "aria-expanded": String(!!st.unfolded),
+        "aria-label": `${data.done ? `${data.done} concluída${data.done > 1 ? "s" : ""}` : "Sem tarefas"} em ${ob.title}: mostrar ou recolher`,
+        text: data.done ? `${data.done} concluída${data.done > 1 ? "s" : ""}` : "sem tarefas" })) : null,
       menuBtn));
     if (ob.description) head.push(h("p", { class: "obj-desc", text: ob.description }));
     head.push(progress(ob.done, ob.total));
@@ -322,8 +329,23 @@ function objectiveBlock(ob, index, o, pid, today, refresh) {
     head.push(h("div", { class: "obj-head" }, heading,
       h("span", { class: "obj-sub", text: "tarefas do projeto que ainda não entraram num objetivo" })));
   }
+  const addRow = sendRow(add, addTask, "Criar a tarefa", "obj-add-row");
   const sec = h("section", { class: "panel obj-block" + (ob ? "" : " unassigned"), "data-objective-block": oid === null ? "" : String(oid) },
-    ...head, list, openPages, sendRow(add, addTask, "Criar a tarefa", "obj-add-row"), doneToggle, doneList);
+    ...head, list, openPages, addRow, doneToggle, doneList);
+  if (foldBtn) {
+    // Recolhido: só a linha do cabeçalho. Aberto: o bloco inteiro, já com as concluídas à mostra.
+    const body = [...head.slice(1), list, openPages, addRow];
+    const paintFold = () => {
+      const open = !!st.unfolded;
+      sec.classList.toggle("obj-folded", !open);
+      foldBtn.setAttribute("aria-expanded", String(open));
+      for (const el of body) el.classList.toggle("hidden", !open);
+      doneList.classList.toggle("hidden", !open);
+      if (doneToggle) doneToggle.classList.add("hidden"); // a linha do cabeçalho já faz esse papel
+    };
+    foldBtn.addEventListener("click", () => { st.unfolded = !st.unfolded; paintFold(); });
+    paintFold();
+  }
   if (ob) sec.dataset.id = String(ob.id);
   return sec;
 }

@@ -90,7 +90,7 @@ function openRenewal(r, onChange, renew = false) {
     : [field("O que vence", label), h("div", { class: "field-row" }, field("Vence em", expires), field("Avisar com quantos dias", warn)),
       h("div", { class: "field-row" }, field("Projeto", proj), field("Repete a cada (meses, opcional)", months)),
       field("Observação", note), teamField];
-  const form = h("form", {}, h("h2", { text: renew ? "Renovado" : r ? "Editar vencimento" : "Novo vencimento" }), ...fields, err,
+  const form = h("form", {}, h("h2", { text: renew ? "Renovei: nova data" : r ? "Editar vencimento" : "Novo vencimento" }), ...fields, err,
     h("div", { class: "dialog-actions" },
       h("button", { type: "button", class: "btn btn-text", text: "Cancelar", onClick: () => dlg.close() }),
       h("button", { type: "submit", class: "btn btn-primary", text: "Salvar" })));

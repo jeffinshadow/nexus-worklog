@@ -61,7 +61,6 @@ export async function mount(root, opts = {}) {
     const sel = picked >= 0 && fits(picked) ? picked : periods.findIndex((_, i) => fits(i));
     [...quick.children].forEach((b, i) => {
       b.setAttribute("aria-pressed", String(i === sel));
-      b.setAttribute("aria-selected", String(i === sel)); // mesmo visual do .seg
     });
   }
   for (const el of [startInput, endInput]) el.addEventListener("change", () => { picked = -1; markPeriod(); });

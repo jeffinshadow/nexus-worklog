@@ -963,7 +963,7 @@ function deleteAccount(isUser) {
   const pw = h("input", { type: "password", autocomplete: "current-password", required: "required", maxlength: "128" });
   const err = h("p", { class: "error-text" });
   const form = h("form", {},
-    h("p", { class: "help", text: "Apaga a sua conta e tudo o que está nela: tarefas, rotinas, tempo apontado, anotações, chaves de API e histórico. Não dá para desfazer." }),
+    h("p", { class: "help", text: "Exclui a sua conta e tudo o que está nela: tarefas, rotinas, tempo apontado, anotações, chaves de API e histórico. Não dá para desfazer." }),
     isUser ? h("p", { class: "dialog-note" }, "Quer guardar uma cópia? Baixe antes em ", h("a", { href: "#/mes?aba=pdf", text: "Meu mês > Outro período ou formato" }), " (JSON ou CSV).") : null,
     field("Sua senha, para confirmar", pw), err,
     h("button", { type: "submit", class: "btn btn-danger", text: "Excluir minha conta" }));

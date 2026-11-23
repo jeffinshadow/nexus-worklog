@@ -68,11 +68,13 @@ export function popupMenu(x, y, items, anchorTop = null) {
   // Mede no canto (largura inteira, sem ser espremido pela borda) e limita pela
   // área visível sem a barra de rolagem (clientWidth, não innerWidth).
   menu.style.left = "0px"; menu.style.top = "0px";
-  const r = menu.getBoundingClientRect();
+  // offsetWidth/offsetHeight: o tamanho final. getBoundingClientRect mede no meio
+  // da animação de entrada (escala menor) e o menu saía pela borda direita.
+  const mw = menu.offsetWidth, mh = menu.offsetHeight;
   const vw = document.documentElement.clientWidth || innerWidth;
-  menu.style.left = Math.max(8, Math.min(x, vw - r.width - 8)) + "px";
-  const top = anchorTop !== null && y + r.height + 8 > innerHeight ? anchorTop - r.height - 4 : y;
-  menu.style.top = Math.max(8, Math.min(top, innerHeight - r.height - 8)) + "px";
+  menu.style.left = Math.max(8, Math.min(x, vw - mw - 8)) + "px";
+  const top = anchorTop !== null && y + mh + 8 > innerHeight ? anchorTop - mh - 4 : y;
+  menu.style.top = Math.max(8, Math.min(top, innerHeight - mh - 8)) + "px";
   const btns = [...menu.querySelectorAll("button")];
   btns[0].focus();
   const onDown = (ev) => { if (!menu.contains(ev.target)) close(); };
@@ -272,6 +274,7 @@ export function confirmDialog({ title, text, confirm = "Confirmar", danger = fal
 // Com ação, fica 12 s e pausa enquanto o mouse ou o foco estão nele (só some
 // depois que o foco sai). Não puxa o foco: "Desfazer" também vai pelo Ctrl+Z.
 let undoAction = null;
+const MAX_TOASTS = 3;
 export function toast(message, opts = {}) {
   const dlg = topDialog();
   const layer = dlg ? layerBox(dlg) : null;
@@ -300,9 +303,12 @@ export function toast(message, opts = {}) {
   }
   if (undo) { undoAction = undo; el.append(h("span", { class: "sr-only", text: "Ctrl+Z desfaz." })); }
   // Caixa recém-criada dentro de um diálogo: o aviso entra um instante depois, para ser lido.
-  if (layer && layer.fresh) setTimeout(() => box.append(el), 80); else box.append(el);
+  // No máximo 3 avisos na pilha: o mais antigo sai (os outros ficam, com o seu Desfazer).
+  const put = () => { box.append(el); for (const old of [...box.children].slice(0, -MAX_TOASTS)) old.dispatchEvent(new Event("toast-out")); };
+  if (layer && layer.fresh) setTimeout(put, 80); else put();
   const ms = actions.length ? 12000 : 3500;
   let timer = setTimeout(remove, ms), hover = false;
+  el.addEventListener("toast-out", () => { clearTimeout(timer); remove(); });
   const hold = () => { clearTimeout(timer); timer = null; };
   const resume = () => { if (!timer && !hover && !el.contains(document.activeElement)) timer = setTimeout(remove, 4000); };
   el.addEventListener("pointerenter", () => { hover = true; hold(); });
