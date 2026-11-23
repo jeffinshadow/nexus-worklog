@@ -197,6 +197,13 @@ rollback_hint() {
 }
 
 # --- 5. Deploy ---
+# Marcador "deploy em andamento": enquanto ele existir e tiver menos de 15 min, o
+# vigia (tools/vigia.sh) pula a passada, para não avisar da parada normal da
+# atualização. O trap apaga em qualquer saída (deploy que deu certo ou que falhou).
+MARCA=estado/deploy-em-andamento
+trap 'rm -f "$MARCA"' EXIT
+marcar() { { mkdir -p estado && : > "$MARCA"; } 2>/dev/null || log "aviso: não gravei $MARCA (o vigia pode avisar da parada do deploy)"; }
+marcar
 log "Atualizando código..."
 git pull --ff-only || { err "git pull falhou (há mudança local ou o histórico divergiu?). O código e os containers não mudaram: a versão de antes continua no ar."; exit 1; }
 
@@ -204,7 +211,8 @@ git pull --ff-only || { err "git pull falhou (há mudança local ou o histórico
 # "pull db" a do Postgres, que é "image:" e o build não alcança.
 log "Renovando imagens e subindo containers..."
 docker compose pull db || log "aviso: não consegui baixar a imagem do banco; sigo com a que já está aqui."
-if ! { docker compose build --pull && docker compose up -d; }; then
+# marcar de novo: os 15 min contam de quando os containers começam a ser trocados.
+if ! { docker compose build --pull && marcar && docker compose up -d; }; then
   err "O docker compose falhou ao construir ou subir os containers."
   docker compose ps || true
   rollback_hint

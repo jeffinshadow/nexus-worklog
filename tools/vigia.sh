@@ -15,10 +15,17 @@
 # (ou sem SMTP) o aviso não sai; fica no journal (journalctl -t nexus-vigia) e é
 # tentado de novo a cada passada.
 #
+# Durante um ./deploy.sh o vigia não faz nada: o deploy deixa o marcador
+# estado/deploy-em-andamento e o apaga ao sair. Marcador com 15 min ou mais é
+# deploy que morreu sem apagar: o vigia volta a olhar e a avisar.
+#
 # Antes de restaurar um backup, pare o timer (systemctl stop nexus-vigia.timer).
 set -uo pipefail
 cd "${NEXUS_DIR:-$(dirname "$0")/..}" || exit 1
 STATE=".vigia-alerta"   # existe enquanto há incidente aberto (já avisado)
+
+em_deploy() { [[ -n "$(find estado/deploy-em-andamento -mmin -15 2>/dev/null)" ]]; }
+em_deploy && exit 0
 
 env_get() { grep -E "^$1=" .env 2>/dev/null | tail -1 | cut -d= -f2-; }
 para="$(env_get ALERT_EMAIL)"; para="${para:-$(env_get ADMIN_EMAIL)}"
@@ -59,6 +66,8 @@ if [[ -z "$doentes" ]] && ! responde; then
   doentes="aplicação(/api/health sem resposta) "
 fi
 doentes="${doentes% }"
+# Deploy que começou no meio desta passada: a parada é dele, não é incidente.
+[[ -n "$doentes" ]] && em_deploy && exit 0
 
 if [[ -z "$doentes" ]]; then
   # Só aqui, com o health respondendo, o incidente fecha.
