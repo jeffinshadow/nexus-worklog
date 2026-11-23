@@ -242,9 +242,10 @@ numeração de chamados, apague antes os vínculos (`DELETE FROM glpi_tickets;` 
 
 ## 8. Saúde do Nexus
 
-Em Admin > Geral, só leitura: versão (commit e data do último deploy, última migração, início do backend), último
-**backup** (data, tamanho, tabelas), e-mail, push, fotos (quem passa de 80% da cota), webhooks (quantos
-desligados), contas, pedidos de convite, chaves de API e tamanho do banco. Só contagens e datas. "Copiar diagnóstico"
+Em Admin > Geral, só leitura: versão (número, commit e data do último deploy, última migração, início do backend),
+a última passada do **agendador** (avisa se parou ou está desligado), último **backup** (data, tamanho, tabelas),
+e-mail, push, fotos (quem passa de 80% da cota), webhooks (quantos desligados), contas, pedidos de convite, chaves de
+API e tamanho do banco. Só contagens e datas. "Copiar diagnóstico"
 gera um texto para suporte, sem dados de pessoas nem segredos. O `deploy.sh` alimenta o commit, a data do deploy e o
 backup pela pasta `estado/`; sem ele rodar, esses campos ficam vazios. O commit e a data **só mudam quando um
 `./deploy.sh` termina bem**: depois de trocar o código à mão (`git checkout` + `docker compose up -d --build`) a Saúde
