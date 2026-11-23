@@ -87,7 +87,8 @@
   --on-surface-variant: #ACABAD;
   --dim: #919093;
   --outline-variant: #323235;
-  --line-2: #49494B;                /* outline: campos, botões contornados */
+  --line-2: #49494B;                /* outline: botões contornados, avatar, tecla */
+  --field-line: #6E6E72;            /* contorno de campo (input, select, textarea): 3:1 ou mais sobre as superfícies */
   /* Bordas por tema: no escuro, linha fina (shadow-materia); no claro, a camada tonal basta. */
   --card-border: var(--outline-variant);
   --card-border-hover: var(--line-2);
@@ -180,6 +181,7 @@
   --dim: #5F636B;
   --outline-variant: #DFE2EB;
   --line-2: #A8ABB4;
+  --field-line: #85888F;
   --card-border: transparent;
   --card-border-hover: var(--outline-variant);
   --pop-border: transparent;
