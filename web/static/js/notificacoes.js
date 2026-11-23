@@ -26,13 +26,32 @@ function deviceLabel() {
 
 const b64ToBytes = (s) => Uint8Array.from(atob((s + "=".repeat((4 - (s.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
 
+// O service worker pode não ter registrado (navegador recusou, sw.js não chegou): `ready` nunca
+// resolveria e a tela ficava carregando. Depois de 3 s, segue sem ele (null).
 async function registration() {
-  return navigator.serviceWorker.ready;
+  return Promise.race([navigator.serviceWorker.ready, new Promise((ok) => setTimeout(ok, 3000, null))]);
 }
 
 async function currentSubscription() {
   if (!supported()) return null;
-  try { return await (await registration()).pushManager.getSubscription(); } catch { return null; }
+  try {
+    const reg = await registration();
+    return reg ? await reg.pushManager.getSubscription() : null;
+  } catch { return null; }
+}
+
+// Sair: este aparelho deixa de receber as notificações da conta. Devolve o endereço da inscrição
+// (o servidor apaga a dele no logout) ou null. Nunca trava o Sair: sem push, sem rede ou demorando, segue.
+export async function leaveDevice() {
+  if (!supported() || Notification.permission !== "granted") return null;
+  const work = (async () => {
+    const sub = await currentSubscription();
+    if (!sub) return null;
+    const endpoint = sub.endpoint;
+    await sub.unsubscribe().catch(() => {});
+    return endpoint;
+  })().catch(() => null);
+  return Promise.race([work, new Promise((ok) => setTimeout(ok, 3500, null))]);
 }
 
 async function save(sub) {
@@ -51,6 +70,7 @@ async function enable() {
     : "Sem permissão, o aparelho não recebe as notificações.");
   const { public_key: key } = await api.get("/push");
   const reg = await registration();
+  if (!reg) throw fail("O Nexus ainda não terminou de se instalar neste navegador. Recarregue a página e tente de novo.");
   let sub = await reg.pushManager.getSubscription();
   if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(key) });
   await save(sub);

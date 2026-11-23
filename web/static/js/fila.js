@@ -385,11 +385,12 @@ export async function wipeReads() {
   if ("caches" in window) await caches.delete("nexus-dados");  // o mesmo nome de sw.js
 }
 
-// Sair: a fila e as leituras guardadas não ficam no aparelho (pode ser compartilhado).
+// Sair (ou outra conta): a fila e as leituras guardadas não ficam no aparelho (pode ser compartilhado).
+// O casco fica: só tem a página e os arquivos do app (sw.js), nada da conta, e sem ele o app não reabre sem sinal.
 export async function wipe() {
   try { await tx(STORE, "readwrite", (s) => s.clear()); await tx(FAILED, "readwrite", (s) => s.clear()); } catch { /* sem IndexedDB */ }
   try { localStorage.removeItem(READY_KEY); localStorage.removeItem(PREV_TIMER_KEY); } catch { /* sem armazenamento */ }
-  if ("caches" in window) for (const k of await caches.keys()) if (k.startsWith("nexus-")) await caches.delete(k);
+  if ("caches" in window) for (const k of await caches.keys()) if (k.startsWith("nexus-") && k !== "nexus-casco") await caches.delete(k);
 }
 
 let started = false;
