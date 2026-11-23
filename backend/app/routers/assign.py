@@ -304,7 +304,7 @@ def _removed(uid: int) -> list[dict]:
                            WHERE x.id = COALESCE((a.after->>'to_id')::bigint,
                                                  (SELECT y.id FROM users y WHERE y.email = a.after->>'to_email'))) AS to_exists,
                   a.created_at AS assigned_at, f.action AS end_action, f.at AS ended_at,
-                  f.snap AS end_snap, z.action AS res_action, z.at AS res_at, z.to_name AS res_to
+                  f.snap AS end_snap, z.action AS res_action, z.at AS res_at, z.to_name AS res_to, z.to_exists AS res_to_exists
              FROM audit_log a
              LEFT JOIN LATERAL (
                   SELECT d.action, d.created_at AS at, d.id, d.before->>'title' AS title, NULL::jsonb AS snap FROM audit_log d
@@ -321,7 +321,11 @@ def _removed(uid: int) -> list[dict]:
                      AND d.action = 'assign.returned'
                   ORDER BY id DESC LIMIT 1) f ON true
              LEFT JOIN LATERAL (
-                  SELECT r.action, r.created_at AS at, r.after->>'to' AS to_name FROM audit_log r
+                  SELECT r.action, r.created_at AS at, r.after->>'to' AS to_name,
+                         EXISTS (SELECT 1 FROM users x
+                                  WHERE x.id = COALESCE((r.after->>'to_id')::bigint,
+                                                        (SELECT y.id FROM users y WHERE y.email = r.after->>'to_email'))) AS to_exists
+                    FROM audit_log r
                    WHERE f.action = 'assign.returned' AND r.user_id = a.user_id AND r.id > f.id
                      AND ((r.entity = 'assignment' AND r.entity_id = a.entity_id AND r.action = 'assign.close')
                           OR (r.action = 'assign.send' AND r.after->>'from_return' = a.entity_id::text))
@@ -336,6 +340,8 @@ def _removed(uid: int) -> list[dict]:
     for r in rows:
         snap, kind = r.pop("end_snap") or {}, kinds.get(r.pop("end_action"), "removed")
         res_action, res_at, res_to = r.pop("res_action"), r.pop("res_at"), r.pop("res_to")
+        if not r.pop("res_to_exists"):
+            res_to = GONE  # quem recebeu a reatribuição saiu da instância: sem o nome, como em to_name
         ended = {"kind": kind, "at": r.pop("ended_at")}
         gone = not r.pop("to_exists")
         if gone:

@@ -65,3 +65,20 @@ def test_editable_de_conta_bloqueada_segue_o_patch(cena, admin):
     # O PATCH aceita corrigir tarefa de conta bloqueada (sem e-mail): a lista acompanha.
     assert _linha(chefe, tid)["editable"] is True
     assert chefe.patch(f"/assign/{tid}", {"title": "Corrigida"}).status_code == 200
+
+
+# ------------------------------------- "atribuída de novo a" conta excluída --
+
+def test_atribuida_de_novo_a_conta_excluida_vem_sem_o_nome(cena):
+    chefe, kaique, lia = cena
+    assert lia.put("/me/profile", {"display_name": "Lia Monteiro"}).status_code == 200
+    tid = _manda(chefe, kaique)
+    assert kaique.post(f"/worklog/{tid}/return", {"reason": "não é da minha área"}).status_code == 200
+    _manda(chefe, lia, from_return=tid)
+    assert _linha(chefe, tid)["ended"]["resolved"]["to"] == "Lia Monteiro"
+    assert lia.post("/me/delete", {"password": SENHA_PADRAO}).status_code == 200
+    linha = _linha(chefe, tid)
+    assert linha["ended"]["resolved"]["kind"] == "reassigned" and linha["ended"]["resolved"]["to"] == "conta excluída"
+    assert "Lia" not in str(linha) and "lia@" not in str(linha)
+    # Quem devolveu continua na instância: aparece como antes.
+    assert linha["to_email"] == "kaique@example.com" and linha["ended"]["reason"] == "não é da minha área"
