@@ -70,7 +70,7 @@ def list_people(team: Annotated[str | None, Query(max_length=20)] = None, user=D
              FROM users u
             WHERE EXISTS (SELECT 1 FROM user_roles r WHERE r.user_id = u.id AND r.role = 'user')
               AND ({scope} OR u.id = %s) AND {cut}
-            ORDER BY NOT {assignable.receive_sql('u', uid)}, lower(u.email)""", (uid,))
+            ORDER BY NOT {assignable.receive_sql('u', uid)}, nx_fold(u.email)""", (uid,))
     # Uma leitura para a lista toda (eram três consultas por pessoa: "todos recebem", equipe e perfil).
     todos = assignable.everyone()
     perfis = people.profiles(r["id"] for r in rows)

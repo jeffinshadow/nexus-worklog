@@ -13,7 +13,7 @@ from ..schemas import ChecklistIn, ChecklistUpdate, FinishIn, NoteIn, NoteUpdate
 from .assign import notify_assigner
 from .objectives import check_objective, next_position, objective_project
 from ..services import is_work_day, work_mask
-from ..services import ASSIGNER_NAME, EXTRA_PROJECTS, PROJECT_ICON, app_today, app_tz, default_project, set_extra_projects, task_retro_days
+from ..services import ASSIGNER_NAME, EXTRA_PROJECTS, PROJECT_ICON, app_today, app_tz, default_project, set_extra_projects, TASK_RETRO_DAYS
 
 router = APIRouter(prefix="/api/worklog", tags=["worklog"])
 items = APIRouter(prefix="/api", tags=["worklog"])  # rotas por id de anotação/item/tempo
@@ -71,7 +71,7 @@ def _parse_when(raw: str, label: str) -> tuple[datetime, bool]:
 def _check_window(when: datetime, label: str, now: datetime) -> None:
     if when > now + timedelta(minutes=10):  # folga para o relógio do aparelho (feito sem sinal)
         raise HTTPException(status_code=400, detail=f"{label} no futuro")
-    limit = task_retro_days()
+    limit = TASK_RETRO_DAYS
     if (app_today() - when.astimezone(app_tz()).date()).days > limit:
         raise HTTPException(status_code=400, detail=f"{label}: até {limit} dias atrás")
 

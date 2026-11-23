@@ -117,24 +117,15 @@ def of_user(user_id: int, archived: bool = False) -> list[dict]:
         f"""SELECT t.id, t.name, t.archived_at IS NOT NULL AS archived FROM teams t
               JOIN team_members m ON m.team_id = t.id
              WHERE m.user_id = %s {'' if archived else 'AND t.archived_at IS NULL'}
-             ORDER BY lower(t.name)""", (user_id,))
+             ORDER BY nx_fold(t.name)""", (user_id,))
 
 
 def choosable(user_id: int) -> list[dict]:
     """Equipes com que a pessoa pode compartilhar um item (Vencimentos): as
     ativas dela; o admin master, todas as ativas."""
     if is_master(user_id):
-        return db.query_all("SELECT id, name FROM teams WHERE archived_at IS NULL ORDER BY lower(name)")
+        return db.query_all("SELECT id, name FROM teams WHERE archived_at IS NULL ORDER BY nx_fold(name)")
     return [{"id": t["id"], "name": t["name"]} for t in of_user(user_id)]
-
-
-def is_member(user_id: int, team_id) -> bool:
-    """A pessoa está nessa equipe (ativa)?"""
-    if team_id is None:
-        return False
-    return bool(db.query_one(
-        """SELECT 1 FROM team_members m JOIN teams t ON t.id = m.team_id AND t.archived_at IS NULL
-            WHERE m.team_id = %s AND m.user_id = %s""", (team_id, user_id)))
 
 
 def joined_at(user_id: int):
@@ -152,7 +143,7 @@ def selector(actor_id: int, role: str) -> dict:
     on = any_active()
     master = on and bool(db.query_one(f"SELECT 1 WHERE {master_sql(int(actor_id), role)}"))
     if master:
-        rows = db.query_all("SELECT id, name FROM teams WHERE archived_at IS NULL ORDER BY lower(name)")
+        rows = db.query_all("SELECT id, name FROM teams WHERE archived_at IS NULL ORDER BY nx_fold(name)")
     elif on:
         rows = [{"id": t["id"], "name": t["name"]} for t in of_user(actor_id)]
     else:
@@ -184,10 +175,10 @@ def shared_names_sql(actor, who) -> str:
     """Nomes das equipes ativas que `actor` e `who` compartilham (array, para agrupar no Atribuir)."""
     return (f"ARRAY(SELECT tn.name FROM teams tn JOIN team_members tn1 ON tn1.team_id = tn.id AND tn1.user_id = {_x(actor)}"
             f" JOIN team_members tn2 ON tn2.team_id = tn.id AND tn2.user_id = {_x(who)}"
-            f" WHERE tn.archived_at IS NULL ORDER BY lower(tn.name))")
+            f" WHERE tn.archived_at IS NULL ORDER BY nx_fold(tn.name))")
 
 
 def names_sql(who) -> str:
     """Nomes das equipes ativas de `who` (array)."""
     return (f"ARRAY(SELECT tw.name FROM teams tw JOIN team_members twm ON twm.team_id = tw.id AND twm.user_id = {_x(who)}"
-            f" WHERE tw.archived_at IS NULL ORDER BY lower(tw.name))")
+            f" WHERE tw.archived_at IS NULL ORDER BY nx_fold(tw.name))")

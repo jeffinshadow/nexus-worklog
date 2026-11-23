@@ -66,7 +66,7 @@ def list_users(admin=Depends(require_admin)):
                           AND l.used_at IS NULL AND l.expires_at > now())) AS invite_expired,
                    {roles.ROLES_SQL},
                    -- equipes ativas (sql/043): coluna e filtro em Admin › Contas
-                   COALESCE((SELECT json_agg(json_build_object('id', t.id, 'name', t.name) ORDER BY lower(t.name))
+                   COALESCE((SELECT json_agg(json_build_object('id', t.id, 'name', t.name) ORDER BY nx_fold(t.name))
                                FROM teams t JOIN team_members m ON m.team_id = t.id
                               WHERE m.user_id = u.id AND t.archived_at IS NULL), '[]'::json) AS teams,
                    (u.id IS NOT DISTINCT FROM (SELECT s.master_user_id FROM app_settings s WHERE s.id = 1)) AS is_master
@@ -478,7 +478,7 @@ def account_counts(user_id: int) -> dict:
 def get_settings(admin=Depends(require_admin)):
     r = db.query_one("SELECT support_contact FROM app_settings WHERE id = 1")
     # retro_days e photo_quota_mb: só leitura (fixos; ver config.PHOTO_QUOTA_MB e services.TASK_RETRO_DAYS).
-    return {**r, "retro_days": services.task_retro_days(), "photo_quota_mb": config.PHOTO_QUOTA_MB}
+    return {**r, "retro_days": services.TASK_RETRO_DAYS, "photo_quota_mb": config.PHOTO_QUOTA_MB}
 
 
 @router.put("/settings")

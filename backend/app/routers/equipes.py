@@ -80,7 +80,7 @@ def check_teams(ids: list[int], archived_ok: bool = False) -> list[int]:
 
 
 def _names(ids: list[int]) -> list[str]:
-    return [r["name"] for r in db.query_all("SELECT name FROM teams WHERE id = ANY(%s) ORDER BY lower(name)", (ids,))]
+    return [r["name"] for r in db.query_all("SELECT name FROM teams WHERE id = ANY(%s) ORDER BY nx_fold(name)", (ids,))]
 
 
 def set_user_teams(user_id: int, team_ids: list[int]) -> tuple[list[int], list[int]]:
@@ -101,7 +101,7 @@ def set_user_teams(user_id: int, team_ids: list[int]) -> tuple[list[int], list[i
 @router.get("/teams")
 def list_teams(admin=Depends(require_admin)):
     """Equipes (ativas primeiro, por nome) com os membros, e o master da instância."""
-    rows = db.query_all("SELECT id, name, created_at, archived_at FROM teams ORDER BY archived_at IS NOT NULL, lower(name)")
+    rows = db.query_all("SELECT id, name, created_at, archived_at FROM teams ORDER BY archived_at IS NOT NULL, nx_fold(name)")
     return [{**r, "members": _members(r["id"])} for r in rows]
 
 
