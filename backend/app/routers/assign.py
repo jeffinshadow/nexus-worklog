@@ -155,12 +155,12 @@ def assign(data: AssignIn, user=Depends(require_assigner_csrf)):
         raise HTTPException(status_code=404, detail="usuário não encontrado")
     if not target["accepts"]:
         raise HTTPException(status_code=403, detail="essa pessoa não aceitou receber tarefas atribuídas")
-    _limit(user["user_id"], target["id"])
     by_name = people.profile(user["user_id"])["name"]
     to_name = people.profile(target["id"])["name"]
     # A tarefa e as duas linhas do histórico (a de quem recebe e a de quem atribuiu, que
     # é de onde sai "Tarefas que atribuí") vão juntas; os avisos saem depois de gravar.
     with db.transaction():
+        _limit(user["user_id"], target["id"])
         if data.from_return is not None:
             _lock_open_return(user["user_id"], data.from_return, 409, RESOLVED_MSG)
         row = db.query_one(
@@ -188,17 +188,24 @@ def assign(data: AssignIn, user=Depends(require_assigner_csrf)):
 # conta-robô de integração precisa importar filas para várias pessoas. Vale para
 # app, chave de API e MCP (todos passam por assign()). Conta no histórico de quem
 # atribui (assign.send), que já guarda o destinatário: sobrevive a reinício do
-# backend e uma atribuição cancelada conta (o e-mail saiu).
+# backend. Atribuição cancelada (a tarefa saiu da conta de quem recebeu) não conta.
 ASSIGN_MAX, ASSIGN_WINDOW = 20, 600
 
 
 def _limit(by: int, to: int) -> None:
+    """Dentro da transação do envio: a trava por remetente (solta ao gravar) põe em
+    fila os envios simultâneos da mesma pessoa, e cada um conta os que já gravaram."""
+    db.query_one("SELECT pg_advisory_xact_lock(hashtext('assign.limit'), %s::int)", (by,))
     row = db.query_one(
         """SELECT count(*)::int AS n, min(created_at) AS first, now() AS now FROM (
-               SELECT created_at FROM audit_log
-                WHERE user_id = %s AND action = 'assign.send' AND (after->>'to_id')::bigint = %s
-                  AND created_at > now() - make_interval(secs => %s)
-                ORDER BY created_at DESC LIMIT %s) x""", (by, to, ASSIGN_WINDOW, ASSIGN_MAX))
+               SELECT a.created_at FROM audit_log a
+                WHERE a.user_id = %s AND a.action = 'assign.send' AND (a.after->>'to_id')::bigint = %s
+                  AND a.created_at > now() - make_interval(secs => %s)
+                  AND NOT (EXISTS (SELECT 1 FROM audit_log c
+                                    WHERE c.user_id = a.user_id AND c.entity = 'assignment'
+                                      AND c.entity_id = a.entity_id AND c.action = 'assign.cancel')
+                           AND NOT EXISTS (SELECT 1 FROM worklog_tasks w WHERE w.id = a.entity_id))
+                ORDER BY a.created_at DESC LIMIT %s) x""", (by, to, ASSIGN_WINDOW, ASSIGN_MAX))
     if row["n"] >= ASSIGN_MAX:
         wait = max(1, ASSIGN_WINDOW - int((row["now"] - row["first"]).total_seconds()))
         raise HTTPException(

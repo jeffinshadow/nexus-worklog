@@ -82,3 +82,58 @@ def test_atribuida_de_novo_a_conta_excluida_vem_sem_o_nome(cena):
     assert "Lia" not in str(linha) and "lia@" not in str(linha)
     # Quem devolveu continua na instância: aparece como antes.
     assert linha["to_email"] == "kaique@example.com" and linha["ended"]["reason"] == "não é da minha área"
+
+
+# ------------------------------------------------ limite por destinatário --
+
+def _duas_ao_mesmo_tempo(a, b):
+    """Duas chamadas (cada uma com o seu cliente) largadas juntas; devolve os status em ordem."""
+    largada, res = threading.Barrier(2), []
+
+    def roda(f):
+        largada.wait()
+        res.append(f().status_code)
+    ts = [threading.Thread(target=roda, args=(f,)) for f in (a, b)]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    return sorted(res)
+
+
+@pytest.fixture
+def devagar(monkeypatch):
+    """Alarga a janela entre conferir (limite, devolução em aberto) e gravar a tarefa."""
+    real = assign_mod.default_project
+
+    def projeto(uid):
+        time.sleep(0.4)
+        return real(uid)
+    monkeypatch.setattr(assign_mod, "default_project", projeto)
+
+
+def test_limite_vale_para_envios_simultaneos(cena, devagar):
+    chefe, kaique, _ = cena
+    for i in range(19):
+        _manda(chefe, kaique, title=f"Tarefa {i}")
+    outro = Api()
+    outro.login("chefe@example.com", SENHA_PADRAO)
+    corpo = {"user_id": uid_de(kaique), "title": "A 20ª, duas vezes"}
+    res = _duas_ao_mesmo_tempo(lambda: chefe.post("/assign", corpo), lambda: outro.post("/assign", corpo))
+    assert res == [201, 429]
+    assert _conta("worklog_tasks WHERE user_id = %s", uid_de(kaique)) == 20
+
+
+def test_limite_nao_conta_atribuicao_cancelada(cena):
+    chefe, kaique, _ = cena
+    ids = [_manda(chefe, kaique, title=f"Tarefa {i}") for i in range(20)]
+    r = chefe.post("/assign", {"user_id": uid_de(kaique), "title": "A 21ª"})
+    assert r.status_code == 429 and 1 <= int(r.headers["Retry-After"]) <= 600
+    assert "muitas tarefas para a mesma pessoa" in r.json()["detail"]
+    # Cancelou uma (engano): abre uma vaga, e só uma.
+    assert chefe.post(f"/assign/{ids[0]}/cancel").status_code == 200
+    _manda(chefe, kaique, title="No lugar da cancelada")
+    assert chefe.post("/assign", {"user_id": uid_de(kaique), "title": "Outra"}).status_code == 429
+    # Quem recebeu desfez o cancelamento (a tarefa voltou para ela): volta a contar.
+    assert chefe.post(f"/assign/{ids[1]}/cancel").status_code == 200
+    h = next(x for x in hist(kaique, entity="worklog", entity_id=ids[1]) if x["action"] == "worklog.delete")
+    assert kaique.post(f"/history/{h['id']}/undo").status_code == 200
+    assert chefe.post("/assign", {"user_id": uid_de(kaique), "title": "Outra"}).status_code == 429
