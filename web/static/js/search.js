@@ -18,18 +18,32 @@ function queryFromHash() {
 
 const FOLD = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 
-// Texto com o termo destacado em <mark> (comparação sem acento).
+// Palavras da busca, como o servidor separa: sem acento, sem repetir, e as de
+// uma letra só ficam de fora (se só houver dessas, vale a frase inteira).
+function words(q) {
+  const fq = FOLD(q.trim());
+  const ws = [...new Set(fq.split(/\s+/).filter((w) => w.replace(/^#+/, "").length >= 2))];
+  // "#1234" acha o chamado 1234: destaca com e sem o "#".
+  return (ws.length ? ws : [fq]).flatMap((w) => (w.startsWith("#") ? [w, w.replace(/^#+/, "")] : [w]));
+}
+
+// Texto com cada palavra da busca destacada em <mark> (comparação sem acento).
 export function highlight(text, q) {
-  const f = FOLD(text), fq = FOLD(q);
+  const f = FOLD(text);
+  const ws = FOLD(q.trim()).length >= 2 && f.length === text.length ? words(q) : [];
   const out = [];
   let i = 0;
-  if (fq.length >= 2 && f.length === text.length) {
-    let j;
-    while ((j = f.indexOf(fq, i)) !== -1) {
-      if (j > i) out.push(text.slice(i, j));
-      out.push(h("mark", { text: text.slice(j, j + fq.length) }));
-      i = j + fq.length;
+  while (ws.length) {
+    // A próxima ocorrência de qualquer palavra; no empate, a mais longa.
+    let j = -1, len = 0;
+    for (const w of ws) {
+      const k = f.indexOf(w, i);
+      if (k !== -1 && (j === -1 || k < j || (k === j && w.length > len))) { j = k; len = w.length; }
     }
+    if (j === -1) break;
+    if (j > i) out.push(text.slice(i, j));
+    out.push(h("mark", { text: text.slice(j, j + len) }));
+    i = j + len;
   }
   out.push(text.slice(i));
   return out;
@@ -79,7 +93,7 @@ export async function mount(root, ctx) {
 
   if (!r.total_tasks && !r.total_recurring && !r.total_projects) {
     if (enabled(ctx.me))
-      ctx.setAssist(card({ key: "busca", lines: [`Não encontrei nada com “${q}”. Tente uma palavra só ou um termo mais curto; acentos e maiúsculas não importam.`], compact: true }));
+      ctx.setAssist(card({ key: "busca", lines: [`Não encontrei nada com “${q}”. Tente menos palavras ou um termo mais curto; acentos e maiúsculas não importam.`], compact: true }));
     else root.append(h("p", { class: "empty", text: "Nada encontrado. Tente outra palavra ou o número do chamado." }));
     return;
   }
