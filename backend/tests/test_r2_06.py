@@ -139,6 +139,19 @@ def test_limite_nao_conta_atribuicao_cancelada(cena):
     assert chefe.post("/assign", {"user_id": uid_de(kaique), "title": "Outra"}).status_code == 429
 
 
+def test_limite_pelo_mcp_responde_o_mesmo_429(cena):
+    chefe, kaique, lia = cena
+    for i in range(20):
+        _manda(chefe, kaique, title=f"Tarefa {i}")
+    ia = Bearer(criar_chave(chefe)["token"])
+    res = ia.tool("assign_task", to="kaique@example.com", title="A 21ª pelo MCP")
+    assert res["isError"] and "muitas tarefas para a mesma pessoa" in texto(res)
+    assert _conta("worklog_tasks WHERE user_id = %s", uid_de(kaique)) == 20
+    # O limite é por destinatário: para outra pessoa, a ferramenta segue atribuindo.
+    res = ia.tool("assign_task", to="lia@example.com", title="Para a Lia")
+    assert not res["isError"], texto(res)
+
+
 # ------------------------------------ devolver com cronômetro esquecido --
 
 def test_devolver_com_cronometro_esquecido_descarta_o_tempo(cena):
@@ -157,3 +170,20 @@ def test_devolver_com_cronometro_esquecido_descarta_o_tempo(cena):
     h = next(x for x in hist(kaique, entity="worklog", entity_id=tid) if x["action"] == "worklog.delete")
     assert kaique.post(f"/history/{h['id']}/undo").status_code == 200
     assert kaique.get(f"/worklog/{tid}").json()["minutes"] == 0
+
+
+# --------------------------- desfazer a devolução x atribuir de novo --
+
+def test_desfazer_a_devolucao_e_atribuir_de_novo_juntos_so_um_vale(cena, devagar):
+    chefe, kaique, lia = cena
+    tid = _manda(chefe, kaique)
+    assert kaique.post(f"/worklog/{tid}/return", {"reason": "não é da minha área"}).status_code == 200
+    h = next(x for x in hist(kaique, entity="worklog", entity_id=tid) if x["action"] == "worklog.delete")
+    corpo = {"user_id": uid_de(lia), "title": "Trocar reator do 3º andar", "from_return": tid}
+    res = _duas_ao_mesmo_tempo(lambda: chefe.post("/assign", corpo), lambda: kaique.post(f"/history/{h['id']}/undo"))
+    # Ou a tarefa voltou para o Kaique (desfazer 200, atribuir 409) ou foi para a Lia (201, desfazer 409).
+    assert res in ([200, 409], [201, 409], [201, 404]), res
+    voltou = _conta("worklog_tasks WHERE id = %s", tid)
+    de_novo = _conta("audit_log WHERE action = 'assign.send' AND after->>'from_return' = %s", str(tid))
+    assert voltou + de_novo == 1
+    assert _conta("worklog_tasks WHERE assigned_by = %s", uid_de(chefe)) == 1  # nunca duas tarefas
