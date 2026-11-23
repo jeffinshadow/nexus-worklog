@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import math
 import secrets
 import threading
 from contextlib import contextmanager
@@ -114,8 +115,11 @@ class RateLimiter:
             self._hits = {
                 k: v for k, v in self._hits.items() if now - v[0] < self.window
             }
-            if len(self._hits) >= self._PRUNE_AT and key not in self._hits:
-                return False  # cheio de chaves vivas (ataque): recusa as novas, não zera as antigas
+            if len(self._hits) >= self._PRUNE_AT:
+                # Cheio de chaves vivas (ataque): ficam as que já estouraram (o bloqueio continua
+                # valendo) e a de quem chama; as demais saem. Recusar as chaves novas, como antes,
+                # deixava 10 mil pedidos trancarem o login de todo mundo por uma janela inteira.
+                self._hits = {k: v for k, v in self._hits.items() if v[1] >= self.max or k == key}
         start, count = self._hits.get(key, (now, 0))
         if now - start >= self.window:
             start, count = now, 0
@@ -125,14 +129,23 @@ class RateLimiter:
 
     def blocked(self, key: str) -> bool:
         """Já estourou a janela? (consulta sem contar)"""
+        return self.retry_after(key) > 0
+
+    def retry_after(self, key: str) -> int:
+        """Segundos até a chave voltar a passar (0 se não está bloqueada)."""
         start, count = self._hits.get(key, (0.0, 0))
-        return time.monotonic() - start < self.window and count >= self.max
+        left = self.window - (time.monotonic() - start)
+        return math.ceil(left) if left > 0 and count >= self.max else 0
 
 
-# Login: ate 10 tentativas por IP a cada 5 minutos. Falhas contam por
+# Login: ate 10 FALHAS por IP a cada 5 minutos (entrar certo nao gasta: um
+# escritorio atras de um IP so nao se tranca). Falhas contam tambem por
 # e-mail+IP (quem erra e bloqueado, nao a dona da conta) e, com teto bem maior,
 # por e-mail (freia tentativa distribuida sem trancar a pessoa por 10 erros).
 login_limiter = RateLimiter(max_hits=10, window_seconds=300)
+# Abrir a tela de login pede o desafio da passkey: limite próprio e folgado,
+# fora da conta das tentativas de entrar.
+passkey_options_limiter = RateLimiter(max_hits=60, window_seconds=300)
 # Links de convite/troca de senha: limite próprio (escritório atrás de um IP só não
 # trava o convite de quem chega por causa do login de outros).
 link_limiter = RateLimiter(max_hits=30, window_seconds=300)
@@ -169,3 +182,24 @@ def revoke_access(user_id: int) -> None:
     # Webhook é um canal de saída dos dados: desliga (aparece na lista; religar é um clique).
     db.execute("""UPDATE webhooks SET disabled_at = now(), last_error = 'desligado na troca de senha'
                    WHERE user_id = %s AND disabled_at IS NULL""", (user_id,))
+
+
+WEAK_PASSWORD = "Essa senha é fácil de adivinhar."
+
+
+def weak_password(password: str, email: str = "") -> bool:
+    """Senha trivial: igual ao e-mail da conta, um caractere só repetido, só
+    dígitos em sequência ou repetição óbvia (1234567890, 0000000000, 1212121212)
+    ou só "nexus" repetido. Sem lista de senhas comuns (decisão do dono)."""
+    p = password.strip().lower()
+    if not p or (email and p == email.strip().lower()) or len(set(p)) == 1:
+        return True
+    if p.replace("nexus", "") == "":
+        return True
+    if p.isascii() and p.isdigit():
+        steps = {(int(b) - int(a)) % 10 for a, b in zip(p, p[1:])}
+        if steps in ({1}, {9}):  # 1234567890..., 9876543210...
+            return True
+        if any(p == (p[:n] * len(p))[:len(p)] for n in (2, 3)):  # 1212121212, 123123123123
+            return True
+    return False

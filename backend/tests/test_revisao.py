@@ -398,7 +398,7 @@ def test_troca_obrigatoria_recusa_a_mesma_senha(usuario):
     assert r.status_code == 400
 
 
-def test_ip_v6_agrupa_por_64_e_limitador_cheio_recusa_novas():
+def test_ip_v6_agrupa_por_64_e_limitador_cheio_nao_recusa_novas():
     from types import SimpleNamespace
     from app.deps import client_ip
     from app.security import RateLimiter
@@ -409,7 +409,9 @@ def test_ip_v6_agrupa_por_64_e_limitador_cheio_recusa_novas():
     lim._PRUNE_AT = 3
     for k in ("a", "b", "c"):
         assert lim.allow(k)
-    assert not lim.allow("nova") and lim.allow("a")  # cheio: recusa a nova, não zera as antigas
+    # Cheio: a chave nova passa (auditoria p01; antes era recusada e 10 mil pedidos trancavam o login
+    # de todos). O que protege é manter as chaves já estouradas: ver test_aud_p01.py.
+    assert lim.allow("nova") and lim.allow("a")
 
 
 def test_rotina_pendente_hoje_nao_fica_para_tras(usuario):

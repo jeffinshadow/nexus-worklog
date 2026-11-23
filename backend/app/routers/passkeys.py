@@ -27,8 +27,8 @@ from .. import audit, db, mailer, people
 from ..config import config
 from ..deps import client_ip, web_active, web_active_csrf
 from ..routers.branding import branding
-from ..security import login_limiter, new_token
-from .auth import _start_session
+from ..security import login_limiter, new_token, passkey_options_limiter
+from .auth import _start_session, too_many
 
 log = logging.getLogger("uvicorn.error")
 router = APIRouter(prefix="/api/auth/passkeys", tags=["auth"])
@@ -154,8 +154,10 @@ def remove(passkey_id: int, user=Depends(web_active_csrf)):
 
 @router.post("/login/options")
 def login_options(request: Request):
-    if not login_limiter.allow(f"ip:{client_ip(request)}"):
-        raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
+    # Abrir a tela de login chama isto (sugestão de passkey no campo): limite próprio, não o do login.
+    key = f"ip:{client_ip(request)}"
+    if not passkey_options_limiter.allow(key):
+        raise too_many(passkey_options_limiter.retry_after(key))
     opts = generate_authentication_options(rp_id=rp_id(), user_verification=UserVerificationRequirement.REQUIRED)
     return {"challenge_id": _save_challenge("login", opts.challenge, None), "options": json.loads(options_to_json(opts))}
 
@@ -163,12 +165,13 @@ def login_options(request: Request):
 @router.post("/login")
 def login(data: LoginPasskeyIn, request: Request, response: Response):
     ip = client_ip(request)
-    if not login_limiter.allow(f"ip:{ip}"):
-        raise HTTPException(status_code=429, detail="muitas tentativas, tente mais tarde")
+    if login_limiter.blocked(f"ip:{ip}"):  # por IP contam só as falhas, como no login por senha
+        raise too_many(login_limiter.retry_after(f"ip:{ip}"))
     challenge = _take_challenge(data.challenge_id, "login")
 
     def falhou(motivo: str):
         log.warning("login por passkey falhou: ip=%s (%s)", ip, motivo)
+        login_limiter.allow(f"ip:{ip}")
         raise HTTPException(status_code=401, detail="passkey não reconhecida")
 
     try:
