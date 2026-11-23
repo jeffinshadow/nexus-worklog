@@ -119,7 +119,9 @@ def _call(fn, *args, **kwargs):
         raise ToolError(str(e.detail)) from None
     except ValidationError as e:
         raise ToolError(f"parâmetros inválidos: {_pt_errors(e)}") from None
-    except psycopg.DataError:
+    except psycopg.DataError as e:
+        # Uma linha no log (sem o valor), como a REST (main._bad_data): se for defeito nosso, dá para achar.
+        log.warning("MCP: dado recusado em %s: %s", getattr(fn, "__name__", fn), e.__class__.__name__)
         raise ToolError(BAD_DATA) from None
 
 
@@ -1126,33 +1128,7 @@ def t_find_similar(ctx, args):
 def t_get_handoff(ctx, args):
     """O mesmo texto do app (feito para colar no chat da equipe), com o que é de outra pessoa
     entre « » para a IA: quem atribuiu, o chamado da tarefa atribuída e o vencimento alheio."""
-    uid = ctx["user_id"]
-    b = services.get_board(uid)
-    # Começo exato da linha de cada tarefa atribuída (summary._titulo) -> o mesmo começo com o nome entre « ».
-    tarefas = {}
-    for t in b["in_progress"] + b["done"]:
-        if t.get("assigned_by_name"):
-            tarefas["- " + summary_routes._titulo(t)] = (
-                f"- {_outro(t['title'])} (atribuída por {_outro(t['assigned_by_name'])})", t.get("ticket"))
-    alheios = {f"- {r['label']} — ": f"- {_outro(r['label'])} — "
-               for r in renewal_routes.list_for(uid) if r["warning"] and not r["mine"]}
-    out = []
-    for linha in summary_routes.handoff_text(uid).split("\n"):
-        for ini in sorted(tarefas, key=len, reverse=True):
-            if linha.startswith(ini):
-                novo, ticket = tarefas[ini]
-                resto = linha[len(ini):]
-                if ticket and resto.startswith(f" (chamado {ticket}"):
-                    resto = f" (chamado {_outro(ticket)}" + resto[len(f" (chamado {ticket}"):]
-                linha = novo + resto
-                break
-        else:
-            for ini in sorted(alheios, key=len, reverse=True):
-                if linha.startswith(ini):
-                    linha = alheios[ini] + linha[len(ini):]
-                    break
-        out.append(linha)
-    return "\n".join(out)
+    return summary_routes.handoff_text(ctx["user_id"], quote=_outro)
 
 
 def t_get_week_review(ctx, args):
@@ -1180,9 +1156,14 @@ def t_get_history(ctx, args):
     mine = {r["id"] for r in db.query_all(
         "SELECT id FROM audit_log WHERE user_id = %s AND token_id = %s AND id = ANY(%s)",
         (ctx["user_id"], ctx.get("token_id"), [r["id"] for r in rows]))} if rows and ctx.get("token_id") else set()
-    terceiros = _assigned_titles(ctx["user_id"], rows)
+    snaps = db.query_all("SELECT id, action, entity, entity_id, before, after FROM audit_log WHERE user_id = %s AND id = ANY(%s)",
+                         (ctx["user_id"], [r["id"] for r in rows])) if rows else []
+    terceiros = _assigned_titles(ctx["user_id"], snaps)
+    # Nome de outra pessoa na frase ("atribuída por Fulano", "devolveu a Fulano"): entre « ».
+    nomes = {a["id"]: _label_ia(a) for a in history_routes._with_names(ctx["user_id"], [a for a in snaps if _tem_nome(a)])}
     out = []
     for r in rows:
+        r["summary"] = nomes.get(r["id"], r["summary"])
         if r["id"] in terceiros:  # título escrito por quem atribuiu: entre « », com o nome
             title, by = terceiros[r["id"]]
             r["summary"] = r["summary"].replace(f"“{title}”", _outro(title))
@@ -1196,16 +1177,35 @@ def t_get_history(ctx, args):
     return "\n".join(out) or "(sem histórico)"
 
 
-def _assigned_titles(uid: int, rows: list) -> dict:
-    """Linhas do histórico sobre tarefa atribuída: {id da linha: (título, quem atribuiu)}."""
-    if not rows:
-        return {}
-    snaps = db.query_all(
-        """SELECT id, entity, entity_id, COALESCE(after, before) AS s FROM audit_log
-            WHERE user_id = %s AND id = ANY(%s)""", (uid, [r["id"] for r in rows]))
+# Campos do snapshot do histórico que guardam nome de OUTRA pessoa (quem atribuiu, quem recebeu,
+# quem devolveu, quem transferiu, o colega que mexeu no vencimento da equipe).
+_NOMES = ("to", "by", "from", "por", "returned_to", "canceled_by")
+
+
+def _tem_nome(row: dict) -> bool:
+    return any(isinstance(row[k], dict) and isinstance(row[k].get(c), str) and row[k][c]
+               for k in ("before", "after") for c in _NOMES)
+
+
+def _label_ia(row: dict) -> str:
+    """A frase do histórico (history._label) com os nomes de outras pessoas entre « »: as aspas
+    entram nos campos do snapshot, antes de a frase ser montada, sem casar texto."""
+    def nome(v):  # sem “ ” dentro: o get_history troca “título” por «título» e não pode casar dentro do nome
+        return _outro(v.replace("“", '"').replace("”", '"'))
+
+    def com_aspas(snap):
+        if not isinstance(snap, dict):
+            return snap
+        return {c: nome(v) if c in _NOMES and isinstance(v, str) and v else v for c, v in snap.items()}
+    return history_routes._label({**row, "before": com_aspas(row["before"]), "after": com_aspas(row["after"])})
+
+
+def _assigned_titles(uid: int, snaps: list) -> dict:
+    """Linhas do histórico (com before/after) sobre tarefa atribuída: {id da linha: (título, quem atribuiu)}."""
     task_of = {}
     for a in snaps:
-        s = a["s"] if isinstance(a["s"], dict) else {}
+        s = a["after"] if a["after"] is not None else a["before"]
+        s = s if isinstance(s, dict) else {}
         tid = a["entity_id"] if a["entity"] == "worklog" else s.get("task_id")
         if tid and s.get("title"):
             task_of[a["id"]] = (tid, s["title"], s.get("assigned_by"))
@@ -1794,7 +1794,8 @@ def _handle(ctx, msg):
             raise
         except HTTPException as e:  # rota chamada direto, fora do _call
             text, is_error = str(e.detail), True
-        except (psycopg.DataError, UnicodeEncodeError):
+        except (psycopg.DataError, UnicodeEncodeError) as e:
+            log.warning("MCP: dado recusado em %s: %s", name, e.__class__.__name__)
             text, is_error = BAD_DATA, True
         except KeyError as e:
             text, is_error = f"falta o campo {e.args[0]}", True
