@@ -491,20 +491,31 @@ async function boot() {
     if (v.length >= 2) location.hash = "#/busca?q=" + encodeURIComponent(v);
   });
   // Resultados enquanto digita (até 5 tarefas e 2 projetos); Enter abre a Busca completa.
-  const sugg = h("div", { class: "side-sugg hidden", id: "side-sugg", "aria-label": "Sugestões da busca" });
+  // Padrão combobox: o foco fica no campo, as setas marcam a sugestão (aria-activedescendant) e Enter a abre.
+  const suggList = h("div", { id: "side-sugg-list", role: "listbox", "aria-label": "Sugestões da busca" });
+  const sugg = h("div", { class: "side-sugg hidden", id: "side-sugg" });
   document.getElementById("side-search").append(sugg);
-  sideQ.setAttribute("aria-controls", "side-sugg");
+  sideQ.setAttribute("role", "combobox");
+  sideQ.setAttribute("aria-autocomplete", "list");
+  sideQ.setAttribute("aria-haspopup", "listbox");
+  sideQ.setAttribute("aria-controls", "side-sugg-list");
   sideQ.setAttribute("aria-expanded", "false");
   let suggTimer = null, suggSeq = 0;
-  // Idempotente: tirar da tela a sugestão com foco dispara o focusout, que chama de novo.
+  const suggItems = () => [...suggList.children];
+  // Marca a sugestão i (ou nenhuma, com -1) sem tirar o foco do campo.
+  function markSugg(i) {
+    suggItems().forEach((el, k) => el.setAttribute("aria-selected", k === i ? "true" : "false"));
+    const el = suggItems()[i];
+    if (el) { sideQ.setAttribute("aria-activedescendant", el.id); el.scrollIntoView({ block: "nearest" }); }
+    else sideQ.removeAttribute("aria-activedescendant");
+  }
   function hideSugg() {
     clearTimeout(suggTimer); suggSeq++;
-    if (sugg.classList.contains("hidden")) return;
     sugg.classList.add("hidden");
     sugg.replaceChildren();
     sideQ.setAttribute("aria-expanded", "false");
+    sideQ.removeAttribute("aria-activedescendant");
   }
-  const suggItems = () => [...sugg.querySelectorAll(".sugg-item")];
   sideQ.addEventListener("input", () => {
     clearTimeout(suggTimer);
     const q = sideQ.value.trim();
@@ -514,32 +525,39 @@ async function boot() {
       let r;
       try { r = await api.get("/search?q=" + encodeURIComponent(q)); } catch { return; }
       if (my !== suggSeq) return;
-      clear(sugg);
+      clear(suggList);
+      sideQ.removeAttribute("aria-activedescendant");
       const tasks = r.tasks.slice(0, 5), projs = r.projects.slice(0, 2);
+      // tabindex -1: o teclado chega pelas setas, a partir do campo.
+      const item = (onClick, ...kids) => h("button", { type: "button", class: "sugg-item", role: "option", tabindex: "-1",
+        id: "side-sugg-" + suggList.children.length, "aria-selected": "false", onClick }, ...kids);
       for (const t of tasks)
-        sugg.append(h("button", { type: "button", class: "sugg-item", onClick: () => { hideSugg(); sideQ.value = ""; openTask(t.id, route); } },
+        suggList.append(item(() => { hideSugg(); sideQ.value = ""; openTask(t.id, route); },
           icon("tasks"), h("span", { class: "sugg-t" }, ...search.highlight(t.title, q)), t.status === "done" ? h("small", { text: "concluída" }) : null));
       for (const p of projs)
-        sugg.append(h("button", { type: "button", class: "sugg-item", onClick: () => {
+        suggList.append(item(() => {
           hideSugg(); sideQ.value = "";
           location.hash = "#/projetos?id=" + p.id;  // a tela do projeto, como na Busca
-        } }, icon("folder"), h("span", { class: "sugg-t" }, ...search.highlight(p.name, q)), h("small", { text: "projeto" })));
-      if (!tasks.length && !projs.length) sugg.append(h("p", { class: "sugg-empty", text: "Nada encontrado." }));
-      sugg.append(h("button", { type: "submit", class: "sugg-all", text: "Ver todos os resultados" }));
-      sugg.classList.remove("hidden");
-      sideQ.setAttribute("aria-expanded", "true");
+        }, icon("folder"), h("span", { class: "sugg-t" }, ...search.highlight(p.name, q)), h("small", { text: "projeto" })));
       const n = tasks.length + projs.length;
+      // Sem sugestão não há lista: fica só o aviso e o "Ver todos" (um role=listbox vazio é inválido).
+      sugg.replaceChildren(n ? suggList : h("p", { class: "sugg-empty", text: "Nada encontrado." }),
+        h("button", { type: "submit", class: "sugg-all", text: "Ver todos os resultados" }));
+      sugg.classList.remove("hidden");
+      sideQ.setAttribute("aria-expanded", n ? "true" : "false");
       announce(n ? `${n} ${n === 1 ? "sugestão" : "sugestões"}; seta para baixo percorre` : "Nada encontrado.");
     }, 250);
   });
-  // Setas andam entre as sugestões; Esc fecha e volta ao campo.
+  // Setas marcam a sugestão; Enter abre a marcada (sem marcada, a Busca completa); Esc fecha e volta ao campo.
   document.getElementById("side-search").addEventListener("keydown", (ev) => {
+    if (sugg.classList.contains("hidden")) return;
+    if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); hideSugg(); sideQ.focus(); return; }
+    if (ev.target !== sideQ) return;  // no "Ver todos os resultados", Enter e setas são os do botão
     const items = suggItems();
-    if (sugg.classList.contains("hidden") || !items.length) return;
-    const i = items.indexOf(document.activeElement);
-    if (ev.key === "ArrowDown") { ev.preventDefault(); items[Math.min(i + 1, items.length - 1)].focus(); }
-    else if (ev.key === "ArrowUp") { ev.preventDefault(); if (i <= 0) sideQ.focus(); else items[i - 1].focus(); }
-    else if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); hideSugg(); sideQ.focus(); }
+    const i = items.findIndex((el) => el.id === sideQ.getAttribute("aria-activedescendant"));
+    if (ev.key === "ArrowDown" && items.length) { ev.preventDefault(); markSugg(Math.min(i + 1, items.length - 1)); }
+    else if (ev.key === "ArrowUp" && items.length) { ev.preventDefault(); markSugg(i - 1 < 0 ? -1 : i - 1); }
+    else if (ev.key === "Enter" && i >= 0) { ev.preventDefault(); items[i].click(); }
   });
   document.getElementById("side-search").addEventListener("focusout", (ev) => {
     if (!ev.currentTarget.contains(ev.relatedTarget)) hideSugg();
@@ -569,6 +587,8 @@ async function boot() {
       h("p", { class: "dialog-note", text: "Funcionam fora dos campos de texto. Esc fecha qualquer janela. Dá para desligá-los em Configurações." }),
       h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-text", text: "Fechar", onClick: () => dlg.close() })));
   }
+  // "Ver os atalhos", em Configurações, abre esta mesma janela (também com os atalhos desligados).
+  window.addEventListener("nexus:atalhos", showShortcuts);
   document.addEventListener("keydown", (ev) => {
     if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
     const sc = SHORTCUTS[ev.key.length === 1 ? ev.key.toLowerCase() : ""] || SHORTCUTS[ev.key];

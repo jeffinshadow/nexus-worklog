@@ -1872,3 +1872,21 @@ input:disabled { cursor: not-allowed; }
 .obj-block .obj-head h2 { font-size: var(--type-title); font-weight: var(--weight-title); margin: 0; }
 /* Objetivo concluído recolhido: uma linha. */
 .obj-block.obj-folded .obj-head { margin-bottom: 0; }
+/* rodada 2 r2-12 */
+/* Busca lateral (combobox): a sugestão marcada pelas setas, com o foco ainda no campo. */
+.sugg-item[aria-selected="true"] { background-image: linear-gradient(var(--hover-tint), var(--hover-tint)); outline: 2px solid var(--primary-hi); outline-offset: -2px; }
+@media (max-width: 480px) {
+  /* Detalhe em edição: com o Lembrete na linha inteira, a Prioridade também ocupa a linha (sem meia linha vazia). */
+  .props:has(> .field > input[type="datetime-local"]) > .field:has(> select[aria-label="Prioridade"]) { grid-column: 1 / -1; }
+  /* Tempo por projeto: o nome usa a linha toda (reticências só se faltar espaço); barra e tempo ficam embaixo. */
+  .sum-bar { grid-template-columns: minmax(0, 1fr) auto; row-gap: 2px; }
+  .sum-bar-l { grid-column: 1 / -1; }
+}
+/* Tarefas em janela baixa: o quadro não cabe no mínimo de 320px; as colunas soltam a altura e só a página rola. */
+@media (min-width: 861px) and (max-height: 600px) {
+  .main:has(> .view:not(.hidden) > .columns:only-child) { display: block; height: auto; }
+  .main > .view:has(> .columns:only-child) { min-height: 0; display: block; }
+  .view > .columns:only-child > .column { max-height: none; }
+  .view > .columns:only-child > .column > .column-body { overflow-y: visible; }
+}
+/* fim rodada 2 r2-12 */

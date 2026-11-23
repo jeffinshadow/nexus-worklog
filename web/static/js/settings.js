@@ -343,19 +343,12 @@ const noKeyboard = () => matchMedia("(max-width: 860px), (hover: none) and (poin
 
 function shortcutsPanel() {
   if (noKeyboard()) return null; // sem teclado, o bloco só ocupa tela
-  const keys = [["n", "nova tarefa"], ["q", "registro rápido"], ["/", "buscar"], ["h", "Hoje"], ["t", "Tarefas"], ["r", "Meu mês"],
-    ["l", "Meu mês (outro período ou formato)"], ["s", "parar o cronômetro"], ["?", "ver todos os atalhos"]];
   // Desligar: para quem usa controle por voz ou esbarra numa tecla sem querer.
   const on = h("input", { type: "checkbox" });
   on.checked = singleKeysOn();
   on.addEventListener("change", () => setSingleKeys(on.checked));
-  // A lista é a da janela do "?": aqui fica só o botão que a abre (também com os atalhos desligados).
-  const show = () => {
-    const dlg = modal(h("h2", { text: "Atalhos de teclado" }),
-      h("dl", { class: "shortcuts" }, ...keys.flatMap(([k, l]) => [h("dt", {}, h("kbd", { text: k })), h("dd", { text: l })])),
-      h("p", { class: "dialog-note", text: "Funcionam fora dos campos de texto. Esc fecha qualquer janela." }),
-      h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-text", text: "Fechar", onClick: () => dlg.close() })));
-  };
+  // A lista é a da janela do "?" (app.js): o botão a abre, também com os atalhos desligados.
+  const show = () => window.dispatchEvent(new Event("nexus:atalhos"));
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Atalhos de teclado" })),
     h("div", { class: "notice-row" },
@@ -728,7 +721,9 @@ async function webhooksPanel(rerender) {
   const form = h("form", {}, field("Endereço (https)", url), events.el, err, create);
   // A lista de eventos (20 caixas) só abre depois de preencher o endereço.
   const showEvents = () => { events.el.hidden = !url.value.trim(); };
+  // O preenchimento automático nem sempre dispara "input": vale também o change e o valor ao abrir a seção.
   url.addEventListener("input", showEvents);
+  url.addEventListener("change", showEvents);
   showEvents();
   form.addEventListener("submit", busy(async (ev) => {
     ev.preventDefault();
@@ -791,13 +786,15 @@ async function webhooksPanel(rerender) {
       h("span", { class: "token-name", text: w.url }), actions, h("span", { class: "token-meta", text: meta.join(" · ") }), result);
   }) : [h("p", { class: "empty", text: "Nenhum webhook ainda." })];
 
+  const novo = fold("Novo webhook",
+    h("p", { class: "help", text: "O Nexus envia os dados para o endereço que você informar. Serve para fechar o chamado, avisar no chat ou alimentar uma planilha. Até 5. Quem configura o outro sistema encontra os detalhes na documentação da API." }),
+    form);
+  novo.addEventListener("toggle", showEvents);
   return h("div", { class: "settings-grid" },
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Avisar outro sistema (webhook)" })),
       h("p", { class: "help", text: "O Nexus avisa outro sistema na hora em que algo muda (tarefa criada, concluída, rotina marcada…)." }),
-      fold("Novo webhook",
-        h("p", { class: "help", text: "O Nexus envia os dados para o endereço que você informar. Serve para fechar o chamado, avisar no chat ou alimentar uma planilha. Até 5. Quem configura o outro sistema encontra os detalhes na documentação da API." }),
-        form)),
+      novo),
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Meus webhooks" }), h("span", { class: "count", text: ((n) => `${n} ${n === 1 ? "ativo" : "ativos"}`)(list.filter((w) => w.active).length) })),
       ...rows, recipesLine()));
