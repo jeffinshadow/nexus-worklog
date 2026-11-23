@@ -105,15 +105,24 @@ if [[ "$ONLY_BACKUP" == false ]]; then
     exit 1
   fi
 
-  # A senha do banco vai dentro da DATABASE_URL: com / @ # ? % ou espaço ela corta
-  # a URL e o backend não conecta ("failed to resolve host"). Só recusa quando a
-  # senha aparece assim, crua, na URL (quem a escreveu codificada com %XX passa).
-  pgpass="$(env_get POSTGRES_PASSWORD)"
-  if [[ "$pgpass" =~ [/@#?%[:space:]] && "$(env_get DATABASE_URL)" == *"$pgpass"* ]]; then
-    err "POSTGRES_PASSWORD tem caractere reservado de URL (/ @ # ? % ou espaço) e quebra a DATABASE_URL."
-    err "Gere uma só com letras e números (openssl rand -hex 24) e ponha a mesma nas duas variáveis."
-    err "Se o banco já foi criado com a senha antiga, veja docs/ADMIN.md, seção 13."
-    exit 1
+  # A senha do banco vai dentro da DATABASE_URL: com / @ # ? % ou espaço crus ela
+  # corta a URL e o backend não conecta ("failed to resolve host"). Com um desses
+  # caracteres, a senha da URL (decodificada dos %XX) tem de ser a POSTGRES_PASSWORD.
+  pgpass="$(env_get POSTGRES_PASSWORD || true)"   # sem a variável, o grep falha e o set -e sairia calado
+  if [[ "$pgpass" =~ [/@#?%[:space:]] ]]; then
+    dburl="$(env_get DATABASE_URL || true)"; dburl="${dburl#*://}"
+    urlpass=""; [[ "$dburl" == *@* ]] && { urlpass="${dburl%@*}"; urlpass="${urlpass#*:}"; }
+    # %XX -> caractere (um % solto vira "\x.." inválido e simplesmente não bate).
+    decod="${urlpass//\\/\\\\}"; decod="$(printf '%b' "${decod//%/\\x}" 2>/dev/null || true)"
+    if [[ "$urlpass" =~ [/@#?[:space:]] || "$decod" != "$pgpass" ]]; then
+      err "A senha do banco tem caractere reservado de URL (/ @ # ? % ou espaço) e as duas variáveis do .env não batem."
+      err "  POSTGRES_PASSWORD: a senha crua, como ela é (ex.: ab@cd)."
+      err "  DATABASE_URL: a mesma senha com esses caracteres codificados (ex.: ab%40cd;"
+      err "    / = %2F   @ = %40   # = %23   ? = %3F   % = %25   espaço = %20)."
+      err "Mais simples: gere uma só com letras e números (openssl rand -hex 24) e ponha a mesma nas duas."
+      err "Se o banco já foi criado com a senha antiga, veja docs/ADMIN.md, seção 13."
+      exit 1
+    fi
   fi
 
   if ! grep -qE '^APP_URL=.' .env; then
