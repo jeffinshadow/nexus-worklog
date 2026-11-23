@@ -125,8 +125,19 @@ async def _bad_data(request: Request, exc: Exception):
 async def _invalid(request: Request, exc: RequestValidationError):
     """O 422 de sempre; só não estoura (500) quando o valor recusado, que volta em `input`,
     traz um substituto solto: ele sai como "?"."""
-    body = json.dumps({"detail": jsonable_encoder(exc.errors())}, ensure_ascii=False, separators=(",", ":"))
+    try:
+        body = json.dumps({"detail": jsonable_encoder(exc.errors())}, ensure_ascii=False, separators=(",", ":"))
+    except RecursionError:  # o valor recusado tem mais de ~1.000 níveis: não dá nem para devolvê-lo
+        return await _too_deep(request, exc)
     return Response(body.encode("utf-8", "replace"), status_code=422, media_type="application/json")
+
+
+@app.exception_handler(RecursionError)
+async def _too_deep(request: Request, exc: Exception):
+    """JSON com milhares de colchetes aninhados: erro do pedido (400), não do servidor (era 500 com a
+    pilha inteira no log, mesmo sem login). Uma linha de aviso, como no dado recusado."""
+    logging.getLogger("uvicorn.error").warning("JSON aninhado demais em %s %s", request.method, request.url.path)
+    return JSONResponse({"detail": "JSON aninhado demais"}, status_code=400)
 
 
 class NoStore:
