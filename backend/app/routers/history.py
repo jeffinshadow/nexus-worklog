@@ -796,8 +796,10 @@ def _undo(history_id: int, user: dict, later: list) -> dict:
             raise HTTPException(status_code=409, detail="essa mudança já saiu da janela de 7 dias; pause ou retome de novo")
         _encerrada_em(uid, eid)  # rotina que não existe mais: 409
         if before.get("pause"):
-            db.execute("UPDATE recurring_pauses SET end_d = %s WHERE id = %s AND recurring_id = %s",
-                       (before["pause"]["end_d"], before["pause"]["id"], eid))
+            # `pauses`: todas as que o Retomar fechou (linha antiga do histórico: só a mais recente).
+            for p in before.get("pauses") or [before["pause"]]:
+                db.execute("UPDATE recurring_pauses SET end_d = %s WHERE id = %s AND recurring_id = %s",
+                           (p["end_d"], p["id"], eid))
         else:
             # Pausa nova: desfeita no próprio dia, some; depois disso, age como "retomar"
             # (termina ontem), para os dias já passados (talvez num mês fechado) não virarem falta.
