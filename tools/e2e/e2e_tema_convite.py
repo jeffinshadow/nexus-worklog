@@ -51,7 +51,7 @@ try:
     email = f"pedido{marca}@exemplo.com.br"
     cmd("Network.clearBrowserCookies"); cmd("Page.navigate", url=B + "/login"); time.sleep(1.8)
     check("login: link de pedir convite", ev("!document.getElementById('go-request').classList.contains('hidden')"))
-    ev("document.getElementById('go-request').click()"); time.sleep(.5)
+    ev("document.getElementById('go-request').click()"); time.sleep(4)  # o formulário recusa envio antes de 3 s (FILL_MIN, invite_requests.py)
     ev(f"""(()=>{{const s=(id,v)=>{{const e=document.getElementById(id);e.value=v;e.dispatchEvent(new Event('change'))}};
       s('req-name','Teste Pedido {marca}');s('req-email','{email}');s('req-source','colega');s('req-note','um colega');
       s('req-reason','Quero registrar o suporte da filial.');document.getElementById('request-submit').click()}})()"""); time.sleep(3)
@@ -77,7 +77,8 @@ try:
 
     # ---- tema da conta e avatar padrão
     login(U); go("config?aba=conta", 3)
-    check("avatar padrão (ícone, sem letra)", ev("!!document.querySelector('.who .avatar-default svg')") and not (ev("document.querySelector('.who .avatar')?.textContent") or "").strip())
+    # Conta com foto mostra a foto; sem foto, o ícone padrão. Em nenhum dos casos, a letra inicial.
+    check("avatar: foto da conta ou ícone padrão, sem letra", ev("!!document.querySelector('.who img.avatar, .who .avatar-default svg')") and not (ev("document.querySelector('.who .avatar')?.textContent") or "").strip())
     ev("[...document.querySelectorAll('.seg [data-v]')].find(b=>b.dataset.v==='light').click()"); time.sleep(1.2)
     check("tema Claro aplicado", ev("document.documentElement.dataset.theme") == "light")
     check("fundo claro de verdade", ev("getComputedStyle(document.body).backgroundColor") in ("rgb(246, 247, 250)", "rgb(251, 250, 255)"), ev("getComputedStyle(document.body).backgroundColor"))
@@ -90,3 +91,5 @@ try:
 finally:
     p.terminate()
     print("OK:", len(ok)); print("FALHAS:", "\n  ".join(falhas) or "nenhuma"); print("ERROS JS:", erros or "nenhum")
+if falhas or erros:
+    sys.exit(1)  # roteiro com FALHAS ou erro de JavaScript não sai com código 0

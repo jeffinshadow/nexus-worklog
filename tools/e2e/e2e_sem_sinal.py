@@ -101,3 +101,5 @@ finally:
     web("start")
     p.terminate()
     print("OK:", len(ok)); print("FALHAS:", "\n  ".join(falhas) or "nenhuma"); print("ERROS JS:", erros or "nenhum")
+if falhas or erros:
+    sys.exit(1)  # roteiro com FALHAS ou erro de JavaScript não sai com código 0

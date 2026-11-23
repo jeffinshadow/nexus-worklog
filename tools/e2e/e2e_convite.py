@@ -1,5 +1,5 @@
 """E2E na homologação (túnel 8090 + Mailpit 8025): convite por link, esqueci a senha,
-confirmação de senha e semanas do resumo. Uso: e2e_convite.py SAIDA [desktop|mobile]"""
+confirmação de senha e resumo do Hoje. Uso: e2e_convite.py SAIDA [desktop|mobile]"""
 import base64, json, re, subprocess, sys, tempfile, time, urllib.request
 import websocket
 import os
@@ -189,17 +189,17 @@ try:
     rec.shot("c08-conta-senha")
 
     # ---- e-mails bonitos? captura o HTML do convite
-    # ---- semanas do resumo (Marina)
+    # ---- resumo do Hoje (conta de demonstração): desde a 2.1 é o último dia útil, só com os totais
+    # (o cartão "Esta semana" saiu do Hoje; o passado fica em Meu mês e na revisão da semana).
     mar = Browser(9403 if modo == "desktop" else 9413)
     mar.login(*MARINA)
     mar.go(B + "/#/hoje", 3)
     mar.ev("document.querySelector('dialog.tour-dialog')?.close()")
-    mar.wait("!!document.querySelector('.sum-week')", 8)
-    mar.ev("document.querySelector('.sum-week').scrollIntoView({block: 'center'})"); time.sleep(.4)
-    # R6 (produto): o cartão da semana sem setas para semanas antigas (o passado fica em Meu mês).
-    check("card da semana: Esta semana", mar.ev("document.querySelector('.sum-week h3')?.textContent") == "Esta semana")
-    check("card da semana sem setas", not mar.ev("!!document.querySelector('.sum-week [aria-label=\"Semana anterior\"]')"))
-    check("card da semana com a revisão", mar.ev("!!document.querySelector('.sum-week .sum-review')"))
+    tem = mar.wait("!!document.querySelector('.sum-card')", 8)
+    check("resumo do Hoje aparece", bool(tem))
+    mar.ev("document.querySelector('.sum-card')?.scrollIntoView({block: 'center'})"); time.sleep(.4)
+    check("resumo do Hoje com os totais", mar.ev("document.querySelectorAll('.sum-card .figs .fig').length") == 3)
+    check("resumo do Hoje sem setas de semana", not mar.ev("!!document.querySelector('.sum-card [aria-label=\"Semana anterior\"]')"))
     time.sleep(.3)
     mar.shot("c09-semanas")
 
@@ -210,3 +210,5 @@ try:
 finally:
     for p in procs: p.terminate()
     print("OK:", len(ok)); print("FALHAS:", falhas or "nenhuma"); print("ERROS JS:", erros or "nenhum")
+if falhas or erros:
+    sys.exit(1)  # roteiro com FALHAS ou erro de JavaScript não sai com código 0
