@@ -783,7 +783,7 @@ async function mountOrg(root, me) {
       field("Endereço do GLPI", url),
       field("App-Token do cliente de API (se o GLPI exigir)", app),
       h("p", { class: "dialog-note field-note", text: "Com o endereço preenchido, cada pessoa conecta a própria conta do GLPI em Configurações › Conta: os chamados abertos no nome dela viram tarefas, e a tarefa concluída vira a solução do chamado. Precisa do GLPI 11 ou superior, com a API ligada (Configurar › Geral › API) e um cliente de API que aceite o IP do Nexus. Prefira https://: em http:// os tokens trafegam sem proteção. O App-Token fica guardado cifrado e não aparece de novo." }),
-      err, h("div", { class: "row-actions" }, saveBtn, testBtn, cfg.glpi_app_token_set ? clearBtn : null), result);
+      err, result, h("div", { class: "row-actions" }, saveBtn, testBtn, cfg.glpi_app_token_set ? clearBtn : null));
   }
 
   // Endereço do sistema de chamados da instância. Vazio = cada pessoa usa o seu (Conta).
