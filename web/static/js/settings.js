@@ -307,7 +307,7 @@ async function glpiPanel(rerender) {
       }
     }));
     return panel(
-      h("p", { class: "help", text: "Os chamados abertos no seu nome no GLPI viram tarefas aqui. Ao concluir a tarefa, o que você escreveu em “Como foi resolvido” (e o tempo apontado) vira a solução do chamado. O token fica no GLPI, em Preferências › API token (gere um, se estiver vazio)." }),
+      h("p", { class: "help", text: "Os chamados abertos no seu nome no GLPI viram tarefas aqui. Ao concluir a tarefa, o que você escreveu em “Como foi resolvido” (e o tempo apontado) vira a solução do chamado. O token fica no GLPI, em Minhas configurações › Token de API (em inglês: My settings › API token); gere um, se estiver vazio." }),
       form);
   }
   const act = (label, fn) => h("button", { type: "button", class: "btn btn-ghost", text: label, onClick: busy(fn) });

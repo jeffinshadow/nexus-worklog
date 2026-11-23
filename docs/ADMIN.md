@@ -184,20 +184,25 @@ API nova (v2, com OAuth) "quando possível" e não deu data para tirar a legada;
 
 No GLPI (uma vez, quem administra o GLPI):
 
-1. Configurar > Geral > API: ligar a **API REST legada** ("Enable Legacy REST API") e o **login com token externo**
-   ("Enable login with external token"). Pela linha de comando do GLPI: `php bin/console config:set enable_api 1` e
+1. Configurar > Geral > aba API (em inglês: Setup > General > API): ligar **Habilitar REST API legada** ("Enable
+   Legacy REST API") e **Habilitar que se faça login com token externo** ("Enable login with external token"). Os
+   nomes são os das telas do GLPI 11.0.13 e do 12.0.2, iguais nos dois; o 12 pede a senha de novo para abrir essa
+   tela. Pela linha de comando do GLPI: `php bin/console config:set enable_api 1` e
    `php bin/console config:set enable_api_login_external_token 1`.
-2. No mesmo lugar, um **cliente de API** ativo cuja faixa de IPv4 inclua o endereço de onde o Nexus chama (o IP do
-   servidor ou do contêiner do backend). Se o cliente tiver **App-Token**, copie-o.
-3. Os técnicos precisam de um perfil que liste e solucione os próprios chamados (o Technician padrão serve).
+2. No mesmo lugar (**Clientes de API (API Legado)** > Adicionar cliente de API), um **cliente de API** ativo cuja
+   faixa de IPv4 inclua o endereço de onde o Nexus chama (o IP do servidor ou do contêiner do backend). Se o cliente
+   tiver **App-Token** ("Token da aplicação"), copie-o.
+3. Os técnicos precisam de um perfil que liste e solucione os próprios chamados (o Technician/Técnico padrão serve).
+   Sem a permissão de solucionar, a tarefa conclui no Nexus, a solução não entra e Configurações mostra a recusa.
 
 No Nexus (admin): Admin > Para empresas > **GLPI**: o endereço do GLPI (ex.: `https://glpi.empresa.com.br`, sem o
 `/apirest.php`), o App-Token (se houver), **Salvar GLPI** e **Testar**. O teste diz, em linguagem comum, se o endereço
 não respondeu, se a API está desligada, se falta o App-Token ou se ele foi recusado (App-Token errado e IP fora da
 faixa do cliente de API dão a mesma resposta no GLPI).
 
-Cada pessoa: no GLPI, Preferências > **API token** (gerar, se vazio); no Nexus, Configurações > Conta > **GLPI**, colar
-o token e **Conectar**. Dali em diante:
+Cada pessoa: no GLPI, menu do usuário > Minhas configurações > **Token de API** (em inglês: My settings > API
+token; **Re-gerar**, se vazio); no Nexus, Configurações > Conta > **GLPI**, colar o token e **Conectar**. Dali em
+diante:
 
 - A cada 5 minutos (e em **Atualizar agora**), os chamados abertos em que ela é o técnico viram tarefas: título,
   descrição (só texto), prioridade, prazo (tempo para solução) e o número (`#123`, que vira link). Só cria: o que a

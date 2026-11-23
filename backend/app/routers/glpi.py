@@ -28,7 +28,7 @@ def get_glpi(user=Depends(web_active)):
 
 @router.put("/api/me/glpi")
 def connect_glpi(data: GlpiTokenIn, user=Depends(web_active_csrf)):
-    """Conecta com o token pessoal do GLPI (Preferências › API token): confere no
+    """Conecta com o token pessoal do GLPI (no GLPI: Minhas configurações › Token de API): confere no
     GLPI antes de guardar (cifrado) e já faz a primeira sincronização."""
     if "user" not in user["roles"]:
         raise HTTPException(status_code=403, detail="esta conta não tem registro próprio")

@@ -9049,7 +9049,7 @@
           "glpi"
         ],
         "summary": "Connect Glpi",
-        "description": "Conecta com o token pessoal do GLPI (Preferências › API token): confere no\nGLPI antes de guardar (cifrado) e já faz a primeira sincronização.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
+        "description": "Conecta com o token pessoal do GLPI (no GLPI: Minhas configurações › Token de API): confere no\nGLPI antes de guardar (cifrado) e já faz a primeira sincronização.\n\nSó pelo app (sessão do navegador): por chave de API responde 403.",
         "operationId": "connect_glpi_api_me_glpi_put",
         "requestBody": {
           "content": {

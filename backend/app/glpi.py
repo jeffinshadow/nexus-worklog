@@ -58,7 +58,7 @@ _busy: dict[int, threading.Lock] = {}
 
 REOPENED = "O chamado foi reaberto no GLPI (a solução não foi aceita)."
 GONE = "Este chamado não está mais aberto no seu nome no GLPI (foi encerrado ou passou para outra pessoa)."
-TOKEN_REFUSED = "o GLPI recusou o seu token: gere outro em Preferências › API token e conecte de novo"
+TOKEN_REFUSED = "o GLPI recusou o seu token: gere outro no GLPI (Minhas configurações › Token de API) e conecte de novo"
 
 
 class GlpiError(Exception):
@@ -205,7 +205,7 @@ def _login_error(status: int, data) -> GlpiError:
         return GlpiError("o GLPI recusou o App-Token: ele está errado, ou o IP do Nexus está fora da faixa "
                          "do cliente de API do GLPI")
     if code == "ERROR_LOGIN_WITH_TOKEN_DISABLED":
-        return GlpiError("o login por token está desligado no GLPI (Configurar › Geral › API › login com token externo)")
+        return GlpiError("o login por token está desligado no GLPI (Configurar › Geral › API › Habilitar que se faça login com token externo)")
     if code == "ERROR":  # ["ERROR", "API disabled"]
         return GlpiError("o GLPI recusou a conexão: confira se a API está ligada lá (Configurar › Geral › API)")
     if not code:
@@ -399,7 +399,8 @@ def _push(user_id: int, call, manual: bool) -> None:
             status, _ = call("POST", "/ITILSolution",
                              {"input": {"itemtype": "Ticket", "items_id": tid, "content": to_html(solution_text(r))}})
             if status not in (200, 201) and not solved(tid):
-                error = f"o GLPI recusou a solução (HTTP {status}): o chamado pode ter sido excluído ou saído do seu alcance"
+                error = (f"o GLPI recusou a solução (HTTP {status}): o seu perfil lá pode não ter permissão de solucionar, "
+                         "ou o chamado foi excluído ou saiu do seu alcance")
         db.execute(
             """UPDATE glpi_tickets SET sent_at = CASE WHEN %(e)s::text IS NULL THEN now() END, last_error = %(e)s,
                       tries = CASE WHEN %(e)s::text IS NULL THEN 0 ELSE tries + 1 END

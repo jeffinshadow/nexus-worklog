@@ -671,7 +671,7 @@ class TicketUrlIn(BaseModel):
 
 
 class GlpiTokenIn(BaseModel):
-    token: str = Field(min_length=10, max_length=200)  # token pessoal do GLPI (Preferências › API token)
+    token: str = Field(min_length=10, max_length=200)  # token pessoal do GLPI (Minhas configurações › Token de API)
 
 
 class TimerIn(BaseModel):

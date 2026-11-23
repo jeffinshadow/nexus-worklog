@@ -764,7 +764,7 @@ async function mountOrg(root, me) {
           v ? "Pronto: cada pessoa conecta a própria conta em Configurações › Conta › GLPI." : "Pronto: integração com o GLPI desligada.");
         url.value = cfg.glpi_url || "";
         app.value = "";
-        app.placeholder = cfg.glpi_app_token_set ? "Guardado (digite para trocar)" : "Opcional";
+        tokenState();
       } catch (e) { fail(e); }
     }) });
     const testBtn = h("button", { type: "button", class: "btn btn-ghost", text: "Testar", onClick: busy(async () => {
@@ -776,14 +776,20 @@ async function mountOrg(root, me) {
       } catch (e) { result.textContent = ""; errorToast(e, "Não foi possível testar."); }
     }) });
     const clearBtn = h("button", { type: "button", class: "btn btn-ghost", text: "Tirar o App-Token", onClick: busy(async () => {
-      try { await save({ glpi_app_token: null }, "Pronto: App-Token removido."); app.placeholder = "Opcional"; }
+      try { await save({ glpi_app_token: null }, "Pronto: App-Token removido."); tokenState(); }
       catch (e) { errorToast(e); }
     }) });
+    // A dica do campo e o botão de tirar acompanham o que está guardado (sem recarregar a tela).
+    const tokenState = () => {
+      app.placeholder = cfg.glpi_app_token_set ? "Guardado (digite para trocar)" : "Opcional";
+      clearBtn.style.display = cfg.glpi_app_token_set ? "" : "none";
+    };
+    tokenState();
     return h("fieldset", { class: "org-option org-ticket" }, h("legend", { text: "GLPI" }),
       field("Endereço do GLPI", url),
       field("App-Token do cliente de API (se o GLPI exigir)", app),
       h("p", { class: "dialog-note field-note", text: "Com o endereço preenchido, cada pessoa conecta a própria conta do GLPI em Configurações › Conta: os chamados abertos no nome dela viram tarefas, e a tarefa concluída vira a solução do chamado. Precisa do GLPI 11 ou superior, com a API ligada (Configurar › Geral › API) e um cliente de API que aceite o IP do Nexus. Prefira https://: em http:// os tokens trafegam sem proteção. O App-Token fica guardado cifrado e não aparece de novo." }),
-      err, result, h("div", { class: "row-actions" }, saveBtn, testBtn, cfg.glpi_app_token_set ? clearBtn : null));
+      err, result, h("div", { class: "row-actions" }, saveBtn, testBtn, clearBtn));
   }
 
   // Endereço do sistema de chamados da instância. Vazio = cada pessoa usa o seu (Conta).
