@@ -29,6 +29,12 @@ function invalid(ids, errId, on) {
 const next = new URLSearchParams(location.search).get("next") || "";
 const destino = "/" + (/^#\/[\w\-?=&%.]*$/.test(next) ? next : "");
 
+// Sessão vencida (o app manda ?motivo=sessao): diz por que a pessoa veio parar aqui.
+if (new URLSearchParams(location.search).get("motivo") === "sessao") {
+  $("login-reason").textContent = "Sua sessão terminou (ela vale 7 dias). Entre de novo para continuar de onde parou.";
+  $("login-reason").classList.remove("hidden");
+}
+
 $("form-login").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const err = $("login-error");
@@ -77,12 +83,13 @@ if (passkeySupported()) {
 }
 
 // ---- Esqueci a senha: o link só aparece se o servidor manda e-mail.
-api.get("/auth/options").then((o) => {
+const opcoes = api.get("/auth/options").catch(() => ({}));
+opcoes.then((o) => {
   if (o.email) $("go-forgot").classList.remove("hidden");
   if (o.invite_request) { $("go-request").classList.remove("hidden"); $("foot-ask").classList.add("hidden"); }
   // Política de privacidade da instância (Admin › Para empresas), quando definida.
   if (o.privacy_url && /^https:\/\//.test(o.privacy_url)) { $("privacy-link").href = o.privacy_url; $("privacy-foot").classList.remove("hidden"); }
-}).catch(() => {});
+});
 
 // ---- Pedido de convite: vai para o administrador (e-mail e Admin).
 let formT = null;  // carimbo do servidor: a hora em que o formulário foi mostrado (o envio antes de 3 s é recusado)
@@ -194,8 +201,16 @@ async function openLink(kind, token) {
   try {
     info = await api.post("/auth/link", { kind, token });  // token no corpo: fora do log de acesso
   } catch (e) {
+    if (invite && e.status !== 429) {
+      $("link-title").textContent = "Convite vencido";
+      document.title = "Convite vencido · Nexus Worklog";
+    }
+    // Com e-mail no servidor, o "Esqueci a senha" manda um link novo: não precisa esperar ninguém.
+    const comEmail = invite && e.status !== 429 && !!(await opcoes).email;
     $("link-sub").textContent = e.status === 429  // limite de tentativas: o link pode estar bom
       ? "Muitas tentativas agora. Espere um minuto e abra o link de novo."
+      : comEmail
+      ? "Este convite venceu ou já foi usado. Vá para a tela de entrar e use “Esqueci a senha” com o seu e-mail: chega um link novo."
       : invite
       ? "Este convite venceu ou já foi usado. Peça um novo a quem administra o Nexus."
       : "Este link venceu ou já foi usado. Peça outro em “Esqueci a senha”.";
