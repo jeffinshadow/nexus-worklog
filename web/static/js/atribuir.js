@@ -243,8 +243,11 @@ function row(r, reload) {
     if (r.priority === 1 && r.status !== "done") chips.push(h("span", { class: "chip prio-1", text: "alta" }));
     if (r.status === "blocked" && r.blocked_reason) chips.push(h("span", { class: "chip blocked-reason", title: "Aguardando: " + r.blocked_reason, text: r.blocked_reason }));
     // Enquanto está "a fazer" e sem nada registrado, quem atribuiu ainda corrige ou cancela.
-    if (r.editable) acts = h("div", { class: "request-actions" },
-      h("button", { type: "button", class: "btn btn-text btn-sm", text: "Alterar", onClick: () => assignDialog({ edit: r, onDone: reload }) }),
+    // Quem desligou o aceite: `editable` falso com `cancelable` verdadeiro (só cancelar).
+    if (r.editable || r.cancelable) acts = h("div", { class: "request-actions" },
+      r.editable
+        ? h("button", { type: "button", class: "btn btn-text btn-sm", text: "Alterar", onClick: () => assignDialog({ edit: r, onDone: reload }) })
+        : h("small", { class: "muted", text: `${r.to_name} não recebe mais tarefas atribuídas: só dá para cancelar` }),
       r.cancelable
         ? h("button", { type: "button", class: "btn btn-text btn-sm", text: "Cancelar", onClick: () => cancelSent(r, reload) })
         : h("small", { class: "muted", text: `${r.to_name} já mexeu nela: cancelar, só ela` }));

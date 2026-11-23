@@ -155,12 +155,12 @@ def assign(data: AssignIn, user=Depends(require_assigner_csrf)):
         raise HTTPException(status_code=404, detail="usuário não encontrado")
     if not target["accepts"]:
         raise HTTPException(status_code=403, detail="essa pessoa não aceitou receber tarefas atribuídas")
-    _limit(user["user_id"], target["id"])
     by_name = people.profile(user["user_id"])["name"]
     to_name = people.profile(target["id"])["name"]
     # A tarefa e as duas linhas do histórico (a de quem recebe e a de quem atribuiu, que
     # é de onde sai "Tarefas que atribuí") vão juntas; os avisos saem depois de gravar.
     with db.transaction():
+        _limit(user["user_id"], target["id"])
         if data.from_return is not None:
             _lock_open_return(user["user_id"], data.from_return, 409, RESOLVED_MSG)
         row = db.query_one(
@@ -188,17 +188,24 @@ def assign(data: AssignIn, user=Depends(require_assigner_csrf)):
 # conta-robô de integração precisa importar filas para várias pessoas. Vale para
 # app, chave de API e MCP (todos passam por assign()). Conta no histórico de quem
 # atribui (assign.send), que já guarda o destinatário: sobrevive a reinício do
-# backend e uma atribuição cancelada conta (o e-mail saiu).
+# backend. Atribuição cancelada (a tarefa saiu da conta de quem recebeu) não conta.
 ASSIGN_MAX, ASSIGN_WINDOW = 20, 600
 
 
 def _limit(by: int, to: int) -> None:
+    """Dentro da transação do envio: a trava por remetente (solta ao gravar) põe em
+    fila os envios simultâneos da mesma pessoa, e cada um conta os que já gravaram."""
+    db.query_one("SELECT pg_advisory_xact_lock(hashtext('assign.limit'), %s::int)", (by,))
     row = db.query_one(
         """SELECT count(*)::int AS n, min(created_at) AS first, now() AS now FROM (
-               SELECT created_at FROM audit_log
-                WHERE user_id = %s AND action = 'assign.send' AND (after->>'to_id')::bigint = %s
-                  AND created_at > now() - make_interval(secs => %s)
-                ORDER BY created_at DESC LIMIT %s) x""", (by, to, ASSIGN_WINDOW, ASSIGN_MAX))
+               SELECT a.created_at FROM audit_log a
+                WHERE a.user_id = %s AND a.action = 'assign.send' AND (a.after->>'to_id')::bigint = %s
+                  AND a.created_at > now() - make_interval(secs => %s)
+                  AND NOT (EXISTS (SELECT 1 FROM audit_log c
+                                    WHERE c.user_id = a.user_id AND c.entity = 'assignment'
+                                      AND c.entity_id = a.entity_id AND c.action = 'assign.cancel')
+                           AND NOT EXISTS (SELECT 1 FROM worklog_tasks w WHERE w.id = a.entity_id))
+                ORDER BY a.created_at DESC LIMIT %s) x""", (by, to, ASSIGN_WINDOW, ASSIGN_MAX))
     if row["n"] >= ASSIGN_MAX:
         wait = max(1, ASSIGN_WINDOW - int((row["now"] - row["first"]).total_seconds()))
         raise HTTPException(
@@ -241,12 +248,16 @@ def sent(user=Depends(require_assigner)):
     # Fora das equipes de quem atribuiu (`same_team` falso) a linha vem sem `description`
     # nem `blocked_reason`; conta de destino excluída: "conta excluída", sem e-mail nem
     # motivo da devolução (em _removed). Fica em comentário: a docstring vai para o openapi.
+    # `open`: "a fazer", sem nada registrado e no alcance (o que o cancelar exige). Alterar
+    # pede também a regra do PATCH: a pessoa ainda recebe, ou a conta está bloqueada
+    # (`editable` falso com `cancelable` verdadeiro: quem desligou o aceite).
+    scope = assignable.scope_sql('u', int(user['user_id']))
     rows = db.query_all(
         f"""SELECT w.id, w.title, w.description, w.status, w.due_date, w.assigned_at, w.completed_at, w.priority, w.blocked_reason,
                    w.user_id AS to_id, u.email AS to_email,
-                   (w.status = 'todo' AND NOT EXISTS ({_STARTED.format(t="w.id")})
-                    AND {assignable.scope_sql('u', int(user['user_id']))}) AS editable,
-                   {assignable.scope_sql('u', int(user['user_id']))} AS same_team
+                   (w.status = 'todo' AND NOT EXISTS ({_STARTED.format(t="w.id")}) AND {scope}) AS open,
+                   (u.blocked_at IS NOT NULL OR {assignable.consent_sql('u')}) AS receives,
+                   {scope} AS same_team
               FROM worklog_tasks w JOIN users u ON u.id = w.user_id
              WHERE w.assigned_by = %s
              ORDER BY w.assigned_at DESC NULLS LAST, w.id DESC
@@ -257,8 +268,10 @@ def sent(user=Depends(require_assigner)):
     nomes = people.profiles(r["to_id"] for r in rows)
     for r in rows:
         # Cancelar só enquanto quem recebeu não mexeu em nada (Alterar ainda vale
-        # para os campos que ela não mudou).
-        r["cancelable"] = bool(r["editable"] and not _touched(r["id"], r["to_id"]))
+        # para os campos que ela não mudou). Quem desligou o aceite: só cancelar.
+        aberta, recebe = r.pop("open"), r.pop("receives")
+        r["editable"] = bool(aberta and recebe)
+        r["cancelable"] = bool(aberta and not _touched(r["id"], r["to_id"]))
         if not r["same_team"]:
             # Fora do alcance de quem atribuiu: a linha fica (o que ela mandou), sem o
             # que quem recebeu escreve hoje na tarefa.
@@ -298,7 +311,7 @@ def _removed(uid: int) -> list[dict]:
                            WHERE x.id = COALESCE((a.after->>'to_id')::bigint,
                                                  (SELECT y.id FROM users y WHERE y.email = a.after->>'to_email'))) AS to_exists,
                   a.created_at AS assigned_at, f.action AS end_action, f.at AS ended_at,
-                  f.snap AS end_snap, z.action AS res_action, z.at AS res_at, z.to_name AS res_to
+                  f.snap AS end_snap, z.action AS res_action, z.at AS res_at, z.to_name AS res_to, z.to_exists AS res_to_exists
              FROM audit_log a
              LEFT JOIN LATERAL (
                   SELECT d.action, d.created_at AS at, d.id, d.before->>'title' AS title, NULL::jsonb AS snap FROM audit_log d
@@ -315,7 +328,11 @@ def _removed(uid: int) -> list[dict]:
                      AND d.action = 'assign.returned'
                   ORDER BY id DESC LIMIT 1) f ON true
              LEFT JOIN LATERAL (
-                  SELECT r.action, r.created_at AS at, r.after->>'to' AS to_name FROM audit_log r
+                  SELECT r.action, r.created_at AS at, r.after->>'to' AS to_name,
+                         EXISTS (SELECT 1 FROM users x
+                                  WHERE x.id = COALESCE((r.after->>'to_id')::bigint,
+                                                        (SELECT y.id FROM users y WHERE y.email = r.after->>'to_email'))) AS to_exists
+                    FROM audit_log r
                    WHERE f.action = 'assign.returned' AND r.user_id = a.user_id AND r.id > f.id
                      AND ((r.entity = 'assignment' AND r.entity_id = a.entity_id AND r.action = 'assign.close')
                           OR (r.action = 'assign.send' AND r.after->>'from_return' = a.entity_id::text))
@@ -330,6 +347,8 @@ def _removed(uid: int) -> list[dict]:
     for r in rows:
         snap, kind = r.pop("end_snap") or {}, kinds.get(r.pop("end_action"), "removed")
         res_action, res_at, res_to = r.pop("res_action"), r.pop("res_at"), r.pop("res_to")
+        if not r.pop("res_to_exists"):
+            res_to = GONE  # quem recebeu a reatribuição saiu da instância: sem o nome, como em to_name
         ended = {"kind": kind, "at": r.pop("ended_at")}
         gone = not r.pop("to_exists")
         if gone:
