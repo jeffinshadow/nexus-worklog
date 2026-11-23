@@ -325,6 +325,42 @@ def _with_names(user_id: int, rows: list) -> list:
     return rows
 
 
+TROCADA = "a agenda desta rotina foi trocada depois; desfaça a troca primeiro"
+
+
+def _troca_bloqueia(action: str, before: dict | None, encerrada_em) -> bool:
+    """Rotina encerrada (a agenda foi trocada depois): a edição não volta, e a
+    marcação só volta se for de um dia anterior à troca (a do dia da troca
+    passou para a rotina nova)."""
+    if encerrada_em is None:
+        return False
+    if action == "recurring.update":
+        return True
+    return action == "recurring.toggle" and str((before or {}).get("day") or "") >= encerrada_em.isoformat()
+
+
+def _encerrada_em(uid: int, rid: int):
+    """O dia (no fuso da app) em que a rotina foi encerrada; None se está ativa.
+    Rotina que não existe mais: 409."""
+    r = db.query_one("""SELECT active, (COALESCE(deactivated_at, now()) AT TIME ZONE %s)::date AS dia
+                          FROM recurring_tasks WHERE id = %s AND user_id = %s""", (str(app_tz()), rid, uid))
+    if not r:
+        raise HTTPException(status_code=409, detail="a rotina não existe mais")
+    return None if r["active"] else r["dia"]
+
+
+def _rotinas_trocadas(uid: int, rows: list) -> set[int]:
+    """Das linhas (as últimas de cada item), as de rotina que o desfazer recusa."""
+    rows = [r for r in rows if r["action"] in ("recurring.update", "recurring.toggle")]
+    if not rows:
+        return set()
+    dias = {r["id"]: r["dia"] for r in db.query_all(
+        """SELECT id, (COALESCE(deactivated_at, now()) AT TIME ZONE %s)::date AS dia
+             FROM recurring_tasks WHERE user_id = %s AND NOT active AND id = ANY(%s)""",
+        (str(app_tz()), uid, [r["entity_id"] for r in rows]))}
+    return {r["id"] for r in rows if _troca_bloqueia(r["action"], r["before"], dias.get(r["entity_id"]))}
+
+
 # O feed esconde os eventos dos últimos segundos: duas gravações simultâneas
 # podem terminar fora da ordem dos ids, e o cursor (after) pularia a mais lenta.
 FEED_LAG_SECONDS = 2
@@ -340,7 +376,7 @@ def feed_item(r: dict) -> dict:
     return item
 
 
-def feed(uid: int, after: int, limit: int) -> list:
+def feed(uid: int, after: int, limit: int, admin_log: bool = True) -> list:
     """Eventos da pessoa depois do id `after`, do mais antigo ao mais novo.
     Exclusão = lápide (action *.delete). Cursor anterior ao que o histórico
     ainda guarda (180 dias) → 410: o integrador precisa recomeçar do zero."""
@@ -352,8 +388,9 @@ def feed(uid: int, after: int, limit: int) -> list:
         """SELECT id, created_at, actor, token_name, action, entity, entity_id, before, after
              FROM audit_log
             WHERE user_id = %s AND id > %s AND created_at <= now() - make_interval(secs => %s)
+              AND (%s OR actor <> 'admin')
             ORDER BY id LIMIT %s""",
-        (uid, after, FEED_LAG_SECONDS, limit),
+        (uid, after, FEED_LAG_SECONDS, admin_log, limit),
     )
     return [feed_item(r) for r in rows]
 
@@ -371,10 +408,15 @@ def list_history(
 ):
     limit = clamp(limit, 1, 200, 50)  # também quando chamada pelo MCP (sem validação de Query)
     offset = clamp(offset, 0, OFFSET_MAX, 0)
+    # O log de admin (e-mails e nomes de outras pessoas) só sai na sessão do app: por
+    # chave de API ou MCP ele iria para fora (o MCP entrega ao provedor da IA).
+    pelo_app = user.get("actor", "web") == "web"
     if after is not None:  # feed de mudanças, para sincronizar (docs/API.md); sem offset nem total
-        return feed(user["user_id"], after, limit)
+        return feed(user["user_id"], after, limit, admin_log=pelo_app)
     # Os avisos de agenda do sistema (followup.due...) são só do feed e dos webhooks.
     cond, params = ["user_id = %s", "actor <> 'system'"], [user["user_id"]]
+    if not pelo_app:
+        cond.append("actor <> 'admin'")
     if token_id is not None:
         cond.append("token_id = %s")
         params.append(token_id)
@@ -400,6 +442,7 @@ def list_history(
     rows = _with_names(user["user_id"], rows)
     latest = _latest_ids(user["user_id"], [(r["entity"], r["entity_id"]) for r in rows
                                            if r["action"] in UNDOABLE and r["undone_at"] is None])
+    trocadas = _rotinas_trocadas(user["user_id"], [r for r in rows if r["id"] in latest])
     out = []
     for r in rows:
         out.append({
@@ -412,7 +455,8 @@ def list_history(
             "entity_id": r["entity_id"],
             "summary": _label(r),
             "undone": r["undone_at"] is not None,
-            "can_undo": r["action"] in UNDOABLE and r["undone_at"] is None and r["id"] in latest,
+            "can_undo": r["action"] in UNDOABLE and r["undone_at"] is None and r["id"] in latest
+                        and r["id"] not in trocadas,
         })
     return out
 
@@ -484,7 +528,7 @@ def _restore_worklog(uid: int, snap: dict) -> None:
 
 
 def _restore_recurring(uid: int, snap: dict) -> None:
-    db.execute(
+    if not db.execute(
         """UPDATE recurring_tasks
               SET label = %s, position = %s, active = %s, created_at = %s, deactivated_at = %s,
                   freq = %s, weekdays = %s, month_day = %s, interval_days = %s, require_note = %s, remind_at = %s
@@ -492,7 +536,8 @@ def _restore_recurring(uid: int, snap: dict) -> None:
         (snap["label"], snap["position"], snap["active"], snap["created_at"],
          snap["deactivated_at"], snap.get("freq") or "daily", snap.get("weekdays"),
          snap.get("month_day"), snap.get("interval_days"), bool(snap.get("require_note")), snap.get("remind_at"), snap["id"], uid),
-    )
+    ):
+        raise HTTPException(status_code=409, detail="a rotina não existe mais")
     if "steps" in snap:  # registros de antes dos passos não têm o campo
         db.execute("UPDATE recurring_tasks SET steps = %s WHERE id = %s AND user_id = %s", (snap["steps"], snap["id"], uid))
 
@@ -536,7 +581,18 @@ def _put_item(uid: int, task_id: int, c: dict) -> None:
                (c["id"], task_id, uid, c["label"], c["done"], c["position"]))
 
 
+def _dono_do_tempo(uid: int, e: dict):
+    """De quem é o apontamento que volta: o `user_id` gravado na lápide (tarefa
+    transferida guarda horas de quem saiu). Lápide antiga, sem o campo: de quem
+    desfaz. Dono gravado que não existe mais: None (as horas saíram com a conta)."""
+    if e.get("user_id") is None:
+        return uid
+    return _usuario_existente(e["user_id"])
+
+
 def _put_time(uid: int, task_id: int, e: dict) -> None:
+    if (uid := _dono_do_tempo(uid, e)) is None:
+        return
     db.execute("""INSERT INTO time_entries (id, task_id, user_id, minutes, day, note, actor, token_name, created_at,
                                             external_ref, started_at, ended_at)
                   OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
@@ -617,23 +673,33 @@ def _undo(history_id: int, user: dict, later: list) -> dict:
                SELECT 1 FROM time_entries WHERE task_id = %(t)s UNION ALL
                SELECT 1 FROM photos WHERE task_id = %(t)s AND deleted_at IS NULL LIMIT 1""", {"t": eid, "c": copied}):
             raise HTTPException(status_code=409, detail="a tarefa já tem anotações, checklist, tempo ou fotos; para tirá-la, exclua pela tela")
-        db.execute("DELETE FROM worklog_tasks WHERE id = %s AND user_id = %s", (eid, uid))
+        if not db.execute("DELETE FROM worklog_tasks WHERE id = %s AND user_id = %s", (eid, uid)):
+            raise HTTPException(status_code=409, detail="a tarefa não existe mais")
     elif a in ("worklog.update", "worklog.finish", "worklog.assign_update"):
         _need_task(uid, eid)
         _restore_worklog(uid, before)
+        if before.get("status") == "done":  # concluída não fica com cronômetro rodando: para e aponta
+            from .timer import stop_running  # import tardio: timer importa worklog
+            stop_running(user, only_task=eid)
     elif a == "worklog.delete":
         if audit.worklog_snapshot(eid, uid) or db.query_one("SELECT 1 FROM worklog_tasks WHERE id = %s", (eid,)):
             raise HTTPException(status_code=409, detail="a tarefa já existe")
         # Devolvida: volta enquanto quem atribuiu não decidiu (atribuir de novo ou encerrar).
         if before.get("return_reason") and before.get("assigned_by"):
             from .assign import return_resolved
+            # Trava a linha da devolução (no histórico de quem atribuiu) e só então
+            # confere: "atribuir de novo" e este desfazer ao mesmo tempo passavam os dois.
+            db.query_all("""SELECT id FROM audit_log WHERE user_id = %s AND action = 'assign.returned'
+                               AND entity = 'assignment' AND entity_id = %s ORDER BY id FOR UPDATE""",
+                         (before["assigned_by"], eid))
             if return_resolved(eid, before["assigned_by"], history_id):
                 raise HTTPException(status_code=409, detail=(
                     "quem atribuiu já resolveu a devolução (atribuiu de novo ou encerrou); combine direto com essa pessoa"))
         kids = before.get("children") or {}
         por_dia: dict[str, int] = {}
         for e in kids.get("time", []):
-            por_dia[str(e["day"])] = por_dia.get(str(e["day"]), 0) + e["minutes"]
+            if _dono_do_tempo(uid, e) == uid:  # o teto de 24 h é de quem desfaz; as horas dos outros voltam como eram
+                por_dia[str(e["day"])] = por_dia.get(str(e["day"]), 0) + e["minutes"]
         for day, minutes in por_dia.items():  # tudo ou nada: confere antes de gravar
             check_day_total(uid, day, minutes, status=409)
         db.execute(
@@ -679,6 +745,10 @@ def _undo(history_id: int, user: dict, later: list) -> dict:
         else:
             db.execute("DELETE FROM recurring_tasks WHERE id = %s AND user_id = %s", (eid, uid))
     elif a == "recurring.update":
+        # Rotina encerrada com a edição como última ação = a agenda foi trocada depois
+        # (a troca fica registrada na rotina nova). Restaurar reativaria a antiga em dobro.
+        if _encerrada_em(uid, eid) is not None:
+            raise HTTPException(status_code=409, detail=TROCADA)
         _restore_recurring(uid, before)
     elif a == "recurring.deactivate":
         if (app_today() - row["created_at"].astimezone(app_tz()).date()).days > RETRO_DAYS:  # dias parados viraram faltas
@@ -689,6 +759,9 @@ def _undo(history_id: int, user: dict, later: list) -> dict:
         # antiga como era. Na mesma janela da remoção: depois, os dias viraram faltas.
         if (app_today() - row["created_at"].astimezone(app_tz()).date()).days > RETRO_DAYS:
             raise HTTPException(status_code=409, detail="essa troca já saiu da janela de 7 dias; ajuste a agenda de novo")
+        if db.query_one("SELECT count(*)::int AS n FROM recurring_tasks WHERE user_id = %s AND id = ANY(%s)",
+                        (uid, [eid, after["replaced"]]))["n"] != 2:
+            raise HTTPException(status_code=409, detail="a rotina não existe mais")
         db.execute("UPDATE recurring_completions SET task_id = %s WHERE task_id = %s AND user_id = %s",
                    (after["replaced"], eid, uid))
         db.execute("UPDATE photos SET recurring_id = %s WHERE recurring_id = %s AND user_id = %s",
@@ -700,6 +773,7 @@ def _undo(history_id: int, user: dict, later: list) -> dict:
         # depois disso os dias da pausa já viraram números fechados.
         if (app_today() - row["created_at"].astimezone(app_tz()).date()).days > RETRO_DAYS:
             raise HTTPException(status_code=409, detail="essa mudança já saiu da janela de 7 dias; pause ou retome de novo")
+        _encerrada_em(uid, eid)  # rotina que não existe mais: 409
         if before.get("pause"):
             db.execute("UPDATE recurring_pauses SET end_d = %s WHERE id = %s AND recurring_id = %s",
                        (before["pause"]["end_d"], before["pause"]["id"], eid))
@@ -721,16 +795,19 @@ def _undo(history_id: int, user: dict, later: list) -> dict:
         min_day, today = board_day_range(app_today())
         if not (min_day <= day <= today):  # mesma janela da marcação (7 dias)
             raise HTTPException(status_code=409, detail="essa marcação já saiu da janela de edição (7 dias)")
+        # A marcação do dia da troca de agenda passou para a rotina nova: aqui não há o que desfazer.
+        if _troca_bloqueia(a, before, _encerrada_em(uid, eid)):
+            raise HTTPException(status_code=409, detail=TROCADA)
         if before["done"]:
             db.execute(
                 """INSERT INTO recurring_completions (task_id, user_id, completed_date, note)
                    VALUES (%s, %s, %s, %s)
                    ON CONFLICT (task_id, completed_date) DO UPDATE SET note = EXCLUDED.note""",
                 (eid, uid, day, before.get("note")))
-        else:
-            db.execute(
+        elif not db.execute(
                 "DELETE FROM recurring_completions WHERE task_id = %s AND user_id = %s AND completed_date = %s",
-                (eid, uid, day))
+                (eid, uid, day)):  # nunca "ok" sem ter mudado nada
+            raise HTTPException(status_code=409, detail="a rotina já não está marcada nesse dia")
         refresh_after_from(uid, eid)
     elif a == "photo.create":
         if not photos.soft_delete(uid, eid):
@@ -796,7 +873,8 @@ def _undo(history_id: int, user: dict, later: list) -> dict:
              before.get("team_id")))
     elif a == "objective.create":
         # As tarefas que entraram nele depois voltam para "Sem objetivo" (o FK cuida).
-        db.execute("DELETE FROM project_objectives WHERE id = %s AND user_id = %s", (eid, uid))
+        if not db.execute("DELETE FROM project_objectives WHERE id = %s AND user_id = %s", (eid, uid)):
+            raise HTTPException(status_code=409, detail="o objetivo não existe mais")
     elif a == "objective.update":
         if not db.execute("""UPDATE project_objectives SET title = %s, description = %s, due_date = %s, updated_at = now()
                               WHERE id = %s AND user_id = %s""",
@@ -811,6 +889,8 @@ def _undo(history_id: int, user: dict, later: list) -> dict:
         # A ordem anterior volta; objetivo criado depois fica no fim, na ordem atual.
         atual = [r["id"] for r in db.query_all(
             "SELECT id FROM project_objectives WHERE user_id = %s AND project_id = %s ORDER BY position, id", (uid, eid))]
+        if not atual:
+            raise HTTPException(status_code=409, detail="o projeto não tem mais objetivos para reordenar")
         antes = [i for i in before["ids"] if i in atual]
         for i, oid in enumerate(antes + [i for i in atual if i not in antes]):
             db.execute("UPDATE project_objectives SET position = %s WHERE id = %s AND user_id = %s", (i, oid, uid))
@@ -819,6 +899,8 @@ def _undo(history_id: int, user: dict, later: list) -> dict:
             raise HTTPException(status_code=409, detail="o projeto do objetivo não existe mais")
         _put_objective(uid, before)
     elif a == "project.create":
+        if not db.query_one("SELECT 1 FROM projects WHERE id = %s AND user_id = %s", (eid, uid)):
+            raise HTTPException(status_code=409, detail="o projeto não existe mais")
         # Com tarefas no projeto, arquiva em vez de apagar (não tira de ninguém).
         if db.query_one("SELECT 1 FROM worklog_tasks WHERE project_id = %s LIMIT 1", (eid,)) or \
                 db.query_one("SELECT 1 FROM worklog_task_projects WHERE project_id = %s LIMIT 1", (eid,)):
@@ -828,10 +910,11 @@ def _undo(history_id: int, user: dict, later: list) -> dict:
     elif a == "project.update":
         if db.query_one("SELECT 1 FROM projects WHERE user_id = %s AND name = %s AND id <> %s", (uid, before["name"], eid)):
             raise HTTPException(status_code=409, detail="já existe um projeto com esse nome")
-        db.execute("""UPDATE projects SET name = %s, color = %s, icon = %s, description = %s, archived = %s
-                       WHERE id = %s AND user_id = %s""",
-                   (before["name"], before["color"], _icone(before.get("icon")), before.get("description"),
-                    before["archived"], eid, uid))
+        if not db.execute("""UPDATE projects SET name = %s, color = %s, icon = %s, description = %s, archived = %s
+                              WHERE id = %s AND user_id = %s""",
+                          (before["name"], before["color"], _icone(before.get("icon")), before.get("description"),
+                           before["archived"], eid, uid)):
+            raise HTTPException(status_code=409, detail="o projeto não existe mais")
     elif a == "project.delete":
         if db.query_one("SELECT 1 FROM projects WHERE user_id = %s AND name = %s", (uid, before["name"])):
             raise HTTPException(status_code=409, detail="já existe um projeto com esse nome")
@@ -859,6 +942,14 @@ def _undo(history_id: int, user: dict, later: list) -> dict:
             (eid, uid, before.get("extra_task_ids") or [], eid))
         for o in before.get("objectives") or []:  # os objetivos voltam, com as tarefas deles
             _put_objective(uid, o)
+        # Vencimentos, modelos e o projeto padrão: só os que continuam sem projeto
+        # (quem ganhou outro projeto depois fica como está). Lápide antiga não tem os campos.
+        db.execute("UPDATE renewals SET project_id = %s WHERE user_id = %s AND project_id IS NULL AND id = ANY(%s)",
+                   (eid, uid, before.get("renewal_ids") or []))
+        db.execute("UPDATE task_templates SET project_id = %s WHERE user_id = %s AND project_id IS NULL AND id = ANY(%s)",
+                   (eid, uid, before.get("template_ids") or []))
+        if before.get("was_default"):
+            db.execute("UPDATE users SET default_project_id = %s WHERE id = %s AND default_project_id IS NULL", (eid, uid))
 
     if not db.execute("UPDATE audit_log SET undone_at = now() WHERE id = %s AND undone_at IS NULL", (history_id,)):
         raise HTTPException(status_code=409, detail="esta ação já foi desfeita")
