@@ -6,7 +6,7 @@ do relatório deles. O foco é ajudar cada pessoa a organizar a própria rotina.
 Multiusuário, auto-hospedado, sem frameworks JS nem passo de build.
 Prioridades: **simples > seguro > funcional > elegante**.
 
-**Versão 2.1.0** (SemVer; o número fica em `backend/app/version.py`). O que mudou em cada versão:
+**Versão 2.2.0** (SemVer; o número fica em `backend/app/version.py`). O que mudou em cada versão:
 [`CHANGELOG.md`](CHANGELOG.md). Para quem hospeda e administra:
 [`docs/ADMIN.md`](docs/ADMIN.md) (instalação, variáveis, e-mail e push, backup e restauração, atualização, opções do Admin).
 
@@ -196,7 +196,7 @@ mudança fica no histórico do admin. Toda conta nova faz o tour guiado no prime
   desfazer, cota por pessoa e exportação em .zip.
 - **Sem sinal** — o app abre com as telas da última visita (avisando de que
   hora são) e guarda no aparelho o que for feito: registrar, concluir, anotar,
-  marcar rotina, fotos e o cronômetro, com a hora em que aconteceu. Com sinal, o
+  apontar tempo, marcar rotina, fotos e o cronômetro, com a hora em que aconteceu. Com sinal, o
   app já deixa tudo pronto sozinho (ao abrir e, no máximo, a cada 30 min, se
   houver espaço): guarda o detalhe das tarefas em aberto (checklist e
   anotações, até 60), e a barra de sem conexão diz de que hora; uma tarefa
