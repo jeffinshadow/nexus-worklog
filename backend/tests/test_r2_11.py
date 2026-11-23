@@ -549,3 +549,86 @@ def test_pdf_de_projeto_corta_em_500_tarefas_e_o_total_fecha_com_a_capa(usuario,
     escrito.clear()
     report_pdf._time_by_task(pdf, {**data, "time_by_task": linhas[:500]})
     assert not [t for t in escrito if t.startswith("+ ")] and escrito.count("em aberto") == 500
+
+
+# ------------------------------------------- agendador: um teste por serviço --
+class _Fim(Exception):
+    """Encerra o laço infinito de notify._passes no fim da 1ª passada."""
+
+
+def _passada(monkeypatch, quebra):
+    """Uma passada do agendador às 9:00 (hora cheia: a faxina roda), com o serviço `quebra` estourando.
+    Devolve os serviços chamados, na ordem. Só _Fim (o sleep do fim da passada) pode sair do laço."""
+    from app.routers import photos
+    chamados = []
+
+    def servico(nome):
+        def roda(*a, **k):
+            chamados.append(nome)
+            if nome == quebra:
+                raise RuntimeError(f"{nome} fora do ar")
+            return []
+        return roda
+
+    class _NoveHoras(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 11, 23, 9, 0, 30, tzinfo=tz)
+
+    async def dormir(segundos):
+        raise _Fim
+
+    monkeypatch.setattr(config, "SMTP_HOST", "smtp.example.com")
+    monkeypatch.setattr(notify, "run_once", servico("email"))
+    monkeypatch.setattr(photos, "cleanup", servico("fotos"))
+    monkeypatch.setattr(notify, "faxina", servico("faxina"))
+    monkeypatch.setattr(notify, "datetime", _NoveHoras)
+    monkeypatch.setattr(notify, "last_pass", None)
+    monkeypatch.setattr(asyncio, "sleep", dormir)
+    agenda = types.SimpleNamespace(run_once=servico("agenda"))
+    push = types.SimpleNamespace(run_once=servico("push"))
+    with pytest.raises(_Fim):
+        asyncio.run(notify._passes(notify.ZoneInfo(config.APP_TZ), agenda, push))
+    return chamados
+
+
+def test_agendador_email_que_estoura_nao_derruba_a_passada(monkeypatch):
+    """Falha se o try/except do e-mail em notify._pass for removido."""
+    assert _passada(monkeypatch, "email") == ["push", "agenda", "email", "fotos", "faxina"]
+    assert notify.last_pass is not None  # a passada terminou: a Saúde não acusa agendador preso
+
+
+def test_agendador_agenda_que_estoura_nao_derruba_a_passada(monkeypatch):
+    """Falha se o try/except dos avisos de agenda em notify._pass for removido."""
+    assert _passada(monkeypatch, "agenda") == ["push", "agenda", "email", "fotos", "faxina"]
+    assert notify.last_pass is not None
+
+
+def test_agendador_faxina_que_estoura_nao_derruba_a_passada(monkeypatch):
+    """Falha se o try/except da faxina do banco em notify._pass for removido (é o último serviço:
+    só o fim da passada e o laço continuar de pé mostram a diferença)."""
+    assert _passada(monkeypatch, "faxina") == ["push", "agenda", "email", "fotos", "faxina"]
+    assert notify.last_pass is not None
+
+
+# ------------------------------------- webhook: IP interno recusado NO ENVIO --
+@pytest.mark.parametrize("ips_no_envio", [{"10.0.0.5"}, {"93.184.216.34", "127.0.0.1"}], ids=["interno", "misto"])
+def test_webhook_cadastrado_com_ip_publico_nao_envia_se_o_dns_passar_a_dar_ip_interno(usuario, monkeypatch, ips_no_envio):
+    """O cadastro valida o endereço; o ENVIO valida de novo (o DNS do destino pode mudar depois). A entrega roda
+    de verdade (run_once -> _deliver -> post); só a rede é trocada. Falha se `post` deixar de checar o IP."""
+    dns, conexoes = {"ips": {"93.184.216.34"}}, []
+    monkeypatch.setattr(webhooks, "resolve", lambda host, port: set(dns["ips"]))
+    monkeypatch.setattr(webhooks, "LAG_SECONDS", 0)
+
+    def create_connection(addr, *a, **k):
+        conexoes.append(addr)
+        raise OSError("o teste não deixa sair para a rede")
+    monkeypatch.setattr(socket, "create_connection", create_connection)
+
+    hid = _ok(usuario.post("/webhooks", {"url": "https://hooks.example.com/nexus"}))["id"]  # cadastro: IP público
+    _tarefa(usuario)  # um evento para entregar
+    dns["ips"] = ips_no_envio
+    assert webhooks.run_once() == [(hid, 0, "endereço de rede interna ou reservado não é aceito")]
+    assert conexoes == []  # nem tentou conectar
+    w = db.query_one("SELECT failures, last_error, last_delivered_at FROM webhooks WHERE id = %s", (hid,))
+    assert (w["failures"], w["last_delivered_at"]) == (1, None) and "rede interna" in w["last_error"]
