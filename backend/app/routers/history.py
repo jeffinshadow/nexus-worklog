@@ -237,7 +237,7 @@ def _label(row) -> str:
     if row["action"] == "user.transfer_tasks" and row["after"]:
         n = row["after"].get("count", 0)
         s_ = "s" if n != 1 else ""
-        return f"transferiu {n} tarefa{s_} aberta{s_} de {row['after'].get('from', '')} para {row['after'].get('to', '')}"
+        return f"transferiu {n} tarefa{s_} de {row['after'].get('from', '')} para {row['after'].get('to', '')}"
     if row["action"] in ("email.change_request", "email.change") and row["after"]:
         return f"{ACTION_LABELS[row['action']]} para {row['after'].get('email', '')}"
     if row["action"] == "user.profile":
