@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 
 from .. import audit, db
 from ..config import config
-from ..visibility import active_sql, visible_sql
+from ..visibility import active_sql, log_master_view, visible_sql
 from ..deps import web_active, web_active_csrf
 from .board import check_board_day
 from .me import _sniff
@@ -141,11 +141,13 @@ def get_photo(photo_id: int, thumb: bool = False, user=Depends(web_active)):
     if not row or (row["user_id"] != user["user_id"]
                    and not ("viewer" in (user.get("roles") or []) and row["viewable"])):
         raise HTTPException(status_code=404, detail="foto não encontrada")
+    log_master_view(user, row["user_id"], "fotos")  # o master abrindo foto de outra pessoa: log de admin
     data = bytes(row["data"])
     # O conteúdo de um id nunca muda, mas é evidência de cliente: o navegador guarda
-    # só por um dia (só para esta pessoa), e não fica no aparelho depois de sair.
+    # só por um dia (só para esta pessoa). Vary: Cookie: depois de Sair (o cookie
+    # muda), o navegador não reaproveita a cópia guardada e pergunta de novo.
     return Response(content=data, media_type=_sniff(data) or row["mime"],
-                    headers={"Cache-Control": "private, max-age=86400"})
+                    headers={"Cache-Control": "private, max-age=86400", "Vary": "Cookie"})
 
 
 @router.delete("/photos/{photo_id}")
@@ -188,19 +190,24 @@ def _slug(text: str) -> str:
 
 @router.get("/export/fotos.zip")
 def export_zip(user=Depends(web_active)):
-    """Todas as fotos da conta num .zip (pastas por tarefa e por rotina). Monta
-    num arquivo temporário, uma foto por vez (a memória do backend é pequena)."""
+    """Todas as fotos da conta num .zip (pastas por tarefa e por rotina, e a
+    foto de perfil em perfil/). Monta num arquivo temporário, uma foto por vez
+    (a memória do backend é pequena). Nunca fica em cache (no-store)."""
     uid = user["user_id"]
     ids = db.query_all("""SELECT p.id, p.mime, p.day, p.task_id, w.title, r.label FROM photos p
                             LEFT JOIN worklog_tasks w ON w.id = p.task_id
                             LEFT JOIN recurring_tasks r ON r.id = p.recurring_id
                            WHERE p.user_id = %s AND p.deleted_at IS NULL ORDER BY p.id""", (uid,))
-    if not ids:
+    avatar = db.query_one("SELECT image, mime FROM user_avatars WHERE user_id = %s", (uid,))
+    if not ids and not avatar:
         raise HTTPException(status_code=404, detail="nenhuma foto na conta")
+    exts = {"image/webp": "webp", "image/jpeg": "jpg", "image/png": "png"}
     tmp = tempfile.TemporaryFile()
     with zipfile.ZipFile(tmp, "w", zipfile.ZIP_STORED) as z:  # fotos já são comprimidas
+        if avatar:  # a foto de perfil também é dado da pessoa (LGPD: portabilidade)
+            z.writestr(f"perfil/foto-de-perfil.{exts.get(avatar['mime'], 'img')}", bytes(avatar["image"]))
         for p in ids:
-            ext = {"image/webp": "webp", "image/jpeg": "jpg", "image/png": "png"}[p["mime"]]
+            ext = exts[p["mime"]]
             folder = (f"tarefa-{p['task_id']}-{_slug(p['title'] or '')}" if p["task_id"]
                       else f"rotina-{_slug(p['label'] or '')}")
             name = f"{p['day']}-{p['id']}.{ext}" if p["day"] else f"{p['id']}.{ext}"
@@ -215,4 +222,5 @@ def export_zip(user=Depends(web_active)):
         finally:
             tmp.close()
     return StreamingResponse(chunks(), media_type="application/zip",
-                             headers={"Content-Disposition": 'attachment; filename="nexus-fotos.zip"'})
+                             headers={"Content-Disposition": 'attachment; filename="nexus-fotos.zip"',
+                                      "Cache-Control": "no-store"})

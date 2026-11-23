@@ -12,12 +12,13 @@ quem tem registro próprio) e
     pessoa e volta a escolha dela);
   - E o escopo de equipe (sql/043, teams.py): com equipes na instância, só quem
     compartilha pelo menos uma equipe com quem vê; o admin master com o papel
-    "Vê a equipe" ligado vê todos. Sem nenhuma equipe ativa, tudo como antes.
+    "Vê a equipe" ligado vê todos. Sem nenhuma equipe cadastrada, tudo como antes.
 As escolhas individuais nunca são apagadas: voltar para "Cada pessoa escolhe"
 (ou sair da última equipe) devolve o que cada um tinha marcado. As flags vão em
 subconsultas: uma leitura só, sempre consistente com o banco.
 """
 from . import db, teams
+from .config import config
 
 
 def consent_sql(alias: str = "u") -> str:
@@ -55,18 +56,20 @@ def can_see(viewer_id: int, user_id: int) -> bool:
 def log_master_view(viewer: dict, user_id: int | None, what: str, people: int = 0) -> None:
     """As visualizações do admin master de registros de outras pessoas vão para o
     log de admin (o histórico dele, ator "admin"): uma linha por pessoa e por
-    tipo (quadro, mês, PDF, projetos) a cada dia, sem inundar. user_id=None = da
+    tipo (quadro, mês, PDF, projetos, fotos) a cada dia (o dia do app, em
+    APP_TZ, não o do banco em UTC), sem inundar. user_id=None = da
     equipe toda (painel, horas em CSV), com quantas pessoas entraram."""
     if user_id == viewer["user_id"] or not teams.is_master(viewer["user_id"]):
         return
     if user_id is None and not people:
         return
     from . import audit  # import tardio (audit importa só o db, mas fica igual aos routers)
+    from .services import app_today  # import tardio: services é pesado e importa meio app
     if db.query_one(
             """SELECT 1 FROM audit_log WHERE user_id = %s AND action = 'master.view'
                   AND entity_id IS NOT DISTINCT FROM %s AND after->>'what' = %s
-                  AND created_at > date_trunc('day', now())""",
-            (viewer["user_id"], user_id, what)):
+                  AND created_at >= (%s::date::timestamp AT TIME ZONE %s)""",
+            (viewer["user_id"], user_id, what, app_today(), config.APP_TZ)):
         return
     if user_id is None:
         audit.record({**viewer, "actor": "admin"}, "master.view", "team", None, after={"what": what, "people": people})
