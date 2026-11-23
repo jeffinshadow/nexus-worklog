@@ -112,6 +112,9 @@ BAD_DATA = "o texto tem um caractere inválido ou um valor fora do limite"
 @app.exception_handler(psycopg.DataError)
 @app.exception_handler(UnicodeEncodeError)
 async def _bad_data(request: Request, exc: Exception):
+    # Uma linha no log (sem o valor): se for defeito nosso e não do pedido, dá para achar.
+    logging.getLogger("uvicorn.error").warning("dado recusado em %s %s: %s", request.method, request.url.path,
+                                               exc.__class__.__name__)
     return JSONResponse({"detail": BAD_DATA}, status_code=400)
 
 

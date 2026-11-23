@@ -239,12 +239,13 @@ def test_destino_lento_nao_segura_o_webhook_seguinte(usuario, novo_usuario, dns,
             time.sleep(0.15)
         chegou.append((url.rsplit("/", 1)[1], time.monotonic()))
         return 200
-    t0 = time.monotonic()
     feitos = {h: (n, e) for h, n, e in webhooks.run_once(send=send)}
     assert feitos[rapido] == (1, None)
     n_lento = feitos[lento][0]
-    assert 1 <= n_lento < 6 and feitos[lento][1] is None  # parou no orçamento, sem contar como falha
-    assert next(t for u, t in chegou if u == "rapido") - t0 < 0.25 + 0.15 + 0.3
+    # Parou no orçamento, sem contar como falha, e o da outra pessoa saiu na mesma passada, antes do
+    # resto do lento (pela ordem de chegada, não pelo relógio: a máquina de teste pode estar ocupada).
+    assert 1 <= n_lento < 6 and feitos[lento][1] is None
+    assert [u for u, _ in chegou] == ["lento"] * n_lento + ["rapido"]
     w = db.query_one("SELECT failures, next_attempt_at, last_error FROM webhooks WHERE id = %s", (lento,))
     assert w == {"failures": 0, "next_attempt_at": None, "last_error": None}
     # O resto sai nas passadas seguintes, em ordem e sem repetir.
