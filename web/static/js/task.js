@@ -9,7 +9,7 @@ import { overlay } from "./fila.js";
 import { errorToast, modal, toast, undoLatest, busy, sheet, syncRail, growFrom, refocusBy, actionMenu, pager, pageSlice } from "./ui.js";
 
 const ENTRY_PAGE = 10; // anotações e apontamentos: os 10 mais recentes, depois páginas
-import { finishTask, reopenTask, deleteTask, duplicateTask, followUpDay, isOverdue, ticketUrl, taskChips, blockTask, canBlock } from "./board.js";
+import { finishTask, reopenTask, deleteTask, duplicateTask, followUpDay, isOverdue, ticketUrl, taskChips, blockTask, canBlock, askResolution } from "./board.js";
 import { extraProjectsField, fillObjectiveSelect, fillProjectSelect } from "./projects.js";
 import { session } from "./session.js";
 import { timerButton, timerState, startTimer, stopTimer } from "./timer.js";
@@ -30,6 +30,13 @@ export function parseDuration(text) {
   if ((m = s.match(/^(\d+(?:\.\d+)?)\s*h\s*(\d{1,2})?\s*(?:m|min)?$/))) return Math.round(+m[1] * 60) + (+m[2] || 0);
   if ((m = s.match(/^(\d+)\s*(?:m|min)?$/))) return +m[1];
   return null;
+}
+
+// Mensagem do campo de duração para o que parseDuration devolveu ("" = pode apontar).
+export function durationError(minutes) {
+  if (!minutes) return "Não entendi a duração. Use 45 (minutos), 1h30, 1,5h ou 2:15.";
+  if (minutes > 1440) return "O máximo é 24h por apontamento.";
+  return "";
 }
 
 function actorBadge(row) {
@@ -82,8 +89,17 @@ async function cachedTask(id) {
   return null;
 }
 
+// Com rede lenta, dois cliques seguidos em cartões abriam dois detalhes (um por cima
+// do outro): cada abertura ganha um número e só a última chega à tela.
+let openSeq = 0;
+// Anotação digitada e não salva, por tarefa: fechar o detalhe (Esc, Voltar) ou um
+// redesenho não joga o texto fora; salvar limpa.
+const noteDrafts = new Map();
+
 // opts.editTitle: abre já editando o título, selecionado (a cópia do Duplicar).
+// opts.editTime: abre com esse apontamento em edição (o "Corrigir" do aviso do cronômetro).
 export async function openTask(taskId, onChange, opts = {}) {
+  const mySeq = ++openSeq;
   // Computador: painel lateral (lista + detalhe, Material 3); o quadro segue
   // visível e clicável ao lado. Celular: tela inteira.
   const side = matchMedia("(min-width: 861px)").matches;
@@ -187,6 +203,10 @@ export async function openTask(taskId, onChange, opts = {}) {
       titleBlock = [h("h2", { text: t.title }),
         t.description ? h("p", { class: "task-desc", text: t.description }) : null,
         t.resolution && t.status === "done" ? h("p", { class: "resolution" }, h("strong", { text: "Como resolveu: " }), t.resolution) : null,
+        // Concluída sem o "como resolveu": a pergunta fica aqui (o aviso de 12 s já passou).
+        t.status === "done" && !t.resolution && !t.offline ? h("p", { class: "resolution ask-resolution" }, "Como resolveu? (entra na busca) ",
+          h("button", { type: "button", class: "btn btn-text btn-sm", text: "Escrever", "aria-label": "Escrever como resolveu",
+            onClick: () => askResolution(t, after, { later: true }) })) : null,
         h("div", { class: "card-meta" }, ...taskChips(t, today))];
     }
     // Lápis ao lado do título: entra na edição; "Pronto" volta (e busca do
@@ -446,7 +466,7 @@ export async function openTask(taskId, onChange, opts = {}) {
         catch (e) { cb.checked = !cb.checked; errorToast(e); }
       });
       sec.append(h("label", { class: "check-row" + (c.done ? " done" : "") }, cb, h("span", { class: "label", text: c.label }),
-        t.offline ? null : h("button", { type: "button", class: "icon", title: "Corrigir o texto do item", "aria-label": "Corrigir " + c.label,
+        t.offline ? null : h("button", { type: "button", class: "icon", title: "Editar item", "aria-label": "Editar item " + c.label,
           onClick: (ev) => { ev.preventDefault(); editRow("check:" + c.id, "Texto do item"); } }, icon("edit")),
         h("button", { type: "button", class: "icon", title: "Excluir item", "aria-label": "Excluir " + c.label, onClick: async (ev) => {
           ev.preventDefault();
@@ -487,7 +507,7 @@ export async function openTask(taskId, onChange, opts = {}) {
     form.addEventListener("submit", busy(async (ev) => {
       ev.preventDefault();
       const minutes = parseDuration(dur.value);
-      if (!minutes || minutes > 1440) { dur.setCustomValidity("Duração inválida. Ex.: 45, 1h30, 2:15."); dur.reportValidity(); return; }
+      if (durationError(minutes)) { dur.setCustomValidity(durationError(minutes)); dur.reportValidity(); return; }
       try {
         await api.post(`/worklog/${t.id}/time`, { minutes, day: day.value || today, note: note.value.trim() || null });
         toast(`Apontado ${duration(minutes)}.`);
@@ -505,7 +525,7 @@ export async function openTask(taskId, onChange, opts = {}) {
         h("span", { class: "mono when", text: shortDate(e.day) }),
         h("span", { class: "mono amount", text: duration(e.minutes) }),
         h("span", { class: "what" }, e.note || "", actorBadge(e)),
-        h("button", { type: "button", class: "icon", title: "Corrigir apontamento", "aria-label": "Corrigir apontamento de " + what,
+        h("button", { type: "button", class: "icon", title: "Editar apontamento", "aria-label": "Editar apontamento de " + what,
           onClick: () => editRow("time:" + e.id, "Duração do apontamento") }, icon("edit")),
         h("button", { type: "button", class: "icon", title: "Excluir apontamento", "aria-label": "Excluir apontamento de " + what, onClick: async () => {
           try {
@@ -532,7 +552,7 @@ export async function openTask(taskId, onChange, opts = {}) {
     if (backLabel) refocusBy(body, backLabel);
   }
   function timeEditForm(e, today) {
-    const back = "Corrigir apontamento de " + `${duration(e.minutes)} em ${shortDate(e.day)}`;
+    const back = "Editar apontamento de " + `${duration(e.minutes)} em ${shortDate(e.day)}`;
     const dur = h("input", { type: "text", class: "dur", value: duration(e.minutes).replace(" min", ""), "aria-label": "Duração do apontamento" });
     dur.addEventListener("input", () => dur.setCustomValidity(""));
     const day = h("input", { type: "date", value: e.day, max: today, min: addDays(today, -366), "aria-label": "Dia do apontamento" });
@@ -545,12 +565,12 @@ export async function openTask(taskId, onChange, opts = {}) {
     form.addEventListener("submit", busy(async (ev) => {
       ev.preventDefault();
       const minutes = parseDuration(dur.value);
-      if (!minutes || minutes > 1440) { dur.setCustomValidity("Duração inválida. Ex.: 45, 1h30, 2:15."); dur.reportValidity(); return; }
+      if (durationError(minutes)) { dur.setCustomValidity(durationError(minutes)); dur.reportValidity(); return; }
       try {
         await api.patch(`/time/${e.id}`, { minutes, day: day.value || e.day, note: note.value.trim() || null });
         rowEdit = null;
         await touch();
-        refocusBy(body, "Corrigir apontamento de " + `${duration(minutes)} em ${shortDate(day.value || e.day)}`);
+        refocusBy(body, "Editar apontamento de " + `${duration(minutes)} em ${shortDate(day.value || e.day)}`);
         toast(`Apontamento corrigido: ${duration(minutes)}.`, { action: "Desfazer", onAction: () => undoLatest("time", e.id, after) });
       } catch (err) { errorToast(err, "Não foi possível corrigir."); }
     }));
@@ -561,22 +581,22 @@ export async function openTask(taskId, onChange, opts = {}) {
     const input = h("input", { type: "text", maxlength: "200", value: c.label, "aria-label": "Texto do item" });
     const save = busy(async () => {
       const v = input.value.trim();
-      if (!v || v === c.label) { closeRow("Corrigir " + c.label); return; }
+      if (!v || v === c.label) { closeRow("Editar item " + c.label); return; }
       try {
         await api.patch(`/checklist/${c.id}`, { label: v });
         rowEdit = null;
         await touch();
-        refocusBy(body, "Corrigir " + v);
+        refocusBy(body, "Editar item " + v);
         toast("Item corrigido.", { action: "Desfazer", onAction: () => undoLatest("checklist", c.id, after) });
       } catch (e) { errorToast(e, "Não foi possível corrigir."); }
     });
     input.addEventListener("keydown", (ev) => {
-      if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); closeRow("Corrigir " + c.label); }
+      if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); closeRow("Editar item " + c.label); }
       else if (ev.key === "Enter") { ev.preventDefault(); save(); }
     });
     return h("div", { class: "check-row row-edit" }, input,
       h("div", { class: "row-edit-actions" },
-        h("button", { type: "button", class: "btn btn-text btn-sm", text: "Cancelar", onClick: () => closeRow("Corrigir " + c.label) }),
+        h("button", { type: "button", class: "btn btn-text btn-sm", text: "Cancelar", onClick: () => closeRow("Editar item " + c.label) }),
         h("button", { type: "button", class: "btn btn-primary btn-sm", text: "Salvar", onClick: save })));
   }
   function noteEditForm(n) {
@@ -627,6 +647,8 @@ export async function openTask(taskId, onChange, opts = {}) {
       h("div", { class: "task-sec-head" }, icon("note"), h("h3", { text: "Anotações" }),
         t.notes.length ? h("span", { class: "count", text: String(t.notes.length) }) : null));
     const text = h("textarea", { rows: "2", maxlength: "2000", placeholder: "Progresso, decisão, pendência… (Ctrl+Enter salva)", "aria-label": "Nova anotação" });
+    text.value = noteDrafts.get(t.id) || "";
+    text.addEventListener("input", () => { if (text.value.trim()) noteDrafts.set(t.id, text.value); else noteDrafts.delete(t.id); });
     let sending = false;  // dois toques no Anotar (ou Ctrl+Enter repetido) gravavam a anotação duas vezes
     const send = async () => {
       const v = text.value.trim();
@@ -635,6 +657,7 @@ export async function openTask(taskId, onChange, opts = {}) {
       try {
         await api.post(`/worklog/${t.id}/notes`, { body: v });
         entryPages.notes = 1;
+        noteDrafts.delete(t.id);
         text.value = "";  // já gravada: se a releitura falhar (sem sinal), o texto não fica no campo para ir de novo
         await touch();
       } catch (e) { errorToast(e); }
@@ -667,9 +690,17 @@ export async function openTask(taskId, onChange, opts = {}) {
   }
 
   if (opts.editTitle) { editing = true; markEditing(taskId); }
+  if (opts.editTime) { rowEdit = "time:" + opts.editTime; refocus = "Duração do apontamento"; }
   if (!(await render())) { removeEventListener("online", onOnline); dlg.remove(); return; }
+  // Outra abertura começou enquanto esta buscava a tarefa: só a última aparece.
+  if (mySeq !== openSeq) { removeEventListener("online", onOnline); dlg.remove(); if (editing && editingId === taskId) markEditing(null); return; }
   const pickTitle = () => { const el = body.querySelector(".inline-title"); if (el) { el.focus(); el.select(); } };
-  if (!side) { dlg.showModal(); growFrom(dlg); if (opts.editTitle) pickTitle(); return; }
+  if (!side) {
+    dlg.showModal(); growFrom(dlg);
+    if (opts.editTitle) pickTitle();
+    else if (opts.editTime) { const el = body.querySelector(".time-form.row-edit .dur"); if (el) el.focus(); }
+    return;
+  }
   dlg.show();
   sideOwner = dlg;
   sideTaskId = taskId;
@@ -679,6 +710,7 @@ export async function openTask(taskId, onChange, opts = {}) {
   document.addEventListener("keydown", onKey);
   const first = dlg.querySelector(".task-appbar button");
   if (opts.editTitle) pickTitle();
+  else if (opts.editTime && body.querySelector(".time-form.row-edit .dur")) body.querySelector(".time-form.row-edit .dur").focus();
   else if (first) first.focus();
 }
 

@@ -4,7 +4,7 @@
 import { api } from "./api.js";
 import { h, icon, clear, dateTime } from "./dom.js";
 import { duration, openTask } from "./task.js";
-import { errorToast, toast, keepFocus } from "./ui.js";
+import { errorToast, toast, keepFocus, undoLatest } from "./ui.js";
 
 let state = null;    // { task_id, title, started_at } ou null
 let tick = null;
@@ -140,6 +140,7 @@ export async function stopTimer(after = onChange) {
   const back = keepFocus();
   const redraw = () => Promise.resolve(after && after()).then(back);
   const stoppedId = state && state.task_id;
+  const stoppedTitle = state && state.title;
   try {
     const r = await api.post("/timer/stop", state ? { task_id: state.task_id } : {});
     setTimer(null);
@@ -147,8 +148,17 @@ export async function stopTimer(after = onChange) {
     const ret = backAction(stoppedId, after);
     const opts = ret ? { actions: [ret] } : {};
     if (r.queued) { toast("Cronômetro parado. O tempo é apontado quando a conexão voltar.", opts); redraw(); return; }
-    if (r.stopped && r.stopped.needs_review) forgotten(r.stopped);
-    else toast(r.stopped ? `Apontado: ${duration(r.stopped.minutes)}.` : "Cronômetro parado. O dia dele já tinha 24h apontadas, nada foi somado.", opts);
+    const st = r.stopped;
+    if (st && st.needs_review) forgotten(st);
+    else if (!st) toast("Cronômetro parado. O dia dele já tinha 24h apontadas, nada foi somado.", opts);
+    else {
+      // Diz onde o tempo entrou e deixa desfazer ou corrigir na hora (no máximo duas ações:
+      // com uma tarefa interrompida para retomar, o "Voltar para" fica no lugar do Corrigir).
+      const undo = ["Desfazer", () => undoLatest("time", st.id, after)];
+      const fix = ["Corrigir", () => openTask(st.task_id, after, { editTime: st.id })];
+      const name = stoppedTitle && stoppedTitle.length > 48 ? stoppedTitle.slice(0, 47) + "…" : stoppedTitle;  // o aviso mostra duas linhas
+      toast(`Apontado ${duration(st.minutes)}${name ? ` em «${name}»` : ""}.`, { actions: ret ? [ret, undo] : [undo, fix] });
+    }
     redraw();
   } catch (e) {
     if (e.status === 409) { reload(); redraw(); }  // outro aparelho parou ou trocou
