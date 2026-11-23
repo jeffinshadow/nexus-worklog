@@ -15,6 +15,7 @@ router = APIRouter(prefix="/api", tags=["search"])
 
 MAX_HITS = 40   # tarefas por resposta, sem limit (o app pede páginas de 20)
 SIDE_HITS = 20  # rotinas e projetos por resposta, sem side_limit (o app pede 10)
+MAX_WORDS = 8   # palavras por busca (cada uma é um conjunto a mais na interseção)
 
 
 def _snippet(text: str, q: str, width: int = 70) -> str:
@@ -30,6 +31,51 @@ def _snippet(text: str, q: str, width: int = 70) -> str:
 _VAZIAS = {"para", "pelo", "pela", "com", "sem", "nao", "esta", "esse", "essa", "isso", "como", "mais",
            "muito", "quando", "onde", "porque", "tarefa", "fazer", "verificar", "ver", "ajustar",
            "dos", "das", "nos", "nas", "uma", "uns", "por", "que", "novo", "nova", "outra", "outro"}
+
+
+def _words(fq: str) -> list[str]:
+    """Palavras da consulta (já sem acento), sem repetir. Palavra de uma letra
+    só não filtra nada ("a", "o", "e"); se só houver dessas, vale a frase inteira."""
+    words = list(dict.fromkeys(w.lstrip("#") for w in fq.split()))
+    return [w for w in words if len(w) >= 2][:MAX_WORDS] or [fq]
+
+
+def _all(col: str, n: int) -> str:
+    """Condição "o campo tem TODAS as palavras" (rotinas e projetos: um campo só)."""
+    return " AND ".join(f"nx_fold({col}) LIKE %(w{i})s" for i in range(n))
+
+
+def _any(col: str, n: int) -> str:
+    return "(" + " OR ".join(f"nx_fold({col}) LIKE %(w{i})s" for i in range(n)) + ")"
+
+
+# Cada linha é um texto (já sem acento) de uma tarefa da pessoa: os campos da
+# própria tarefa juntos (separados por chr(1), que nenhuma busca contém) e uma
+# linha por anotação, item de checklist e apontamento. MATERIALIZED: o nx_fold
+# roda uma vez por texto, não uma vez por palavra buscada.
+_SRC = """src AS MATERIALIZED (
+               SELECT w.id, nx_fold(w.title) || chr(1) || nx_fold(w.description) || chr(1)
+                      || nx_fold(w.ticket) || chr(1) || nx_fold(w.resolution) AS f
+                 FROM worklog_tasks w WHERE w.user_id = %(uid)s
+               UNION ALL SELECT n.task_id, nx_fold(n.body) FROM task_notes n WHERE n.user_id = %(uid)s
+               UNION ALL SELECT c.task_id, nx_fold(c.label) FROM task_checklist c WHERE c.user_id = %(uid)s
+               UNION ALL SELECT e.task_id, nx_fold(e.note) FROM time_entries e WHERE e.user_id = %(uid)s)"""
+
+
+def _hit(n: int) -> str:
+    """CTEs `src` e `hit`: as tarefas com TODAS as palavras, cada uma em
+    qualquer texto da tarefa, e se a frase inteira aparece em algum (`exact`).
+    Uma passada só por tabela, seja qual for o número de palavras."""
+    every = " AND ".join(f"bool_or(f LIKE %(w{i})s)" for i in range(n))
+    return f"""{_SRC},
+           hit AS (SELECT id, COALESCE(bool_or(f LIKE %(like)s), FALSE) AS exact FROM src GROUP BY id HAVING {every})"""
+
+
+def _first(text: str, words: list[str]) -> str | None:
+    """A palavra da consulta que aparece primeiro em `text` (None: nenhuma)."""
+    f = fold(text)
+    found = [(f.find(w), w) for w in words if w in f]
+    return min(found)[1] if found else None
 
 
 def _like(text: str) -> str:
@@ -87,6 +133,8 @@ def search(
     """Tarefas, rotinas e projetos com o termo. Cada seção pagina sozinha
     (offset/limit; rec_offset, proj_offset e side_limit) e traz o total real:
     total_tasks, total_recurring, total_projects (X-Total-Count = total_tasks)."""
+    # "O termo" são as palavras da busca: todas têm de aparecer, em qualquer ordem e campo.
+    # (A docstring vai para o openapi.json: fica como está até o integrador regerar.)
     uid = user["user_id"]
     fq = fold(q.strip()[:100]).lstrip("#")  # "#1234" acha o chamado; também pelo MCP (sem validação de Query)
     if len(fq) < 2:
@@ -94,28 +142,26 @@ def search(
     offset, limit = clamp(offset, 0, OFFSET_MAX, 0), clamp(limit, 1, 100, MAX_HITS)
     rec_offset, proj_offset = clamp(rec_offset, 0, OFFSET_MAX, 0), clamp(proj_offset, 0, OFFSET_MAX, 0)
     side_limit = clamp(side_limit, 1, 50, SIDE_HITS)
+    words = _words(fq)
+    n = len(words)
     like = _like(fq)
-    params = {"uid": uid, "like": like, "lim": limit, "off": offset}
+    wl = {f"w{i}": _like(w) for i, w in enumerate(words)}
+    params = {"uid": uid, "like": like, "lim": limit, "off": offset, **wl}
 
-    # Quais tarefas casam (em qualquer campo) e a ordem: abertas primeiro (as
-    # mais urgentes), depois as concluídas mais recentes; o id desempata, para
-    # nenhuma aparecer em duas páginas. Os trechos só são lidos para a página.
+    # Quais tarefas casam (todas as palavras, cada uma em qualquer campo) e a
+    # ordem: a frase exata primeiro; depois abertas (as mais urgentes) e as
+    # concluídas mais recentes; o id desempata, para nenhuma aparecer em duas
+    # páginas. Os trechos só são lidos para a página.
     page = db.query_all(
-        """WITH hit AS (
-               SELECT w.id FROM worklog_tasks w
-                WHERE w.user_id = %(uid)s AND (nx_fold(w.title) LIKE %(like)s OR nx_fold(w.description) LIKE %(like)s
-                      OR nx_fold(w.ticket) LIKE %(like)s OR nx_fold(w.resolution) LIKE %(like)s)
-               UNION SELECT n.task_id FROM task_notes n WHERE n.user_id = %(uid)s AND nx_fold(n.body) LIKE %(like)s
-               UNION SELECT c.task_id FROM task_checklist c WHERE c.user_id = %(uid)s AND nx_fold(c.label) LIKE %(like)s
-               UNION SELECT e.task_id FROM time_entries e WHERE e.user_id = %(uid)s AND nx_fold(e.note) LIKE %(like)s)
+        f"""WITH {_hit(n)}
            SELECT w.id, count(*) OVER () AS total
              FROM worklog_tasks w JOIN hit ON hit.id = w.id
             WHERE w.user_id = %(uid)s
-            ORDER BY w.status = 'done', CASE WHEN w.status <> 'done' THEN w.priority ELSE 0 END,
+            ORDER BY NOT hit.exact, w.status = 'done', CASE WHEN w.status <> 'done' THEN w.priority ELSE 0 END,
                      COALESCE(w.completed_at, w.created_at) DESC, w.id DESC
             LIMIT %(lim)s OFFSET %(off)s""", params)
     total_tasks = page[0]["total"] if page else (
-        0 if offset == 0 else _count_tasks(params))  # página além do fim: lista vazia, total certo
+        0 if offset == 0 else _count_tasks(params, n))  # página além do fim: lista vazia, total certo
     ids = [r["id"] for r in page]
     params["ids"] = ids
 
@@ -139,37 +185,38 @@ def search(
     if ids:
         for r in db.query_all(base.format(extra="", join="", cond="TRUE"), params):
             t = task(r)
-            if r["ticket"] and fq.lstrip("#") in fold(r["ticket"]):
+            if r["ticket"] and _first(r["ticket"], words):
                 t["hits"].append({"kind": "chamado", "text": "#" + r["ticket"]})
-            if fq in fold(r["title"]):
+            if _first(r["title"], words):
                 t["hits"].append({"kind": "título", "text": r["title"]})
-            if r["description"] and fq in fold(r["description"]):
-                t["hits"].append({"kind": "descrição", "text": _snippet(r["description"], fq)})
+            if r["description"] and (w := _first(r["description"], words)):
+                t["hits"].append({"kind": "descrição", "text": _snippet(r["description"], w)})
+        # Uma consulta por tipo de trecho para a página inteira (qualquer das palavras).
         for kind, extra, join, cond, field in [
             # user_id também no JOIN: o banco filtra pelo índice da pessoa, não varre todas as contas.
-            ("anotação", ", n.body AS hit", "JOIN task_notes n ON n.task_id = w.id AND n.user_id = %(uid)s", "nx_fold(n.body) LIKE %(like)s", "hit"),
-            ("checklist", ", c.label AS hit", "JOIN task_checklist c ON c.task_id = w.id AND c.user_id = %(uid)s", "nx_fold(c.label) LIKE %(like)s", "hit"),
-            ("apontamento", ", e.note AS hit", "JOIN time_entries e ON e.task_id = w.id AND e.user_id = %(uid)s", "nx_fold(e.note) LIKE %(like)s", "hit"),
-            ("como resolveu", ", w.resolution AS hit", "", "nx_fold(w.resolution) LIKE %(like)s", "hit"),
+            ("anotação", ", n.body AS hit", "JOIN task_notes n ON n.task_id = w.id AND n.user_id = %(uid)s", _any("n.body", n), "hit"),
+            ("checklist", ", c.label AS hit", "JOIN task_checklist c ON c.task_id = w.id AND c.user_id = %(uid)s", _any("c.label", n), "hit"),
+            ("apontamento", ", e.note AS hit", "JOIN time_entries e ON e.task_id = w.id AND e.user_id = %(uid)s", _any("e.note", n), "hit"),
+            ("como resolveu", ", w.resolution AS hit", "", _any("w.resolution", n), "hit"),
         ]:
             for r in db.query_all(base.format(extra=extra, join=join, cond=cond), params):
                 t = task(r)
                 if sum(1 for h in t["hits"] if h["kind"] == kind) < 3:
-                    t["hits"].append({"kind": kind, "text": _snippet(r[field], fq)})
+                    t["hits"].append({"kind": kind, "text": _snippet(r[field], _first(r[field], words) or fq)})
 
-    side = {"uid": uid, "like": like, "lim": side_limit}
+    side = {"uid": uid, "lim": side_limit, **wl}
     recurring = db.query_all(
-        """SELECT id, label, active, freq, count(*) OVER () AS total FROM recurring_tasks
-            WHERE user_id = %(uid)s AND nx_fold(label) LIKE %(like)s
+        f"""SELECT id, label, active, freq, count(*) OVER () AS total FROM recurring_tasks
+            WHERE user_id = %(uid)s AND {_all("label", n)}
             ORDER BY active DESC, position, id LIMIT %(lim)s OFFSET %(off)s""", side | {"off": rec_offset})
     projects = db.query_all(
-        """SELECT id, name, color, COALESCE(icon, 'pasta') AS icon, archived, count(*) OVER () AS total FROM projects
-            WHERE user_id = %(uid)s AND nx_fold(name) LIKE %(like)s
+        f"""SELECT id, name, color, COALESCE(icon, 'pasta') AS icon, archived, count(*) OVER () AS total FROM projects
+            WHERE user_id = %(uid)s AND {_all("name", n)}
             ORDER BY archived, nx_fold(name), id LIMIT %(lim)s OFFSET %(off)s""", side | {"off": proj_offset})
     total_rec = recurring[0]["total"] if recurring else db.query_one(
-        "SELECT count(*)::int AS n FROM recurring_tasks WHERE user_id = %(uid)s AND nx_fold(label) LIKE %(like)s", side)["n"]
+        f"SELECT count(*)::int AS n FROM recurring_tasks WHERE user_id = %(uid)s AND {_all('label', n)}", side)["n"]
     total_proj = projects[0]["total"] if projects else db.query_one(
-        "SELECT count(*)::int AS n FROM projects WHERE user_id = %(uid)s AND nx_fold(name) LIKE %(like)s", side)["n"]
+        f"SELECT count(*)::int AS n FROM projects WHERE user_id = %(uid)s AND {_all('name', n)}", side)["n"]
     for r in recurring + projects:
         r.pop("total")
 
@@ -179,13 +226,7 @@ def search(
             "projects": projects, "total_projects": int(total_proj)}
 
 
-def _count_tasks(params: dict) -> int:
+def _count_tasks(params: dict, n: int) -> int:
     return db.query_one(
-        """SELECT count(*)::int AS n FROM (
-               SELECT w.id FROM worklog_tasks w
-                WHERE w.user_id = %(uid)s AND (nx_fold(w.title) LIKE %(like)s OR nx_fold(w.description) LIKE %(like)s
-                      OR nx_fold(w.ticket) LIKE %(like)s OR nx_fold(w.resolution) LIKE %(like)s)
-               UNION SELECT n.task_id FROM task_notes n WHERE n.user_id = %(uid)s AND nx_fold(n.body) LIKE %(like)s
-               UNION SELECT c.task_id FROM task_checklist c WHERE c.user_id = %(uid)s AND nx_fold(c.label) LIKE %(like)s
-               UNION SELECT e.task_id FROM time_entries e WHERE e.user_id = %(uid)s AND nx_fold(e.note) LIKE %(like)s) x
-            JOIN worklog_tasks w ON w.id = x.id AND w.user_id = %(uid)s""", params)["n"]
+        f"""WITH {_hit(n)}
+            SELECT count(*)::int AS n FROM hit JOIN worklog_tasks w ON w.id = hit.id AND w.user_id = %(uid)s""", params)["n"]

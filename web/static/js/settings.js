@@ -147,7 +147,9 @@ export async function mount(root, ctx) {
   // A tela volta ao topo depois de montar e entra com uma animação de escala
   // (que muda as posições medidas): a seção pedida vem depois das duas.
   if (want && want !== sections[0][0]) setTimeout(async () => {
-    await Promise.all(document.getAnimations().map((a) => a.finished.catch(() => {})));
+    // Só as que terminam: uma animação sem fim (o lembrete tocando) não pode segurar a rolagem.
+    const ends = (a) => { try { return Number.isFinite(a.effect.getComputedTiming().endTime); } catch { return false; } };
+    await Promise.all(document.getAnimations().filter(ends).map((a) => a.finished.catch(() => {})));
     goTo(want, false);
   }, 0);
 }
@@ -283,20 +285,31 @@ function ticketsPanel(me) {
 
 // ---------------------------------------------------------------- atalhos --
 
+// Mesma regra da Ajuda (só no computador), mais os aparelhos só de toque.
+const noKeyboard = () => matchMedia("(max-width: 860px), (hover: none) and (pointer: coarse)").matches;
+
 function shortcutsPanel() {
+  if (noKeyboard()) return null; // sem teclado, o bloco só ocupa tela
   const keys = [["n", "nova tarefa"], ["q", "registro rápido"], ["/", "buscar"], ["h", "Hoje"], ["t", "Tarefas"], ["r", "Meu mês"],
     ["l", "Meu mês (outro período ou formato)"], ["s", "parar o cronômetro"], ["?", "ver todos os atalhos"]];
   // Desligar: para quem usa controle por voz ou esbarra numa tecla sem querer.
   const on = h("input", { type: "checkbox" });
   on.checked = singleKeysOn();
   on.addEventListener("change", () => setSingleKeys(on.checked));
+  // A lista é a da janela do "?": aqui fica só o botão que a abre (também com os atalhos desligados).
+  const show = () => {
+    const dlg = modal(h("h2", { text: "Atalhos de teclado" }),
+      h("dl", { class: "shortcuts" }, ...keys.flatMap(([k, l]) => [h("dt", {}, h("kbd", { text: k })), h("dd", { text: l })])),
+      h("p", { class: "dialog-note", text: "Funcionam fora dos campos de texto. Esc fecha qualquer janela." }),
+      h("div", { class: "dialog-actions" }, h("button", { type: "button", class: "btn btn-text", text: "Fechar", onClick: () => dlg.close() })));
+  };
   return h("section", { class: "panel" },
     h("div", { class: "panel-head" }, h("h2", { text: "Atalhos de teclado" })),
     h("div", { class: "notice-row" },
       h("label", { class: "notice-main" }, on, h("span", {}, h("strong", { text: "Atalhos de uma tecla" }),
-        h("small", { text: "Vale para este aparelho. Desligados, as letras abaixo não fazem nada." })))),
-    h("dl", { class: "shortcuts" }, ...keys.flatMap(([k, l]) => [h("dt", {}, h("kbd", { text: k })), h("dd", { text: l })])),
-    h("p", { class: "help", text: "Funcionam fora dos campos de texto." }));
+        h("small", { text: "Vale para este aparelho. Desligados, as letras (n, q, h, t…) não fazem nada." })))),
+    h("p", { class: "help" }, h("button", { type: "button", class: "btn btn-text btn-sm", text: "Ver os atalhos", onClick: show }),
+      " Com os atalhos ligados, a tecla ? mostra a mesma lista em qualquer tela."));
 }
 
 // ------------------------------------------------------------- dias úteis --
@@ -567,7 +580,9 @@ async function tokens(rerender) {
   return h("div", { class: "settings-grid" },
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Nova chave" })),
-      h("p", { class: "help", text: "Em vez de registrar à mão, conte para a IA o que você fez e ela registra no Nexus. Uma chave deixa uma IA ou automação usar o Nexus em seu nome, sem a sua senha; tudo o que ela fizer aparece no Histórico com o nome que você der aqui. Ao criar, a janela já traz a configuração pronta para o Claude Code, o Claude Desktop, o Cursor e o Gemini CLI." }),
+      h("p", { class: "help", text: "Em vez de registrar à mão, conte para a IA o que você fez e ela registra no Nexus. Uma chave deixa uma IA ou automação usar o Nexus em seu nome, sem a sua senha; tudo o que ela fizer aparece no Histórico com o nome que você der aqui."
+        + (list.length ? " Ao criar, a janela já traz a configuração pronta para o Claude Code, o Claude Desktop, o Cursor e o Gemini CLI." : "") }),
+      list.length ? null : h("p", { class: "help", text: "Como ligar cada IA aparece ao criar a chave; o passo a passo completo está na documentação." }),
       form),
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Minhas chaves" }), h("span", { class: "count", text: (() => { const n = list.filter((t) => t.active).length; return n + (n === 1 ? " ativa" : " ativas"); })() })),
@@ -645,6 +660,9 @@ function showNewToken(res) {
       h("button", { type: "button", class: "btn btn-primary", text: "Pronto", onClick: () => dlg.close() })));
 }
 
+// Bloco recolhido, fechado por padrão: <details> nativo, com o desenho da janela "Chave criada".
+const fold = (title, ...body) => h("details", { class: "ai-config" }, h("summary", { text: title }), ...body);
+
 // --------------------------------------------------------------- webhooks --
 
 // Webhook: o Nexus avisa outro sistema (chamados, chat, planilha) a cada mudança.
@@ -655,6 +673,10 @@ async function webhooksPanel(rerender) {
   const err = h("p", { class: "error-text" });
   const create = h("button", { type: "submit", class: "btn btn-primary" }, icon("send"), "Criar webhook");
   const form = h("form", {}, field("Endereço (https)", url), events.el, err, create);
+  // A lista de eventos (20 caixas) só abre depois de preencher o endereço.
+  const showEvents = () => { events.el.hidden = !url.value.trim(); };
+  url.addEventListener("input", showEvents);
+  showEvents();
   form.addEventListener("submit", busy(async (ev) => {
     ev.preventDefault();
     err.textContent = "";
@@ -719,8 +741,10 @@ async function webhooksPanel(rerender) {
   return h("div", { class: "settings-grid" },
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Avisar outro sistema (webhook)" })),
-      h("p", { class: "help", text: "Webhook: o Nexus avisa outro sistema na hora em que algo muda (tarefa criada, concluída, rotina marcada…), enviando os dados para o endereço que você informar. Serve para fechar o chamado, avisar no chat ou alimentar uma planilha. Até 5. Quem configura o outro sistema encontra os detalhes na documentação da API." }),
-      form),
+      h("p", { class: "help", text: "O Nexus avisa outro sistema na hora em que algo muda (tarefa criada, concluída, rotina marcada…)." }),
+      fold("Novo webhook",
+        h("p", { class: "help", text: "O Nexus envia os dados para o endereço que você informar. Serve para fechar o chamado, avisar no chat ou alimentar uma planilha. Até 5. Quem configura o outro sistema encontra os detalhes na documentação da API." }),
+        form)),
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Meus webhooks" }), h("span", { class: "count", text: ((n) => `${n} ${n === 1 ? "ativo" : "ativos"}`)(list.filter((w) => w.active).length) })),
       ...rows, recipesLine()));
@@ -850,24 +874,29 @@ function aiHelp() {
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Use o Nexus pela sua IA" })),
       h("p", { class: "help", text: "Conte para a IA o que você fez (“troquei o disjuntor do quadro 3 e fiz a ronda da manhã”) e ela registra no Nexus. O Nexus fala MCP, a forma padrão de uma IA usar outros programas." }),
-      h("p", { class: "help", text: "1. Crie uma chave em Nova chave, acima (opção “Ler e registrar”): a janela já mostra a configuração pronta de cada IA. 2. Precisa de novo depois? Cole a configuração abaixo, trocando nxs_SUA_CHAVE pela chave:" }),
-      h("p", { class: "dialog-note", text: "Claude Code (terminal; com --scope user vale em qualquer pasta):" }),
-      codeBox(cfg.code),
-      h("p", { class: "dialog-note", text: "Cursor (arquivo mcp.json, na pasta .cursor da sua pasta de usuário, ou Cursor Settings > MCP > Add new global MCP server) e outros programas que aceitam endereço e cabeçalho. Arquivo com outro conteúdo: veja a nota do Claude Desktop, abaixo; vale igual." }),
-      codeBox(cfg.cursor),
-      h("p", { class: "dialog-note", text: "Claude Desktop (o aplicativo do Claude no computador), passo a passo:" }),
-      h("ol", { class: "help" },
-        h("li", {}, "Instale o Node.js (versão LTS, a recomendada) pelo site ",
-          h("a", { href: "https://nodejs.org", target: "_blank", rel: "noopener noreferrer", text: "nodejs.org" }), ". É um instalador comum: é só avançar até o fim."),
-        h("li", { text: "No Claude Desktop, abra Configurações > Desenvolvedor > Editar configuração. Abre a pasta do arquivo claude_desktop_config.json: abra esse arquivo no Bloco de Notas (no Mac, no TextEdit)." }),
-        h("li", { text: "Se o arquivo estiver vazio ou só com {}, apague tudo e cole o bloco abaixo. Se já tiver outro conteúdo, veja a nota logo depois do bloco." }),
-        h("li", { text: "Salve, feche o Claude Desktop por completo e abra de novo. Para conferir, pergunte “o que tenho hoje no Nexus?”: o nexus aparece no ícone de ferramentas, abaixo da caixa de mensagem." })),
-      codeBox(cfg.desktop),
-      h("p", { class: "help", text: "Vale para os três arquivos (Claude Desktop, Cursor e Gemini CLI). Se o arquivo já tiver conteúdo, não cole por cima nem no fim: o arquivo deixa de valer e o aplicativo abre sem o Nexus. Já existe \"mcpServers\"? Copie só o trecho \"nexus\": { … } e cole dentro dele, depois do último servidor, com uma vírgula entre os dois. Não existe? Acrescente \"mcpServers\": { … } inteiro como mais um item, também separado por vírgula. Exemplo de um arquivo que já tinha outras coisas:" }),
-      codeBox(cfg.desktopMerge),
-      h("p", { class: "dialog-note", text: "Gemini CLI (o Gemini que roda no terminal; arquivo settings.json dentro da pasta .gemini, na sua pasta de usuário). Depois do primeiro login esse arquivo já tem conteúdo: junte como na nota acima, sem colar por cima." }),
-      codeBox(cfg.gemini),
-      h("p", { class: "help", text: "O aplicativo e o site do Gemini (gemini.google.com), o ChatGPT e o Claude no navegador (claude.ai) ainda não ligam no Nexus: os conectores deles pedem um tipo de login (OAuth) que o Nexus não tem. Do Gemini, só o Gemini CLI funciona; nos outros, use um dos programas acima ou a API." })),
+      h("p", { class: "help", text: "1. Crie uma chave em Nova chave, acima (opção “Ler e registrar”): a janela já mostra a configuração pronta de cada IA. 2. Precisa de novo depois? Abra o seu programa abaixo e cole a configuração, trocando nxs_SUA_CHAVE pela chave." }),
+      h("p", { class: "help", text: "O aplicativo e o site do Gemini (gemini.google.com), o ChatGPT e o Claude no navegador (claude.ai) ainda não ligam no Nexus: os conectores deles pedem um tipo de login (OAuth) que o Nexus não tem. Do Gemini, só o Gemini CLI funciona; nos outros, use um dos programas abaixo ou a API." }),
+      fold("Claude Code",
+        h("p", { class: "dialog-note", text: "No terminal (com --scope user vale em qualquer pasta):" }),
+        codeBox(cfg.code)),
+      fold("Cursor",
+        h("p", { class: "dialog-note", text: "Arquivo mcp.json, na pasta .cursor da sua pasta de usuário, ou Cursor Settings > MCP > Add new global MCP server. Vale também para outros programas que aceitam endereço e cabeçalho. Arquivo com outro conteúdo: veja “Arquivo que já tinha outras coisas”, abaixo." }),
+        codeBox(cfg.cursor)),
+      fold("Claude Desktop",
+        h("p", { class: "dialog-note", text: "O aplicativo do Claude no computador, passo a passo:" }),
+        h("ol", { class: "help" },
+          h("li", {}, "Instale o Node.js (versão LTS, a recomendada) pelo site ",
+            h("a", { href: "https://nodejs.org", target: "_blank", rel: "noopener noreferrer", text: "nodejs.org" }), ". É um instalador comum: é só avançar até o fim."),
+          h("li", { text: "No Claude Desktop, abra Configurações > Desenvolvedor > Editar configuração. Abre a pasta do arquivo claude_desktop_config.json: abra esse arquivo no Bloco de Notas (no Mac, no TextEdit)." }),
+          h("li", { text: "Se o arquivo estiver vazio ou só com {}, apague tudo e cole o bloco abaixo. Se já tiver outro conteúdo, veja “Arquivo que já tinha outras coisas”, abaixo." }),
+          h("li", { text: "Salve, feche o Claude Desktop por completo e abra de novo. Para conferir, pergunte “o que tenho hoje no Nexus?”: o nexus aparece no ícone de ferramentas, abaixo da caixa de mensagem." })),
+        codeBox(cfg.desktop)),
+      fold("Gemini CLI",
+        h("p", { class: "dialog-note", text: "O Gemini que roda no terminal; arquivo settings.json dentro da pasta .gemini, na sua pasta de usuário. Depois do primeiro login esse arquivo já tem conteúdo: junte como em “Arquivo que já tinha outras coisas”, abaixo, sem colar por cima." }),
+        codeBox(cfg.gemini)),
+      fold("Arquivo que já tinha outras coisas",
+        h("p", { class: "help", text: "Vale para os três arquivos (Claude Desktop, Cursor e Gemini CLI). Se o arquivo já tiver conteúdo, não cole por cima nem no fim: o arquivo deixa de valer e o aplicativo abre sem o Nexus. Já existe \"mcpServers\"? Copie só o trecho \"nexus\": { … } e cole dentro dele, depois do último servidor, com uma vírgula entre os dois. Não existe? Acrescente \"mcpServers\": { … } inteiro como mais um item, também separado por vírgula. Exemplo:" }),
+        codeBox(cfg.desktopMerge))),
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "O que a IA pode fazer" })),
       h("p", { class: "help", text: "Ver o dia e os períodos, buscar, criar, editar e concluir tarefas e rotinas, anotar, apontar tempo, montar projetos e objetivos e consultar ou desfazer o histórico." }),
@@ -877,10 +906,12 @@ function aiHelp() {
       codeBox(`curl -H "Authorization: Bearer nxs_SUA_CHAVE" ${location.origin}/api/board`)),
     h("section", { class: "panel" },
       h("div", { class: "panel-head" }, h("h2", { text: "Comandos prontos" })),
-      h("p", { class: "help", text: "O Nexus oferece dois comandos para a IA: o resumo da semana (para o time, um cliente ou quem acompanha seu trabalho) e o resumo para a equipe (ontem, hoje e o que está aguardando). No Claude Code eles aparecem como comandos de barra (o /mcp__nexus__daily é o resumo para a equipe):" }),
-      codeBox("/mcp__nexus__resumo_semanal o cliente\n/mcp__nexus__daily"),
-      h("p", { class: "dialog-note", text: "Em outras IAs, cole o pedido:" }),
-      codeBox("Use o Nexus (get_summary e get_today) e escreva um resumo da minha semana para quem acompanha meu trabalho: o que foi entregue por projeto, o tempo por projeto, o que segue em andamento e o que está aguardando. Só com o que está registrado.")),
+      h("p", { class: "help", text: "O Nexus oferece dois comandos para a IA: o resumo da semana (para o time, um cliente ou quem acompanha seu trabalho) e o resumo para a equipe (ontem, hoje e o que está aguardando)." }),
+      fold("Ver os comandos",
+        h("p", { class: "dialog-note", text: "No Claude Code eles aparecem como comandos de barra (o /mcp__nexus__daily é o resumo para a equipe):" }),
+        codeBox("/mcp__nexus__resumo_semanal o cliente\n/mcp__nexus__daily"),
+        h("p", { class: "dialog-note", text: "Em outras IAs, cole o pedido:" }),
+        codeBox("Use o Nexus (get_summary e get_today) e escreva um resumo da minha semana para quem acompanha meu trabalho: o que foi entregue por projeto, o tempo por projeto, o que segue em andamento e o que está aguardando. Só com o que está registrado."))),
   ];
 }
 
@@ -1175,5 +1206,7 @@ function seenBy(me, who) {
     (me.teams_on ? "Nesta instância do Nexus, quem gerencia vê as tarefas de quem está na mesma equipe (definido pela administração). "
       : "Nesta instância do Nexus, quem gerencia a equipe vê as tarefas de todos (definido pela administração). ") +
     `A sua escolha (${me.viewers_allowed ? "permitir" : "não permitir"}) fica guardada e volta a valer se isso mudar${me.teams_on ? " ou se você sair das equipes" : ""}.`) : null;
-  return [help, h("label", { class: "check-line" + (managed ? " is-locked" : "") }, cb, h("span", { text: "Permitir que quem tem o papel “Vê a equipe” veja meu registro" })), lock, line];
+  // Dito sempre, mesmo sem a lista de nomes: quem redefine a senha tem como entrar na conta.
+  const admins = h("p", { class: "dialog-note", text: "Quem administra o Nexus pode redefinir a sua senha. Quando isso acontece, fica anotado no seu Histórico." });
+  return [help, h("label", { class: "check-line" + (managed ? " is-locked" : "") }, cb, h("span", { text: "Permitir que quem tem o papel “Vê a equipe” veja meu registro" })), lock, line, admins];
 }
