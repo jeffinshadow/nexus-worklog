@@ -209,7 +209,9 @@ const MINS = [15, 30, 60];
 function beforePdf(ov, mes, download, reload) {
   const items = ov.incomplete.map((x) => ({ ...x }));
   const extra = ov.incomplete_total - items.length; // passou de 300: o resto fica para depois
-  const missing = (x) => !x.minutes || !x.resolution;
+  // x.waiting: minutos apontados sem sinal, na fila do aparelho (ainda não estão no servidor).
+  const hasTime = (x) => !!(x.minutes || x.waiting);
+  const missing = (x) => !hasTime(x) || !x.resolution;
   let page = 1, changed = false;
 
   const title = h("h2", { text: `Antes do PDF de ${mes}` });
@@ -223,8 +225,10 @@ function beforePdf(ov, mes, download, reload) {
     onClick: () => dlg.close() }, icon("close"));
   const paintCount = () => {
     const left = items.filter(missing).length + Math.max(0, extra);
-    count.textContent = left === 1 ? "Falta 1 tarefa" : left ? `Faltam ${left} tarefas` : "Tudo completo";
-    goText.textContent = left ? "Baixar assim mesmo" : "Baixar o PDF";
+    // Tempo na fila do aparelho ainda não está no PDF: não é "tudo completo".
+    const waiting = items.some((x) => x.waiting);
+    count.textContent = left === 1 ? "Falta 1 tarefa" : left ? `Faltam ${left} tarefas` : waiting ? "Falta a conexão voltar para o tempo entrar" : "Tudo completo";
+    goText.textContent = left || waiting ? "Baixar assim mesmo" : "Baixar o PDF";
   };
 
   const row = (x) => {
@@ -233,9 +237,10 @@ function beforePdf(ov, mes, download, reload) {
       clear(el);
       const chip = projectChip({ project_name: x.project, project_color: x.project_color, project_icon: x.project_icon });
       const tags = [h("span", { class: "chip", text: `concluída ${shortDay(x.done_date)}` })];
-      if (!missing(x)) tags.push(h("span", { class: "chip pdf-done", text: "completa" }));
+      if (x.waiting) tags.push(h("span", { class: "chip today", text: `${duration(x.waiting)} · esperando conexão` }));
+      if (!missing(x)) { if (!x.waiting) tags.push(h("span", { class: "chip pdf-done", text: "completa" })); }
       else {
-        if (!x.minutes) tags.push(h("span", { class: "chip", text: "sem tempo" }));
+        if (!hasTime(x)) tags.push(h("span", { class: "chip", text: "sem tempo" }));
         if (!x.resolution) tags.push(h("span", { class: "chip", text: "sem como resolveu" }));
       }
       el.append(h("div", { class: "review-t" }, h("span", { class: "review-title", text: x.title }),
@@ -243,7 +248,7 @@ function beforePdf(ov, mes, download, reload) {
       if (!missing(x)) return;
       const fill = h("div", { class: "pdf-fill" });
       let mins = null, res = null;
-      if (!x.minutes) {
+      if (!hasTime(x)) {
         mins = h("input", { type: "number", min: "1", max: "1440", inputmode: "numeric", placeholder: "min",
           "aria-label": `Minutos em ${x.title}` });
         const quick = MINS.map((n) => h("button", { type: "button", class: "btn btn-ghost pdf-quick", "aria-pressed": "false",
@@ -271,15 +276,25 @@ function beforePdf(ov, mes, download, reload) {
         save.disabled = true;
         try {
           // O tempo vai no dia da conclusão (conta no mesmo mês do PDF).
-          // !x.minutes: se o tempo entrou e o "como resolveu" falhou, salvar de novo não aponta o tempo outra vez.
-          if (n && !x.minutes) { await api.post(`/worklog/${x.id}/time`, { minutes: n, day: x.done_date }); x.minutes = n; changed = true; }
+          // !hasTime: se o tempo entrou e o "como resolveu" falhou, salvar de novo não aponta o tempo outra vez.
+          if (n && !hasTime(x)) {
+            const r = await api.post(`/worklog/${x.id}/time`, { minutes: n, day: x.done_date });
+            // Sem sinal o tempo foi para a fila do aparelho: aparece como "esperando conexão", não como salvo.
+            if (r && r.queued) { x.waiting = n; toast("Sem sinal: o tempo sai quando a conexão voltar."); }
+            else { x.minutes = n; changed = true; }
+          }
           if (text) { await api.patch(`/worklog/${x.id}`, { resolution: text }); x.resolution = true; changed = true; }
           paint();
           paintCount();
           // O foco segue para a próxima que falta (ou para o botão de baixar).
           const next = box.querySelector(".pdf-row input");
           (next || go).focus();
-        } catch (e) { save.disabled = false; errorToast(e, "Não foi possível salvar."); }
+        } catch (e) {
+          save.disabled = false;
+          errorToast(e, "Não foi possível salvar.");
+          // O tempo ficou na fila e o "como resolveu" falhou: a linha mostra o tempo esperando e mantém o texto.
+          if (x.waiting && mins) { paint(); const again = el.querySelector(".review-inline input"); if (again) { again.value = text; again.focus(); } }
+        }
       } });
       // O Salvar fica na linha do como resolveu (ou, sem ele, ao lado do tempo).
       if (res) fill.append(h("div", { class: "review-inline" }, res, save));
