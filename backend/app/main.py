@@ -1,11 +1,15 @@
 import asyncio
+import json
 import logging
 import pathlib
 from contextlib import asynccontextmanager
 
+import psycopg
 from fastapi import Depends, FastAPI, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exception_handlers import http_exception_handler
-from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse, Response
 from psycopg import errors as pg_errors
 from psycopg_pool import PoolTimeout
 from pydantic import BaseModel, EmailStr, Field, TypeAdapter, ValidationError
@@ -99,6 +103,54 @@ async def _http_error(request: Request, exc: StarletteHTTPException):
     if exc.status_code in RETRY_AFTER and "Retry-After" not in (exc.headers or {}):
         exc.headers = {**(exc.headers or {}), "Retry-After": RETRY_AFTER[exc.status_code]}
     return await http_exception_handler(request, exc)
+
+
+# NUL (\u0000), substituto solto (\ud800) ou número fora da faixa da coluna: o banco recusa e
+# isso é erro do pedido, não do servidor. Com 500 a fila offline do celular repetia para sempre;
+# com 4xx o item vai para "Não deu para aplicar". A mensagem é genérica porque o DataError cobre
+# os dois casos (texto e número).
+BAD_DATA = "o texto tem um caractere inválido ou um valor fora do limite"
+
+
+@app.exception_handler(psycopg.DataError)
+@app.exception_handler(UnicodeEncodeError)
+async def _bad_data(request: Request, exc: Exception):
+    # Uma linha no log (sem o valor): se for defeito nosso e não do pedido, dá para achar.
+    logging.getLogger("uvicorn.error").warning("dado recusado em %s %s: %s", request.method, request.url.path,
+                                               exc.__class__.__name__)
+    return JSONResponse({"detail": BAD_DATA}, status_code=400)
+
+
+@app.exception_handler(RequestValidationError)
+async def _invalid(request: Request, exc: RequestValidationError):
+    """O 422 de sempre; só não estoura (500) quando o valor recusado, que volta em `input`,
+    traz um substituto solto: ele sai como "?"."""
+    body = json.dumps({"detail": jsonable_encoder(exc.errors())}, ensure_ascii=False, separators=(",", ":"))
+    return Response(body.encode("utf-8", "replace"), status_code=422, media_type="application/json")
+
+
+class NoStore:
+    """Cache-Control: no-store em toda resposta de /api/ que não trouxer o seu: os dados da
+    pessoa não ficam no cache do navegador nem de um proxy no caminho. Fotos, avatar e logo
+    já mandam o próprio Cache-Control e seguem com ele."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or not scope["path"].startswith("/api/"):
+            return await self.app(scope, receive, send)
+
+        async def wrapped(message):
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers") or [])
+                if not any(k.lower() == b"cache-control" for k, _ in headers):
+                    message = {**message, "headers": headers + [(b"cache-control", b"no-store")]}
+            await send(message)
+        await self.app(scope, receive, wrapped)
+
+
+app.add_middleware(NoStore)
 
 
 @app.get("/api/health")
