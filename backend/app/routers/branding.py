@@ -123,6 +123,9 @@ async def upload_logo(request: Request, admin=Depends(require_admin_csrf)):
     mime = _sniff(data)
     if not mime:
         raise HTTPException(status_code=415, detail="use SVG, PNG ou WebP")
+    if mime == "image/webp" and data[12:16] not in (b"VP8 ", b"VP8L", b"VP8X"):
+        # Sem um dos três formatos do WebP não dá para ler o tamanho (e nenhum navegador abriria).
+        raise HTTPException(status_code=400, detail="WebP de formato desconhecido; exporte a imagem de novo")
     size = _size(data, mime)
     if size and max(size) > MAX_LOGO_SIDE:
         raise HTTPException(status_code=400, detail=f"logo com mais de {MAX_LOGO_SIDE} px de lado "

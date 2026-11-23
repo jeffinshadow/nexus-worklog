@@ -183,16 +183,18 @@ def payload(row: dict) -> dict:
         # Tarefa que a pessoa atribuiu foi devolvida: o quê, por quem e o porquê (texto de quem devolveu).
         item["data"] = {k: row["after"].get(k) for k in ("title", "to", "to_id", "reason")}
     if row["entity"] == "worklog" and isinstance(item["data"], dict) and row["action"] != "assign.returned":
-        item["data"] = {**item["data"], **_task_extras(row["entity_id"], item["data"])}
+        item["data"] = {**item["data"], **_task_extras(row["entity_id"], item["data"], row["user_id"])}
     return audit._jsonable(item)
 
 
-def _task_extras(task_id, data: dict) -> dict:
+def _task_extras(task_id, data: dict, owner: int) -> dict:
     """Só no webhook (o feed não leva): o que quem recebe quase sempre busca em seguida.
     Calculados na hora da entrega: nome do projeto (o do evento; null sem projeto ou se o projeto
-    foi excluído), minutos apontados na tarefa até agora e o endereço dela no app."""
+    foi excluído), minutos que o dono do webhook apontou na tarefa até agora (as horas de quem a tinha
+    antes de uma transferência não vão: a API também as esconde do novo dono) e o endereço dela no app."""
     proj = db.query_one("SELECT name FROM projects WHERE id = %s", (data["project_id"],)) if data.get("project_id") else None
-    mins = db.query_one("SELECT COALESCE(sum(minutes), 0)::int AS m FROM time_entries WHERE task_id = %s", (task_id,))
+    mins = db.query_one("SELECT COALESCE(sum(minutes), 0)::int AS m FROM time_entries WHERE task_id = %s AND user_id = %s",
+                        (task_id, owner))
     return {"project_name": proj["name"] if proj else None, "minutes": mins["m"],
             "url": f"{config.APP_URL.rstrip('/')}/#/tarefas?id={task_id}"}
 
@@ -201,7 +203,7 @@ def _deliver(hook: dict, send) -> tuple[int, str | None]:
     """Entrega os eventos pendentes de um webhook, em ordem; para na 1ª falha.
     Devolve (quantos entregou, erro ou None)."""
     rows = db.query_all(
-        """SELECT id, created_at, actor, token_name, action, entity, entity_id, before, after
+        """SELECT id, user_id, created_at, actor, token_name, action, entity, entity_id, before, after
              FROM audit_log
             WHERE user_id = %s AND id > %s AND created_at <= now() - make_interval(secs => %s)
             ORDER BY id LIMIT %s""",
