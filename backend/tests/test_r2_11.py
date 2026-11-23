@@ -507,3 +507,45 @@ def test_ranking_de_quem_acompanha_atravessando_a_meia_noite(monkeypatch, admin,
     lidos = relogio.vira_antes_de(monkeypatch, admin, "get", "/viewer/users/")
     antigo_ranking.test_quem_acompanha_nao_recebe_ranking_nem_backlog(admin, usuario)
     assert lidos and relogio.dia == DOMINGO
+
+
+# ------------------------------------------------- PDF de projeto: 500 linhas --
+def test_pdf_de_projeto_corta_em_500_tarefas_e_o_total_fecha_com_a_capa(usuario, monkeypatch):
+    uid, hoje = uid_de(usuario), dia_hoje(usuario)
+    pid = _ok(usuario.post("/projects", {"name": "Migração"}))["id"]
+    # 520 tarefas com tempo no projeto (direto no banco: pela API seriam 1040 pedidos), em 5 dias, de 1 a 7 min.
+    db.execute("""WITH t AS (INSERT INTO worklog_tasks (user_id, title, project_id)
+                             SELECT %s, 'Tarefa ' || lpad(g::text, 3, '0'), %s FROM generate_series(1, 520) g
+                             RETURNING id)
+                  INSERT INTO time_entries (task_id, user_id, minutes, day)
+                  SELECT id, %s, 1 + (id %% 7), %s::date - (id %% 5)::int FROM t""", (uid, pid, uid, hoje))
+    no_banco = db.query_one("SELECT sum(minutes)::int AS m FROM time_entries WHERE user_id = %s", (uid,))["m"]
+
+    # Os dados, pelo caminho da rota do relatório do projeto inteiro.
+    start, end, project, _ = reports.resolve_range(uid, None, None, pid)
+    data = services.get_report_range(uid, start, end, project)
+    linhas = data["time_by_task"]
+    assert len(linhas) == 520
+    assert data["summary"]["minutes"] == no_banco == sum(r["minutes"] for r in linhas)  # o número da capa
+
+    # A função que desenha a tabela, num PDF de verdade, guardando cada texto escrito.
+    pdf = report_pdf._Report({"line1": "nexus", "line2": "worklog", "logo": None}, "Migração", "23/11/2026 09:00")
+    pdf.add_page()
+    escrito, text_at = [], pdf.text_at
+
+    def anota(x, y, w, h, text, align="L"):
+        escrito.append(text)
+        return text_at(x, y, w, h, text, align)
+    monkeypatch.setattr(pdf, "text_at", anota)
+    report_pdf._time_by_task(pdf, data)
+
+    assert escrito.count("em aberto") == 500  # uma linha por tarefa, até o corte
+    resto = sum(r["minutes"] for r in linhas[500:])
+    i = escrito.index("+ 20 outras tarefas")
+    assert escrito[i:i + 3] == ["+ 20 outras tarefas", "", report_pdf._dur(resto)]
+    assert escrito[i + 3:i + 6] == ["Total", "", report_pdf._dur(no_banco)]  # o total fecha com a capa, corte incluído
+    assert linhas[500]["title"] not in escrito and linhas[499]["title"] in escrito
+    # Com 500 ou menos não há linha de resto.
+    escrito.clear()
+    report_pdf._time_by_task(pdf, {**data, "time_by_task": linhas[:500]})
+    assert not [t for t in escrito if t.startswith("+ ")] and escrito.count("em aberto") == 500
