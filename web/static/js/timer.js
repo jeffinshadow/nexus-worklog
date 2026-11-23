@@ -104,7 +104,8 @@ function setTimer(t) {
 }
 
 // Cronômetro esquecido (mais de 12 h): o servidor parou sem apontar; a pessoa informa o tempo.
-function forgotten(st) {
+// Também vale ao concluir a tarefa com o cronômetro esquecido nela (board.js).
+export function forgotten(st) {
   const when = dateTime(st.started_at);  // no fuso da app, como o resto das horas
   toast(`O cronômetro de «${st.title}» rodava desde ${when}: parei sem apontar. Informe o tempo certo.`,
     { action: "Apontar", onAction: () => openTask(st.task_id) });

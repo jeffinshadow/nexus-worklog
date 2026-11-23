@@ -7,7 +7,7 @@ import { extraProjectsField, fillObjectiveSelect, fillProjectSelect, listProject
 import { openTask, openTaskId, editingTaskId, duration, parseDuration } from "./task.js";
 import { boardLine } from "./assistant.js";
 import { session } from "./session.js";
-import { timerButton, timerState, startTimer, stopTimer, backAction, finishedTask } from "./timer.js";
+import { timerButton, timerState, startTimer, stopTimer, backAction, finishedTask, forgotten } from "./timer.js";
 import { refreshReminders } from "./lembretes.js";
 import { appBadge } from "./instalar.js";
 import { prepare, upload } from "./fotos.js";
@@ -678,14 +678,23 @@ export function askResolution(t, onDone) {
   area.focus();
 }
 
+// Em envio: com sinal fraco, três toques em Concluir mandavam três conclusões.
+// A tarefa fica travada até a resposta chegar e a tela se redesenhar.
+const finishing = new Set();
+
 export async function finishTask(t, onDone, { fromEdit = false } = {}) {
   if (!fromEdit && editingTaskId() === t.id) { toast("Termine a edição da tarefa (Pronto) antes de concluir."); return; }
+  if (finishing.has(t.id)) return;
+  finishing.add(t.id);
+  const release = () => finishing.delete(t.id);
   const refocus = focusAfterRemoval(); // o foco vai para a tarefa que ficar no lugar
   try {
     const r = await api.post(`/worklog/${t.id}/finish`);
     finishedTask(t.id);  // com o cronômetro nela, o servidor já parou e apontou
     const back = backAction(t.id, onDone);  // fim de uma interrupção: voltar para a que ficou parada
-    Promise.resolve(onDone && onDone()).then(refocus);
+    Promise.resolve(onDone && onDone()).then(refocus).finally(release);
+    // Cronômetro esquecido nela (mais de 12 h): o servidor parou sem apontar; o mesmo aviso de parar.
+    if (r && r.stopped && r.stopped.needs_review) forgotten({ title: t.title, ...r.stopped });
     if (r && r.queued) { toast(`Concluída sem conexão: ${t.title}. Vai quando a conexão voltar.`, back ? { actions: [back] } : {}); return; }
     // A base de conhecimento só cresce se for perguntada na hora de concluir.
     toast(`Concluída: ${t.title}`, { actions: [
@@ -694,6 +703,7 @@ export async function finishTask(t, onDone, { fromEdit = false } = {}) {
       ["Desfazer", () => undoLatest("worklog", t.id, onDone)],
     ].filter(Boolean) });
   } catch (e) {
+    release();
     errorToast(e, "Não foi possível concluir.");
   }
 }
